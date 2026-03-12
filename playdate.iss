@@ -1,8 +1,5 @@
 ; playdate.iss - Inno Setup installer script for PlayDate
 ; Build with Inno Setup 6+: https://jrsoftware.org/isinfo.php
-;
-; Input:  dist\PlayDate\  (PyInstaller onedir output)
-; Output: installer\PlayDate-Setup.exe
 
 #define AppName      "PlayDate"
 #define AppVersion   GetVersionNumbersString("dist\PlayDate\PlayDate.exe")
@@ -71,21 +68,22 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait
 function InitializeUninstall(): Boolean;
 var
   MsgResult: Integer;
+  NL: String;
+  Msg: String;
 begin
   Result := True;
-  MsgResult := MsgBox(
-    'Do you want to delete your PlayDate user data?' + #13#10 +
-    #13#10 +
-    'This includes:' + #13#10 +
-    '  - config.json  (Steam API credentials)' + #13#10 +
-    '  - state.json   (filters, sort, shelves)' + #13#10 +
-    '  - games.db     (your game library)' + #13#10 +
-    '  - playdate.log (application log)' + #13#10 +
-    #13#10 +
-    'Click YES to delete everything.' + #13#10 +
-    'Click NO to keep your data (you can re-use it after reinstalling).',
-    mbConfirmation, MB_YESNO or MB_DEFBUTTON2
-  );
+  NL := Chr(13) + Chr(10);
+  Msg := 'Do you want to delete your PlayDate user data?' + NL +
+         NL +
+         'This includes:' + NL +
+         '  - config.json  (Steam API credentials)' + NL +
+         '  - state.json   (filters, sort, shelves)' + NL +
+         '  - games.db     (your game library)' + NL +
+         '  - playdate.log (application log)' + NL +
+         NL +
+         'Click YES to delete everything.' + NL +
+         'Click NO to keep your data (you can re-use it after reinstalling).';
+  MsgResult := MsgBox(Msg, mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
 
   if MsgResult = IDYES then
   begin
