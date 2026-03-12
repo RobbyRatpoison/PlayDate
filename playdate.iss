@@ -5,7 +5,7 @@
 ; Output: installer\PlayDate-Setup.exe
 
 #define AppName      "PlayDate"
-#define AppVersion   GetFileVersion("dist\PlayDate\PlayDate.exe")
+#define AppVersion   GetVersionNumbersString("dist\PlayDate\PlayDate.exe")
 #define AppPublisher "PlayDate"
 #define AppURL       "https://github.com/RobbyRatpoison/PlayDate"
 #define AppExeName   "PlayDate.exe"
@@ -87,15 +87,6 @@ Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait
 [Code]
 // ── Custom page: ask user if they want to keep their data on uninstall ────────
 
-var
-  DataPage: TNewNotebookPage;
-  DeleteDataCheckbox: TNewCheckBox;
-
-procedure InitializeWizard;
-begin
-  // Nothing needed for install wizard
-end;
-
 function InitializeUninstall(): Boolean;
 var
   MsgResult: Integer;
@@ -105,10 +96,10 @@ begin
     'Do you want to delete your PlayDate user data?' + #13#10 +
     #13#10 +
     'This includes:' + #13#10 +
-    '  • config.json  (Steam API credentials)' + #13#10 +
-    '  • state.json   (filters, sort, shelves)' + #13#10 +
-    '  • games.db     (your game library)' + #13#10 +
-    '  • playdate.log (application log)' + #13#10 +
+    '  - config.json  (Steam API credentials)' + #13#10 +
+    '  - state.json   (filters, sort, shelves)' + #13#10 +
+    '  - games.db     (your game library)' + #13#10 +
+    '  - playdate.log (application log)' + #13#10 +
     #13#10 +
     'Click YES to delete everything.' + #13#10 +
     'Click NO to keep your data (you can re-use it after reinstalling).',
