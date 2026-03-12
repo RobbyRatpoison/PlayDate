@@ -38,8 +38,8 @@ jobs:
 
       # ── 4. Convert favicon.png → favicon.ico (Windows needs .ico) ────────────
       - name: Generate favicon.ico
+        shell: python
         run: |
-          python - <<'EOF'
           from PIL import Image
           import os
           src = os.path.join("static", "img", "favicon.png")
@@ -50,7 +50,6 @@ jobs:
               print(f"Created {dst}")
           else:
               print("favicon.png not found — skipping ico generation")
-          EOF
 
       # ── 5. Build with PyInstaller ─────────────────────────────────────────────
       - name: Build with PyInstaller
