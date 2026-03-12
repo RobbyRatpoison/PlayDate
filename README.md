@@ -33,7 +33,7 @@ PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, ach
 
 ### Windows
 
-Download **PlayDate-Setup.exe** from the [latest release](https://github.com/your-username/playdate/releases/latest) and run it. The installer handles everything — no Python required.
+Download **PlayDate-Setup.exe** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest) and run it. The installer handles everything — no Python required.
 
 ### Linux
 
