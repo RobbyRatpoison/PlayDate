@@ -1,0 +1,1366 @@
+<div id="filterModal" class="modal-overlay" style="display:none;">
+<div class="modal-content" style="width:780px; max-height:92vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+
+    <!-- Header -->
+    <div style="padding:20px 24px 14px; border-bottom:1px solid #2a3f55; flex-shrink:0;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+            <h2 style="margin:0; color:#fff; font-size:1.1rem;">Library Filters</h2>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <!-- Mode toggle -->
+                <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; overflow:hidden; font-size:0.8rem;">
+                    <button id="fm-simple-tab" onclick="setFilterMode('simple')"
+                        style="padding:5px 14px; border:none; cursor:pointer; background:var(--steam-focus); color:#0e1923; font-weight:bold; transition:all 0.15s;">Simple</button>
+                    <button id="fm-advanced-tab" onclick="setFilterMode('advanced')"
+                        style="padding:5px 14px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">Advanced</button>
+                </div>
+                <button onclick="closeFilterModal()" style="background:none;border:none;color:#8f98a0;font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Body (scrollable) -->
+    <div style="flex:1; overflow-y:auto; padding:18px 24px;">
+
+        <!-- ── SIMPLE MODE ── -->
+        <div id="fm-simple-body">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+                <span style="color:#8f98a0; font-size:0.82rem;">Combine filters with</span>
+                <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; overflow:hidden; font-size:0.8rem;">
+                    <button id="fm-simple-and" onclick="setSimpleLogic('AND')"
+                        style="padding:4px 12px; border:none; cursor:pointer; background:var(--steam-focus); color:#0e1923; font-weight:bold; transition:all 0.15s;">AND</button>
+                    <button id="fm-simple-or" onclick="setSimpleLogic('OR')"
+                        style="padding:4px 12px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">OR</button>
+                </div>
+                <span id="fm-simple-logic-desc" style="color:#666; font-size:0.78rem; font-style:italic;">All conditions must match</span>
+            </div>
+
+            <div id="fm-simple-rows"></div>
+
+            <button onclick="addSimpleRow()" style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.85rem;margin-top:4px;transition:all 0.2s;"
+                onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                onmouseout="this.style.borderColor='#3a5570';this.style.color='#8f98a0'">
+                + Add Filter
+            </button>
+        </div>
+
+        <!-- ── ADVANCED MODE ── -->
+        <div id="fm-advanced-body" style="display:none;">
+            <p style="color:#8f98a0; font-size:0.82rem; margin:0 0 14px;">
+                Build groups with parentheses. Each group has its own AND / OR logic.
+            </p>
+
+            <div id="fm-root-group" class="fmg-container" data-logic="AND">
+                <div class="fmg-header">
+                    <button class="fmg-collapse-btn" onclick="toggleGroupCollapse(this.closest('.fmg-container'))">▼</button>
+                    <span style="color:#666; font-size:0.75rem; margin-left:2px;">root group</span>
+                </div>
+                <div class="fmg-rows"></div>
+                <div class="fmg-actions">
+                    <button class="fmg-add-cond" onclick="addAdvancedRow(this.closest('.fmg-container'))">+ Condition</button>
+                    <button class="fmg-add-group" onclick="addAdvancedGroup(this.closest('.fmg-container'))">+ Group</button>
+                    <span class="fmg-logic-toggle" onclick="toggleGroupLogic(this.closest('.fmg-container'))" style="margin-left:8px;">AND</span>
+                </div>
+            </div>
+
+            <!-- Custom SQL toggle -->
+            <div style="margin-top:12px;">
+                <button id="fm-custom-sql-toggle" onclick="toggleCustomSql()"
+                    style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:0.82rem;transition:all 0.2s;"
+                    onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                    onmouseout="if(!_customSqlActive){this.style.borderColor='#3a5570';this.style.color='#8f98a0';}">
+                    ⌨ Custom SQL WHERE Clause
+                </button>
+                <div id="fm-custom-sql-panel" style="display:none; margin-top:10px;">
+                    <div style="background:#0b1520;border:1px solid #2a3f55;border-radius:6px;padding:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                            <span style="color:#c2c8cc;font-size:0.85rem;font-weight:bold;">Custom WHERE clause</span>
+                            <span style="color:#666;font-size:0.75rem;">overrides the group builder above when not empty</span>
+                        </div>
+                        <div style="color:#8f98a0;font-size:0.78rem;margin-bottom:6px;font-family:monospace;">
+                            SELECT * FROM games WHERE <span style="color:#66c0f4;">▼ your expression here</span> ORDER BY …
+                        </div>
+                        <textarea id="fm-custom-sql-input"
+                            placeholder="e.g. (completion_status = 'Never Played' OR completion_status = 'Unfinished') AND playtime_forever > 60"
+                            style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
+                            oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
+                        <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
+                            Use standard SQLite syntax. Column names: name, completion_status, tags, groups, installed, release_date, date_added, last_played, playtime_forever, review_percentage, review_score, developers, publishers.
+                        </div>
+                        <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+                            <button type="button" onclick="parseSqlToTree()"
+                                style="background:#1b3a52; border:1px solid #2a5a7a; color:var(--steam-focus); padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap; transition:background 0.15s;"
+                                onmouseover="this.style.background='#243f5e'" onmouseout="this.style.background='#1b3a52'">
+                                ↑ Parse into builder
+                            </button>
+                            <span style="color:#666; font-size:0.75rem;">Attempt to convert SQL into group builder conditions</span>
+                        </div>
+                        <div id="fm-sql-parse-feedback" style="display:none;margin-top:6px;padding:6px 10px;border:1px solid;border-radius:4px;font-size:0.78rem;"></div>
+                        <div id="fm-custom-sql-warning" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(193,120,0,0.1);border:1px solid #c97c00;border-radius:4px;font-size:0.78rem;color:#c97c00;">
+                            ⚠ Custom SQL is active — group builder is ignored.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SQL Preview (collapsible) -->
+    <div id="fm-sql-section" style="border-top:1px solid #1a2d3f; flex-shrink:0;">
+        <button onclick="toggleSqlPreview()"
+            style="width:100%;background:none;border:none;color:#8f98a0;padding:8px 24px;text-align:left;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:6px;">
+            <span id="fm-sql-chevron">▶</span> Show SQL Preview
+        </button>
+        <div id="fm-sql-box" style="display:none; padding:0 24px 12px;">
+            <pre id="fm-sql-text" style="margin:0;padding:10px 14px;background:#0b1520;border:1px solid #1e3348;border-radius:5px;color:#66c0f4;font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:14px 24px; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:10px; flex-shrink:0;">
+        <!-- Saved filters row -->
+        <div style="display:flex; gap:8px; align-items:center;">
+            <select id="saved-filters-select" class="nav-dropdown" onchange="loadSavedFilterFromModal(this)"
+                    style="flex:1; height:36px; font-size:0.85rem;"
+                    title="Load a saved filter">
+                <option value="">Saved filters…</option>
+                {% for name in state.get('saved_filters', {}) %}
+                <option value="{{ name | e }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+            <button onclick="renameSavedFilterFromModal()" class="nav-btn"
+                    style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
+                ✎ RENAME
+            </button>
+            <button onclick="deleteSavedFilterFromModal()" class="nav-btn"
+                    style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
+                ✕ DELETE
+            </button>
+            <button onclick="saveCurrentFilter()" class="nav-btn"
+                    style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
+                ⭐ SAVE CURRENT
+            </button>
+        </div>
+        <!-- Action row -->
+        <div style="display:flex; gap:10px;">
+            <button onclick="applyFilters()" class="btn-save" style="flex:2;margin:0;">APPLY FILTERS</button>
+            <button onclick="clearAllFilters()" class="nav-btn" style="flex:1;">CLEAR ALL</button>
+            <button onclick="closeFilterModal()" class="nav-btn" style="flex:1;">CANCEL</button>
+        </div>
+    </div>
+</div>
+</div>
+
+<style>
+/* preserve chevron on nav-dropdown hover */
+select.nav-dropdown:hover {
+    background-color: #444;
+}
+
+.fm-row {
+    display: grid;
+    grid-template-columns: 180px 130px 1fr 30px;
+    gap: 7px;
+    align-items: center;
+    margin-bottom: 7px;
+}
+.fm-row select, .fm-row input {
+    padding: 6px 9px;
+    background-color: #0e1923;
+    border: 1px solid #2a3f55;
+    color: #c2c8cc;
+    border-radius: 5px;
+    font-size: 0.85rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+.fm-row select {
+    padding-right: 28px;
+}
+.fm-row select:focus, .fm-row input:focus {
+    outline: none;
+    border-color: var(--steam-focus);
+}
+.fm-remove {
+    background: none;
+    border: none;
+    color: #ff4d4d;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0;
+    text-align: center;
+}
+.fm-remove:hover { color: #ff0000; }
+
+/* Groups (advanced) */
+.fmg-container {
+    border: 1px solid #2a3f55;
+    border-radius: 7px;
+    padding: 10px 12px 8px;
+    margin-bottom: 10px;
+    background: rgba(14,25,35,0.6);
+    position: relative;
+}
+.fmg-container .fmg-container {
+    border-color: #1e3a50;
+    background: rgba(10,18,28,0.7);
+    margin-top: 8px;
+}
+.fmg-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 6px;
+}
+.fmg-logic-toggle {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    background: #1b3a52;
+    color: var(--steam-focus);
+    font-size: 0.78rem;
+    font-weight: bold;
+    cursor: pointer;
+    border: 1px solid #2a5a7a;
+    letter-spacing: 0.5px;
+    user-select: none;
+    transition: background 0.15s;
+}
+.fmg-logic-toggle:hover { background: #24516e; }
+.fmg-logic-toggle.or-mode {
+    background: #3a2a0a;
+    color: #f0a030;
+    border-color: #6a4a10;
+}
+.fmg-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+.fmg-add-cond, .fmg-add-group {
+    background: none;
+    border: 1px dashed #2a3f55;
+    color: #8f98a0;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    transition: all 0.15s;
+}
+.fmg-add-cond:hover, .fmg-add-group:hover {
+    border-color: var(--steam-focus);
+    color: var(--steam-focus);
+}
+.fmg-remove-group {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #553333;
+    font-size: 0.8rem;
+    cursor: pointer;
+    padding: 0 4px;
+}
+.fmg-remove-group:hover { color: #ff4d4d; }
+
+/* Group logic coloring */
+.fmg-container[data-logic="AND"] {
+    border-color: #1e4060;
+    background: rgba(30,64,96,0.18);
+}
+.fmg-container[data-logic="OR"] {
+    border-color: #5a3a00;
+    background: rgba(90,58,0,0.18);
+}
+.fmg-container .fmg-container[data-logic="AND"] {
+    border-color: #1a3550;
+    background: rgba(20,50,80,0.25);
+}
+.fmg-container .fmg-container[data-logic="OR"] {
+    border-color: #4a3000;
+    background: rgba(74,48,0,0.25);
+}
+
+/* Between-item connector labels */
+.fmg-connector {
+    font-size: 0.7rem;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    padding: 1px 7px;
+    border-radius: 3px;
+    margin: 3px 0 3px 4px;
+    display: inline-block;
+    user-select: none;
+}
+.fmg-connector.and-conn { background:#1b3a52; color:#5a9aba; border:1px solid #2a5a7a; }
+.fmg-connector.or-conn  { background:#3a2a0a; color:#c08030; border:1px solid #6a4a10; }
+
+/* Collapse */
+.fmg-collapse-btn {
+    background: none;
+    border: none;
+    color: #4a6a7a;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0 3px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+.fmg-collapse-btn:hover { color: #8f98a0; }
+.fmg-collapsed > .fmg-rows,
+.fmg-collapsed > .fmg-actions {
+    display: none !important;
+}
+
+/* Active pills */
+.fm-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #1b3a52;
+    border: 1px solid #2a5a7a;
+    color: #c2c8cc;
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+}
+.fm-pill-remove {
+    background: none;
+    border: none;
+    color: #8f98a0;
+    cursor: pointer;
+    padding: 0;
+    font-size: 0.85rem;
+    line-height: 1;
+}
+.fm-pill-remove:hover { color: #ff4d4d; }
+</style>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// FILTER MODAL ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+const FM_FILTER_CONFIG = {
+    'tags':               { label: 'Tag',                  type: 'select', comparisons: {'LIKE':'includes','NOT LIKE':'excludes'},
+                            options: {{ unique_tags | tojson if unique_tags is defined else '[]' }} },
+    'completion_status':  { label: 'Completion Status',    type: 'select', comparisons: {'=':'is','!=':'is not'},
+                            options: ['Never Played','Unfinished','Beaten','Completed',"Won't Play"] },
+    'installed':          { label: 'Installed',            type: 'select', comparisons: {'=':'is'},
+                            options: {'1':'Yes','0':'No'} },
+    'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches'} },
+    'groups':             { label: 'Group',                type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not'},
+                            options: {{ unique_groups | tojson if unique_groups is defined else '[]' }} },
+    'release_date':       { label: 'Release Date',         type: 'date_text',
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'date_added':         { label: 'Date Added',           type: 'date_text',
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'last_played':        { label: 'Last Played',          type: 'date_text',
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'never played','IS NOT NULL':'has been played'} },
+    'playtime_forever':   { label: 'Playtime (mins)',      type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly'} },
+    'review_percentage':  { label: 'Review %',             type: 'number', comparisons: {'>':'over','<':'under','=':'is'} },
+    'weighted_percentage':{ label: 'Weighted Review %',    type: 'number', comparisons: {'>':'over','<':'under','=':'is'} },
+    'review_score':       { label: 'Review Score',         type: 'select', comparisons: {'=':'is','!=':'is not'},
+                            options: ["Overwhelmingly Positive","Very Positive","Positive","Mostly Positive","Mixed","Mostly Negative","Negative","Very Negative","Overwhelmingly Negative","No Reviews","Not Enough Reviews"] },
+    'developers':         { label: 'Developer',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
+    'publishers':         { label: 'Publisher',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
+    'art_source':         { label: 'Artwork Source',       type: 'select', comparisons: {'=':'is','!=':'is not'},
+                            options: ['capsule','sgdb_capsule','header'] },
+};
+
+// Operators that need no value input
+const NO_VALUE_OPS = new Set(['IS NULL', 'IS NOT NULL']);
+
+let _filterMode = 'simple'; // 'simple' | 'advanced'
+let _simpleLogic = 'AND';   // 'AND' | 'OR'
+let _sqlVisible = false;
+
+function setSimpleLogic(logic) {
+    _simpleLogic = logic;
+    const andBtn = document.getElementById('fm-simple-and');
+    const orBtn  = document.getElementById('fm-simple-or');
+    const desc   = document.getElementById('fm-simple-logic-desc');
+    andBtn.style.background = logic === 'AND' ? 'var(--steam-focus)' : 'transparent';
+    andBtn.style.color      = logic === 'AND' ? '#0e1923' : '#8f98a0';
+    orBtn.style.background  = logic === 'OR'  ? '#c97c00' : 'transparent';
+    orBtn.style.color       = logic === 'OR'  ? '#0e1923' : '#8f98a0';
+    desc.textContent = logic === 'AND' ? 'All conditions must match' : 'Any condition can match';
+    updateSqlPreview();
+}
+
+// ── Mode switching ──────────────────────────────────────────────
+
+function setFilterMode(mode) {
+    _filterMode = mode;
+    document.getElementById('fm-simple-body').style.display   = mode === 'simple'   ? '' : 'none';
+    document.getElementById('fm-advanced-body').style.display = mode === 'advanced' ? '' : 'none';
+
+    const st = document.getElementById('fm-simple-tab');
+    const at = document.getElementById('fm-advanced-tab');
+    st.style.background  = mode === 'simple'   ? 'var(--steam-focus)' : 'transparent';
+    st.style.color       = mode === 'simple'   ? '#0e1923' : '#8f98a0';
+    st.style.fontWeight  = mode === 'simple'   ? 'bold' : 'normal';
+    at.style.background  = mode === 'advanced' ? 'var(--steam-focus)' : 'transparent';
+    at.style.color       = mode === 'advanced' ? '#0e1923' : '#8f98a0';
+    at.style.fontWeight  = mode === 'advanced' ? 'bold' : 'normal';
+
+    updateSqlPreview();
+}
+
+// ── Open / close ────────────────────────────────────────────────
+
+function populateModalFromTree(tree) {
+    if (tree && tree.items && tree.items.length > 0) {
+        if (tree.custom_sql) {
+            setFilterMode('advanced');
+            buildAdvancedFromTree(tree);
+            const panel = document.getElementById('fm-custom-sql-panel');
+            panel.style.display = 'block';
+            _customSqlActive = true;
+            document.getElementById('fm-custom-sql-input').value = tree.custom_sql;
+            document.getElementById('fm-custom-sql-warning').style.display = 'block';
+            document.getElementById('fm-custom-sql-toggle').style.borderColor = 'var(--steam-focus)';
+            document.getElementById('fm-custom-sql-toggle').style.color = 'var(--steam-focus)';
+        } else {
+            const hasGroups = tree.items.some(i => i.type === 'group');
+            if (hasGroups) {
+                setFilterMode('advanced');
+                buildAdvancedFromTree(tree);
+            } else {
+                setFilterMode('simple');
+                buildSimpleFromTree(tree);
+            }
+        }
+    } else {
+        setFilterMode('simple');
+        clearSimpleRows();
+        resetAdvancedTree();
+        _customSqlActive = false;
+        const panel = document.getElementById('fm-custom-sql-panel');
+        if (panel) {
+            panel.style.display = 'none';
+            document.getElementById('fm-custom-sql-input').value = '';
+            document.getElementById('fm-custom-sql-warning').style.display = 'none';
+        }
+    }
+    updateActivePills(tree);
+    updateSqlPreview();
+}
+
+function openFilterModal() {
+    const modal = document.getElementById('filterModal');
+    modal.style.display = 'flex';
+
+    const tree = {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
+    const legacy = {{ (state.active_filters | tojson) if (state is defined and state.active_filters) else '[]' }};
+
+    if (tree) {
+        populateModalFromTree(tree);
+    } else if (legacy && legacy.length > 0) {
+        setFilterMode('simple');
+        buildSimpleFromLegacy(legacy);
+        updateActivePills(legacyToTree(legacy));
+        updateSqlPreview();
+    } else {
+        // No active filters — start clean, wait for user to add
+        setFilterMode('simple');
+        clearSimpleRows();
+        resetAdvancedTree();
+        _customSqlActive = false;
+        const panel = document.getElementById('fm-custom-sql-panel');
+        if (panel) {
+            panel.style.display = 'none';
+            document.getElementById('fm-custom-sql-input').value = '';
+            document.getElementById('fm-custom-sql-warning').style.display = 'none';
+        }
+        updateSqlPreview();
+    }
+}
+
+function closeFilterModal() {
+    document.getElementById('filterModal').style.display = 'none';
+}
+
+// ── SQL Preview ─────────────────────────────────────────────────
+
+function toggleSqlPreview() {
+    _sqlVisible = !_sqlVisible;
+    document.getElementById('fm-sql-box').style.display = _sqlVisible ? 'block' : 'none';
+    document.getElementById('fm-sql-chevron').textContent = _sqlVisible ? '▼' : '▶';
+    const btn = document.getElementById('fm-sql-section').querySelector('button');
+    btn.textContent = '';
+    btn.appendChild(document.getElementById('fm-sql-chevron'));
+    btn.append(` ${_sqlVisible ? 'Hide' : 'Show'} SQL Preview`);
+    if (_sqlVisible) updateSqlPreview();}
+
+function updateSqlPreview() {
+    const tree = collectTree();
+    let sql;
+    if (tree.custom_sql) {
+        sql = tree.custom_sql;
+    } else {
+        sql = treeToSql(tree);
+    }
+    const text = sql
+        ? `SELECT * FROM games\nWHERE ${sql}\nORDER BY name ASC`
+        : 'SELECT * FROM games ORDER BY name ASC  -- (no filters)';
+    // Always update the text so it's ready when the panel opens
+    const el = document.getElementById('fm-sql-text');
+    if (el) el.textContent = text;
+}
+
+// ── Tree → SQL (client-side preview only) ──────────────────────
+
+function treeToSql(node) {
+    if (!node) return '';
+    if (node.type === 'condition') {
+        const col = node.column;
+        const op  = node.operator;
+        const val = node.value;
+        if (!col) return '';
+        if (NO_VALUE_OPS.has(op)) {
+            return op === 'IS NULL'
+                ? `(${col} IS NULL OR ${col} = '')`
+                : `(${col} IS NOT NULL AND ${col} != '')`;
+        }
+        if (!val && val !== 0) return '';
+        if (col === 'tags' || col === 'groups') {
+            const likeOp = (op === 'LIKE' || op === '=') ? 'LIKE' : 'NOT LIKE';
+            return `',' || ${col} || ',' ${likeOp} '%,${val},%'`;
+        }
+        // Date pattern LIKE — user supplies their own wildcards
+        const DATE_COLS = new Set(['release_date','date_added','last_played']);
+        if (DATE_COLS.has(col) && op === 'LIKE') {
+            return `${col} LIKE '${val}'`;
+        }
+        if (op === 'LIKE')     return `${col} LIKE '%${val}%'`;
+        if (op === 'NOT LIKE') return `${col} NOT LIKE '%${val}%'`;
+        if (op === '=')        return `${col} = '${val}'`;
+        if (op === '!=')       return `${col} != '${val}'`;
+        return `${col} ${op} '${val}'`;
+    }
+    if (node.type === 'group') {
+        const parts = (node.items || []).map(treeToSql).filter(Boolean);
+        if (!parts.length) return '';
+        const joined = parts.join(` ${node.logic || 'AND'} `);
+        return parts.length > 1 ? `(${joined})` : joined;
+    }
+    return '';
+}
+
+// ── Tree → active pills ─────────────────────────────────────────
+
+function updateActivePills(tree) {
+    // Pills UI removed — no-op
+}
+
+function flattenConditions(node) {
+    if (node.type === 'condition') return [node];
+    if (node.type === 'group') return (node.items||[]).flatMap(flattenConditions);
+    return [];
+}
+
+// ═══════════════════════════════════════════
+// SIMPLE MODE
+// ═══════════════════════════════════════════
+
+function clearSimpleRows() {
+    document.getElementById('fm-simple-rows').innerHTML = '';
+}
+
+function buildSimpleFromLegacy(legacy) {
+    clearSimpleRows();
+    let added = 0;
+    legacy.forEach(f => {
+        if (Array.isArray(f.value)) {
+            f.value.forEach(v => addSimpleRow({column:f.column, operator:f.operator, value:v}));
+        } else {
+            addSimpleRow(f);
+        }
+        added++;
+    });
+    if (!added) addSimpleRow();
+}
+
+function buildSimpleFromTree(tree) {
+    clearSimpleRows();
+    if (tree && (tree.logic === 'OR')) {
+        setSimpleLogic('OR');
+    } else {
+        setSimpleLogic('AND');
+    }
+    const conds = flattenConditions(tree);
+    if (!conds.length) { addSimpleRow(); return; }
+    conds.forEach(c => addSimpleRow(c));
+}
+
+function legacyToTree(legacy) {
+    if (!legacy || !legacy.length) return null;
+    const items = legacy.flatMap(f => {
+        if (Array.isArray(f.value)) {
+            return f.value.map(v => ({type:'condition', column:f.column, operator:f.operator, value:v}));
+        }
+        return [{type:'condition', column:f.column, operator:f.operator, value:f.value}];
+    });
+    return { type:'group', logic:'AND', items };
+}
+
+function addSimpleRow(data = null) {
+    const container = document.getElementById('fm-simple-rows');
+    const row = document.createElement('div');
+    row.className = 'fm-row';
+
+    const col = (data && data.column) || 'tags';
+    const op  = (data && data.operator) || null;
+    const val = (data && data.value)    || '';
+
+    // Column select
+    const colSel = document.createElement('select');
+    colSel.className = 'fm-col-select';
+    Object.entries(FM_FILTER_CONFIG).forEach(([k, cfg]) => {
+        const opt = document.createElement('option');
+        opt.value = k; opt.textContent = cfg.label;
+        if (k === col) opt.selected = true;
+        colSel.appendChild(opt);
+    });
+
+    const opContainer  = document.createElement('div');
+    const valContainer = document.createElement('div');
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'fm-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.onclick = () => { row.remove(); updateSqlPreview(); };
+
+    row.appendChild(colSel);
+    row.appendChild(opContainer);
+    row.appendChild(valContainer);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+
+    colSel.addEventListener('change', () => { populateRowControls(colSel, opContainer, valContainer, null); updateSqlPreview(); });
+    populateRowControls(colSel, opContainer, valContainer, data);
+    return row;
+}
+
+function populateRowControls(colSel, opContainer, valContainer, data) {
+    const col = colSel.value;
+    const cfg = FM_FILTER_CONFIG[col];
+    const initOp  = data ? data.operator : null;
+    const initVal = data ? data.value    : '';
+
+    // Operator select
+    opContainer.innerHTML = '';
+    const opSel = document.createElement('select');
+    opSel.className = 'fm-op-select';
+    Object.entries(cfg.comparisons).forEach(([k, label]) => {
+        const opt = document.createElement('option');
+        opt.value = k; opt.textContent = label;
+        if (k === initOp) opt.selected = true;
+        opSel.appendChild(opt);
+    });
+    opContainer.appendChild(opSel);
+
+    opSel.addEventListener('change', () => { updateValueField(cfg, opSel, valContainer, ''); updateSqlPreview(); });
+    updateValueField(cfg, opSel, valContainer, initVal);
+}
+
+function updateValueField(cfg, opSel, valContainer, initVal) {
+    valContainer.innerHTML = '';
+    const op = opSel.value;
+
+    if (NO_VALUE_OPS.has(op)) {
+        const placeholder = document.createElement('span');
+        placeholder.style.cssText = 'color:#666;font-size:0.8rem;padding:0 8px;';
+        placeholder.textContent = '(no value needed)';
+        valContainer.appendChild(placeholder);
+        return;
+    }
+
+    let el;
+    if (cfg.type === 'select') {
+        el = document.createElement('select');
+        const opts = Array.isArray(cfg.options) ? cfg.options : Object.entries(cfg.options).map(([v,l])=>({v,l}));
+        if (Array.isArray(cfg.options)) {
+            cfg.options.forEach(o => {
+                const opt = document.createElement('option');
+                opt.value = o; opt.textContent = o;
+                if (o === initVal) opt.selected = true;
+                el.appendChild(opt);
+            });
+        } else {
+            Object.entries(cfg.options).forEach(([v, l]) => {
+                const opt = document.createElement('option');
+                opt.value = v; opt.textContent = l;
+                if (v === String(initVal)) opt.selected = true;
+                el.appendChild(opt);
+            });
+        }
+    } else if (cfg.type === 'date_text') {
+        el = document.createElement('input');
+        el.type = 'text';
+        el.value = initVal || '';
+        if (op === 'LIKE') {
+            el.placeholder = 'e.g. %-03-% (March) or 2023-%';
+        } else if (op === '>' || op === '<') {
+            el.placeholder = 'YYYY-MM-DD';
+        } else {
+            el.placeholder = 'YYYY-MM-DD';
+        }
+        // Attach hint to valContainer after el
+        valContainer._hint = null;
+        el.addEventListener('change', () => {});
+    } else {
+        el = document.createElement('input');
+        el.type = cfg.type || 'text';
+        el.value = initVal || '';
+        el.placeholder = 'Enter value…';
+    }
+    el.className = 'fm-val-input';
+    el.addEventListener('input', updateSqlPreview);
+    el.addEventListener('change', updateSqlPreview);
+    valContainer.appendChild(el);
+    if (valContainer._hint) {
+        valContainer.appendChild(valContainer._hint);
+    }
+}
+
+// ═══════════════════════════════════════════
+// ADVANCED MODE
+// ═══════════════════════════════════════════
+
+function resetAdvancedTree() {
+    const root = document.getElementById('fm-root-group');
+    root.dataset.logic = 'AND';
+    const toggle = root.querySelector(':scope > .fmg-actions > .fmg-logic-toggle');
+    toggle.textContent = 'AND';
+    toggle.classList.remove('or-mode');
+    root.querySelector('.fmg-rows').innerHTML = '';
+}
+
+function buildAdvancedFromTree(tree) {
+    resetAdvancedTree();
+    const root = document.getElementById('fm-root-group');
+    root.dataset.logic = tree.logic || 'AND';
+    const toggle = root.querySelector(':scope > .fmg-actions > .fmg-logic-toggle');
+    toggle.textContent = tree.logic || 'AND';
+    toggle.classList.toggle('or-mode', tree.logic === 'OR');
+
+    (tree.items || []).forEach(item => {
+        if (item.type === 'condition') {
+            addAdvancedRow(root, item);
+        } else if (item.type === 'group') {
+            addAdvancedGroup(root, item);
+        }
+    });
+}
+
+function toggleGroupLogic(groupEl) {
+    const toggle = groupEl.querySelector(':scope > .fmg-actions > .fmg-logic-toggle');
+    const current = groupEl.dataset.logic || 'AND';
+    const next = current === 'AND' ? 'OR' : 'AND';
+    groupEl.dataset.logic = next;
+    toggle.textContent = next;
+    toggle.classList.toggle('or-mode', next === 'OR');
+    refreshConnectors(groupEl);
+    updateSqlPreview();
+}
+
+function refreshConnectors(groupEl) {
+    const logic = groupEl.dataset.logic || 'AND';
+    groupEl.querySelectorAll(':scope > .fmg-rows > .fmg-connector').forEach(c => {
+        c.textContent = logic;
+        c.className = 'fmg-connector ' + (logic === 'AND' ? 'and-conn' : 'or-conn');
+    });
+}
+
+function addConnectorIfNeeded(rowsEl, logic) {
+    if (rowsEl.children.length > 0) {
+        const conn = document.createElement('div');
+        conn.className = 'fmg-connector ' + (logic === 'AND' ? 'and-conn' : 'or-conn');
+        conn.textContent = logic;
+        rowsEl.appendChild(conn);
+    }
+}
+
+function toggleGroupCollapse(groupEl) {
+    groupEl.classList.toggle('fmg-collapsed');
+    const btn = groupEl.querySelector(':scope > .fmg-header > .fmg-collapse-btn');
+    if (btn) btn.textContent = groupEl.classList.contains('fmg-collapsed') ? '▶' : '▼';
+}
+
+function addAdvancedRow(groupEl, data = null) {
+    const rowsEl = groupEl.querySelector(':scope > .fmg-rows');
+    const logic  = groupEl.dataset.logic || 'AND';
+    addConnectorIfNeeded(rowsEl, logic);
+
+    const row = document.createElement('div');
+    row.className = 'fm-row';
+    row.style.marginBottom = '7px';
+
+    const col = (data && data.column) || 'tags';
+    const colSel = document.createElement('select');
+    colSel.className = 'fm-col-select';
+    Object.entries(FM_FILTER_CONFIG).forEach(([k, cfg]) => {
+        const opt = document.createElement('option');
+        opt.value = k; opt.textContent = cfg.label;
+        if (k === col) opt.selected = true;
+        colSel.appendChild(opt);
+    });
+
+    const opContainer  = document.createElement('div');
+    const valContainer = document.createElement('div');
+    const removeBtn    = document.createElement('button');
+    removeBtn.className = 'fm-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.onclick = () => {
+        // Remove preceding connector if present
+        const prev = row.previousElementSibling;
+        if (prev && prev.classList.contains('fmg-connector')) prev.remove();
+        row.remove();
+        updateSqlPreview();
+    };
+
+    row.appendChild(colSel);
+    row.appendChild(opContainer);
+    row.appendChild(valContainer);
+    row.appendChild(removeBtn);
+    rowsEl.appendChild(row);
+
+    colSel.addEventListener('change', () => { populateRowControls(colSel, opContainer, valContainer, null); updateSqlPreview(); });
+    populateRowControls(colSel, opContainer, valContainer, data);
+    updateSqlPreview();
+    return row;
+}
+
+function addAdvancedGroup(parentGroupEl, existingTree = null) {
+    const rowsEl = parentGroupEl.querySelector(':scope > .fmg-rows');
+    const parentLogic = parentGroupEl.dataset.logic || 'AND';
+    addConnectorIfNeeded(rowsEl, parentLogic);
+
+    const groupEl = document.createElement('div');
+    groupEl.className = 'fmg-container';
+    const logic = (existingTree && existingTree.logic) || 'AND';
+    groupEl.dataset.logic = logic;
+
+    groupEl.innerHTML = `
+        <div class="fmg-header">
+            <button class="fmg-collapse-btn" onclick="toggleGroupCollapse(this.closest('.fmg-container'))">▼</button>
+            <button class="fmg-remove-group" onclick="
+                const prev = this.closest('.fmg-container').previousElementSibling;
+                if (prev && prev.classList.contains('fmg-connector')) prev.remove();
+                this.closest('.fmg-container').remove();
+                updateSqlPreview();">✕ Remove</button>
+        </div>
+        <div class="fmg-rows"></div>
+        <div class="fmg-actions">
+            <button class="fmg-add-cond" onclick="addAdvancedRow(this.closest('.fmg-container'))">+ Condition</button>
+            <button class="fmg-add-group" onclick="addAdvancedGroup(this.closest('.fmg-container'))">+ Group</button>
+            <span class="fmg-logic-toggle ${logic==='OR'?'or-mode':''}" onclick="toggleGroupLogic(this.closest('.fmg-container'))" style="margin-left:8px;">${logic}</span>
+        </div>
+    `;
+
+    rowsEl.appendChild(groupEl);
+
+    if (existingTree && existingTree.items) {
+        existingTree.items.forEach(item => {
+            if (item.type === 'condition') addAdvancedRow(groupEl, item);
+            else if (item.type === 'group') addAdvancedGroup(groupEl, item);
+        });
+    }
+    // No auto-add — user clicks + Condition when ready
+
+    updateSqlPreview();
+    return groupEl;
+}
+// ── Custom SQL ──────────────────────────────────────────────────
+
+let _customSqlActive = false;
+
+function toggleCustomSql() {
+    const panel = document.getElementById('fm-custom-sql-panel');
+    const btn   = document.getElementById('fm-custom-sql-toggle');
+    _customSqlActive = panel.style.display === 'none';
+    panel.style.display = _customSqlActive ? 'block' : 'none';
+    if (_customSqlActive) {
+        btn.style.borderColor = 'var(--steam-focus)';
+        btn.style.color = 'var(--steam-focus)';
+        document.getElementById('fm-custom-sql-input').focus();
+    } else {
+        document.getElementById('fm-custom-sql-input').value = '';
+        document.getElementById('fm-custom-sql-warning').style.display = 'none';
+        document.getElementById('fm-sql-parse-feedback').style.display = 'none';
+        btn.style.borderColor = '#3a5570';
+        btn.style.color = '#8f98a0';
+    }
+    updateSqlPreview();
+}
+
+function onCustomSqlInput() {
+    const textarea = document.getElementById('fm-custom-sql-input');
+    let val = textarea.value;
+
+    // Strip full query wrapper if user pasted a complete SELECT statement
+    val = stripSqlWrapper(val);
+    if (val !== textarea.value) textarea.value = val;
+
+    document.getElementById('fm-custom-sql-warning').style.display = val.trim() ? 'block' : 'none';
+    updateSqlPreview();
+}
+
+function stripSqlWrapper(sql) {
+    sql = sql.replace(/^\s*SELECT\s+\*\s+FROM\s+\w+\s+WHERE\s+/i, '');
+    sql = sql.replace(/\s+ORDER\s+BY\s+.+$/i, '');
+    return sql.trim();
+}
+
+// ── SQL → Tree Parser ───────────────────────────────────────────
+
+function parseSqlToTree() {
+    const raw = document.getElementById('fm-custom-sql-input').value.trim();
+    const sql = stripSqlWrapper(raw);
+    const feedbackEl = document.getElementById('fm-sql-parse-feedback');
+
+    if (!sql) {
+        feedbackEl.style.display = 'none';
+        return;
+    }
+
+    try {
+        const tree = parseSqlExpression(sql);
+        if (tree && tree.items && tree.items.length) {
+            // Clear custom SQL, switch to builder with parsed tree
+            document.getElementById('fm-custom-sql-input').value = '';
+            document.getElementById('fm-custom-sql-warning').style.display = 'none';
+            _customSqlActive = false;
+            document.getElementById('fm-custom-sql-toggle').style.borderColor = '#3a5570';
+            document.getElementById('fm-custom-sql-toggle').style.color = '#8f98a0';
+            buildAdvancedFromTree(tree);
+            feedbackEl.style.display = 'block';
+            feedbackEl.style.borderColor = '#2a7a2a';
+            feedbackEl.style.background = 'rgba(0,80,0,0.12)';
+            feedbackEl.style.color = '#60c060';
+            feedbackEl.textContent = '✓ Parsed into ' + countConditions(tree) + ' condition(s). Review and adjust above.';
+            updateSqlPreview();
+        } else {
+            feedbackEl.style.display = 'block';
+            feedbackEl.style.borderColor = '#c97c00';
+            feedbackEl.style.background = 'rgba(100,60,0,0.12)';
+            feedbackEl.style.color = '#c97c00';
+            feedbackEl.textContent = '⚠ Could not parse any conditions. The SQL will be used as-is.';
+        }
+    } catch(e) {
+        feedbackEl.style.display = 'block';
+        feedbackEl.style.borderColor = '#a32a2a';
+        feedbackEl.style.background = 'rgba(80,0,0,0.15)';
+        feedbackEl.style.color = '#ff8080';
+        feedbackEl.textContent = '✘ Parse error: ' + e.message;
+    }
+}
+
+function countConditions(node) {
+    if (!node) return 0;
+    if (node.type === 'condition') return 1;
+    return (node.items || []).reduce((s, i) => s + countConditions(i), 0);
+}
+
+// Tokeniser: splits SQL into tokens respecting quoted strings and parentheses
+function tokeniseSql(sql) {
+    const tokens = [];
+    let i = 0;
+    while (i < sql.length) {
+        if (/\s/.test(sql[i])) { i++; continue; }
+
+        // Quoted string — but first check if this is the start of a
+        // ',' || col || ',' LIKE 'val' concat expression, which must be
+        // consumed atomically to avoid the ',' becoming an orphan token.
+        if (sql[i] === "'" || sql[i] === '"') {
+            // Peek ahead for: ',' || word || ',' LIKE/NOT LIKE 'value'
+            const concatFull = sql.slice(i).match(
+                /^['"],['"]\s*\|\|\s*([\w]+)\s*\|\|\s*['"],['"]\s+(NOT LIKE|LIKE)\s+['"]([^'"]*)['"]/i
+            );
+            if (concatFull) {
+                tokens.push({ type: 'word',  val: concatFull[1] });
+                tokens.push({ type: 'op',    val: concatFull[2].toUpperCase() });
+                tokens.push({ type: 'value', val: concatFull[3], isConcat: true });
+                i += concatFull[0].length;
+                continue;
+            }
+            // Normal quoted string
+            const q = sql[i]; let s = ''; i++;
+            while (i < sql.length && sql[i] !== q) {
+                if (sql[i] === '\\') i++;
+                s += sql[i++];
+            }
+            i++;
+            tokens.push({ type: 'value', val: s });
+            continue;
+        }
+
+        // Comma (used in IN lists)
+        if (sql[i] === ',') { tokens.push({ type: 'comma' }); i++; continue; }
+
+        // Pipe (||) — this is a concat expression: ',' || col || ',' LIKE 'val'
+        // Detect the full pattern and emit a proper column+op+value token sequence
+        if (sql[i] === '|') {
+            // Look for: ',' || word || ',' LIKE 'value'
+            const concatMatch = sql.slice(i).match(
+                /^\|\|\s*([\w]+)\s*\|\|\s*['"],['"]\s+(LIKE|NOT LIKE)\s+['"]([^'"]*)['"]/i
+            );
+            if (concatMatch) {
+                tokens.push({ type: 'word', val: concatMatch[1] });
+                tokens.push({ type: 'op',   val: concatMatch[2].toUpperCase() });
+                tokens.push({ type: 'value', val: concatMatch[3], isConcat: true });
+                i += concatMatch[0].length;
+            } else {
+                // Unrecognised pipe expression — skip to next AND/OR or closing paren
+                while (i < sql.length && !/^\s+(AND|OR)\s/i.test(sql.slice(i)) && sql[i] !== ')') i++;
+                tokens.push({ type: 'skip' });
+            }
+            continue;
+        }
+
+        if (sql[i] === '(') { tokens.push({ type: 'lparen' }); i++; continue; }
+        if (sql[i] === ')') { tokens.push({ type: 'rparen' }); i++; continue; }
+
+        const word = sql.slice(i).match(/^[\w.%*-]+|^[!=<>]+/);
+        if (word) {
+            const w = word[0];
+            const upper = w.toUpperCase();
+            if (upper === 'AND' || upper === 'OR') {
+                tokens.push({ type: 'logic', val: upper });
+            } else if (upper === 'IN') {
+                tokens.push({ type: 'in_op' });
+            } else if (upper === 'NOT') {
+                const rest = sql.slice(i + w.length).trim();
+                if (/^IN\b/i.test(rest)) {
+                    tokens.push({ type: 'not_in_op' });
+                    i += w.length + rest.match(/^IN/i)[0].length;
+                    continue;
+                } else if (/^LIKE/i.test(rest)) {
+                    tokens.push({ type: 'op', val: 'NOT LIKE' });
+                    i += w.length + rest.match(/^LIKE/i)[0].length;
+                    continue;
+                } else {
+                    tokens.push({ type: 'word', val: w });
+                }
+            } else if (upper === 'IS') {
+                const rest = sql.slice(i + w.length).trim();
+                if (/^NOT\s+NULL/i.test(rest)) {
+                    tokens.push({ type: 'op', val: 'IS NOT NULL' });
+                    i += w.length + rest.match(/^NOT\s+NULL/i)[0].length;
+                    continue;
+                } else if (/^NULL/i.test(rest)) {
+                    tokens.push({ type: 'op', val: 'IS NULL' });
+                    i += w.length + rest.match(/^NULL/i)[0].length;
+                    continue;
+                } else {
+                    tokens.push({ type: 'op', val: 'IS' });
+                }
+            } else if (['LIKE','=','!=','<>','>','<','>=','<='].includes(upper) || ['=','!=','<>','>','<','>=','<='].includes(w)) {
+                tokens.push({ type: 'op', val: w === '<>' ? '!=' : w.toUpperCase() });
+            } else {
+                tokens.push({ type: 'word', val: w });
+            }
+            i += w.length;
+            continue;
+        }
+        i++;
+    }
+    return tokens;
+}
+
+// Recursive descent parser — returns a filter tree or throws
+function parseSqlExpression(sql) {
+    const tokens = tokeniseSql(sql).filter(t => t.type !== 'skip');
+    let pos = 0;
+    const KNOWN = new Set(Object.keys(FM_FILTER_CONFIG));
+
+    function peek(offset = 0) { return tokens[pos + offset]; }
+    function consume() { return tokens[pos++]; }
+    function expect(type) {
+        const t = consume();
+        if (!t || t.type !== type) throw new Error(`Expected ${type}, got ${t ? t.type + (t.val ? '('+t.val+')' : '') : 'end'}`);
+        return t;
+    }
+
+    // Collect all values from an IN(...) list
+    function parseInList() {
+        expect('lparen');
+        const vals = [];
+        while (peek() && peek().type !== 'rparen') {
+            const t = consume();
+            if (t.type === 'value' || t.type === 'word') vals.push(t.val);
+            // skip commas
+        }
+        expect('rparen');
+        return vals;
+    }
+
+    function parseAtom() {
+        const t = peek();
+        if (!t) return null;
+
+        // Parenthesised sub-group
+        if (t.type === 'lparen') {
+            consume();
+            const sub = parseGroup();
+            // Consume rparen — but if the next token isn't rparen,
+            // just skip ahead rather than hard-throwing
+            if (peek() && peek().type === 'rparen') consume();
+            return sub && sub.items.length ? sub : null;
+        }
+
+        if (t.type !== 'word') { consume(); return null; } // skip unexpected
+        const colTok = consume();
+        const col = colTok.val;
+
+        const opTok = peek();
+        if (!opTok) return null;
+
+        // Handle IN / NOT IN
+        if (opTok.type === 'in_op' || opTok.type === 'not_in_op') {
+            const isNot = opTok.type === 'not_in_op';
+            consume();
+            const vals = parseInList();
+            if (!KNOWN.has(col) || !vals.length) return null;
+            const op = isNot ? '!=' : '=';
+            const logic = isNot ? 'AND' : 'OR';
+            return {
+                type: 'group', logic,
+                items: vals.map(v => ({ type: 'condition', column: col, operator: op, value: v }))
+            };
+        }
+
+        if (opTok.type !== 'op') { consume(); return null; }
+        consume();
+        const op = opTok.val;
+
+        if (op === 'IS NULL' || op === 'IS NOT NULL') {
+            if (!KNOWN.has(col)) return null;
+            return { type: 'condition', column: col, operator: op, value: '' };
+        }
+
+        const valTok = peek();
+        if (!valTok || (valTok.type !== 'value' && valTok.type !== 'word')) return null;
+        consume();
+        let val = valTok.val;
+        if (op === 'LIKE' || op === 'NOT LIKE') {
+            if (valTok.isConcat) {
+                // ',' || col || ',' LIKE '%,value,%'  →  strip %,  and  ,%
+                val = val.replace(/^%,/, '').replace(/,%$/, '');
+            } else {
+                // Plain LIKE: only strip surrounding bare % wildcards when the
+                // value is a simple %word% wrapper — never touch patterns that
+                // contain internal % or - characters (e.g. %-03-%, 2023-%)
+                // because those are intentional user-authored date patterns.
+                const isSimpleWrapper = /^%[^%]+%$/.test(val) && !val.slice(1, -1).includes('%') && !val.slice(1, -1).includes('-');
+                if (isSimpleWrapper) {
+                    val = val.slice(1, -1);
+                }
+                // All other patterns (%-03-%, 2023-%, %Valve%, etc.) are kept as-is
+            }
+        }
+        if (!KNOWN.has(col)) return null;
+        return { type: 'condition', column: col, operator: op, value: val };
+    }
+
+    function parseGroup() {
+        const items = [];
+        let logic = 'AND';
+
+        // Keep consuming atoms and logic tokens until we run out or hit an unmatched rparen
+        while (peek() && peek().type !== 'rparen') {
+            // If next token is a logic operator, consume it and record the logic
+            if (peek().type === 'logic') {
+                const l = consume().val;
+                if (items.length <= 1) logic = l;
+                continue;
+            }
+            const atom = parseAtom();
+            if (atom) items.push(atom);
+            else if (peek() && peek().type !== 'logic' && peek().type !== 'rparen') {
+                // Stuck on a non-logic, non-rparen token that parseAtom couldn't handle — skip it
+                consume();
+            }
+        }
+
+        return { type: 'group', logic, items };
+    }
+
+    return parseGroup();
+}
+
+// ═══════════════════════════════════════════
+// COLLECT TREE FROM DOM
+// ═══════════════════════════════════════════
+
+function collectRowData(rowEl) {
+    const col = rowEl.querySelector('.fm-col-select')?.value;
+    const op  = rowEl.querySelector('.fm-op-select')?.value;
+    const valEl = rowEl.querySelector('.fm-val-input');
+    const val = valEl ? valEl.value : '';
+    return { type: 'condition', column: col, operator: op, value: val };
+}
+
+function collectGroupData(groupEl) {
+    const logic = groupEl.dataset.logic || 'AND';
+    const rowsEl = groupEl.querySelector(':scope > .fmg-rows');
+    const items = [];
+
+    Array.from(rowsEl.children).forEach(child => {
+        if (child.classList.contains('fmg-connector')) return; // skip AND/OR labels
+        if (child.classList.contains('fm-row')) {
+            const cond = collectRowData(child);
+            if (cond.column && (cond.value || NO_VALUE_OPS.has(cond.operator))) {
+                items.push(cond);
+            }
+        } else if (child.classList.contains('fmg-container')) {
+            const sub = collectGroupData(child);
+            if (sub.items.length) items.push(sub);
+        }
+    });
+
+    return { type: 'group', logic, items };
+}
+
+function collectTree() {
+    if (_filterMode === 'simple') {
+        const items = [];
+        document.querySelectorAll('#fm-simple-rows .fm-row').forEach(row => {
+            const cond = collectRowData(row);
+            if (cond.column && (cond.value || NO_VALUE_OPS.has(cond.operator))) {
+                items.push(cond);
+            }
+        });
+        return { type: 'group', logic: _simpleLogic, items };
+    } else {
+        // Check for custom SQL override
+        const rawSql = document.getElementById('fm-custom-sql-input')?.value || '';
+        const customSql = stripSqlWrapper(rawSql);
+        const tree = collectGroupData(document.getElementById('fm-root-group'));
+        if (customSql) {
+            tree.custom_sql = customSql;
+        }
+        return tree;
+    }
+}
+
+// ── Apply / Clear ───────────────────────────────────────────────
+
+async function applyFilters() {
+    const tree = collectTree();
+    updateActivePills(tree);
+    await sendStateUpdate({ filter_tree: tree });
+    closeFilterModal();
+}
+
+async function clearAllFilters() {
+    // Clear the search bar input visually
+    const searchInput = document.getElementById('library-search');
+    if (searchInput) searchInput.value = '';
+    await sendStateUpdate({
+        filter_tree: { type: 'group', logic: 'AND', items: [] },
+        active_filters: [],
+        filter_update: { column: 'name', value: '' }
+    });
+}
+
+var _savedFilters = (typeof _savedFilters !== 'undefined') ? _savedFilters : {{ state.get('saved_filters', {}) | tojson if state is defined else '{}' }};
+
+function loadSavedFilterFromModal(selectEl) {
+    const name = selectEl.value;
+    if (!name) return;
+    const tree = _savedFilters[name];
+    if (tree) populateModalFromTree(tree);
+}
+
+async function renameSavedFilterFromModal() {
+    const selectEl = document.getElementById('saved-filters-select');
+    const oldName = selectEl.value;
+    if (!oldName) { alert('Select a saved filter to rename.'); return; }
+    const newName = prompt(`Rename "${oldName}" to:`, oldName);
+    if (!newName || !newName.trim() || newName.trim() === oldName) return;
+    try {
+        const res = await fetch('/api/rename-filter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ old_name: oldName, new_name: newName.trim() })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            // Update dropdown and local cache without reloading
+            const tree = _savedFilters[oldName];
+            delete _savedFilters[oldName];
+            _savedFilters[newName.trim()] = tree;
+            const opt = selectEl.querySelector(`option[value="${CSS.escape(oldName)}"]`)
+                     || Array.from(selectEl.options).find(o => o.value === oldName);
+            if (opt) { opt.value = newName.trim(); opt.textContent = newName.trim(); }
+            selectEl.value = newName.trim();
+        } else {
+            alert('Could not rename: ' + data.message);
+        }
+    } catch (e) { alert('Network error.'); }
+}
+
+async function deleteSavedFilterFromModal() {
+    const selectEl = document.getElementById('saved-filters-select');
+    const name = selectEl.value;
+    if (!name) { alert('Select a saved filter first.'); return; }
+    if (!confirm(`Delete saved filter "${name}"?`)) return;
+    try {
+        const res = await fetch('/api/delete-filter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            // Remove from dropdown and local cache without reloading
+            delete _savedFilters[name];
+            const opt = selectEl.querySelector(`option[value="${name}"]`);
+            if (opt) opt.remove();
+            selectEl.value = '';
+        } else {
+            alert('Could not delete: ' + data.message);
+        }
+    } catch (e) { alert('Network error.'); }
+}
+
+async function saveCurrentFilter() {
+    const name = prompt('Name this filter:');
+    if (!name || !name.trim()) return;
+    // Use the live filter tree if modal is open, else fall back to server state
+    let tree;
+    const modal = document.getElementById('filterModal');
+    if (modal && modal.style.display !== 'none') {
+        tree = collectTree();
+    } else {
+        tree = typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null;
+    }
+    if (!tree || !tree.items || !tree.items.length) {
+        alert('No active filter to save.');
+        return;
+    }
+    try {
+        const res = await fetch('/api/save-filter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name.trim(), filter_tree: tree })
+        });
+        const data = await res.json();
+        if (data.status === 'success') window.location.reload();
+        else alert('Could not save: ' + data.message);
+    } catch (e) { alert('Network error saving filter.'); }
+}
+</script>
+
+<div id="importModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="width: 480px;">
+        <h2 style="color: var(--steam-focus); margin-top: 0;">Import External Data</h2>
+        <p style="color: #8f98a0; font-size: 0.9rem; margin-bottom: 20px;">
+            The full database importer has moved to the <strong style="color:white;">Tools</strong> page. It supports choosing tables, mapping any columns, date normalization, and type checking.
+        </p>
+        <div style="display:flex; gap:10px;">
+            <a href="/tools" class="btn-save" style="flex:2; margin:0; text-align:center; text-decoration:none; display:flex; align-items:center; justify-content:center;">Go to Tools</a>
+            <button onclick="document.getElementById('importModal').style.display='none'" class="nav-btn" style="flex:1;">Cancel</button>
+        </div>
+    </div>
+</div>

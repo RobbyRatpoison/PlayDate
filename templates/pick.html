@@ -1,0 +1,528 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    /* pick-page is full viewport width — no max-width, no padding that would clip cards */
+    .pick-page {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 5vh - 7vh); /* viewport minus nav (5vh) and container top padding (6vh) + buffer (1vh) */
+        box-sizing: border-box;
+        overflow: visible;
+        padding: 3vh 0 0;
+    }
+
+    /* Increase the container's bottom padding on the pick page to push cards clear of the invisible bar */
+    .container:has(.pick-page) {
+        padding-bottom: 5vh;
+    }
+
+    /* Controls and button are constrained to a readable width, centered */
+    .pick-controls-wrap {
+        max-width: 1100px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 0 8vw;
+        box-sizing: border-box;
+    }
+
+    /* ── Controls card (now contains the header too) ── */
+    .pick-controls {
+        background: #1a2332;
+        border: 1px solid #2a3f55;
+        border-radius: 10px;
+        padding: 24px 28px;
+        margin-bottom: 16px;
+    }
+
+    .pick-controls-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #2a3f55;
+        text-align: center;
+    }
+
+    .pick-controls-header h1 {
+        font-size: clamp(1.4rem, 2.5vw, 2rem);
+        color: white;
+        margin: 0;
+        letter-spacing: 0.04em;
+    }
+
+    .pick-controls-header p {
+        color: #8f98a0;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .control-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+    }
+
+    .control-row:last-child { margin-bottom: 0; }
+
+    .control-label {
+        color: #8f98a0;
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        min-width: 110px;
+        flex-shrink: 0;
+    }
+
+    /* Mode toggle */
+    .mode-toggle {
+        display: flex;
+        border: 1px solid #2a475e;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    .mode-toggle button {
+        background: transparent;
+        border: none;
+        color: #8f98a0;
+        padding: 7px 16px;
+        cursor: pointer;
+        font-size: 0.83rem;
+        font-weight: bold;
+        transition: background 0.15s, color 0.15s;
+        border-right: 1px solid #2a475e;
+        letter-spacing: 0.03em;
+    }
+
+    .mode-toggle button:last-child { border-right: none; }
+    .mode-toggle button.active { background: var(--steam-focus); color: #0e1621; }
+    .mode-toggle button:not(.active):hover { background: #243447; color: #c7d5e0; }
+
+    .mode-desc {
+        color: #8f98a0;
+        font-size: 0.8rem;
+        font-style: italic;
+    }
+
+    /* Toggle switch */
+    .toggle-switch {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        user-select: none;
+    }
+    .toggle-switch input { display: none; }
+    .toggle-track {
+        width: 38px; height: 21px;
+        background: #2a3f55;
+        border-radius: 11px;
+        position: relative;
+        transition: background 0.2s;
+        flex-shrink: 0;
+    }
+    .toggle-track::after {
+        content: '';
+        position: absolute;
+        width: 15px; height: 15px;
+        background: #8f98a0;
+        border-radius: 50%;
+        top: 3px; left: 3px;
+        transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-track { background: var(--steam-focus); }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(17px); background: #0e1621; }
+    .toggle-desc { color: #c7d5e0; font-size: 0.88rem; }
+
+    /* ── Weighted sliders panel ── */
+    .weighted-panel {
+        display: none;
+        background: rgba(0,0,0,0.2);
+        border: 1px solid #2a3f55;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-top: 12px;
+        gap: 10px;
+        flex-direction: column;
+    }
+    .weighted-panel.open { display: flex; }
+
+    .slider-row {
+        display: grid;
+        grid-template-columns: 160px 1fr 36px;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .slider-label {
+        color: #c7d5e0;
+        font-size: 0.82rem;
+    }
+
+    .slider-label small {
+        display: block;
+        color: #8f98a0;
+        font-size: 0.7rem;
+        margin-top: 1px;
+    }
+
+    .slider-row input[type="range"] {
+        width: 100%;
+        accent-color: var(--steam-focus);
+        height: 4px;
+        cursor: pointer;
+        display: block;
+    }
+
+    .slider-val {
+        color: var(--steam-focus);
+        font-size: 0.82rem;
+        font-weight: bold;
+        font-family: monospace;
+        text-align: right;
+    }
+
+    /* ── Pick button ── */
+    .pick-btn {
+        width: 100%;
+        padding: 15px;
+        font-size: 1.05rem;
+        font-weight: bold;
+        background: var(--steam-focus);
+        color: #0e1621;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: opacity 0.15s, transform 0.1s;
+        letter-spacing: 0.06em;
+        margin-bottom: 4px;
+    }
+    .pick-btn:hover { opacity: 0.88; }
+    .pick-btn:active { transform: scale(0.99); }
+    .pick-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+    .error-msg {
+        display: none;
+        background: #3d1a1a;
+        border: 1px solid #a32a2a;
+        color: #ff8080;
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        margin-top: 10px;
+    }
+
+    /* ── Result row: fills remaining space, JS enforces 2:3 ── */
+    .result-area {
+        display: none;
+        flex: 1;
+        min-height: 0;
+        margin-top: 14px;
+        overflow: visible;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .result-area.visible {
+        display: flex;
+    }
+
+    .result-area-header {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding-bottom: 10px;
+        flex-shrink: 0;
+    }
+
+    .mode-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(0,0,0,0.3);
+        border: 1px solid #2a3f55;
+        border-radius: 20px;
+        padding: 3px 12px 3px 8px;
+        font-size: 0.72rem;
+        font-weight: bold;
+        color: #8f98a0;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .mode-badge-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--steam-focus);
+        flex-shrink: 0;
+    }
+
+    .result-cards {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 14px;
+        flex-shrink: 0;
+        overflow: visible;
+        padding: 0 1.5vw;
+        box-sizing: border-box;
+    }
+
+    .result-card {
+        flex-shrink: 0;
+        background: #1a2332;
+        border: 1px solid #2a3f55;
+        border-radius: 10px;
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.2s, transform 0.15s;
+        overflow: hidden;
+        transform-origin: center center;
+        transform: scale(0.95);
+    }
+    .result-card:hover { border-color: var(--steam-focus); transform: scale(1); }
+
+    .result-art {
+        width: 100%;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+    .result-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .result-info {
+        padding: 8px 10px 10px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .result-title {
+        font-size: 0.8rem; color: white; font-weight: bold;
+        margin: 0; line-height: 1.3;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .result-reason {
+        font-size: 0.68rem; color: #8f98a0;
+        font-style: italic; line-height: 1.3;
+    }
+
+    .pool-info { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pick-page">
+
+    <div class="pick-controls-wrap">
+        <!-- Controls card (header lives inside) -->
+        <div class="pick-controls">
+            <div class="pick-controls-header">
+                <h1>PICK 6</h1>
+                <p>Let PlayDate choose your next six games.</p>
+            </div>
+
+            <!-- Mode -->
+            <div class="control-row">
+                <div class="control-label">Mode</div>
+                <div class="mode-toggle">
+                    <button id="mode-random"   class="active" onclick="setMode('random')">🎲 RANDOM</button>
+                    <button id="mode-smart"              onclick="setMode('smart')">🧠 SMART</button>
+                    <button id="mode-weighted"           onclick="setMode('weighted')">⚖ WEIGHTED</button>
+                </div>
+                <span id="mode-desc" class="mode-desc">Picks any game with equal probability.</span>
+            </div>
+
+            <!-- Weighted sliders (shown only in weighted mode) -->
+            <div class="weighted-panel" id="weighted-panel">
+                <div class="slider-row">
+                    <div class="slider-label">Tag Similarity<small>Match your beaten/played history</small></div>
+                    <input type="range" id="w-tags" min="0" max="100" value="65" oninput="onSliderChange('tags')">
+                    <span class="slider-val" id="v-tags">65</span>
+                </div>
+                <div class="slider-row">
+                    <div class="slider-label">Review Score<small>Prefer highly-reviewed games</small></div>
+                    <input type="range" id="w-review" min="0" max="100" value="35" oninput="onSliderChange('review')">
+                    <span class="slider-val" id="v-review">35</span>
+                </div>
+                <div class="slider-row">
+                    <div class="slider-label">Staleness<small>Prefer games untouched longer</small></div>
+                    <input type="range" id="w-staleness" min="0" max="100" value="0" oninput="onSliderChange('staleness')">
+                    <span class="slider-val" id="v-staleness">0</span>
+                </div>
+                <div class="slider-row">
+                    <div class="slider-label">Recent Releases<small>Prefer newer release dates</small></div>
+                    <input type="range" id="w-recency" min="0" max="100" value="0" oninput="onSliderChange('recency')">
+                    <span class="slider-val" id="v-recency">0</span>
+                </div>
+            </div>
+
+            <!-- Use filtered pool toggle -->
+            <div class="control-row" style="margin-top: 14px;">
+                <div class="control-label">Pool</div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="filtered-toggle" {% if has_filters %}checked{% endif %}>
+                    <div class="toggle-track"></div>
+                    <span class="toggle-desc">Use currently filtered games only</span>
+                </label>
+                {% if not has_filters %}
+                <span class="mode-desc">(No filter active)</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <button class="pick-btn" id="pick-btn" onclick="pickGame()">PICK 6</button>
+        <div class="error-msg" id="error-msg"></div>
+    </div>
+
+    <div class="result-area" id="result-area">
+        <div class="result-area-header">
+            <div class="mode-badge" id="mode-badge">
+                <div class="mode-badge-dot"></div>
+                <span id="mode-badge-label"></span>
+            </div>
+        </div>
+        <div class="result-cards" id="result-cards"></div>
+    </div>
+</div>
+
+<script>
+let currentMode = 'random';
+
+const modeDescs = {
+    random:   'Picks any game with equal probability.',
+    smart:    'Uses your completion history and tags to surface games you\'ll likely enjoy.',
+    weighted: 'You control how much each factor influences the picks.'
+};
+
+function setMode(mode) {
+    currentMode = mode;
+    ['random','smart','weighted'].forEach(m => {
+        document.getElementById('mode-' + m).classList.toggle('active', m === mode);
+    });
+    document.getElementById('mode-desc').textContent = modeDescs[mode];
+    document.getElementById('weighted-panel').classList.toggle('open', mode === 'weighted');
+}
+
+function onSliderChange(key) {
+    document.getElementById('v-' + key).textContent = document.getElementById('w-' + key).value;
+}
+
+async function pickGame() {
+    const btn = document.getElementById('pick-btn');
+    const errorEl = document.getElementById('error-msg');
+    errorEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'PICKING…';
+
+    const useFiltered = document.getElementById('filtered-toggle').checked;
+
+    const payload = { mode: currentMode, use_filtered: useFiltered };
+    if (currentMode === 'weighted') {
+        payload.w_tags       = parseInt(document.getElementById('w-tags').value);
+        payload.w_review     = parseInt(document.getElementById('w-review').value);
+        payload.w_staleness  = parseInt(document.getElementById('w-staleness').value);
+        payload.w_recency    = parseInt(document.getElementById('w-recency').value);
+    }
+
+    try {
+        const res = await fetch('/api/pick-game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            showResults(data.picks, data.pool_size);
+        } else {
+            errorEl.textContent = '✘ ' + (data.message || 'No games matched.');
+            errorEl.style.display = 'block';
+        }
+    } catch (e) {
+        errorEl.textContent = '✘ Network error.';
+        errorEl.style.display = 'block';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'PICK 6';
+}
+
+function makeCard(game, reason) {
+    const appid = game.appid;
+    const localSrc = `/static/img/library/${appid}.jpg`;
+    const steamSrc = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
+
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.innerHTML = `
+        <div class="result-art" onclick="launchGame(${appid})" style="cursor:pointer;">
+            <img src="${localSrc}" alt="${game.name}"
+                 onerror="this.onerror=null;this.src='${steamSrc}'">
+        </div>`;
+    return card;
+}
+
+function showResults(picks, poolSize) {
+    const container = document.getElementById('result-cards');
+    container.innerHTML = '';
+    (picks || []).forEach(p => container.appendChild(makeCard(p.game, p.reason)));
+
+    // Set mode badge
+    const labels = { random: '🎲 Random', smart: '🧠 Smart', weighted: '⚖ Weighted' };
+    document.getElementById('mode-badge-label').textContent = labels[currentMode] || currentMode;
+
+    document.getElementById('result-area').classList.add('visible');
+    enforceCardRatio();
+}
+
+function enforceCardRatio() {
+    const area    = document.getElementById('result-area');
+    const cards   = document.getElementById('result-cards');
+    const cardEls = Array.from(document.querySelectorAll('.result-card'));
+    if (!cardEls.length || !area.classList.contains('visible')) return;
+
+    const n   = cardEls.length;
+    const gap = 14;
+
+    // Padding on each side (1.5vw) already in CSS — subtract from width
+    const sidePad = window.innerWidth * 0.03;
+    const availW  = document.documentElement.clientWidth - sidePad;
+
+    // Available height: distance from where cards start to bottom of the viewport.
+    // Using window.innerHeight avoids phantom space from the container's scrollbar track.
+    const cardsTop = cards.getBoundingClientRect().top;
+    const availH   = window.innerHeight - cardsTop - (window.innerHeight * 0.05) - 8;
+
+    // Step 1: size from width (2:3 ratio)
+    const totalGaps = gap * (n - 1);
+    let cardW = Math.floor((availW - totalGaps) / n);
+    let artH  = Math.floor(cardW * 3 / 2);
+
+    // Step 2: clamp to available height
+    if (artH > availH) {
+        artH  = availH;
+        cardW = Math.floor(artH * 2 / 3);
+    }
+
+    cardEls.forEach(c => {
+        c.style.width = cardW + 'px';
+        const art = c.querySelector('.result-art');
+        if (art) art.style.height = artH + 'px';
+    });
+}
+
+window.addEventListener('resize', enforceCardRatio);
+</script>
+{% endblock %}

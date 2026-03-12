@@ -1,0 +1,701 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+
+    <style>
+
+        .filter-row > select,
+        .filter-row .comparison-container,
+        .filter-row .value-container {
+            flex: 1;
+            display: flex; /* Makes the inputs inside containers fill the space */
+            min-width: 0;
+        }
+
+        /* Style every input and select inside those containers */
+        .filter-row select,
+        .filter-row input {
+            width: 100%; /* Fill the flex container */
+            text-align: center;
+            text-align-last: center;
+            padding: 8px;
+            background-color: #1a1a1a;
+            border: 1px solid #333;
+            color: white;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+
+        /* Optional: Add a slight gap between the elements */
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .game-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 25px;
+            padding: 20px 0;
+            contain: layout style;
+        }
+
+        .game-card {
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s;
+            border: 1px solid #333;
+            aspect-ratio: 2/3;
+        }
+
+        .game-card:hover {
+            transform: scale(1.05);
+            border-color: var(--steam-focus);
+            will-change: transform;
+        }
+
+        .capsule-container {
+            position: relative;
+            aspect-ratio: 2/3; /* Forces the 600x900 ratio */
+        }
+
+        .game-capsule {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Ensures headers don't stretch weirdly */
+        }
+
+        .game-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+            pointer-events: none;
+            will-change: opacity;
+        }
+
+        .game-card:hover .game-overlay {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .status-tag {
+            font-size: 1.8rem;
+            padding: 2px 6px;
+            border-radius: 3px;
+            text-transform: uppercase;
+        }
+
+        .game-details {
+            padding: 12px;
+        }
+
+        .game-title {
+            margin: 0;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #fff;
+        }
+
+        .game-meta {
+            margin: 5px 0 0;
+            font-size: 0.75rem;
+            color: #888;
+        }
+
+        .search-nav-bar {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 0 10vw;
+        }
+
+        #library-search {
+            flex-grow: 1;
+            height: 50px; /* Adjust this to your preferred height */
+            padding: 0 20px;
+            font-size: 1.1rem;
+            background-color: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: white;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        #library-search:focus {
+            border-color: var(--steam-focus);
+            box-shadow: 0 0 8px rgba(102, 192, 232, 0.3);
+        }
+
+        /* Make the filter button match the height */
+        .search-nav-bar button {
+            height: 50px;
+            padding: 0 25px;
+            border-radius: 8px;
+            background: #333;
+            color: white;
+            border: 1px solid #444;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .search-nav-bar button:hover {
+            background: #444;
+        }
+
+        .search-container {
+            position: relative;
+            flex-grow: 1;
+        }
+
+        #library-search {
+            width: 100%;
+            height: 50px;
+            padding: 0 45px 0 20px; /* Extra right padding for the X button */
+            /* ... rest of your existing search bar CSS ... */
+        }
+
+        .clear-btn {
+            position: static !important;
+            padding: 0 25px !important;
+            background: #3d1a1a !important;
+            border: 1px solid #a32a2a !important;
+            color: #ff8080 !important;
+            font-size: inherit !important;
+            cursor: pointer;
+        }
+
+        .clear-btn:hover { background: #5a2020 !important; color: white !important; }
+
+        .search-btn {
+            background: var(--steam-focus) !important; /* Make it stand out */
+            border-color: #66c0e8 !important;
+        }
+
+        .nav-dropdown, .order-btn {
+            height: 50px;
+            width: auto;
+            background-color: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 0 15px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .order-btn {
+            font-size: 1.2rem;
+            min-width: 50px;
+        }
+
+        .nav-dropdown:hover, .order-btn:hover {
+            background-color: #444;
+        }
+
+        /* ── Select mode ── */
+        .select-mode-btn.active {
+            background: var(--steam-focus) !important;
+            color: #1b2838 !important;
+            border-color: var(--steam-focus) !important;
+        }
+
+        body.select-mode .game-card {
+            cursor: pointer;
+        }
+
+        body.select-mode .game-card .capsule-container a {
+            pointer-events: none; /* clicks go to card, not steam link */
+        }
+
+        .game-card.selected {
+            outline: 3px solid var(--steam-focus);
+            outline-offset: -2px;
+        }
+
+        .game-card.selected::after {
+            content: '✔';
+            position: absolute;
+            top: 6px; left: 6px;
+            width: 22px; height: 22px;
+            background: var(--steam-focus);
+            color: #1b2838;
+            font-size: 0.8rem;
+            font-weight: bold;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        /* make .game-card position:relative so ::after works */
+        .game-card { position: relative; }
+    </style>
+    <div class="search-nav-bar">
+        <div class="search-container">
+            <input type="text"
+                id="library-search"
+                placeholder="Search games..."
+                onkeyup="handleSearch(event, this.value)"
+                value="{{ state.get('active_filters', [])|selectattr('column', 'equalto', 'name')|map(attribute='value')|first or '' }}">
+        </div>
+        <button onclick="triggerSearch()">SEARCH</button>
+        <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' style="min-width:160px;">
+            <option value="name" {{ 'selected' if state.sort == 'name' }}>Alphabetical</option>
+            <option value="playtime_forever" {{ 'selected' if state.sort == 'playtime_forever' }}>Hours Played</option>
+            <option value="release_date" {{ 'selected' if state.sort == 'release_date' }}>Release Date</option>
+            <option value="last_played" {{ 'selected' if state.sort == 'last_played' }}>Recently Played</option>
+            <option value="date_added" {{ 'selected' if state.sort == 'date_added' }}>Date Added</option>
+            <option value="review_percentage" {{ 'selected' if state.sort == 'review_percentage' }}>Review Score</option>
+            <option value="weighted_percentage" {{ 'selected' if state.sort == 'weighted_percentage' }}>Weighted Score</option>
+        </select>
+        <button class="order-btn" onclick="toggleOrder()" title='Toggle Ascending or Descending'>
+            {{ '▲' if state.order == 'ASC' else '▼' }}
+        </button>
+        {% set has_filters = (state.filter_tree and state.filter_tree.get('items')) or state.get('active_filters', [])|length > 0 %}
+        {% if has_filters %}
+        <button onclick="clearAllFilters()" class="clear-btn">✕ CLEAR FILTERS</button>
+        {% endif %}
+        <button onclick="openFilterModal()">FILTERS</button>
+        <button onclick="openBulkEditModal()">BULK EDIT</button>
+        <button id="select-mode-btn" class="select-mode-btn" onclick="toggleSelectMode()">SELECT</button>
+    </div>
+
+    <!-- Filter error banner (shown by playdate.js showFilterError, or server-side sql_error) -->
+    <div id="filter-error-banner" style="display:{% if sql_error %}block{% else %}none{% endif %};
+         background:#3d1a1a; border:1px solid #a32a2a; color:#ff8080;
+         padding:10px 16px; border-radius:6px; margin-bottom:10px; font-size:0.85rem;">
+        {% if sql_error %}✘ Filter error: {{ sql_error }}{% endif %}
+    </div>
+
+    <div class="library-header">
+        <p>Showing {{ games|length }} games in your collection</p>
+    </div>
+
+    <div class="game-grid" id="game-grid"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── All game data in one JS array — no per-card script tags ──
+    window.GAMES = {{ games | tojson }};
+
+    // ── Current filter tree from server ──
+    const _serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
+
+    // ── Build a search-narrowed tree: name LIKE %q% AND (existing tree) ──
+    function buildSearchTree(query) {
+        const nameCond = { type: 'condition', column: 'name', operator: 'LIKE', value: query };
+        if (!query.trim()) {
+            return _serverFilterTree || { type: 'group', logic: 'AND', items: [] };
+        }
+        if (!_serverFilterTree || !_serverFilterTree.items || _serverFilterTree.items.length === 0) {
+            return { type: 'group', logic: 'AND', items: [nameCond] };
+        }
+        return { type: 'group', logic: 'AND', items: [nameCond, _serverFilterTree] };
+    }
+
+    function handleSearch(event, query) {
+        if (event.key === 'Enter') sendStateUpdate({ filter_tree: buildSearchTree(query) });
+    }
+
+    function triggerSearch() {
+        const query = document.getElementById('library-search').value;
+        sendStateUpdate({ filter_tree: buildSearchTree(query) });
+    }
+
+    function updateSort(column) { sendStateUpdate({ sort: column }); }
+
+    function toggleOrder() {
+        const currentOrder = "{{ state.order }}";
+        sendStateUpdate({ order: currentOrder === 'ASC' ? 'DESC' : 'ASC' });
+    }
+
+    const filterConfig = {};
+
+    // ── VIRTUAL GRID ──────────────────────────────────────────────
+    // Only visible cards get full DOM content; off-screen cards are
+    // empty placeholders sized to match, keeping the layout intact.
+
+    const CARD_HTML_CACHE = new Map(); // appid → innerHTML string
+
+    function cardInnerHTML(game) {
+        if (CARD_HTML_CACHE.has(game.appid)) return CARD_HTML_CACHE.get(game.appid);
+        const escaped = (game.name || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const html = `
+            <div class="capsule-container" onclick="launchGame(${game.appid})" style="cursor:pointer;">
+                <img src="/static/img/library/${game.appid}.jpg"
+                    alt="${escaped}"
+                    class="game-capsule"
+                    loading="lazy"
+                    onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg';">
+                <div class="game-overlay">
+                    <button class="status-tag"
+                        style="background:#333;color:#eee;border:1px solid #555;cursor:pointer;"
+                        onclick="event.stopPropagation();openEditModalById(${game.appid})">✎</button>
+                </div>
+            </div>`;
+        CARD_HTML_CACHE.set(game.appid, html);
+        return html;
+    }
+
+    // Look up game by appid and open the edit modal — avoids embedding
+    // large JSON blobs in onclick attributes (causes log warnings + breakage)
+    function openEditModalById(appid) {
+        const game = window.GAMES.find(g => g.appid === appid);
+        if (game) openEditModal(game);
+    }
+
+    function buildGrid() {
+        const grid = document.getElementById('game-grid');
+        grid.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        GAMES.forEach(game => {
+            const card = document.createElement('div');
+            card.className = 'game-card';
+            card.id = `card-${game.appid}`;
+            card.dataset.appid = game.appid;
+            // Start as placeholder — observer will populate when visible
+            fragment.appendChild(card);
+        });
+        grid.appendChild(fragment);
+        observeCards();
+    }
+
+    let _observer = null;
+    function observeCards() {
+        if (_observer) _observer.disconnect();
+        _observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const card = entry.target;
+                const appid = parseInt(card.dataset.appid);
+                if (entry.isIntersecting) {
+                    if (!card.dataset.populated) {
+                        const game = GAMES.find(g => g.appid === appid);
+                        if (game) {
+                            card.innerHTML = cardInnerHTML(game);
+                            card.dataset.populated = '1';
+                            // Re-wire select mode click if active
+                            if (_selectMode) card.addEventListener('click', onCardClick);
+                            if (_selectedIds.has(appid)) card.classList.add('selected');
+                        }
+                    }
+                }
+            });
+        }, {
+            rootMargin: '400px',  // populate cards 400px before they scroll into view
+            threshold: 0
+        });
+        document.querySelectorAll('.game-card').forEach(c => _observer.observe(c));
+    }
+
+    // Build on load
+    document.addEventListener('DOMContentLoaded', buildGrid);
+
+// ── SELECT MODE ──────────────────────────────────────────────────
+let _selectMode = false;
+let _selectedIds = new Set();
+
+function toggleSelectMode() {
+    _selectMode = !_selectMode;
+    document.body.classList.toggle('select-mode', _selectMode);
+    const btn = document.getElementById('select-mode-btn');
+    btn.classList.toggle('active', _selectMode);
+    btn.textContent = _selectMode ? `SELECT (${_selectedIds.size})` : 'SELECT';
+
+    if (!_selectMode) {
+        _selectedIds.clear();
+        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+    }
+
+    // Only wire populated cards; unpopulated ones get wired when they load (in observeCards)
+    document.querySelectorAll('.game-card[data-populated]').forEach(card => {
+        if (_selectMode) {
+            card.addEventListener('click', onCardClick);
+        } else {
+            card.removeEventListener('click', onCardClick);
+        }
+    });
+}
+
+function onCardClick(e) {
+    // Don't intercept the ✎ edit button
+    if (e.target.closest('.game-overlay')) return;
+    const card = e.currentTarget;
+    const appid = parseInt(card.id.replace('card-', ''));
+    if (_selectedIds.has(appid)) {
+        _selectedIds.delete(appid);
+        card.classList.remove('selected');
+    } else {
+        _selectedIds.add(appid);
+        card.classList.add('selected');
+    }
+    // Update button label
+    const btn = document.getElementById('select-mode-btn');
+    btn.textContent = `SELECT (${_selectedIds.size})`;
+}
+
+// ── BULK EDIT ──────────────────────────────────────────────────
+const LIST_COLUMNS = new Set(['tags', 'groups']);
+const BULK_GAME_COUNT = {{ games|length }};
+
+function openBulkEditModal() {
+    // Decide default scope based on whether anything is selected
+    const hasSelection = _selectedIds.size > 0;
+    const scopeFiltered = document.getElementById('scope-filtered');
+    const scopeSelected = document.getElementById('scope-selected');
+
+    if (hasSelection) {
+        scopeSelected.checked = true;
+    } else {
+        scopeFiltered.checked = true;
+    }
+    onBulkScopeChange();
+
+    document.getElementById('bulk-edit-modal').style.display = 'flex';
+    document.getElementById('bulk-status').textContent = '';
+    document.getElementById('bulk-status').className = '';
+    onBulkColumnChange();
+}
+
+function closeBulkEditModal() {
+    document.getElementById('bulk-edit-modal').style.display = 'none';
+}
+
+function onBulkScopeChange() {
+    const scope = document.querySelector('input[name="bulk-scope"]:checked').value;
+    const selInfo = document.getElementById('bulk-selected-info');
+    const filtInfo = document.getElementById('bulk-filtered-info');
+
+    // Clear the other scope's selection
+    if (scope === 'selected') {
+        filtInfo.style.display = 'none';
+        selInfo.style.display = 'block';
+        selInfo.textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
+        // Clear visual selection in filtered mode remnants — none needed, just re-run hint
+    } else {
+        selInfo.style.display = 'none';
+        filtInfo.style.display = 'block';
+        filtInfo.textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
+        // Clear checkmarks and ids when switching to filtered
+        _selectedIds.clear();
+        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+        const btn = document.getElementById('select-mode-btn');
+        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    }
+    onBulkModeChange();
+}
+
+function onBulkColumnChange() {
+    const col = document.getElementById('bulk-column').value;
+    const modeSelect = document.getElementById('bulk-mode');
+    const appendOpt = modeSelect.querySelector('option[value="append"]');
+    const removeOpt = modeSelect.querySelector('option[value="remove"]');
+    const isList = LIST_COLUMNS.has(col);
+
+    appendOpt.disabled = !isList;
+    removeOpt.disabled = !isList;
+
+    if (!isList && (modeSelect.value === 'append' || modeSelect.value === 'remove')) {
+        modeSelect.value = 'replace';
+    }
+    onBulkModeChange();
+}
+
+function onBulkModeChange() {
+    const mode = document.getElementById('bulk-mode').value;
+    const col = document.getElementById('bulk-column').value;
+    const hint = document.getElementById('bulk-mode-hint');
+    const valHint = document.getElementById('bulk-value-hint');
+    const warning = document.getElementById('bulk-warning');
+    const scope = document.querySelector('input[name="bulk-scope"]:checked').value;
+    const count = scope === 'selected' ? _selectedIds.size : BULK_GAME_COUNT;
+    const colLabel = document.getElementById('bulk-column').options[document.getElementById('bulk-column').selectedIndex].text;
+
+    if (mode === 'replace') {
+        hint.textContent = 'Overwrites the entire value for every matching game.';
+        valHint.textContent = '';
+        warning.style.display = 'block';
+        warning.style.borderColor = '#c97c00';
+        warning.style.background = 'rgba(193,120,0,0.12)';
+        warning.style.color = '#c97c00';
+        warning.innerHTML = `⚠ <strong>${count} game${count !== 1 ? 's' : ''}</strong> will have their <strong>${colLabel}</strong> completely overwritten. This cannot be undone.`;
+    } else if (mode === 'append') {
+        hint.textContent = 'Adds the value to the list if not already present. Existing values are kept. Duplicates are skipped.';
+        valHint.textContent = 'You can enter multiple values separated by commas.';
+        warning.style.display = 'block';
+        warning.innerHTML = `ℹ <strong>${count} game${count !== 1 ? 's' : ''}</strong> will have values appended to <strong>${colLabel}</strong>.`;
+        warning.style.borderColor = '#2a6496';
+        warning.style.background = 'rgba(42,100,150,0.12)';
+        warning.style.color = '#7ab8d9';
+    } else if (mode === 'remove') {
+        hint.textContent = 'Removes the value from the list. Other values are kept.';
+        valHint.textContent = 'You can enter multiple values to remove, separated by commas.';
+        warning.style.display = 'block';
+        warning.innerHTML = `ℹ <strong>${count} game${count !== 1 ? 's' : ''}</strong> will have values removed from <strong>${colLabel}</strong> where present.`;
+        warning.style.borderColor = '#2a6496';
+        warning.style.background = 'rgba(42,100,150,0.12)';
+        warning.style.color = '#7ab8d9';
+    }
+}
+
+async function runBulkEdit() {
+    const column = document.getElementById('bulk-column').value;
+    const mode   = document.getElementById('bulk-mode').value;
+    const value  = document.getElementById('bulk-value').value.trim();
+    const scope  = document.querySelector('input[name="bulk-scope"]:checked').value;
+    const status = document.getElementById('bulk-status');
+
+    if (!value && mode !== 'remove') {
+        status.className = 'bulk-status-error';
+        status.textContent = 'Please enter a value.';
+        return;
+    }
+    if (scope === 'selected' && _selectedIds.size === 0) {
+        status.className = 'bulk-status-error';
+        status.textContent = 'No games selected. Use SELECT mode to pick games first.';
+        return;
+    }
+
+    const btn = document.getElementById('bulk-apply-btn');
+    btn.disabled = true; btn.textContent = 'Applying…';
+    status.className = ''; status.textContent = '';
+
+    const payload = { column, mode, value };
+    if (scope === 'selected') {
+        payload.appids = Array.from(_selectedIds);
+    } else {
+        payload.filter_tree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
+    }
+
+    try {
+        const res = await fetch('/api/bulk-edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.className = 'bulk-status-success';
+            status.textContent = `✔ Updated ${data.updated} game${data.updated !== 1 ? 's' : ''}.`;
+            // Exit select mode and clear selection after successful apply
+            if (_selectMode) toggleSelectMode();
+            else { _selectedIds.clear(); document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected')); }
+            setTimeout(() => { closeBulkEditModal(); window.location.reload(); }, 900);
+        } else {
+            status.className = 'bulk-status-error';
+            status.textContent = '✘ ' + data.message;
+        }
+    } catch (e) {
+        status.className = 'bulk-status-error';
+        status.textContent = '✘ Network error.';
+    } finally {
+        btn.disabled = false; btn.textContent = 'Apply';
+    }
+}
+
+</script>
+
+<!-- Bulk Edit Modal -->
+<div id="bulk-edit-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:500px;">
+        <h2 style="margin:0 0 14px; color:#fff;">Bulk Edit</h2>
+
+        <!-- Scope toggle -->
+        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
+                   id="scope-filtered-label">
+                <input type="radio" name="bulk-scope" id="scope-filtered" value="filtered"
+                       onchange="onBulkScopeChange()" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white; font-size:0.85rem;">All filtered games</strong><br>
+                    <small id="bulk-filtered-info" style="color:#8f98a0; font-size:0.75rem;"></small>
+                </span>
+            </label>
+            <div style="width:1px; background:#2a475e;"></div>
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
+                   id="scope-selected-label">
+                <input type="radio" name="bulk-scope" id="scope-selected" value="selected"
+                       onchange="onBulkScopeChange()" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
+                    <small id="bulk-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
+                </span>
+            </label>
+        </div>
+        <p style="color:#8f98a0; font-size:0.78rem; margin: -8px 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
+            To select specific games, close this modal, press <strong style="color:#c2c8cc;">SELECT</strong> in the toolbar, click games to toggle, then reopen Bulk Edit.
+        </p>
+
+        <label>Column to Edit</label>
+        <select id="bulk-column" style="margin-bottom:12px;" onchange="onBulkColumnChange()">
+            <option value="completion_status">Completion Status</option>
+            <option value="tags">Tags</option>
+            <option value="groups">Groups</option>
+            <option value="developers">Developers</option>
+            <option value="publishers">Publishers</option>
+            <option value="release_date">Release Date</option>
+            <option value="review_score">Review Score</option>
+            <option value="review_percentage">Review %</option>
+            <option value="weighted_percentage">Weighted %</option>
+            <option value="total_reviews">Total Reviews</option>
+            <option value="positive_reviews">Positive Reviews</option>
+            <option value="playtime_forever">Playtime (Mins)</option>
+            <option value="date_added">Date Added</option>
+            <option value="installed">Installed (0/1)</option>
+            <option value="art_source">Art Source</option>
+        </select>
+
+        <label>Edit Mode</label>
+        <select id="bulk-mode" style="margin-bottom:4px;" onchange="onBulkModeChange()">
+            <option value="replace">Replace — overwrite the entire column value</option>
+            <option value="append">Append — add to comma-separated list</option>
+            <option value="remove">Remove — remove from comma-separated list</option>
+        </select>
+        <small id="bulk-mode-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:12px;"></small>
+
+        <label>Value</label>
+        <input type="text" id="bulk-value" placeholder="Enter value…" style="margin-bottom:4px;">
+        <small id="bulk-value-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:4px;"></small>
+
+        <div id="bulk-warning" style="display:none; background:rgba(193,120,0,0.12); border:1px solid #c97c00; border-radius:5px; padding:8px 12px; font-size:0.8rem; color:#c97c00; margin-bottom:8px;"></div>
+        <div id="bulk-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
+
+        <div style="display:flex; gap:12px;">
+            <button id="bulk-apply-btn" class="btn-save" style="flex:2; margin:0;" onclick="runBulkEdit()">Apply</button>
+            <button class="nav-btn" style="flex:1; height:auto; padding:12px;" onclick="closeBulkEditModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.bulk-status-success { color: #5c7e10; }
+.bulk-status-error   { color: #ff4d4d; }
+input[name="bulk-scope"]:checked + span strong { color: var(--steam-focus) !important; }
+</style>
+
+{% endblock %}

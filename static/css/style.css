@@ -1,0 +1,238 @@
+:root {
+    --steam-blue: #1b2838;
+    --steam-input: #101822;
+    --steam-text: #c7d5e0;
+    --steam-focus: #66c0f4;
+    --accent-green: #5c7e10;
+}
+
+html {
+    margin-right: calc(100vw - 100%);
+    overflow-x: hidden;
+}
+
+body {
+    background-color: var(--steam-blue);
+    background-image: url('/static/img//backgrounds/background.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    color: var(--steam-text);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.2s ease-in;
+}
+
+body.loaded {
+    opacity: 1;
+}
+
+/* pywebview/WebKit has user-select:none globally by default.
+   Enable it only where text selection is actually useful. */
+p, h1, h2, h3, h4, h5, h6, li, td, th, label, small,
+pre, code, kbd, blockquote,
+.modal-content, .tool-card,
+.fm-row, .shelf-sql-panel, .fmg-container {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* Standardization for all inputs (Modal & Maintenance) */
+input, textarea {
+    background: var(--steam-input);
+    border: 1px solid #2a475e;
+    color: white;
+    padding: 10px;
+    border-radius: 4px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* All selects get dark background + visible chevron */
+select {
+    background-color: #333;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238f98a0' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    border: 1px solid #2a475e;
+    color: white;
+    padding: 10px 32px 10px 10px;
+    border-radius: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+
+.container {
+    height: 100%;
+    margin: 0;
+    padding: 6vh 1vw 1vh 1vw;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+/* Fallback for missing images */
+.img-placeholder {
+    background: linear-gradient(135deg, #2a475e 0%, #1b2838 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--steam-focus);
+    color: var(--steam-focus);
+}
+
+/* Navigation Styles from original Library page */
+.nav-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 5vh;
+    padding: 0 40px;
+    background: rgba(23, 26, 33, 0.8);
+    border-bottom: 1px solid var(--border-blue);
+    box-sizing: border-box;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    z-index: 1000;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.nav-links a {
+    color: #8f98a0;
+    text-decoration: none;
+    font-weight: bold;
+    margin-right: 30px;
+    transition: 0.2s;
+    font-size: clamp(0.5rem, 1.5vw, 1.2rem);
+    letter-spacing: 1px;
+    cursor: pointer;
+}
+
+.nav-links a:hover {
+    color: var(--text-blue);
+}
+
+.nav-links a.active {
+    color: white;
+    border-bottom-color: var(--steam-focus);
+}
+
+/* 2/3 Aspect Ratio Grid for Game Covers */
+.library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+}
+
+.game-card {
+    aspect-ratio: 2 / 3;
+    background: var(--steam-input);
+    border: 1px solid #2a475e;
+    overflow: hidden;
+    position: relative;
+    border-radius: 4px;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--steam-blue);
+    padding: 30px;
+    border: 1px solid var(--steam-focus);
+    border-radius: 8px;
+    width: 400px;
+    box-shadow: 0 0 20px rgba(102, 192, 244, 0.2);
+}
+
+.hint-link {
+    font-size: 0.8rem;
+    color: var(--steam-focus);
+    text-decoration: none;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.nav-btn {
+    background: var(--steam-blue);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 0 1.2vw;
+    font-size: clamp(0.5rem, 1.1vw, 1rem);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Segoe UI', sans-serif;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 3.2vh;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.nav-btn:hover {
+    background: var(--steam-focus);
+    color: #1b2838;
+    box-shadow: 0 0 10px rgba(102, 192, 244, 0.4);
+}
+
+.nav-btn:active {
+    background: #4ea9e0;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+    transform: translateY(1px);
+}
+
+.btn-save {
+    background: var(--accent-green);
+    color: white;
+    border: none;
+    padding: 12px;
+    width: 100%;
+    margin-top: 20px;
+    cursor: pointer;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+.nav-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #2a2e33;
+}
+
+.btn-save:hover {
+    filter: brightness(1.2);
+}
+
+.exit-btn {
+    border-color: #a32a2a !important;
+    color: #cccccc !important;
+    margin-left: auto;
+    background-color: #a32a2a !important;
+}
+
+.exit-btn:hover {
+    color: white !important;
+}

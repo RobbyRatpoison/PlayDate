@@ -1,0 +1,41 @@
+# --- Personal & Sensitive Data ---
+config.json
+
+# --- Local Application State ---
+state.json
+
+# --- Databases ---
+*.db
+library.db
+
+# --- Logs ---
+*.log
+
+# --- Media Assets ---
+/static/img/library/
+/static/img/backgrounds/
+
+# --- Python Environment ---
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+
+# --- PyInstaller Build Artifacts ---
+dist/
+build/
+*.spec.bak
+
+# --- Inno Setup Output ---
+installer/
+
+# --- Generated at Install Time ---
+playdate-launch.sh
+playdate-launch.bat
+.pip-constraints.txt
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini

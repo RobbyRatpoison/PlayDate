@@ -1,0 +1,1062 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .container { padding: 0; overflow: hidden; height: 100vh; }
+
+    .home-showcase {
+        display: flex; flex-direction: column; gap: 0.5vh;
+        padding: 5.5vh 0.8vw 0.3vh;
+        height: 100vh; box-sizing: border-box; overflow: hidden;
+    }
+
+    /* ── Single shelf ── */
+    .shelf {
+        background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 4px; padding: 6px 10px 8px;
+        display: flex; flex-direction: column;
+        overflow: hidden; min-height: 0; flex-shrink: 0; position: relative;
+    }
+    .shelf-label {
+        font-size: 1.1vh; font-weight: bold; letter-spacing: 1px;
+        color: var(--steam-focus); text-align: center; margin-bottom: 4px; flex-shrink: 0;
+    }
+    .shelf-grid {
+        display: flex; flex-direction: row; flex-wrap: nowrap;
+        justify-content: center; gap: 6px;
+        flex: 1; min-height: 0; overflow: hidden;
+    }
+    .shelf-capsule-wrap {
+        flex-shrink: 0; height: 100%; aspect-ratio: 2/3;
+        overflow: hidden; border-radius: 8px; cursor: pointer;
+    }
+    .shelf-capsule {
+        width: 100%; height: 100%; object-fit: cover; border-radius: 4px; display: block;
+        transform: scale(0.95); transition: transform 0.15s ease;
+    }
+    .shelf-capsule:hover { transform: scale(1.0); }
+    .shuffle-link { text-decoration: none; flex-shrink: 0; cursor: pointer; }
+    .shuffle-link .shelf-label { cursor: pointer; }
+    .shuffle-link .shelf-label:hover { color: white; }
+    .shuffle-link .shelf-label::after { content: ' ↻'; opacity: 0; transition: opacity 0.15s; font-size: 0.8em; }
+    .shuffle-link .shelf-label:hover::after { opacity: 0.6; }
+
+    /* ── Clock widget ── */
+    .clock-widget {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; height: 100%; flex: 1;
+    }
+    .clock-time {
+        font-size: clamp(1rem,3.5vw,4.5rem); font-weight: bold;
+        line-height: 1; font-family: 'Courier New',Courier,monospace; color: white;
+    }
+    .clock-date {
+        font-size: clamp(0.5rem,1vw,1.2rem); opacity: 0.6; margin-top: 6px;
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+
+    /* ── Completion pie widget ── */
+    .completion-widget {
+        display: flex; align-items: center; justify-content: center;
+        height: 100%; flex: 1; padding: 4px;
+    }
+    .completion-pie-wrap {
+        flex-shrink: 0; position: relative;
+        height: 100%; aspect-ratio: 1/1; max-height: 100%;
+    }
+    .completion-pie-wrap canvas { width: 100% !important; height: 100% !important; cursor: default; }
+    .pie-tooltip {
+        position: fixed; pointer-events: none;
+        background: rgba(14,25,35,0.95); border: 1px solid rgba(102,192,244,0.4);
+        border-radius: 4px; padding: 5px 10px;
+        font-size: 0.8rem; color: white; white-space: nowrap;
+        z-index: 300; display: none;
+    }
+    .pie-tooltip-swatch {
+        display: inline-block; width: 9px; height: 9px;
+        border-radius: 2px; margin-right: 6px; vertical-align: middle;
+    }
+    .shelf-split-row {
+        display: flex; flex-direction: row; gap: 0.4vw; flex-shrink: 0;
+    }
+    .shelf-split-side {
+        display: flex; flex-direction: column;
+        background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 4px; padding: 6px 10px 8px;
+        overflow: hidden; min-width: 0; position: relative; flex-shrink: 0;
+    }
+
+    /* ══════════ EDIT MODE ══════════ */
+    body.edit-mode .container { overflow-y: auto; height: auto; }
+    body.edit-mode .home-showcase { overflow: visible; height: auto; min-height: calc(100vh - 5.5vh); }
+    body.edit-mode .shelf,
+    body.edit-mode .shelf-split-side { border: 2px dashed rgba(102,192,244,0.4) !important; }
+    body.edit-mode .shelf-split-row  { border: 2px dashed rgba(102,192,244,0.15); border-radius: 6px; padding: 4px; gap: 4px; }
+
+    .edit-toolbar {
+        display: none; position: fixed; top: 5vh; left: 0; right: 0;
+        background: rgba(14,25,35,0.97); border-bottom: 1px solid var(--steam-focus);
+        padding: 6px 16px; z-index: 500; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    body.edit-mode .edit-toolbar { display: flex; }
+    body.edit-mode .home-showcase { padding-top: calc(5.5vh + 46px); }
+    .edit-toolbar-title { color: var(--steam-focus); font-weight: bold; font-size: 0.85rem; letter-spacing: 1px; text-transform: uppercase; margin-right: 8px; }
+
+    .shelf-edit-bar {
+        display: none; position: absolute; top: 0; left: 0; right: 0;
+        background: rgba(14,25,35,0.95); border-bottom: 1px solid rgba(102,192,244,0.3);
+        padding: 4px 8px; z-index: 100; align-items: center; gap: 5px; flex-wrap: wrap;
+        border-radius: 4px 4px 0 0;
+    }
+    body.edit-mode .shelf-edit-bar { display: flex; }
+    .shelf-edit-bar input[type="text"] {
+        background: #0e1923; border: 1px solid #2a3f55; color: white;
+        padding: 3px 8px; border-radius: 4px; font-size: 0.78rem; width: 115px;
+    }
+    .shelf-edit-bar select {
+        background-color: #0e1923; border: 1px solid #2a3f55; color: #c2c8cc;
+        padding: 3px 24px 3px 5px; border-radius: 4px; font-size: 0.78rem;
+    }
+    .shelf-edit-bar label { color: #8f98a0; font-size: 0.72rem; white-space: nowrap; }
+    .shelf-edit-bar input[type="number"] {
+        background: #0e1923; border: 1px solid #2a3f55; color: white;
+        padding: 3px 5px; border-radius: 4px; font-size: 0.78rem; width: 50px;
+    }
+    .shelf-edit-bar input[type="checkbox"] { width: auto; margin: 0; }
+    .shelf-edit-mini-btn {
+        background: none; border: 1px solid #2a3f55; color: #8f98a0;
+        border-radius: 3px; padding: 2px 7px; font-size: 0.72rem;
+        cursor: pointer; white-space: nowrap; transition: all 0.15s;
+    }
+    .shelf-edit-mini-btn:hover { border-color: var(--steam-focus); color: var(--steam-focus); }
+    .shelf-edit-mini-btn.danger:hover { border-color: #a32a2a; color: #ff8080; }
+    .shelf-edit-mini-btn.drag-handle { cursor: grab; }
+    .edit-sep { width: 1px; height: 16px; background: #2a3f55; margin: 0 2px; flex-shrink: 0; }
+
+    .shelf-sql-panel {
+        display: none; position: absolute; top: auto; left: 0; right: 0;
+        background: rgba(10,18,28,0.98); border: 1px solid #2a3f55; border-top: none;
+        padding: 8px 10px; z-index: 99; border-radius: 0 0 4px 4px;
+    }
+    .shelf-sql-panel.open { display: block; }
+    .shelf-sql-panel textarea {
+        width: 100%; box-sizing: border-box; background: #0e1923; border: 1px solid #2a3f55;
+        color: #c2c8cc; font-family: monospace; font-size: 0.78rem;
+        padding: 6px 8px; border-radius: 4px; resize: vertical; min-height: 50px; outline: none;
+    }
+    .shelf-sql-panel textarea:focus { border-color: var(--steam-focus); }
+
+    /* Split picker modal */
+    #split-picker {
+        display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        background: #1a2332; border: 1px solid var(--steam-focus);
+        border-radius: 8px; padding: 20px 24px; z-index: 600; width: 340px;
+        box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    }
+    #split-picker h3 { color: white; margin: 0 0 6px; font-size: 1rem; }
+    #split-picker p  { color: #8f98a0; font-size: 0.8rem; margin: 0 0 12px; }
+    #split-picker-list { list-style: none; padding: 0; margin: 0 0 14px; max-height: 220px; overflow-y: auto; }
+    #split-picker-list li,
+    #split-picker-pos-list li {
+        padding: 8px 12px; background: #0e1923; border: 1px solid #2a3f55;
+        border-radius: 4px; margin-bottom: 6px; cursor: pointer; color: #c2c8cc; font-size: 0.85rem;
+        transition: border-color 0.15s;
+    }
+    #split-picker-list li:hover { border-color: var(--steam-focus); color: white; }
+
+    #dedup-panel {
+        display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        background: #1a2332; border: 1px solid var(--steam-focus);
+        border-radius: 8px; padding: 20px 24px; z-index: 600; width: 360px;
+        box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    }
+    #dedup-panel h3 { color: white; margin: 0 0 6px; font-size: 1rem; }
+    #dedup-panel p  { color: #8f98a0; font-size: 0.8rem; margin: 0 0 14px; }
+    #dedup-list { list-style: none; padding: 0; margin: 0 0 14px; }
+    #dedup-list li {
+        display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+        background: #0e1923; border: 1px solid #2a3f55; border-radius: 4px;
+        margin-bottom: 6px; cursor: grab; color: #c2c8cc; font-size: 0.85rem; user-select: none;
+    }
+    #dedup-list li.drag-over { border-color: var(--steam-focus); background: #1b3a52; }
+    .dedup-no-dedup { color: #555; font-size: 0.75rem; margin-left: auto; }
+    #dedup-list li { justify-content: space-between; }
+    #dedup-list .dedup-row-left { display:flex; align-items:center; gap:8px; }
+    #dedup-list .dedup-toggle { display:flex; align-items:center; gap:5px; font-size:0.75rem; color:#8f98a0; flex-shrink:0; cursor:pointer; user-select:none; }
+    #dedup-list .dedup-toggle input { width:auto; margin:0; cursor:pointer; }
+
+    .add-shelf-btn {
+        border: 2px dashed rgba(102,192,244,0.3); background: transparent;
+        color: rgba(102,192,244,0.5); border-radius: 6px; padding: 10px;
+        cursor: pointer; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px;
+        transition: all 0.2s; width: 100%; margin-top: 4px; display: none;
+    }
+    body.edit-mode .add-shelf-btn { display: block; }
+    .add-shelf-btn:hover { border-color: var(--steam-focus); color: var(--steam-focus); }
+
+    .shelf.dragging, .shelf-split-row.dragging { opacity: 0.4; }
+    .shelf.drag-over, .shelf-split-row.drag-over {
+        border-color: var(--steam-focus) !important;
+        background: rgba(102,192,244,0.08) !important;
+    }
+    .shelf[data-visible="false"], .shelf-split-side[data-visible="false"] { opacity: 0.35; }
+    body.dragging-shelf, body.dragging-shelf * { cursor: grabbing !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% macro completion_pie_widget() %}
+<div class="completion-widget">
+    <div class="completion-pie-wrap">
+        <canvas class="completion-pie-canvas"></canvas>
+    </div>
+</div>
+{% endmacro %}
+
+{% if edit_mode %}<script>document.body.classList.add('edit-mode');</script>{% endif %}
+
+<div class="edit-toolbar">
+    <span class="edit-toolbar-title">✏ EDITING HOME LAYOUT</span>
+    <button class="nav-btn" onclick="saveLayout()" style="border-color:#5c7e10;background:#1a2e08;color:#8fc040;">💾 SAVE LAYOUT</button>
+    <button class="nav-btn" onclick="openDedupPanel()">⇅ SHELF PRIORITY ORDER</button>
+    <button class="nav-btn" onclick="addNewShelf()">＋ ADD SHELF</button>
+    <button class="nav-btn" onclick="resetLayout()" style="border-color:#a32a2a;color:#ff8080;">↺ RESET DEFAULTS</button>
+    <button class="nav-btn" onclick="exitEditMode()" style="margin-left:auto;">✕ EXIT EDITOR</button>
+</div>
+
+<div id="pie-tooltip" class="pie-tooltip"></div>
+
+<div class="home-showcase" id="shelf-container">
+{% for row in rows %}
+    {% if row.type == 'split' %}
+    {# ── Split row ── #}
+    <div class="shelf-split-row"
+         style="height:{{ row.row_height }}vh;"
+         data-split-group="{{ row.shelves[0].split_group }}"
+         draggable="false">
+        {% for shelf in row.shelves %}
+        <div class="shelf-split-side"
+             style="flex:{{ shelf.col_width or 2 }};"
+             data-shelf-id="{{ shelf.id }}"
+             data-visible="{{ shelf.visible | lower }}">
+            <div class="shelf-edit-bar" data-for="{{ shelf.id }}"></div>
+            <div class="shelf-sql-panel" id="sql-panel-{{ shelf.id }}">
+                <textarea id="sql-input-{{ shelf.id }}" placeholder="Custom SQL WHERE clause…  e.g. tags LIKE '%RPG%'">{{ shelf.custom_sql or '' }}</textarea>
+                <div style="display:flex;gap:6px;margin-top:4px;">
+                    <button class="shelf-edit-mini-btn" onclick="applyPreset('{{ shelf.id }}')">✓ Apply SQL</button>
+                    <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('{{ shelf.id }}')">Cancel</button>
+                </div>
+            </div>
+            {% if shelf.preset == 'clock' %}
+            <div class="clock-widget">
+                <div class="clock-time">00:00</div>
+                <div class="clock-date">Loading…</div>
+            </div>
+            {% elif shelf.preset == 'completion_pie' %}
+            {{ completion_pie_widget() }}
+            {% else %}
+            {% if shelf.sort_col == 'RANDOM()' %}
+            <span class="shuffle-link" onclick="window.location.href='/'">
+                <div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>
+            </span>
+            {% else %}
+            <div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>
+            {% endif %}
+            <div class="shelf-grid">
+                {% for game in shelf.games %}
+                <div class="shelf-capsule-wrap" onclick="launchGame({{ game.appid }})">
+                    <img src="/static/img/library/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" title="{{ game.name }}"
+                         onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    {# ── Single shelf ── #}
+    {% set shelf = row.shelf %}
+    <div class="shelf"
+         style="height:{{ shelf.row_height }}vh;"
+         data-shelf-id="{{ shelf.id }}"
+         data-visible="{{ shelf.visible | lower }}"
+         draggable="false">
+        <div class="shelf-edit-bar" data-for="{{ shelf.id }}"></div>
+        <div class="shelf-sql-panel" id="sql-panel-{{ shelf.id }}">
+            <textarea id="sql-input-{{ shelf.id }}" placeholder="Custom SQL WHERE clause…  e.g. tags LIKE '%RPG%'">{{ shelf.custom_sql or '' }}</textarea>
+            <div style="display:flex;gap:6px;margin-top:4px;">
+                <button class="shelf-edit-mini-btn" onclick="applyPreset('{{ shelf.id }}')">✓ Apply SQL</button>
+                <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('{{ shelf.id }}')">Cancel</button>
+            </div>
+        </div>
+        {% if shelf.preset == 'clock' %}
+        <div class="clock-widget">
+            <div class="clock-time">00:00</div>
+            <div class="clock-date">Loading…</div>
+        </div>
+        {% elif shelf.preset == 'completion_pie' %}
+        {{ completion_pie_widget() }}
+        {% elif shelf.sort_col == 'RANDOM()' %}
+        <span class="shuffle-link" onclick="window.location.href='/'">
+            <div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>
+        </span>
+        <div class="shelf-grid">
+            {% for game in shelf.games %}
+            <div class="shelf-capsule-wrap" onclick="launchGame({{ game.appid }})">
+                <img src="/static/img/library/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" title="{{ game.name }}"
+                     onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>
+        <div class="shelf-grid">
+            {% for game in shelf.games %}
+            <div class="shelf-capsule-wrap" onclick="launchGame({{ game.appid }})">
+                <img src="/static/img/library/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" title="{{ game.name }}"
+                     onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+{% endfor %}
+    <button class="add-shelf-btn" onclick="addNewShelf()">＋ ADD SHELF</button>
+</div>
+
+<!-- Split picker modal -->
+<div id="split-picker">
+    <h3 id="split-picker-title">⊞ Split Row With…</h3>
+    <p id="split-picker-desc"></p>
+    <!-- Step 1: pick shelf -->
+    <div id="split-picker-shelf-step">
+        <ul id="split-picker-list"></ul>
+    </div>
+    <!-- Step 2: pick position -->
+    <div id="split-picker-pos-step" style="display:none;">
+        <p id="split-picker-pos-desc" style="color:#c2c8cc;font-size:0.85rem;margin:0 0 10px;"></p>
+        <ul id="split-picker-pos-list"></ul>
+        <button class="shelf-edit-mini-btn" style="margin-top:4px;" onclick="openSplitPicker(_splitPickerFor)">← Back</button>
+    </div>
+    <button class="nav-btn" style="width:100%;margin-top:8px;" onclick="closeSplitPicker()">Cancel</button>
+</div>
+<div id="split-picker-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:599;" onclick="closeSplitPicker()"></div>
+
+<!-- Shelf priority panel -->
+<div id="dedup-panel">
+    <h3>Shelf Priority Order</h3>
+    <p>Drag to set which shelves claim games first when the same game qualifies for multiple shelves. Toggle the switch to exclude a shelf from this logic entirely.</p>
+    <ul id="dedup-list"></ul>
+    <div style="display:flex;gap:8px;">
+        <button class="nav-btn" style="flex:1;" onclick="saveDedupOrder()">Apply</button>
+        <button class="nav-btn" style="flex:1;" onclick="closeDedupPanel()">Cancel</button>
+    </div>
+</div>
+<div id="dedup-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:599;" onclick="closeDedupPanel()"></div>
+
+<script>
+let _shelves = {{ all_shelves_config | tojson }};
+const _builtinFilters = {{ filter_options | tojson }};
+var _savedFilters   = {{ saved_filters | tojson }};
+// Merged filter list for the dropdown: built-ins first, then saved
+const _filters = {
+    ..._builtinFilters,
+    ...Object.fromEntries(Object.entries(_savedFilters).map(([k]) => [k, {label: k, where: null}]))
+};
+const _sortCols = {{ sort_columns | tojson }};
+const _completionCounts = {{ completion_counts | tojson }};
+
+const _PIE_COLORS = {
+    "Completed":    "#5BC0DE",
+    "Beaten":       "#5CB85C",
+    "Unfinished":   "#F0AD4E",
+    "Won't Play":   "#D9534F",
+    "Never Played": "#EEEEEE",
+};
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+function updateClock() {
+    const now = new Date();
+    const t = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    const d = now.toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
+    document.querySelectorAll('.clock-time').forEach(el => el.textContent = t);
+    document.querySelectorAll('.clock-date').forEach(el => el.textContent = d);
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ── Completion pie ────────────────────────────────────────────────────────────
+const _pieTooltip = document.getElementById('pie-tooltip');
+const _pieSliceMap = new WeakMap(); // canvas -> [{status, color, startAngle, endAngle}]
+
+function drawCompletionPies() {
+    document.querySelectorAll('.completion-pie-canvas').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const size = canvas.offsetWidth || 120;
+        canvas.width = size * devicePixelRatio;
+        canvas.height = size * devicePixelRatio;
+        ctx.scale(devicePixelRatio, devicePixelRatio);
+
+        const order = ["Never Played", "Unfinished", "Won't Play", "Beaten", "Completed"];
+        const total = order.reduce((s, k) => s + (_completionCounts[k] || 0), 0);
+        if (!total) return;
+
+        const cx = size / 2, cy = size / 2, r = size / 2 - 2;
+        let angle = -Math.PI / 2;
+        const gap = 0.018;
+        const slices = [];
+
+        order.forEach(status => {
+            const count = _completionCounts[status] || 0;
+            if (!count) return;
+            const slice = (count / total) * (Math.PI * 2) - gap;
+            const start = angle + gap / 2;
+            const end = start + slice;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, r, start, end);
+            ctx.closePath();
+            ctx.fillStyle = _PIE_COLORS[status] || '#555';
+            ctx.fill();
+            slices.push({ status, color: _PIE_COLORS[status] || '#555', start, end, count });
+            angle += slice + gap;
+        });
+
+        _pieSliceMap.set(canvas, slices);
+
+        // Wire hover only once
+        if (!canvas._pieHoverBound) {
+            canvas._pieHoverBound = true;
+            canvas.addEventListener('mousemove', e => {
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                const displaySize = rect.width;
+                const dcx = displaySize / 2, dcy = displaySize / 2;
+                const dx = mx - dcx, dy = my - dcy;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                const dr = displaySize / 2 - 2;
+                if (dist > dr) { _pieTooltip.style.display = 'none'; return; }
+                let a = Math.atan2(dy, dx);
+                // Normalise to same range as our slice angles (starting at -π/2)
+                // Slices go from -π/2 increasing, potentially wrapping past π
+                // Map a into [startAngle_of_first_slice, startAngle_of_first_slice + 2π)
+                const sliceData = _pieSliceMap.get(canvas);
+                if (!sliceData) return;
+                const base = sliceData[0].start;
+                while (a < base) a += Math.PI * 2;
+                while (a >= base + Math.PI * 2) a -= Math.PI * 2;
+                const hit = sliceData.find(s => a >= s.start && a <= s.end);
+                if (hit) {
+                    _pieTooltip.innerHTML = `<span class="pie-tooltip-swatch" style="background:${hit.color}"></span>${hit.status} — ${hit.count}`;
+                    _pieTooltip.style.display = 'block';
+                    _pieTooltip.style.left = (e.clientX + 14) + 'px';
+                    _pieTooltip.style.top  = (e.clientY - 10) + 'px';
+                } else {
+                    _pieTooltip.style.display = 'none';
+                }
+            });
+            canvas.addEventListener('mouseleave', () => { _pieTooltip.style.display = 'none'; });
+        }
+    });
+}
+window.addEventListener('load', () => requestAnimationFrame(drawCompletionPies));
+function trimGrid(grid) {
+    const caps = Array.from(grid.querySelectorAll('.shelf-capsule-wrap'));
+    if (!caps.length) return;
+    // Temporarily show all to get true widths
+    caps.forEach(c => c.style.display = '');
+    const gw = grid.clientWidth;
+    const cw = caps[0].getBoundingClientRect().width;
+    if (!cw || !gw) return;
+    const max = Math.floor((gw + 6) / (cw + 6));
+    caps.forEach((c, i) => c.style.display = i < max ? '' : 'none');
+}
+
+function trimShelfToFit() {
+    document.querySelectorAll('.shelf-grid').forEach(trimGrid);
+}
+
+// Use ResizeObserver so each grid re-trims whenever its container resizes
+// (handles flex reflow when split proportions change, window resize, etc.)
+if (window.ResizeObserver) {
+    const _trimObserver = new ResizeObserver(entries => {
+        entries.forEach(e => {
+            const grid = e.target.querySelector('.shelf-grid');
+            if (grid) trimGrid(grid);
+            const pie = e.target.querySelector('.completion-pie-canvas');
+            if (pie) requestAnimationFrame(drawCompletionPies);
+        });
+    });
+    // Observe after DOM is ready
+    function _observeShelfContainers() {
+        document.querySelectorAll('.shelf, .shelf-split-side').forEach(el => {
+            _trimObserver.observe(el);
+        });
+    }
+    window.addEventListener('load', () => requestAnimationFrame(_observeShelfContainers));
+} else {
+    // Fallback: rAF on load + resize
+    window.addEventListener('load', () => requestAnimationFrame(trimShelfToFit));
+    window.addEventListener('resize', trimShelfToFit);
+}
+
+// ── Edit mode ─────────────────────────────────────────────────────────────────
+function enterEditMode() {
+    document.body.classList.add('edit-mode');
+    buildAllEditBars(); initDragAndDrop();
+    history.replaceState(null,'','/?edit=1');
+}
+function exitEditMode() {
+    document.body.classList.remove('edit-mode');
+    history.replaceState(null,'','/');
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'e' || e.key === 'E') {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+        if (!document.body.classList.contains('edit-mode')) enterEditMode();
+    }
+});
+{% if edit_mode %}
+document.addEventListener('DOMContentLoaded', () => { buildAllEditBars(); initDragAndDrop(); });
+{% endif %}
+
+// ── Build edit bars ───────────────────────────────────────────────────────────
+function buildAllEditBars() {
+    document.querySelectorAll('[data-shelf-id]').forEach(el => {
+        const sid = el.dataset.shelfId;
+        const shelf = _shelves.find(s => s.id === sid);
+        if (!shelf) return;
+        const bar = el.querySelector(`.shelf-edit-bar[data-for="${sid}"]`);
+        if (!bar) return;
+        bar.innerHTML = buildEditBarHTML(shelf, el);
+    });
+}
+
+function buildEditBarHTML(shelf, containerEl) {
+    const sid = shelf.id;
+    const isSide = containerEl.classList.contains('shelf-split-side');
+    const splitRow = containerEl.closest('.shelf-split-row');
+    const isClock = shelf.preset === 'clock' || shelf.preset === 'completion_pie'
+                 || shelf.filter_key === 'clock' || shelf.filter_key === 'completion_pie';
+
+    // Height: show on single shelves; on split rows show only on the first side
+    const isFirstInSplit = isSide && splitRow &&
+        splitRow.querySelector('[data-shelf-id]') === containerEl;
+    const heightHTML = (!isSide || isFirstInSplit) ? `
+        <label>Height&nbsp;vh</label>
+        <input draggable="false" type="number" min="5" max="90" value="${shelf.row_height||25}"
+            onchange="updateShelfProp('${sid}','row_height',parseFloat(this.value));
+                      (this.closest('.shelf-split-row')||this.closest('.shelf')).style.height=this.value+'vh';">` : '';
+
+    // Col width: only inside split rows
+    const colW = isSide ? `
+        <label>Col&nbsp;flex</label>
+        <input draggable="false" type="number" min="0.5" max="20" step="0.5" value="${shelf.col_width||2}"
+            onchange="updateShelfProp('${sid}','col_width',parseFloat(this.value));
+                      this.closest('.shelf-split-side').style.flex=this.value;">` : '';
+
+    // Filter selector (always shown in edit bar)
+    const isCustom = !!shelf.custom_sql;
+    const activeFilter = shelf.filter_key || shelf.preset || 'all_games';
+    const builtinKeys = ['all_games', 'installed', 'not_installed', 'clock', 'completion_pie'];
+    const savedKeys = Object.keys(_savedFilters);
+    const builtinOpts = builtinKeys
+        .filter(k => _builtinFilters[k])
+        .map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${_builtinFilters[k].label}</option>`)
+        .join('');
+    const savedOpts = savedKeys.length
+        ? `<option disabled>──────────</option>` +
+          savedKeys.map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${k}</option>`).join('')
+        : '';
+    const filterHTML = `
+        <div class="edit-sep"></div>
+        <label>Filter</label>
+        <select draggable="false" style="max-width:130px;" onchange="applyFilterInline('${sid}', this.value)">
+            <option value="__custom__"${isCustom?' selected':''} style="color:#F0AD4E;">✎ Custom SQL</option>
+            ${builtinOpts}
+            ${savedOpts}
+        </select>`;
+
+    // Sort: hidden for widget presets
+    const sortOpts = Object.entries(_sortCols).map(([k,v]) =>
+        `<option value="${k}"${shelf.sort_col===k?' selected':''}>${v}</option>`
+    ).join('');
+    const isRandom = shelf.sort_col === 'RANDOM()';
+    const sortHTML = isClock ? '' : `
+        <div class="edit-sep"></div>
+        <label>Sort&nbsp;by</label>
+        <select draggable="false" style="max-width:110px;" onchange="updateShelfProp('${sid}','sort_col',this.value||null);saveAndReload();">
+            ${sortOpts}
+        </select>
+        ${isRandom ? '' : `<select draggable="false" style="width:85px;" onchange="updateShelfProp('${sid}','sort_dir',this.value);saveAndReload();">
+            <option value="ASC"${shelf.sort_dir==='ASC'?' selected':''}>▲ Asc</option>
+            <option value="DESC"${shelf.sort_dir!=='ASC'?' selected':''}>▼ Desc</option>
+        </select>`}`;
+
+    // Split/Unsplit button — max 3 per row
+    const inSplit = !!shelf.split_group;
+    const groupSize = inSplit ? _shelves.filter(s => s.split_group === shelf.split_group).length : 1;
+    const atMax = groupSize >= 3;
+    const splitBtn = inSplit
+        ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="unsplitShelf('${sid}')">⊟ Remove from row</button>`
+            + (!atMax ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="openSplitPicker('${sid}')">⊞ Add to row…</button>` : '')
+        : `<button draggable="false" class="shelf-edit-mini-btn" onclick="openSplitPicker('${sid}')">⊞ Split with…</button>`;
+
+    // Max (hidden for clock)
+    const limitHTML = isClock ? '' : `
+        <div class="edit-sep"></div>
+        <label>Max</label>
+        <input draggable="false" type="number" min="1" max="200" value="${shelf.limit||10}"
+            onchange="updateShelfProp('${sid}','limit',parseInt(this.value));">`;
+
+    return `
+        <span class="shelf-edit-mini-btn drag-handle" title="Drag to reorder">⠿</span>
+        <input type="text" draggable="false" value="${shelf.label}" title="Label"
+            onchange="updateShelfProp('${sid}','label',this.value);
+                      const le=document.getElementById('label-${sid}'); if(le) le.textContent=this.value;">
+        ${heightHTML}
+        ${colW}
+        ${filterHTML}
+        ${sortHTML}
+        ${limitHTML}
+        <div class="edit-sep"></div>
+        <button draggable="false" class="shelf-edit-mini-btn" onclick="toggleSqlPanel('${sid}')">⌨ Custom SQL</button>
+        ${splitBtn}
+        <button draggable="false" class="shelf-edit-mini-btn" onclick="toggleShelfVisibility('${sid}')">${shelf.visible?'👁 Hide':'👁 Show'}</button>
+        <button draggable="false" class="shelf-edit-mini-btn danger" onclick="removeShelf('${sid}')">✕ Remove</button>
+    `;
+}
+
+// ── Shelf state ───────────────────────────────────────────────────────────────
+function updateShelfProp(id, key, value) {
+    const s = _shelves.find(s => s.id === id);
+    if (s) s[key] = value;
+}
+
+function toggleShelfVisibility(id) {
+    const s = _shelves.find(s => s.id === id);
+    if (!s) return;
+    s.visible = !s.visible;
+    const el = document.querySelector(`[data-shelf-id="${id}"]`);
+    if (el) el.dataset.visible = String(s.visible);
+    buildAllEditBars();
+}
+
+function removeShelf(id) {
+    if (!confirm('Remove this shelf? You can add it back or reset to defaults.')) return;
+    // Clear split group if this was the only member
+    const s = _shelves.find(s => s.id === id);
+    if (s && s.split_group) {
+        const groupmates = _shelves.filter(sh => sh.split_group === s.split_group && sh.id !== id);
+        if (groupmates.length === 1) groupmates[0].split_group = null;
+    }
+    _shelves = _shelves.filter(s => s.id !== id);
+    const el = document.querySelector(`[data-shelf-id="${id}"]`);
+    if (!el) return;
+    const row = el.closest('.shelf-split-row');
+    if (row) {
+        const remaining = row.querySelectorAll('[data-shelf-id]').length;
+        if (remaining <= 1) row.remove(); else el.remove();
+    } else { el.remove(); }
+    buildAllEditBars();
+}
+
+// ── Split / Unsplit ───────────────────────────────────────────────────────────
+let _splitPickerFor = null;
+let _splitPickerTarget = null;  // the chosen shelf to add
+
+function openSplitPicker(sid) {
+    _splitPickerFor = sid;
+    _splitPickerTarget = null;
+    const self = _shelves.find(s => s.id === sid);
+    const selfGroup = self ? self.split_group : null;
+
+    // Candidates: every shelf except self and other members of self's current group
+    const candidates = _shelves.filter(s => {
+        if (s.id === sid) return false;
+        if (selfGroup && s.split_group === selfGroup) return false;
+        return true;
+    });
+
+    const isAdding = !!selfGroup;
+    document.getElementById('split-picker-title').textContent = isAdding ? '⊞ Add to Row' : '⊞ Split Row With…';
+    document.getElementById('split-picker-desc').textContent = isAdding
+        ? 'Choose a shelf to add to this row. You\'ll then choose where it goes.'
+        : `Choose a shelf to split alongside ${self ? self.label : sid}. You'll then choose its position.`;
+
+    // Show shelf list step, hide position step
+    document.getElementById('split-picker-shelf-step').style.display = 'block';
+    document.getElementById('split-picker-pos-step').style.display = 'none';
+
+    const list = document.getElementById('split-picker-list');
+    list.innerHTML = '';
+
+    if (!candidates.length) {
+        list.innerHTML = '<li style="cursor:default;color:#555;">No other shelves available.</li>';
+    } else {
+        candidates.forEach(c => {
+            const li = document.createElement('li');
+            const inOtherGroup = c.split_group && c.split_group !== selfGroup;
+            li.innerHTML = `<span>${c.label}</span>${inOtherGroup ? '<span style="color:#8f6a00;font-size:0.72rem;margin-left:auto;">⚠ will leave current row</span>' : ''}`;
+            li.style.display = 'flex'; li.style.alignItems = 'center';
+            li.onclick = () => {
+                if (inOtherGroup && !confirm(`"${c.label}" is currently in another split row. Remove it from there and add it here?`)) return;
+                _splitPickerTarget = c.id;
+                showPositionStep(sid, c);
+            };
+            list.appendChild(li);
+        });
+    }
+
+    document.getElementById('split-picker').style.display = 'block';
+    document.getElementById('split-picker-overlay').style.display = 'block';
+}
+
+function showPositionStep(sid, newShelf) {
+    const self = _shelves.find(s => s.id === sid);
+    const selfGroup = self ? self.split_group : null;
+
+    // Current members of the row (or just self if standalone)
+    const members = selfGroup
+        ? _shelves.filter(s => s.split_group === selfGroup)
+        : [self];
+
+    document.getElementById('split-picker-shelf-step').style.display = 'none';
+    document.getElementById('split-picker-pos-step').style.display = 'block';
+    document.getElementById('split-picker-pos-desc').textContent =
+        `Where should "${newShelf.label}" go in the row?`;
+
+    const list = document.getElementById('split-picker-pos-list');
+    list.innerHTML = '';
+
+    // Option: before first member
+    const addOption = (label, insertBefore) => {
+        const li = document.createElement('li');
+        li.textContent = label;
+        li.onclick = () => { closeSplitPicker(); splitShelves(sid, newShelf.id, insertBefore); };
+        list.appendChild(li);
+    };
+
+    addOption(`⟵ Before ${members[0].label}`, members[0].id);
+    members.forEach((m, i) => {
+        const next = members[i + 1];
+        addOption(next ? `Between ${m.label} and ${next.label}` : `After ${m.label} ⟶`, next ? next.id : null);
+    });
+}
+
+function closeSplitPicker() {
+    document.getElementById('split-picker').style.display = 'none';
+    document.getElementById('split-picker-overlay').style.display = 'none';
+    _splitPickerFor = null;
+    _splitPickerTarget = null;
+}
+
+function splitShelves(idA, idB, insertBeforeId) {
+    const sA = _shelves.find(s => s.id === idA);
+    const sB = _shelves.find(s => s.id === idB);
+    if (!sA || !sB) return;
+
+    // If sB is in another group, remove it from that group first
+    if (sB.split_group) {
+        const oldGroupMembers = _shelves.filter(s => s.split_group === sB.split_group && s.id !== idB);
+        if (oldGroupMembers.length === 1) {
+            oldGroupMembers[0].split_group = null;
+            oldGroupMembers[0].col_width = null;
+        }
+        sB.split_group = null;
+    }
+
+    // Reuse sA's existing group or create a new one
+    const group = sA.split_group || `split_${Date.now()}`;
+    sA.split_group = group;
+    sA.col_width = sA.col_width || 2;
+    sB.split_group = group;
+    sB.col_width = sB.col_width || 2;
+    sB.row_height = sA.row_height;
+
+    // Remove sB from its current position in _shelves
+    _shelves = _shelves.filter(s => s.id !== idB);
+
+    if (insertBeforeId) {
+        // Insert before the specified member
+        const insertIdx = _shelves.findIndex(s => s.id === insertBeforeId);
+        _shelves.splice(insertIdx, 0, sB);
+    } else {
+        // Insert after the last current group member
+        const lastMemberIdx = _shelves.findLastIndex(s => s.split_group === group);
+        _shelves.splice(lastMemberIdx + 1, 0, sB);
+    }
+
+    saveAndReload();
+}
+
+function unsplitShelf(sid) {
+    const s = _shelves.find(s => s.id === sid);
+    if (!s || !s.split_group) return;
+    const group = s.split_group;
+    const members = _shelves.filter(sh => sh.split_group === group);
+
+    // Remove this shelf from the group
+    s.split_group = null;
+    s.col_width = null;
+
+    // If only one member remains, dissolve the group
+    const remaining = members.filter(m => m.id !== sid);
+    if (remaining.length === 1) {
+        remaining[0].split_group = null;
+        remaining[0].col_width = null;
+    }
+
+    saveAndReload();
+}
+
+// Structural changes require a save+reload so Jinja re-renders.
+// Do NOT sync from DOM here — _shelves in memory is already in the correct order
+// after splitShelves/unsplitShelf manipulate it directly.
+async function saveAndReload() {
+    try {
+        await fetch('/api/shelves', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({shelves: _shelves})
+        });
+    } catch(e) {}
+    window.location.href = '/?edit=1';
+}
+
+// ── SQL panels ────────────────────────────────────────────────────────────────
+function toggleSqlPanel(id) {
+    const panel = document.getElementById(`sql-panel-${id}`);
+    if (!panel) return;
+    const isOpen = panel.classList.toggle('open');
+    if (isOpen) {
+        // Position below the edit bar's actual rendered height
+        const bar = panel.closest('[data-shelf-id]')?.querySelector('.shelf-edit-bar');
+        panel.style.top = bar ? bar.offsetHeight + 'px' : '34px';
+    }
+}
+function closeSqlPanel(id) {
+    document.getElementById(`sql-panel-${id}`)?.classList.remove('open');
+    const ta = document.getElementById(`sql-input-${id}`);
+    const s = _shelves.find(s => s.id === id);
+    if (!s) return;
+    if (ta) s.custom_sql = ta.value.trim() || null;
+}
+function normaliseSql(raw) {
+    let s = raw.trim();
+    // Strip full SELECT ... FROM games WHERE prefix
+    s = s.replace(/^SELECT\s+.+?\s+FROM\s+\w+\s+WHERE\s+/i, '');
+    // Strip leading WHERE keyword on its own
+    s = s.replace(/^WHERE\s+/i, '');
+    // Strip trailing ORDER BY — sort is controlled by the Sort dropdown
+    s = s.replace(/\s*\bORDER\s+BY\s+.+$/i, '');
+    return s.trim();
+}
+// Apply custom SQL from the query panel
+function applyPreset(id) {
+    const ta = document.getElementById(`sql-input-${id}`);
+    const s = _shelves.find(s => s.id === id);
+    if (!s) return;
+    const raw = ta ? ta.value.trim() : '';
+    s.custom_sql = raw ? normaliseSql(raw) : null;
+    if (ta && s.custom_sql) ta.value = s.custom_sql; // show normalised value
+    closeSqlPanel(id);
+    saveAndReload();
+}
+// Apply filter chosen directly in the edit bar
+function applyFilterInline(id, filterKey) {
+    if (filterKey === '__custom__') {
+        toggleSqlPanel(id);
+        return;
+    }
+    const s = _shelves.find(s => s.id === id);
+    if (!s || !filterKey) return;
+    // Widget presets update preset field; regular filters update filter_key
+    if (filterKey === 'clock' || filterKey === 'completion_pie') {
+        s.preset = filterKey;
+        s.filter_key = filterKey;
+    } else {
+        s.filter_key = filterKey;
+        // Keep preset pointing to a valid widget key or clear it for normal shelves
+        if (s.preset === 'clock' || s.preset === 'completion_pie') s.preset = 'all_games';
+    }
+    s.custom_sql = null;
+    // Update label to filter name for built-ins
+    const f = _builtinFilters[filterKey];
+    if (f && filterKey !== 'all_games' && filterKey !== 'not_installed') s.label = f.label.toUpperCase();
+    saveAndReload();
+}
+
+// ── Add new shelf ─────────────────────────────────────────────────────────────
+function addNewShelf() {
+    const id = `custom_${Date.now()}`;
+    const ns = { id, label:'NEW SHELF', preset:'all_games', filter_key:'all_games', custom_sql:null, limit:10,
+                 row_height:25, col_width:null, split_group:null,
+                 sort_col:null, sort_dir:null,
+                 dedup:true, dedup_priority:_shelves.length, visible:true };
+    _shelves.push(ns);
+    const container = document.getElementById('shelf-container');
+    const addBtn = container.querySelector('.add-shelf-btn');
+    const el = document.createElement('div');
+    el.className = 'shelf'; el.style.height = '25vh';
+    el.dataset.shelfId = id; el.dataset.visible = 'true'; el.draggable = false;
+    el.innerHTML = `
+        <div class="shelf-edit-bar" data-for="${id}"></div>
+        <div class="shelf-sql-panel" id="sql-panel-${id}">
+            <textarea id="sql-input-${id}" placeholder="Custom SQL WHERE clause…  e.g. tags LIKE '%RPG%'"></textarea>
+            <div style="display:flex;gap:6px;margin-top:4px;">
+                <button class="shelf-edit-mini-btn" onclick="applyPreset('${id}')">✓ Apply SQL</button>
+                <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('${id}')">Cancel</button>
+            </div>
+        </div>
+        <div class="shelf-label" id="label-${id}">NEW SHELF</div>
+        <div class="shelf-grid"><span style="color:#555;font-size:0.8rem;margin:auto;">Set a query and save to populate</span></div>
+    `;
+    container.insertBefore(el, addBtn);
+    buildAllEditBars(); initDragAndDrop();
+    el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+// ── Drag to reorder rows ──────────────────────────────────────────────────────
+let _dragSrc = null;
+function initDragAndDrop() {
+    const container = document.getElementById('shelf-container');
+
+    // Make each shelf/row draggable
+    Array.from(container.children).forEach(child => {
+        if (child.classList.contains('add-shelf-btn')) return;
+        child.draggable = true;
+        child.addEventListener('dragstart', function(e) {
+            _dragSrc = this;
+            this.classList.add('dragging');
+            document.body.classList.add('dragging-shelf');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', ''); // required for Firefox
+        });
+        child.addEventListener('dragend', function() {
+            this.classList.remove('dragging');
+            document.body.classList.remove('dragging-shelf');
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            _dragSrc = null;
+        });
+    });
+
+    // Delegate dragover/drop to the container so edit bar overlays don't block
+    container.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const target = getShelfRow(e.target);
+        if (target && target !== _dragSrc) {
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            target.classList.add('drag-over');
+        }
+    });
+    container.addEventListener('dragleave', function(e) {
+        // Only clear if leaving the container entirely
+        if (!container.contains(e.relatedTarget)) {
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        }
+    });
+    container.addEventListener('drop', function(e) {
+        e.preventDefault();
+        const target = getShelfRow(e.target);
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+        if (!_dragSrc || !target || _dragSrc === target) return;
+        const kids = Array.from(container.children).filter(ch => !ch.classList.contains('add-shelf-btn'));
+        if (kids.indexOf(_dragSrc) < kids.indexOf(target)) container.insertBefore(_dragSrc, target.nextSibling);
+        else container.insertBefore(_dragSrc, target);
+        syncShelvesOrderFromDOM();
+    });
+}
+
+// Walk up from e.target to find the direct shelf/row child of shelf-container
+function getShelfRow(el) {
+    const container = document.getElementById('shelf-container');
+    while (el && el.parentElement !== container) el = el.parentElement;
+    if (el && !el.classList.contains('add-shelf-btn')) return el;
+    return null;
+}
+
+function syncShelvesOrderFromDOM() {
+    const ordered = [];
+    Array.from(document.getElementById('shelf-container').children).forEach(child => {
+        if (child.classList.contains('add-shelf-btn')) return;
+        const ids = child.dataset.shelfId
+            ? [child.dataset.shelfId]
+            : Array.from(child.querySelectorAll('[data-shelf-id]')).map(el=>el.dataset.shelfId);
+        ids.forEach(id => { const s=_shelves.find(sh=>sh.id===id); if(s) ordered.push(s); });
+    });
+    _shelves = ordered;
+}
+
+// ── Dedup panel ───────────────────────────────────────────────────────────────
+let _dedupDragSrc = null;
+function openDedupPanel() {
+    const list = document.getElementById('dedup-list');
+    const sorted = [..._shelves].sort((a,b)=>(a.dedup_priority||0)-(b.dedup_priority||0));
+    list.innerHTML = '';
+    sorted.forEach(shelf => {
+        const li = document.createElement('li');
+        li.dataset.shelfId = shelf.id; li.draggable = true;
+        const checked = shelf.dedup !== false ? 'checked' : '';
+        li.innerHTML = `
+            <div class="dedup-row-left">
+                <span>⠿</span>${shelf.label}
+            </div>
+            <label class="dedup-toggle">
+                <input type="checkbox" ${checked} onchange="toggleDedupForShelf('${shelf.id}', this.checked); this.closest('li').style.opacity=this.checked?'1':'0.45';">
+                Included
+            </label>`;
+        if (!checked) li.style.opacity = '0.45';
+        li.addEventListener('dragstart', e => { _dedupDragSrc=li; li.style.opacity='0.4'; e.dataTransfer.effectAllowed='move'; });
+        li.addEventListener('dragover',  e => { e.preventDefault(); li.classList.add('drag-over'); });
+        li.addEventListener('dragleave', () => li.classList.remove('drag-over'));
+        li.addEventListener('drop', e => { e.preventDefault(); li.classList.remove('drag-over'); if(_dedupDragSrc&&_dedupDragSrc!==li) list.insertBefore(_dedupDragSrc,li); });
+        li.addEventListener('dragend', () => { li.style.opacity = _shelves.find(s=>s.id===shelf.id)?.dedup!==false?'1':'0.45'; _dedupDragSrc=null; });
+        list.appendChild(li);
+    });
+    document.getElementById('dedup-panel').style.display='block';
+    document.getElementById('dedup-overlay').style.display='block';
+}
+function toggleDedupForShelf(id, enabled) {
+    const s = _shelves.find(s => s.id === id);
+    if (s) s.dedup = enabled;
+}
+function saveDedupOrder() {
+    Array.from(document.getElementById('dedup-list').children).forEach((li,i) => {
+        const s = _shelves.find(sh=>sh.id===li.dataset.shelfId);
+        if (s) s.dedup_priority = i;
+    });
+    closeDedupPanel();
+}
+function closeDedupPanel() {
+    document.getElementById('dedup-panel').style.display='none';
+    document.getElementById('dedup-overlay').style.display='none';
+}
+
+// ── Save / Reset ──────────────────────────────────────────────────────────────
+async function saveLayout() {
+    document.querySelectorAll('.shelf-sql-panel.open').forEach(p => closeSqlPanel(p.id.replace('sql-panel-','')));
+    syncShelvesOrderFromDOM();
+    try {
+        const res = await fetch('/api/shelves', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({shelves: _shelves})
+        });
+        const data = await res.json();
+        if (data.status==='success') window.location.href = '/';
+        else alert('Save failed: ' + data.message);
+    } catch(e) { alert('Network error saving layout.'); }
+}
+async function resetLayout() {
+    if (!confirm('Reset to default shelves? Your custom layout will be lost.')) return;
+    try {
+        const res = await fetch('/api/shelves/reset', {method:'POST'});
+        const data = await res.json();
+        if (data.status==='success') window.location.href='/';
+        else alert('Reset failed: '+data.message);
+    } catch(e) { alert('Network error.'); }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PlayDate 2.0</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/playdate.js') }}"></script>
+    {% block extra_css %}{% endblock %}
+    <script>
+    // Reveal the body as soon as the DOM is ready
+    document.addEventListener("DOMContentLoaded", function() {
+        document.body.classList.add('loaded');
+    });
+
+    // Safety fallback: if DOMContentLoaded takes too long,
+    // show the page anyway after 300ms
+    setTimeout(() => {
+        document.body.classList.add('loaded');
+    }, 300);
+    </script>
+</head>
+<body>
+    <div class="nav-header">
+        <div class="nav-links">
+            <a class="{{ 'active' if request.path == '/' }}" onclick="window.location.href='/'">HOME</a>
+            <a class="{{ 'active' if request.path == '/library' }}" onclick="window.location.href='/library'">LIBRARY</a>
+            <a class="{{ 'active' if request.path == '/pick' }}" onclick="window.location.href='/pick'">PICK</a>
+            <a class="{{ 'active' if request.path == '/tools' }}" onclick="window.location.href='/tools'">TOOLS</a>
+            <button id="add-button" class="nav-btn">POPULATE PLAYDATE</button>
+            <button id="installed-button" class="nav-btn">REFRESH INSTALLED GAMES</button>
+        </div>
+    </div>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+
+    {% include 'modal_edit.html' %}
+    {% include 'modal_filters.html' %}
+
+    <script>
+        // Filter modal functions (openFilterModal, applyFilters, closeFilterModal, clearAllFilters)
+        // are defined in modals.html which is included above.
+
+        async function launchGame(appid) {
+            // Steam is launched server-side via subprocess — pywebview blocks steam:// protocol
+            fetch(`/api/launch/${appid}`, { method: 'POST' }).catch(() => {});
+
+            // Refresh UI after a delay to show the new "Last Played" date
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        }
+
+        let _populating = false;
+        let _populatePoller = null;
+
+        function _resetPopulateBtn() {
+            const btn = document.getElementById('add-button');
+            _populating = false;
+            btn.innerText = "POPULATE PLAYDATE";
+            btn.style.borderColor = "";
+            btn.disabled = false;
+        }
+
+        function _startPopulatePoller() {
+            // Poll every 2s — when the server says it stopped, show result and reload
+            _populatePoller = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/populate-status');
+                    const data = await res.json();
+                    if (!data.running) {
+                        clearInterval(_populatePoller);
+                        _populatePoller = null;
+                        const msg = data.last_result;
+                        if (msg) {
+                            if (msg.status === 'success')   alert(`Complete! Added ${msg.added} new games.`);
+                            else if (msg.status === 'cancelled') alert(`Cancelled after adding ${msg.added} games.`);
+                            else alert('Failed: ' + msg.message);
+                        }
+                        _resetPopulateBtn();
+                        window.location.reload();
+                    }
+                } catch(e) {}
+            }, 2000);
+        }
+
+        // On every page load, check if populate is still running server-side
+        (async () => {
+            try {
+                const res = await fetch('/api/populate-status');
+                const data = await res.json();
+                if (data.running) {
+                    _populating = true;
+                    const btn = document.getElementById('add-button');
+                    btn.innerText = "STOP POPULATING";
+                    btn.style.borderColor = "#a32a2a";
+                    _startPopulatePoller();
+                }
+            } catch(e) {}
+        })();
+
+        document.getElementById('add-button').addEventListener('click', async () => {
+            const btn = document.getElementById('add-button');
+
+            if (_populating) {
+                // Second click — cancel
+                await fetch('/api/cancel-populate', { method: 'POST' });
+                btn.innerText = "CANCELLING...";
+                btn.disabled = true;
+                // Poller will catch completion and reset
+                return;
+            }
+
+            _populating = true;
+            btn.innerText = "STOP POPULATING";
+            btn.style.borderColor = "#a32a2a";
+
+            // Fire-and-forget the long request; poller handles completion
+            fetch('/add-new').catch(() => {});
+            _startPopulatePoller();
+        });
+
+        document.getElementById('installed-button').addEventListener('click', async () => {
+            const btn = document.getElementById('installed-button');
+            btn.innerText = "WORKING...";
+            btn.disabled = true;
+
+            const response = await fetch('/update-installed');
+            const data = await response.json();
+
+            if (data.status === "success") {
+                alert(`Complete! There are ${data.count} games installed.`);
+                window.location.reload();
+            } else {
+                alert("Addition Failed: " + data.message);
+            }
+
+            btn.innerText = "UPDATE INSTALLED";
+            btn.disabled = false;
+        });
+
+
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,129 @@
+name: Build Windows Installer
+
+# Triggers:
+#   - Push a version tag like v1.0.0  → full build + GitHub Release
+#   - Manual trigger via GitHub UI    → build only, no release
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create GitHub Releases
+
+jobs:
+  build-windows:
+    name: Build & Package (Windows)
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ─────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. Install dependencies ───────────────────────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── 4. Convert favicon.png → favicon.ico (Windows needs .ico) ────────────
+      - name: Generate favicon.ico
+        run: |
+          python - <<'EOF'
+          from PIL import Image
+          import os
+          src = os.path.join("static", "img", "favicon.png")
+          dst = os.path.join("static", "img", "favicon.ico")
+          if os.path.exists(src):
+              img = Image.open(src)
+              img.save(dst, format="ICO", sizes=[(16,16),(32,32),(48,48),(256,256)])
+              print(f"Created {dst}")
+          else:
+              print("favicon.png not found — skipping ico generation")
+          EOF
+
+      # ── 5. Build with PyInstaller ─────────────────────────────────────────────
+      - name: Build with PyInstaller
+        run: pyinstaller playdate.spec
+
+      # ── 6. Verify the build ───────────────────────────────────────────────────
+      - name: Verify build output
+        run: |
+          if (Test-Path "dist\PlayDate\PlayDate.exe") {
+            Write-Host "✔ PlayDate.exe found"
+            $size = (Get-Item "dist\PlayDate\PlayDate.exe").Length / 1MB
+            Write-Host "  Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "PlayDate.exe not found in dist\PlayDate\"
+            exit 1
+          }
+
+      # ── 7. Install Inno Setup ─────────────────────────────────────────────────
+      - name: Install Inno Setup 6
+        run: |
+          choco install innosetup --yes --no-progress
+        shell: powershell
+
+      # ── 8. Build installer with Inno Setup ────────────────────────────────────
+      - name: Build installer with Inno Setup
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc playdate.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: powershell
+
+      # ── 9. Verify installer ────────────────────────────────────────────────────
+      - name: Verify installer output
+        run: |
+          if (Test-Path "installer\PlayDate-Setup.exe") {
+            Write-Host "✔ PlayDate-Setup.exe found"
+            $size = (Get-Item "installer\PlayDate-Setup.exe").Length / 1MB
+            Write-Host "  Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "PlayDate-Setup.exe not found"
+            exit 1
+          }
+
+      # ── 10. Upload installer as workflow artifact (always) ─────────────────────
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayDate-Setup-Windows
+          path: installer/PlayDate-Setup.exe
+          retention-days: 30
+
+      # ── 11. Create GitHub Release (only on version tags) ──────────────────────
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "PlayDate ${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          generate_release_notes: true
+          files: |
+            installer/PlayDate-Setup.exe
+          body: |
+            ## PlayDate ${{ github.ref_name }}
+
+            ### Installation
+            1. Download **PlayDate-Setup.exe** below
+            2. Run it and follow the installer wizard
+            3. PlayDate will appear in your Start Menu
+
+            ### Requirements
+            - Windows 10 or 11 (64-bit)
+            - Microsoft Edge WebView2 Runtime (already installed on Windows 10/11)
+
+            ---
+            *Built automatically from tag `${{ github.ref_name }}`*

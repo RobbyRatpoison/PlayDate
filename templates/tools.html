@@ -1,0 +1,1057 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .tools-page {
+        padding: 6vh 2vw 2vh;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .tools-header {
+        margin-bottom: 2vh;
+    }
+
+    .tools-header h1 {
+        font-size: clamp(1.5rem, 3vw, 2.4rem);
+        color: white;
+        margin: 0 0 4px;
+    }
+
+    .tools-header p {
+        color: #8f98a0;
+        font-size: 1rem;
+        margin: 0;
+    }
+
+    .tool-card {
+        background: #1a2332;
+        border: 1px solid #2a3f55;
+        border-radius: 8px;
+        padding: 22px 28px;
+        margin-bottom: 16px;
+    }
+
+    .tool-card h3 {
+        margin: 0 0 8px;
+        font-size: 1.1rem;
+        color: var(--steam-focus);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .tool-card p {
+        margin: 0 0 14px;
+        color: #8f98a0;
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+
+    .tool-status {
+        font-size: 0.92rem;
+        color: #8f98a0;
+        margin-top: 10px;
+        min-height: 1.2rem;
+    }
+
+    .tool-status.success { color: #5c7e10; }
+    .tool-status.error   { color: #ff4d4d; }
+    .tool-status.info    { color: var(--steam-focus); }
+
+    /* Import wizard */
+    .import-step {
+        display: none;
+    }
+    .import-step.active {
+        display: block;
+    }
+
+    .step-indicator {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        font-size: 0.88rem;
+        color: #8f98a0;
+    }
+
+    .step-indicator span {
+        padding: 4px 12px;
+        border-radius: 20px;
+        background: rgba(255,255,255,0.05);
+    }
+
+    .step-indicator span.active {
+        background: var(--steam-focus);
+        color: #1b2838;
+        font-weight: bold;
+    }
+
+    .step-indicator span.done {
+        background: #5c7e10;
+        color: white;
+    }
+
+    .mapping-row {
+        display: grid;
+        grid-template-columns: 1fr 28px 1fr 32px;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .mapping-row select {
+        padding: 7px 10px;
+        font-size: 0.92rem;
+    }
+
+    .mapping-arrow {
+        text-align: center;
+        color: #8f98a0;
+        font-size: 1rem;
+    }
+
+    .mapping-remove {
+        background: none;
+        border: none;
+        color: #ff4d4d;
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .mapping-remove:hover { color: #ff0000; }
+
+    .add-mapping-btn {
+        background: none;
+        border: 1px dashed #444;
+        color: #8f98a0;
+        padding: 7px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.88rem;
+        margin-top: 4px;
+        transition: all 0.2s;
+    }
+
+    .add-mapping-btn:hover {
+        border-color: var(--steam-focus);
+        color: var(--steam-focus);
+    }
+
+    .import-result {
+        background: #111c28;
+        border-radius: 6px;
+        padding: 16px;
+        margin-top: 12px;
+        font-size: 0.92rem;
+    }
+
+    label {
+        font-size: 0.92rem;
+        color: #c2c8cc;
+        display: block;
+        margin-bottom: 5px;
+    }
+
+    select, input[type="text"], input[type="file"] {
+        font-size: 0.92rem;
+    }
+
+    /* ── PAGYWOSG tag chips ── */
+    .pag-tag-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 9px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        border: 1px solid #2a3f55;
+        background: #0e1923;
+        color: #8f98a0;
+        transition: all 0.15s;
+        user-select: none;
+        white-space: nowrap;
+    }
+    .pag-tag-chip:hover { border-color: var(--steam-focus); color: var(--steam-focus); }
+    .pag-tag-chip.selected { background: var(--steam-focus); border-color: var(--steam-focus); color: #0e1621; font-weight: bold; }
+    .pag-tag-chip.hidden { display: none; }
+
+    /* ── PAGYWOSG completion buttons ── */
+    .pag-comp-btn {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        cursor: pointer;
+        border: 1px solid #2a3f55;
+        background: #0e1923;
+        color: #8f98a0;
+        transition: all 0.15s;
+    }
+    .pag-comp-btn.active { background: #1a3a52; border-color: #4a8ab0; color: #c2c8cc; }
+    .pag-comp-btn:hover { border-color: var(--steam-focus); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tools-page">
+
+    <div class="tools-header">
+        <h1>Tools</h1>
+        <p>Utilities for managing and maintaining your PlayDate library.</p>
+    </div>
+
+    <!-- ── EDIT HOME LAYOUT ── -->
+    <div class="tool-card">
+        <h3>Edit Home Layout</h3>
+        <p>Rearrange, rename, add, or remove shelves on the home page. Configure what each shelf displays using presets or custom SQL, set row heights, column widths, game limits, and dedup priority.</p>
+        <p style="color:#8f98a0;font-size:0.85rem;margin-top:6px;">Tip: press <kbd style="background:#0e1923;border:1px solid #2a3f55;border-radius:3px;padding:1px 5px;font-family:monospace;color:#c2c8cc;">E</kbd> anywhere on the home page to open the editor directly.</p>
+        <a onclick="window.location.href='/?edit=1'" class="nav-btn" style="display:inline-flex; cursor:pointer;">Open Home Layout Editor</a>
+    </div>
+
+    <!-- ── BLAEO SYNC ── -->
+    <div class="tool-card">
+        <h3>BLAEO Sync</h3>
+        <p>Fetch completion statuses (Beaten, Completed, Won't Play, etc.) and list tags from your BLAEO backlog profile. Requires Chrome to be installed.</p>
+        <button id="blaeo-btn" class="nav-btn" onclick="runBlaeo()">Sync BLAEO</button>
+        <div id="blaeo-status" class="tool-status"></div>
+    </div>
+
+    <!-- ── PAGYWOSG FILTER BUILDER ── -->
+    <div class="tool-card" id="pagywosg-card">
+        <h3>PAGYWOSG Filter Builder</h3>
+        <p>Build this month's eligible pool from the monthly post criteria and save it as a library filter.</p>
+        <button class="nav-btn" onclick="pagToggleOpen(this)">Configure This Month</button>
+
+        <div id="pagywosg-body" style="display:none; margin-top:18px;">
+        <div id="pagywosg-loading" style="color:#8f98a0; font-size:0.88rem; margin-bottom:12px;">Loading tags…</div>
+        <div id="pagywosg-inner" style="display:none;">
+
+            <!-- ── WINS ONLY section (comes first, matching post structure) ── -->
+            <div style="margin-bottom:20px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                    <span style="color:var(--steam-focus); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — Wins Only</span>
+                    <span style="color:#666; font-size:0.75rem; font-style:italic;">only applies to games won on SteamGifts</span>
+                </div>
+                <input type="text" id="pag-wins-search" placeholder="Search tags…"
+                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; color:#c2c8cc; font-size:0.82rem; outline:none;"
+                    oninput="pagFilterTags('wins')"
+                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='#2a3f55'">
+                <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; padding:8px;"></div>
+                <div id="pag-wins-conds" style="margin-top:10px;"></div>
+                <button onclick="pagAddCond('wins')" style="margin-top:6px; background:none; border:1px dashed #3a5570; color:#8f98a0; padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                    onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                    onmouseout="this.style.borderColor='#3a5570';this.style.color='#8f98a0'">+ Add Condition</button>
+            </div>
+
+            <div style="border-top:1px solid #2a3f55; margin-bottom:20px;"></div>
+
+            <!-- ── ALL GAMES section ── -->
+            <div style="margin-bottom:20px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                    <span style="color:#c2c8cc; font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — All Games</span>
+                    <span style="color:#666; font-size:0.75rem; font-style:italic;">applies to your whole library</span>
+                </div>
+                <input type="text" id="pag-all-search" placeholder="Search tags…"
+                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; color:#c2c8cc; font-size:0.82rem; outline:none;"
+                    oninput="pagFilterTags('all')"
+                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='#2a3f55'">
+                <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; padding:8px;"></div>
+                <div id="pag-all-conds" style="margin-top:10px;"></div>
+                <button onclick="pagAddCond('all')" style="margin-top:6px; background:none; border:1px dashed #3a5570; color:#8f98a0; padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                    onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                    onmouseout="this.style.borderColor='#3a5570';this.style.color='#8f98a0'">+ Add Condition</button>
+            </div>
+
+            <!-- ── Completion filter ── -->
+            <div style="margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="color:#8f98a0; font-size:0.8rem; white-space:nowrap;">Completion status</span>
+                <div id="pag-completion-btns" style="display:flex; flex-wrap:wrap; gap:5px;">
+                    <button class="pag-comp-btn active" data-val="Never Played" onclick="pagToggleComp(this)">Never Played</button>
+                    <button class="pag-comp-btn active" data-val="Unfinished" onclick="pagToggleComp(this)">Unfinished</button>
+                    <button class="pag-comp-btn" data-val="Beaten" onclick="pagToggleComp(this)">Beaten</button>
+                    <button class="pag-comp-btn" data-val="Completed" onclick="pagToggleComp(this)">Completed</button>
+                    <button class="pag-comp-btn" data-val="Won't Play" onclick="pagToggleComp(this)">Won't Play</button>
+                </div>
+            </div>
+
+            <!-- ── SQL preview ── -->
+            <div style="margin-bottom:14px;">
+                <button onclick="pagToggleSql()" style="background:none;border:none;color:#8f98a0;padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
+                    <span id="pag-sql-chevron">▶</span> Show SQL Preview
+                </button>
+                <div id="pag-sql-box" style="display:none; margin-top:8px;">
+                    <pre id="pag-sql-text" style="margin:0;padding:10px 14px;background:#0b1520;border:1px solid #1e3348;border-radius:5px;color:#66c0f4;font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
+                </div>
+            </div>
+
+            <!-- ── Actions ── -->
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="nav-btn" onclick="pagSaveFilter()">Save as Filter</button>
+                <button class="nav-btn" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
+            </div>
+            <div id="pag-status" class="tool-status"></div>
+
+        </div><!-- end pagywosg-inner -->
+        </div><!-- end pagywosg-body -->
+    </div>
+
+    <!-- ── BACKUP & RESTORE ── -->
+    <div class="tool-card">
+        <h3>Backup &amp; Restore</h3>
+        <p>Save a snapshot of your library, settings, and optionally your cover art. Restore from any previous backup to roll back changes or migrate to a new machine.</p>
+
+        <!-- ── BACKUP ── -->
+        <div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #2a3f55;">
+            <div style="font-size: 0.88rem; font-weight: bold; color: #c2c8cc; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Create Backup</div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
+                <div style="background: #0e1923; border: 1px solid #2a3f55; border-radius: 6px; padding: 10px 14px;">
+                    <div style="font-size: 0.82rem; color: #8f98a0; margin-bottom: 6px;">Always included:</div>
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                        <span style="font-size: 0.82rem; color: #c2c8cc;">📦 games.db</span>
+                        <span style="font-size: 0.82rem; color: #c2c8cc;">⚙️ config.json</span>
+                        <span style="font-size: 0.82rem; color: #c2c8cc;">🗂️ state.json</span>
+                    </div>
+                </div>
+                <div style="background: #0e1923; border: 1px solid #2a3f55; border-radius: 6px; padding: 10px 14px;">
+                    <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                        <input type="checkbox" id="backup-include-art" style="width: auto; margin: 2px 0 0; flex-shrink: 0;">
+                        <div>
+                            <span style="font-size: 0.82rem; color: #c2c8cc; font-weight: bold;">🖼️ Include cover art</span>
+                            <div style="font-size: 0.78rem; color: #8f98a0; margin-top: 2px;">Includes all downloaded and custom cover images. Recommended if you've manually set any artwork. Can add hundreds of MB to the backup.</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <button class="nav-btn" id="backup-btn" onclick="runBackup()">Download Backup</button>
+            <div id="backup-status" class="tool-status"></div>
+        </div>
+
+        <!-- ── RESTORE ── -->
+        <div>
+            <div style="font-size: 0.88rem; font-weight: bold; color: #c2c8cc; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Restore from Backup</div>
+
+            <div style="background: rgba(193,120,0,0.08); border: 1px solid rgba(193,120,0,0.35); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #c9a03a; line-height: 1.6;">
+                ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, and state.json. This cannot be undone. Make a backup first if you want to keep your current data.
+            </div>
+
+            <div id="restore-drop-zone"
+                 style="border: 2px dashed #2a3f55; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; margin-bottom: 12px;"
+                 onclick="document.getElementById('restore-file-input').click()"
+                 ondragover="restoreDragOver(event)"
+                 ondragleave="restoreDragLeave(event)"
+                 ondrop="restoreDrop(event)">
+                <div style="font-size: 1.5rem; margin-bottom: 6px;">📂</div>
+                <div style="color: #8f98a0; font-size: 0.88rem;">Drop a <strong style="color:#c2c8cc;">.zip</strong> backup here, or <span style="color: var(--steam-focus); text-decoration: underline;">click to choose a file</span></div>
+                <div id="restore-filename" style="color: var(--steam-focus); font-size: 0.82rem; margin-top: 6px; display: none;"></div>
+            </div>
+            <input type="file" id="restore-file-input" accept=".zip" style="display:none" onchange="restoreFileSelected(this)">
+
+            <button class="nav-btn" id="restore-btn" onclick="runRestore()" disabled style="opacity:0.4; cursor:not-allowed;">Restore</button>
+            <div id="restore-status" class="tool-status"></div>
+        </div>
+    </div>
+
+    <!-- ── DB IMPORTER ── -->
+    <div class="tool-card">
+        <h3>Import Data from Another PlayDate Database</h3>
+        <p>Copy column data from a backup or older PlayDate database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
+
+        <div class="step-indicator">
+            <span id="step-ind-1" class="active">1 · Upload File</span>
+            <span id="step-ind-2">2 · Map Columns</span>
+            <span id="step-ind-3">3 · Done</span>
+        </div>
+
+        <!-- Step 1: Upload -->
+        <div id="import-step-1" class="import-step active">
+            <p style="margin-bottom:10px;">Select the <strong>.db</strong> file you want to import data <em>from</em>. Your current library will not be affected until you confirm the import in step 2.</p>
+            <button class="nav-btn" onclick="document.getElementById('db-file-input').click()">
+                Choose .db File
+            </button>
+            <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display:none" onchange="uploadDatabase(this)">
+            <div id="upload-status" class="tool-status"></div>
+        </div>
+
+        <!-- Step 2: Configure mappings -->
+        <div id="import-step-2" class="import-step">
+
+            <div style="background:rgba(102,192,244,0.07); border:1px solid rgba(102,192,244,0.2); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:#8f98a0; line-height:1.6;">
+                <strong style="color:#c2c8cc;">How this works:</strong> Choose which table and columns to read from the uploaded file, then map each source column to the matching column in your library. Only rows where the AppID matches an existing game will be updated.
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div>
+                    <label>Table in uploaded file</label>
+                    <select id="source-table" onchange="onTableChange()" style="width:100%; padding:8px 32px 8px 8px;">
+                    </select>
+                    <small style="color:#666; font-size:0.78rem;">Most PlayDate databases only have one table: <em>games</em>.</small>
+                </div>
+                <div>
+                    <label>AppID column (for matching)</label>
+                    <select id="appid-col" style="width:100%; padding:8px 32px 8px 8px;"></select>
+                    <small style="color:#666; font-size:0.78rem;">This column is used to match rows — it won't be imported as data.</small>
+                </div>
+            </div>
+
+            <label style="margin-bottom:10px;">
+                Column mappings
+                <span style="color:#666; font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span>
+            </label>
+
+            <div style="display:grid; grid-template-columns: 1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:0 2px;">
+                <span style="font-size:0.78rem; color:#666; text-align:center;">From uploaded file</span>
+                <span></span>
+                <span style="font-size:0.78rem; color:#666; text-align:center;">Into your library</span>
+                <span></span>
+            </div>
+
+            <div id="mapping-rows"></div>
+            <button class="add-mapping-btn" onclick="addMappingRow()">+ Add Column</button>
+
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.88rem; color:#8f98a0;">
+                <input type="checkbox" id="normalize-dates" checked style="width:auto; margin:0;">
+                <label for="normalize-dates" style="display:inline; margin:0; cursor:pointer;">Auto-convert dates to YYYY-MM-DD format</label>
+            </div>
+
+            <div id="import-type-warning" style="display:none; background:rgba(193,120,0,0.1); border:1px solid #c97c00; border-radius:5px; padding:9px 13px; margin-top:12px; font-size:0.85rem; color:#c97c00;"></div>
+
+            <div style="display:flex; gap:10px; margin-top:16px;">
+                <button class="nav-btn" onclick="executeImport()">Run Import</button>
+                <button class="nav-btn" onclick="resetImport()" style="opacity:0.6;">Start Over</button>
+            </div>
+            <div id="import-status" class="tool-status"></div>
+        </div>
+
+        <!-- Step 3: Result -->
+        <div id="import-step-3" class="import-step">
+            <div id="import-result" class="import-result"></div>
+            <button class="nav-btn" onclick="resetImport()" style="margin-top:12px;">Import Another File</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ── BLAEO ──
+async function runBlaeo() {
+    const btn = document.getElementById('blaeo-btn');
+    const status = document.getElementById('blaeo-status');
+    btn.textContent = 'Syncing...';
+    btn.disabled = true;
+    status.className = 'tool-status info';
+    status.textContent = 'Connecting to BLAEO — this may take a minute...';
+    try {
+        const res = await fetch('/sync-blaeo');
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.className = 'tool-status success';
+            status.textContent = `✔ Sync complete — updated ${data.updated} games.`;
+        } else {
+            status.className = 'tool-status error';
+            status.textContent = '✘ ' + (data.message || 'Sync failed. Check the log.');
+        }
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ Network error.';
+    } finally {
+        btn.textContent = 'Sync BLAEO';
+        btn.disabled = false;
+    }
+}
+
+// ── PAGYWOSG ──
+let _pagAllTags = [];
+let _pagWinsTags = [];
+let _pagSelectedAll = new Set();
+let _pagSelectedWins = new Set();
+
+// Columns available for the condition builder
+const PAG_COLUMNS = [
+    { value: 'name',            label: 'Title' },
+    { value: 'release_date',    label: 'Release Date' },
+    { value: 'appid',           label: 'AppID' },
+    { value: 'developers',      label: 'Developer' },
+    { value: 'publishers',      label: 'Publisher' },
+    { value: 'playtime_forever',label: 'Playtime (mins)' },
+    { value: 'review_score',    label: 'Review Score' },
+    { value: 'review_percentage', label: 'Review %' },
+    { value: 'groups',          label: 'Groups' },
+];
+const PAG_OPS = [
+    { value: 'contains',     label: 'contains' },
+    { value: 'not_contains', label: 'does not contain' },
+    { value: 'equals',       label: 'equals' },
+    { value: 'starts_with',  label: 'starts with' },
+    { value: 'ends_with',    label: 'ends with' },
+    { value: 'gt',           label: '>' },
+    { value: 'lt',           label: '<' },
+];
+
+function pagToggleOpen(btn) {
+    const body = document.getElementById('pagywosg-body');
+    const open = body.style.display === 'none';
+    body.style.display = open ? 'block' : 'none';
+    btn.textContent = open ? 'Hide' : 'Configure This Month';
+    if (open && !_pagAllTags.length) pagInit();
+}
+
+async function pagInit() {
+    try {
+        const res = await fetch('/api/pagywosg-tags');
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+        _pagAllTags = data.tags;
+        _pagWinsTags = data.tags;
+        pagRenderTags('all');
+        pagRenderTags('wins');
+        document.getElementById('pagywosg-loading').style.display = 'none';
+        document.getElementById('pagywosg-inner').style.display = 'block';
+    } catch (e) {
+        document.getElementById('pagywosg-loading').textContent = '✘ Failed to load tags: ' + e.message;
+    }
+}
+
+function pagRenderTags(pool) {
+    const tags = pool === 'all' ? _pagAllTags : _pagWinsTags;
+    const selected = pool === 'all' ? _pagSelectedAll : _pagSelectedWins;
+    const search = document.getElementById(`pag-${pool}-search`).value.toLowerCase();
+    const container = document.getElementById(`pag-${pool}-tags`);
+    container.innerHTML = '';
+    tags.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'pag-tag-chip' + (selected.has(tag) ? ' selected' : '') + (search && !tag.toLowerCase().includes(search) ? ' hidden' : '');
+        chip.textContent = tag;
+        chip.onclick = () => {
+            if (selected.has(tag)) selected.delete(tag);
+            else selected.add(tag);
+            chip.classList.toggle('selected');
+            pagUpdateSql();
+        };
+        container.appendChild(chip);
+    });
+}
+
+function pagFilterTags(pool) { pagRenderTags(pool); }
+
+function pagAddCond(pool) {
+    const container = document.getElementById(`pag-${pool}-conds`);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;';
+
+    const colSel = document.createElement('select');
+    colSel.style.cssText = 'padding:5px 24px 5px 8px; background-color:#0e1923; border:1px solid #2a3f55; border-radius:4px; color:#c2c8cc; font-size:0.82rem;';
+    PAG_COLUMNS.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.value; opt.textContent = c.label;
+        colSel.appendChild(opt);
+    });
+
+    const opSel = document.createElement('select');
+    opSel.style.cssText = 'padding:5px 24px 5px 8px; background-color:#0e1923; border:1px solid #2a3f55; border-radius:4px; color:#c2c8cc; font-size:0.82rem;';
+    PAG_OPS.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.value; opt.textContent = o.label;
+        opSel.appendChild(opt);
+    });
+
+    const valInput = document.createElement('input');
+    valInput.type = 'text';
+    valInput.placeholder = 'value';
+    valInput.style.cssText = 'flex:1; min-width:100px; padding:5px 8px; background:#0e1923; border:1px solid #2a3f55; border-radius:4px; color:#c2c8cc; font-size:0.82rem; outline:none;';
+    valInput.onfocus = () => valInput.style.borderColor = 'var(--steam-focus)';
+    valInput.onblur  = () => valInput.style.borderColor = '#2a3f55';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '✕';
+    removeBtn.style.cssText = 'background:none; border:none; color:#ff4d4d; font-size:1rem; cursor:pointer; padding:0 2px; line-height:1;';
+    removeBtn.onclick = () => { row.remove(); pagUpdateSql(); };
+
+    colSel.onchange = pagUpdateSql;
+    opSel.onchange = pagUpdateSql;
+    valInput.oninput = pagUpdateSql;
+
+    row.appendChild(colSel);
+    row.appendChild(opSel);
+    row.appendChild(valInput);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+}
+
+function pagCondToSql(row) {
+    const col = row.children[0].value;
+    const op  = row.children[1].value;
+    const val = row.children[2].value.trim().replace(/'/g, "''");
+    if (!val) return null;
+    const colExpr = col === 'appid' ? 'CAST(appid AS TEXT)' : col;
+    switch (op) {
+        case 'contains':     return `${colExpr} LIKE '%${val}%'`;
+        case 'not_contains': return `${colExpr} NOT LIKE '%${val}%'`;
+        case 'equals':       return `${colExpr} = '${val}'`;
+        case 'starts_with':  return `${colExpr} LIKE '${val}%'`;
+        case 'ends_with':    return `${colExpr} LIKE '%${val}'`;
+        case 'gt':           return `${colExpr} > '${val}'`;
+        case 'lt':           return `${colExpr} < '${val}'`;
+        default:             return null;
+    }
+}
+
+function pagToggleComp(btn) {
+    btn.classList.toggle('active');
+    pagUpdateSql();
+}
+
+function pagBuildWhere() {
+    const allTags  = [..._pagSelectedAll];
+    const winsTags = [..._pagSelectedWins];
+
+    // Extra conditions from condition builders
+    const allCondRows  = document.querySelectorAll('#pag-all-conds > div');
+    const winsCondRows = document.querySelectorAll('#pag-wins-conds > div');
+    const allExtraSql  = Array.from(allCondRows).map(pagCondToSql).filter(Boolean);
+    const winsExtraSql = Array.from(winsCondRows).map(pagCondToSql).filter(Boolean);
+
+    // All-games conditions
+    const allConds = [
+        ...allTags.map(t => `tags LIKE '%${t.replace(/'/g,"''")}%'`),
+        ...allExtraSql
+    ];
+
+    // Wins-only conditions
+    const winsConds = [
+        ...winsTags.map(t => `tags LIKE '%${t.replace(/'/g,"''")}%'`),
+        ...winsExtraSql
+    ];
+
+    // Completion filter
+    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active')).map(b => b.dataset.val);
+    let compClause = '';
+    if (compVals.length > 0 && compVals.length < 5) {
+        compClause = '(' + compVals.map(v => `completion_status = '${v.replace(/'/g,"''")}'`).join(' OR ') + ')';
+    }
+
+    const parts = [];
+    if (allConds.length)  parts.push(`(${allConds.join('\n    OR ')})`);
+    if (winsConds.length) parts.push(`(groups LIKE '%won on steamgifts%'\n    AND (${winsConds.join('\n    OR ')}))`);
+
+    if (!parts.length) return compClause || '1=1';
+    let where = parts.join('\nOR ');
+    if (compClause) where = `(\n${where}\n)\nAND ${compClause}`;
+    return where;
+}
+
+function pagUpdateSql() {
+    const box = document.getElementById('pag-sql-box');
+    if (box.style.display !== 'none') {
+        document.getElementById('pag-sql-text').textContent = `SELECT * FROM games WHERE\n${pagBuildWhere()}`;
+    }
+}
+
+function pagToggleSql() {
+    const box = document.getElementById('pag-sql-box');
+    const chevron = document.getElementById('pag-sql-chevron');
+    const open = box.style.display === 'none';
+    box.style.display = open ? 'block' : 'none';
+    chevron.textContent = open ? '▼' : '▶';
+    if (open) document.getElementById('pag-sql-text').textContent = `SELECT * FROM games WHERE\n${pagBuildWhere()}`;
+}
+
+async function pagSaveFilter() {
+    const where = pagBuildWhere();
+    if (where === '1=1') { alert('No criteria selected — please pick at least one tag or add a condition.'); return; }
+    const name = prompt('Name this filter:');
+    if (!name || !name.trim()) return;
+    const tree = { type: 'group', logic: 'AND', custom_sql: where, items: [{ column: 'name', operator: 'contains', value: '__pagywosg__' }] };
+    try {
+        const res = await fetch('/api/save-filter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name.trim(), filter_tree: tree })
+        });
+        const data = await res.json();
+        const status = document.getElementById('pag-status');
+        if (data.status === 'success') {
+            status.className = 'tool-status success';
+            status.textContent = `✔ Saved as "${name.trim()}". Load it from the Library filter menu.`;
+        } else {
+            alert('Could not save: ' + data.message);
+        }
+    } catch (e) { alert('Network error.'); }
+}
+
+function pagClearAll() {
+    _pagSelectedAll.clear();
+    _pagSelectedWins.clear();
+    pagRenderTags('all');
+    pagRenderTags('wins');
+    document.getElementById('pag-all-conds').innerHTML = '';
+    document.getElementById('pag-wins-conds').innerHTML = '';
+    document.querySelectorAll('.pag-comp-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.val === 'Never Played' || b.dataset.val === 'Unfinished');
+    });
+    document.getElementById('pag-status').textContent = '';
+    pagUpdateSql();
+}
+
+// ── DB IMPORTER ──
+let _dbMeta = null; // { tables, table_columns, table_column_types, local_columns, local_column_types }
+
+function setImportStep(n) {
+    [1,2,3].forEach(i => {
+        document.getElementById(`import-step-${i}`).classList.toggle('active', i === n);
+        const ind = document.getElementById(`step-ind-${i}`);
+        ind.className = i < n ? 'done' : i === n ? 'active' : '';
+    });
+}
+
+async function uploadDatabase(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const status = document.getElementById('upload-status');
+    status.className = 'tool-status info';
+    status.textContent = `Uploading ${file.name}...`;
+
+    const formData = new FormData();
+    formData.append('external_db', file);
+
+    try {
+        const res = await fetch('/api/import-inspect', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.status !== 'success') {
+            status.className = 'tool-status error';
+            status.textContent = '✘ ' + data.message;
+            return;
+        }
+        _dbMeta = data;
+        buildStep2();
+        setImportStep(2);
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ Upload failed.';
+    }
+}
+
+function buildStep2() {
+    const tableSelect = document.getElementById('source-table');
+    tableSelect.innerHTML = '';
+    _dbMeta.tables.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        tableSelect.appendChild(opt);
+    });
+    onTableChange();
+}
+
+function onTableChange() {
+    const table = document.getElementById('source-table').value;
+    const cols = _dbMeta.table_columns[table] || [];
+
+    const appidSel = document.getElementById('appid-col');
+    appidSel.innerHTML = '';
+    cols.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        if (c.toLowerCase() === 'appid') opt.selected = true;
+        appidSel.appendChild(opt);
+    });
+
+    document.getElementById('mapping-rows').innerHTML = '';
+    addMappingRow();
+    refreshTypeWarnings();
+}
+
+function addMappingRow() {
+    const table = document.getElementById('source-table').value;
+    const sourceCols = _dbMeta.table_columns[table] || [];
+    const targetCols = _dbMeta.local_columns || [];
+    const srcTypes = _dbMeta.table_column_types?.[table] || {};
+    const tgtTypes = _dbMeta.local_column_types || {};
+
+    const row = document.createElement('div');
+    row.className = 'mapping-row';
+
+    const srcSel = buildColSelect(sourceCols, 'source');
+    const arrow = document.createElement('div');
+    arrow.className = 'mapping-arrow';
+    const tgtSel = buildColSelect(targetCols, 'target');
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'mapping-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.onclick = () => { row.remove(); refreshTypeWarnings(); };
+
+    function isNumeric(t) { return /INT|NUM|REAL|FLOAT/.test((t||'').toUpperCase()); }
+
+    function updateArrow() {
+        const sType = srcTypes[srcSel.value] || '';
+        const tType = tgtTypes[tgtSel.value] || '';
+        if (sType && tType && isNumeric(sType) !== isNumeric(tType)) {
+            arrow.textContent = '⚠';
+            arrow.title = `Type mismatch: ${sType} → ${tType}`;
+            arrow.style.color = '#c97c00';
+        } else {
+            arrow.textContent = '→';
+            arrow.title = sType && tType ? `${sType} → ${tType}` : '';
+            arrow.style.color = '#8f98a0';
+        }
+        refreshTypeWarnings();
+    }
+
+    srcSel.addEventListener('change', updateArrow);
+    tgtSel.addEventListener('change', updateArrow);
+    updateArrow();
+
+    row.appendChild(srcSel);
+    row.appendChild(arrow);
+    row.appendChild(tgtSel);
+    row.appendChild(removeBtn);
+    document.getElementById('mapping-rows').appendChild(row);
+}
+
+function refreshTypeWarnings() {
+    const table = document.getElementById('source-table').value;
+    const srcTypes = _dbMeta.table_column_types?.[table] || {};
+    const tgtTypes = _dbMeta.local_column_types || {};
+    const rows = document.querySelectorAll('#mapping-rows .mapping-row');
+    const warnings = [];
+
+    function isNumeric(t) { return /INT|NUM|REAL|FLOAT/.test((t||'').toUpperCase()); }
+
+    rows.forEach(row => {
+        const src = row.querySelector('[data-role="source"]').value;
+        const tgt = row.querySelector('[data-role="target"]').value;
+        const sType = srcTypes[src] || '';
+        const tType = tgtTypes[tgt] || '';
+        if (sType && tType && isNumeric(sType) !== isNumeric(tType)) {
+            warnings.push(`<strong>${src}</strong> (${sType}) → <strong>${tgt}</strong> (${tType}): values will be imported as-is and may not sort correctly`);
+        }
+    });
+
+    const warnDiv = document.getElementById('import-type-warning');
+    if (warnings.length) {
+        warnDiv.style.display = 'block';
+        warnDiv.innerHTML = '<strong>⚠ Type mismatches detected:</strong><br>' + warnings.map(w => `• ${w}`).join('<br>');
+    } else {
+        warnDiv.style.display = 'none';
+    }
+}
+
+function buildColSelect(cols, role) {
+    const sel = document.createElement('select');
+    sel.dataset.role = role;
+    cols.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        sel.appendChild(opt);
+    });
+    return sel;
+}
+
+async function executeImport() {
+    const status = document.getElementById('import-status');
+    const table = document.getElementById('source-table').value;
+    const appidCol = document.getElementById('appid-col').value;
+    const normalizeDates = document.getElementById('normalize-dates').checked;
+
+    const rows = document.querySelectorAll('#mapping-rows .mapping-row');
+    const mappings = Array.from(rows).map(row => ({
+        source: row.querySelector('[data-role="source"]').value,
+        target: row.querySelector('[data-role="target"]').value,
+    }));
+
+    if (mappings.length === 0) {
+        status.className = 'tool-status error';
+        status.textContent = 'Add at least one column mapping.';
+        return;
+    }
+
+    status.className = 'tool-status info';
+    status.textContent = 'Importing...';
+
+    try {
+        const res = await fetch('/api/import-execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table, appid_column: appidCol, mappings, normalize_dates: normalizeDates })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const warnings = data.type_warnings || [];
+            const warnHtml = warnings.length
+                ? `<div style="margin-top:10px; color:#c97c00; font-size:0.8rem;"><strong>⚠ Type warnings:</strong><br>${warnings.map(w => `• ${w}`).join('<br>')}</div>`
+                : '';
+            document.getElementById('import-result').innerHTML = `
+                <div style="color: #5c7e10; font-size: 1rem; margin-bottom: 8px;">✔ Import complete</div>
+                <div>Updated: <strong>${data.updated}</strong> games</div>
+                <div>Skipped (no match or empty): <strong>${data.skipped}</strong> games</div>
+                ${warnHtml}
+            `;
+            setImportStep(3);
+        } else {
+            status.className = 'tool-status error';
+            status.textContent = '✘ ' + data.message;
+        }
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ Network error.';
+    }
+}
+
+function resetImport() {
+    _dbMeta = null;
+    document.getElementById('db-file-input').value = '';
+    document.getElementById('upload-status').textContent = '';
+    document.getElementById('mapping-rows').innerHTML = '';
+    document.getElementById('import-result').innerHTML = '';
+    document.getElementById('import-status').textContent = '';
+    setImportStep(1);
+}
+
+// ── BACKUP ──────────────────────────────────────────────────────────────────
+async function runBackup() {
+    const btn        = document.getElementById('backup-btn');
+    const status     = document.getElementById('backup-status');
+    const includeArt = document.getElementById('backup-include-art').checked;
+
+    btn.disabled = true;
+    btn.textContent = 'Creating backup…';
+    status.className = 'tool-status info';
+    status.textContent = includeArt
+        ? 'Building backup (including cover art — this may take a moment)…'
+        : 'Building backup…';
+
+    try {
+        const res = await fetch('/api/backup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ include_art: includeArt })
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || `Server error ${res.status}`);
+        }
+
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        const filename = match ? match[1] : 'playdate_backup.zip';
+
+        const blob = await res.blob();
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        const sizeKB = Math.round(blob.size / 1024);
+        const sizeTxt = sizeKB > 1024
+            ? `${(sizeKB / 1024).toFixed(1)} MB`
+            : `${sizeKB} KB`;
+
+        status.className = 'tool-status success';
+        status.textContent = `✔ Backup saved as ${filename}  (${sizeTxt})`;
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Download Backup';
+    }
+}
+
+// ── RESTORE ─────────────────────────────────────────────────────────────────
+let _restoreFile = null;
+
+function restoreDragOver(e) {
+    e.preventDefault();
+    const zone = document.getElementById('restore-drop-zone');
+    zone.style.borderColor = 'var(--steam-focus)';
+    zone.style.background  = 'rgba(102,192,244,0.05)';
+}
+
+function restoreDragLeave(e) {
+    const zone = document.getElementById('restore-drop-zone');
+    zone.style.borderColor = '#2a3f55';
+    zone.style.background  = '';
+}
+
+function restoreDrop(e) {
+    e.preventDefault();
+    restoreDragLeave(e);
+    const file = e.dataTransfer.files[0];
+    if (file) setRestoreFile(file);
+}
+
+function restoreFileSelected(input) {
+    if (input.files[0]) setRestoreFile(input.files[0]);
+}
+
+function setRestoreFile(file) {
+    if (!file.name.endsWith('.zip')) {
+        const status = document.getElementById('restore-status');
+        status.className = 'tool-status error';
+        status.textContent = '✘ Please select a .zip file.';
+        return;
+    }
+    _restoreFile = file;
+
+    const label = document.getElementById('restore-filename');
+    label.textContent = `Selected: ${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
+    label.style.display = 'block';
+
+    const btn = document.getElementById('restore-btn');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+
+    document.getElementById('restore-status').textContent = '';
+}
+
+async function runRestore() {
+    if (!_restoreFile) return;
+
+    const status = document.getElementById('restore-status');
+    const btn    = document.getElementById('restore-btn');
+
+    const confirmed = confirm(
+        `Restore from "${_restoreFile.name}"?\n\n` +
+        `This will overwrite your current games.db, config.json, and state.json.\n` +
+        `The page will reload after restore completes.`
+    );
+    if (!confirmed) return;
+
+    btn.disabled     = true;
+    btn.textContent  = 'Restoring…';
+    status.className = 'tool-status info';
+    status.textContent = 'Restoring — please wait…';
+
+    const formData = new FormData();
+    formData.append('backup_file', _restoreFile);
+
+    try {
+        const res  = await fetch('/api/restore', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.status !== 'success') throw new Error(data.message || 'Restore failed.');
+
+        status.className = 'tool-status success';
+        status.textContent = `✔ Restored: ${data.restored.join(', ')}. Reloading…`;
+
+        setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+        btn.disabled    = false;
+        btn.textContent = 'Restore';
+    }
+}
+</script>
+{% endblock %}
