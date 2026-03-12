@@ -213,28 +213,38 @@ def fetch_player_data(appid):
     if not api_key or not steam_id:
         return None
 
-    # Use the single-game endpoint instead of fetching the entire library
-    url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&appids_filter[0]={appid}"
-
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        games = response.json().get('response', {}).get('games', [])
-
-        if not games:
-            return None
-
-        game = games[0]
+    def _parse_game(game):
         last_played_unix = game.get('rtime_last_played', 0)
         last_played_date = datetime.fromtimestamp(last_played_unix).strftime('%Y-%m-%d') if last_played_unix > 0 else '0'
         return {
-            'name': game.get('name'),
+            'name': game.get('name', ''),
             'playtime_forever': game.get('playtime_forever', 0),
             'last_played': last_played_date
         }
+
+    base = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true"
+
+    try:
+        # Fast path: filtered single-game fetch (works for paid games)
+        resp = requests.get(f"{base}&appids_filter[0]={appid}", timeout=10)
+        resp.raise_for_status()
+        games = resp.json().get('response', {}).get('games', [])
+        if games:
+            return _parse_game(games[0])
+
+        # appids_filter silently drops free games even with include_played_free_games=1.
+        # Fall back to full library fetch and find the game there.
+        print(f"appids_filter returned nothing for {appid} — retrying with full library (likely a free game)")
+        resp2 = requests.get(f"{base}&include_played_free_games=1", timeout=15)
+        resp2.raise_for_status()
+        match = next((g for g in resp2.json().get('response', {}).get('games', []) if g.get('appid') == appid), None)
+        if match:
+            return _parse_game(match)
+
     except Exception as e:
         print(f"Error fetching player data for {appid}: {e}")
-        return None
+
+    return None
 
 # Scrape Storefront API (Devs, Pubs, Release Date)
 def fetch_store_data(appid):
@@ -279,7 +289,9 @@ def fetch_store_data(appid):
 
 # Scrape Reviews API (Percentage, Description)
 def fetch_review_data(appid):
-    url = f"https://store.steampowered.com/appreviews/{appid}?json=1"
+    # purchase_type=all is required — the default ('steam') only counts purchasers,
+    # so free-to-play games return an empty summary. cc+l ensure consistent responses.
+    url = f"https://store.steampowered.com/appreviews/{appid}?json=1&purchase_type=all&cc=us&l=english"
 
     try:
         response = requests.get(url, timeout=20)
@@ -331,13 +343,13 @@ def fetch_cheevo_data(appid):
 
     try:
         response = requests.get(url)
-        response.raise_for_status()
+        # Steam returns HTTP 400 for games with no achievements — don't raise, parse the body instead
         json_data = response.json()
 
         playerstats = json_data.get('playerstats', {})
         if not playerstats.get('success'):
-            print(f"No achievement data found for {appid} (Game might not have them)")
-            return None
+            print(f"No achievement data found for {appid} (game has no achievements)")
+            return {'total_achievements': 0, 'unlocked_achievements': 0}
 
         achievements = playerstats.get('achievements', [])
 

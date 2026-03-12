@@ -314,11 +314,27 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/launch/<int:appid>', methods=['POST'])
     def launch_game(appid):
+        import subprocess
+        import platform
+
+        # Always attempt to open the game via Steam
+        try:
+            if platform.system() == 'Darwin':
+                subprocess.Popen(['open', f'steam://run/{appid}'])
+            elif platform.system() == 'Linux':
+                subprocess.Popen(['xdg-open', f'steam://run/{appid}'])
+            elif platform.system() == 'Windows':
+                subprocess.Popen(['cmd', '/c', f'start steam://run/{appid}'])
+            print(f"Launched AppID: {appid}")
+        except Exception as e:
+            print(f"Failed to launch AppID {appid}: {e}")
+
+        # Record the launch date only if the game is marked installed
         new_date = record_launch(appid)
         if new_date:
             return jsonify({"status": "success", "last_played": new_date})
         else:
-            return jsonify({"status": "ignored", "message": "Game not installed, date not updated"})
+            return jsonify({"status": "launched", "message": "Game launched but not marked installed — date not updated"})
 
     @app.route('/api/scrape_single/<int:appid>', methods=['GET', 'POST'])
     def scrape_single(appid):
@@ -560,6 +576,46 @@ def create_app(template_folder=None, static_folder=None):
             as_attachment=True,
             download_name=f'playdate_backup_{timestamp}.zip'
         )
+
+    @app.route('/api/backup-to-path', methods=['POST'])
+    def backup_to_path():
+        """
+        Write the backup zip directly to a path chosen via pywebview's native
+        Save-As dialog (path is passed in the request body).  Used by the
+        pywebview build; the browser fallback still uses /api/backup.
+        """
+        import zipfile
+        data        = request.json or {}
+        save_path   = data.get('path', '').strip()
+        include_art = data.get('include_art', False)
+
+        if not save_path:
+            return jsonify({"status": "error", "message": "No path provided."}), 400
+
+        try:
+            with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                core_files = {
+                    'games.db':    os.path.join(BASE_DIR, 'games.db'),
+                    'config.json': os.path.join(BASE_DIR, 'config.json'),
+                    'state.json':  os.path.join(BASE_DIR, 'state.json'),
+                }
+                for arcname, filepath in core_files.items():
+                    if os.path.exists(filepath):
+                        zf.write(filepath, arcname)
+
+                if include_art:
+                    art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
+                    if os.path.isdir(art_dir):
+                        for fname in os.listdir(art_dir):
+                            if fname.lower().endswith('.jpg'):
+                                zf.write(
+                                    os.path.join(art_dir, fname),
+                                    os.path.join('static', 'img', 'library', fname)
+                                )
+            size = os.path.getsize(save_path)
+            return jsonify({"status": "success", "path": save_path, "size": size})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     # ── RESTORE ───────────────────────────────────────────────────────────────
     @app.route('/api/restore', methods=['POST'])

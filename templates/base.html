@@ -31,6 +31,10 @@
             <button id="add-button" class="nav-btn">POPULATE PLAYDATE</button>
             <button id="installed-button" class="nav-btn">REFRESH INSTALLED GAMES</button>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <button id="fullscreen-button" class="nav-btn" title="Toggle fullscreen (F11)" style="min-width:36px;padding:0 10px;font-size:1rem;">⛶</button>
+            <button id="exit-button" class="nav-btn exit-btn">EXIT</button>
+        </div>
     </div>
     <div class="container">
         {% block content %}{% endblock %}
@@ -44,6 +48,11 @@
         // are defined in modals.html which is included above.
 
         async function launchGame(appid) {
+            // Don't launch if in select mode
+            if (typeof _selectMode !== 'undefined' && _selectMode) {
+                return;  // Exit early, don't launch
+            }
+            
             // Steam is launched server-side via subprocess — pywebview blocks steam:// protocol
             fetch(`/api/launch/${appid}`, { method: 'POST' }).catch(() => {});
 
@@ -141,7 +150,68 @@
             btn.disabled = false;
         });
 
+        document.getElementById('exit-button').addEventListener('click', async () => {
+            if (confirm("Are you sure you want to close PlayDate?")) {
+                try {
+                    await fetch('/api/quit', { method: 'POST' });
+                    window.close();
+                    document.body.innerHTML = '<h1 style="color:white; text-align:center; margin-top:20%;">PlayDate has been shut down. You can close this tab.</h1>';
+                } catch (e) {
+                    console.error("Shutdown failed", e);
+                }
+            }
+        });
 
+        // ── Fullscreen ────────────────────────────────────────────────────────
+        function isFullscreen() {
+            return !!(document.fullscreenElement ||
+                      document.webkitFullscreenElement ||
+                      (window.pywebview && window.pywebview.api && window._playdateFullscreen));
+        }
+
+        async function enterFullscreen() {
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.toggle_fullscreen) {
+                await window.pywebview.api.toggle_fullscreen();
+                window._playdateFullscreen = true;
+            } else {
+                await document.documentElement.requestFullscreen().catch(() => {});
+            }
+            document.getElementById('fullscreen-button').textContent = '⛶';
+            document.getElementById('fullscreen-button').title = 'Exit fullscreen (Escape / F11)';
+        }
+
+        async function exitFullscreen() {
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.toggle_fullscreen) {
+                await window.pywebview.api.toggle_fullscreen();
+                window._playdateFullscreen = false;
+            } else if (document.fullscreenElement || document.webkitFullscreenElement) {
+                await document.exitFullscreen().catch(() => {});
+            }
+            document.getElementById('fullscreen-button').textContent = '⛶';
+            document.getElementById('fullscreen-button').title = 'Toggle fullscreen (F11)';
+        }
+
+        async function toggleFullscreen() {
+            if (window._playdateFullscreen || document.fullscreenElement || document.webkitFullscreenElement) {
+                await exitFullscreen();
+            } else {
+                await enterFullscreen();
+            }
+        }
+
+        document.getElementById('fullscreen-button').addEventListener('click', toggleFullscreen);
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreen();
+            } else if (e.key === 'Escape') {
+                // Only exit fullscreen on Escape — don't preventDefault so modals etc. still work
+                if (window._playdateFullscreen || document.fullscreenElement || document.webkitFullscreenElement) {
+                    exitFullscreen();
+                }
+            }
+        });
     </script>
     {% block scripts %}{% endblock %}
 </body>

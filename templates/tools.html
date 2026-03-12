@@ -357,8 +357,8 @@
 
     <!-- ── DB IMPORTER ── -->
     <div class="tool-card">
-        <h3>Import Data from Another PlayDate Database</h3>
-        <p>Copy column data from a backup or older PlayDate database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
+        <h3>Import Data from Another Database</h3>
+        <p>Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated. Works with PlayDate backups, older versions, or any database with compatible structure.</p>
 
         <div class="step-indicator">
             <span id="step-ind-1" class="active">1 · Upload File</span>
@@ -918,6 +918,15 @@ async function runBackup() {
     const status     = document.getElementById('backup-status');
     const includeArt = document.getElementById('backup-include-art').checked;
 
+    const now = new Date();
+    const ts  = now.getFullYear().toString()
+        + String(now.getMonth()+1).padStart(2,'0')
+        + String(now.getDate()).padStart(2,'0')
+        + '_' + String(now.getHours()).padStart(2,'0')
+        + String(now.getMinutes()).padStart(2,'0')
+        + String(now.getSeconds()).padStart(2,'0');
+    const suggestedName = `playdate_backup_${ts}.zip`;
+
     btn.disabled = true;
     btn.textContent = 'Creating backup…';
     status.className = 'tool-status info';
@@ -926,6 +935,32 @@ async function runBackup() {
         : 'Building backup…';
 
     try {
+        // ── Path 1: pywebview native Save-As dialog ──────────────────────────
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
+            const chosenPath = await window.pywebview.api.pick_save_path(suggestedName);
+            if (!chosenPath) {
+                status.textContent = 'Backup cancelled.';
+                return;
+            }
+
+            const res = await fetch('/api/backup-to-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ include_art: includeArt, path: chosenPath })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const sizeKB = Math.round((data.size || 0) / 1024);
+                const sizeTxt = sizeKB > 1024 ? `${(sizeKB/1024).toFixed(1)} MB` : `${sizeKB} KB`;
+                status.className = 'tool-status success';
+                status.textContent = `✔ Backup saved (${sizeTxt}) → ${chosenPath}`;
+            } else {
+                throw new Error(data.message || 'Unknown error');
+            }
+            return;
+        }
+
+        // ── Path 2: browser fallback (download) ──────────────────────────────
         const res = await fetch('/api/backup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -939,11 +974,11 @@ async function runBackup() {
 
         const disposition = res.headers.get('Content-Disposition') || '';
         const match = disposition.match(/filename="?([^"]+)"?/);
-        const filename = match ? match[1] : 'playdate_backup.zip';
-
+        const filename = match ? match[1] : suggestedName;
         const blob = await res.blob();
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
+
+        const url = URL.createObjectURL(blob);
+        const a   = document.createElement('a');
         a.href     = url;
         a.download = filename;
         document.body.appendChild(a);
@@ -952,12 +987,10 @@ async function runBackup() {
         URL.revokeObjectURL(url);
 
         const sizeKB = Math.round(blob.size / 1024);
-        const sizeTxt = sizeKB > 1024
-            ? `${(sizeKB / 1024).toFixed(1)} MB`
-            : `${sizeKB} KB`;
-
+        const sizeTxt = sizeKB > 1024 ? `${(sizeKB/1024).toFixed(1)} MB` : `${sizeKB} KB`;
         status.className = 'tool-status success';
-        status.textContent = `✔ Backup saved as ${filename}  (${sizeTxt})`;
+        status.textContent = `✔ Backup downloaded as ${filename}  (${sizeTxt})`;
+
     } catch (e) {
         status.className = 'tool-status error';
         status.textContent = '✘ ' + e.message;

@@ -102,6 +102,47 @@ def _destroy_window():
         log.warning(f"Window destroy failed: {e}")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+# Module-level window reference so Flask routes can call pywebview APIs
+_webview_window = None
+
+
+class PyWebviewAPI:
+    """JS-callable API exposed to the webview via js_api."""
+
+    def toggle_fullscreen(self):
+        """Toggle native fullscreen on the pywebview window."""
+        if _webview_window is None:
+            return
+        try:
+            if _webview_window.fullscreen:
+                _webview_window.restore()
+            else:
+                _webview_window.toggle_fullscreen()
+        except Exception as e:
+            log.warning(f"Fullscreen toggle failed: {e}")
+
+    def pick_save_path(self, suggested_name):
+        """
+        Open a native Save-As dialog and return the chosen path string,
+        or None if the user cancelled.
+        """
+        if _webview_window is None:
+            return None
+        try:
+            paths = _webview_window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=suggested_name,
+                file_types=('ZIP Files (*.zip)',),
+            )
+            if paths:
+                # pywebview returns a tuple; grab the first element
+                path = paths[0] if isinstance(paths, (list, tuple)) else paths
+                return str(path)
+        except Exception as e:
+            log.warning(f"Save dialog failed: {e}")
+        return None
+
+
 if __name__ == '__main__':
     # 1. Create Flask app — pass bundle dir so it finds templates/static
     #    when frozen; falls back to normal behaviour when running as script
@@ -141,12 +182,15 @@ if __name__ == '__main__':
         log.warning("Flask did not respond in time — opening window anyway")
 
     # 5. Create pywebview window
+    _api = PyWebviewAPI()
     window = webview.create_window(
         title    = "PlayDate",
         url      = URL,
         maximized = True,
         min_size = (1024, 600),
+        js_api   = _api,
     )
+    _webview_window = window
 
     # 6. Linux icon fix
     _fix_window_icon(window)

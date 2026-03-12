@@ -359,7 +359,7 @@
 <script>
 let _shelves = {{ all_shelves_config | tojson }};
 const _builtinFilters = {{ filter_options | tojson }};
-var _savedFilters   = {{ saved_filters | tojson }};
+const _savedFilters   = {{ saved_filters | tojson }};
 // Merged filter list for the dropdown: built-ins first, then saved
 const _filters = {
     ..._builtinFilters,
@@ -991,10 +991,14 @@ function syncShelvesOrderFromDOM() {
 }
 
 // ── Dedup panel ───────────────────────────────────────────────────────────────
+const WIDGET_PRESETS = new Set(['clock', 'completion_pie']);
+
 let _dedupDragSrc = null;
 function openDedupPanel() {
     const list = document.getElementById('dedup-list');
-    const sorted = [..._shelves].sort((a,b)=>(a.dedup_priority||0)-(b.dedup_priority||0));
+    // Exclude pure widget shelves — they display no games and can't participate in dedup
+    const dedupable = _shelves.filter(s => !WIDGET_PRESETS.has(s.preset) && !WIDGET_PRESETS.has(s.filter_key));
+    const sorted = [...dedupable].sort((a,b)=>(a.dedup_priority||0)-(b.dedup_priority||0));
     list.innerHTML = '';
     sorted.forEach(shelf => {
         const li = document.createElement('li');

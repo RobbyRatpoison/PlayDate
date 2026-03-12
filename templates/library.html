@@ -215,6 +215,72 @@
             background-color: #444;
         }
 
+        /* ── Custom dropdown (replaces native <select> to avoid OS-level z-index bleed) ── */
+        .custom-dropdown {
+            position: relative;
+            min-width: 160px;
+        }
+
+        .custom-dropdown-btn {
+            height: 50px;
+            width: 100%;
+            background-color: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 0 32px 0 15px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: inherit;
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            box-sizing: border-box;
+        }
+
+        .custom-dropdown-btn:hover { background-color: #444; }
+        .custom-dropdown-btn.open  { border-color: var(--steam-focus); background-color: #444; }
+
+        .custom-dropdown-btn::after {
+            content: '▾';
+            font-size: 0.85rem;
+            flex-shrink: 0;
+            color: #8f98a0;
+        }
+
+        .custom-dropdown-list {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            min-width: 100%;
+            background: #1e2a35;
+            border: 1px solid var(--steam-focus);
+            border-radius: 6px;
+            z-index: 2000;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        }
+
+        .custom-dropdown-list.open { display: block; }
+
+        .custom-dropdown-list li {
+            list-style: none;
+            padding: 10px 16px;
+            color: #c2c8cc;
+            cursor: pointer;
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }
+
+        .custom-dropdown-list li:hover    { background: #2a475e; color: white; }
+        .custom-dropdown-list li.selected { color: var(--steam-focus); font-weight: bold; }
+
         /* ── Select mode ── */
         .select-mode-btn.active {
             background: var(--steam-focus) !important;
@@ -263,15 +329,20 @@
                 value="{{ state.get('active_filters', [])|selectattr('column', 'equalto', 'name')|map(attribute='value')|first or '' }}">
         </div>
         <button onclick="triggerSearch()">SEARCH</button>
-        <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' style="min-width:160px;">
-            <option value="name" {{ 'selected' if state.sort == 'name' }}>Alphabetical</option>
-            <option value="playtime_forever" {{ 'selected' if state.sort == 'playtime_forever' }}>Hours Played</option>
-            <option value="release_date" {{ 'selected' if state.sort == 'release_date' }}>Release Date</option>
-            <option value="last_played" {{ 'selected' if state.sort == 'last_played' }}>Recently Played</option>
-            <option value="date_added" {{ 'selected' if state.sort == 'date_added' }}>Date Added</option>
-            <option value="review_percentage" {{ 'selected' if state.sort == 'review_percentage' }}>Review Score</option>
-            <option value="weighted_percentage" {{ 'selected' if state.sort == 'weighted_percentage' }}>Weighted Score</option>
-        </select>
+        <div class="custom-dropdown" id="sort-dropdown-wrap">
+            <button class="custom-dropdown-btn" id="sort-dropdown-btn" onclick="toggleSortDropdown(event)">
+                <span id="sort-dropdown-label">{{ {'name':'Alphabetical','playtime_forever':'Hours Played','release_date':'Release Date','last_played':'Recently Played','date_added':'Date Added','review_percentage':'Review Score','weighted_percentage':'Weighted Score'}.get(state.sort, 'Sort by…') }}</span>
+            </button>
+            <ul class="custom-dropdown-list" id="sort-dropdown-list">
+                <li data-value="name"               class="{{ 'selected' if state.sort == 'name' }}">Alphabetical</li>
+                <li data-value="playtime_forever"   class="{{ 'selected' if state.sort == 'playtime_forever' }}">Hours Played</li>
+                <li data-value="release_date"       class="{{ 'selected' if state.sort == 'release_date' }}">Release Date</li>
+                <li data-value="last_played"        class="{{ 'selected' if state.sort == 'last_played' }}">Recently Played</li>
+                <li data-value="date_added"         class="{{ 'selected' if state.sort == 'date_added' }}">Date Added</li>
+                <li data-value="review_percentage"  class="{{ 'selected' if state.sort == 'review_percentage' }}">Review Score</li>
+                <li data-value="weighted_percentage" class="{{ 'selected' if state.sort == 'weighted_percentage' }}">Weighted Score</li>
+            </ul>
+        </div>
         <button class="order-btn" onclick="toggleOrder()" title='Toggle Ascending or Descending'>
             {{ '▲' if state.order == 'ASC' else '▼' }}
         </button>
@@ -302,7 +373,7 @@
 {% block scripts %}
 <script>
     // ── All game data in one JS array — no per-card script tags ──
-    window.GAMES = {{ games | tojson }};
+    const GAMES = {{ games | tojson }};
 
     // ── Current filter tree from server ──
     const _serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
@@ -330,6 +401,41 @@
 
     function updateSort(column) { sendStateUpdate({ sort: column }); }
 
+    // ── Custom sort dropdown ──────────────────────────────────────────────────
+    function toggleSortDropdown(e) {
+        e.stopPropagation();
+        const btn  = document.getElementById('sort-dropdown-btn');
+        const list = document.getElementById('sort-dropdown-list');
+        const open = list.classList.contains('open');
+        closeAllCustomDropdowns();
+        if (!open) {
+            list.classList.add('open');
+            btn.classList.add('open');
+        }
+    }
+
+    function closeAllCustomDropdowns() {
+        document.querySelectorAll('.custom-dropdown-list.open').forEach(l => l.classList.remove('open'));
+        document.querySelectorAll('.custom-dropdown-btn.open').forEach(b => b.classList.remove('open'));
+    }
+
+    // Wire up list items
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('sort-dropdown-list').querySelectorAll('li').forEach(li => {
+            li.addEventListener('click', e => {
+                e.stopPropagation();
+                const value = li.dataset.value;
+                document.getElementById('sort-dropdown-label').textContent = li.textContent;
+                document.querySelectorAll('#sort-dropdown-list li').forEach(l => l.classList.remove('selected'));
+                li.classList.add('selected');
+                closeAllCustomDropdowns();
+                updateSort(value);
+            });
+        });
+        // Close dropdown when clicking anywhere else
+        document.addEventListener('click', closeAllCustomDropdowns);
+    });
+
     function toggleOrder() {
         const currentOrder = "{{ state.order }}";
         sendStateUpdate({ order: currentOrder === 'ASC' ? 'DESC' : 'ASC' });
@@ -343,11 +449,14 @@
 
     const CARD_HTML_CACHE = new Map(); // appid → innerHTML string
 
+    // Map of appid → game object for edit modal lookup (avoids embedding JSON in HTML attrs)
+    const GAME_MAP = Object.fromEntries(GAMES.map(g => [g.appid, g]));
+
     function cardInnerHTML(game) {
         if (CARD_HTML_CACHE.has(game.appid)) return CARD_HTML_CACHE.get(game.appid);
         const escaped = (game.name || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const html = `
-            <div class="capsule-container" onclick="launchGame(${game.appid})" style="cursor:pointer;">
+            <div class="capsule-container" data-launch="${game.appid}" style="cursor:pointer;">
                 <img src="/static/img/library/${game.appid}.jpg"
                     alt="${escaped}"
                     class="game-capsule"
@@ -355,20 +464,33 @@
                     onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg';">
                 <div class="game-overlay">
                     <button class="status-tag"
-                        style="background:#333;color:#eee;border:1px solid #555;cursor:pointer;"
-                        onclick="event.stopPropagation();openEditModalById(${game.appid})">✎</button>
+                        data-edit="${game.appid}"
+                        style="background:#333;color:#eee;border:1px solid #555;cursor:pointer;">✎</button>
                 </div>
             </div>`;
         CARD_HTML_CACHE.set(game.appid, html);
         return html;
     }
 
-    // Look up game by appid and open the edit modal — avoids embedding
-    // large JSON blobs in onclick attributes (causes log warnings + breakage)
-    function openEditModalById(appid) {
-        const game = window.GAMES.find(g => g.appid === appid);
-        if (game) openEditModal(game);
-    }
+    // Single delegated listener on the grid handles both launch and edit clicks
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('game-grid').addEventListener('click', e => {
+            // Edit button clicked
+            const editBtn = e.target.closest('[data-edit]');
+            if (editBtn) {
+                e.stopPropagation();
+                const game = GAME_MAP[parseInt(editBtn.dataset.edit)];
+                if (game) openEditModal(game);
+                return;
+            }
+            // Capsule (launch) clicked — skip if in select mode
+            const capsule = e.target.closest('[data-launch]');
+            if (capsule && !e.target.closest('[data-edit]')) {
+                if (typeof _selectMode !== 'undefined' && _selectMode) return;
+                launchGame(parseInt(capsule.dataset.launch));
+            }
+        });
+    });
 
     function buildGrid() {
         const grid = document.getElementById('game-grid');
@@ -445,6 +567,8 @@ function toggleSelectMode() {
 function onCardClick(e) {
     // Don't intercept the ✎ edit button
     if (e.target.closest('.game-overlay')) return;
+    // Prevent launchGame from firing
+    e.stopPropagation();
     const card = e.currentTarget;
     const appid = parseInt(card.id.replace('card-', ''));
     if (_selectedIds.has(appid)) {
@@ -605,7 +729,7 @@ async function runBulkEdit() {
             // Exit select mode and clear selection after successful apply
             if (_selectMode) toggleSelectMode();
             else { _selectedIds.clear(); document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected')); }
-            setTimeout(() => { closeBulkEditModal(); window.location.reload(); }, 900);
+            setTimeout(() => closeBulkEditModal(), 900);
         } else {
             status.className = 'bulk-status-error';
             status.textContent = '✘ ' + data.message;
