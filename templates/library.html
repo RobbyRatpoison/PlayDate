@@ -266,7 +266,7 @@
                 id="library-search"
                 placeholder="Search games..."
                 onkeyup="handleSearch(event, this.value)"
-                value="{{ state.get('active_filters', [])|selectattr('column', 'equalto', 'name')|map(attribute='value')|first or '' }}">
+                value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% else %}{{ state.get('active_filters', [])|selectattr('column', 'equalto', 'name')|map(attribute='value')|first or '' }}{% endif %}">
         </div>
         <button onclick="triggerSearch()">SEARCH</button>
         <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' style="min-width:160px;">
