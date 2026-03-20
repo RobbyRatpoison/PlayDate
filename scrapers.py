@@ -322,7 +322,7 @@ def fetch_review_data(appid):
             elif total < 10:
                 weighted = int(percent * 0.25)
             elif total < 100:
-                factor = 0.25 + 0.75 * (total - 10) / 90
+                factor = 0.5 + 0.5 * (total - 10) / 90
                 weighted = int(percent * factor)
             else:
                 weighted = percent
