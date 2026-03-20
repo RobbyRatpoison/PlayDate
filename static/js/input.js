@@ -139,6 +139,7 @@
         col:          0,
         savedCol:     0,
         subItem:      -1,
+        modalItem:    0,
         focusedAppid: null,
     };
 
@@ -166,7 +167,7 @@
 
     // ── Standard Xbox/standard-mapping button indices ─────────────────────────
     const BTN_IDX = { a:0, b:1, x:2, y:3, lb:4, rb:5, up:12, down:13, left:14, right:15 };
-    const AXIS_IDX = { lx:0, ly:1 };
+    const AXIS_IDX = { lx:0, ly:1, rx:2, ry:3 };
 
     // ── Focus indicator helpers ───────────────────────────────────────────────
     function _clearFocus() {
@@ -291,12 +292,31 @@
         return rows;
     }
 
-    // Tools: rows = .tool-card; items within each = visible .nav-btn buttons/links
+    // Tools: rows = .tool-card elements, plus individual blacklist entry rows when expanded
     function _toolRows() {
-        return [...document.querySelectorAll('.tool-card')];
+        const rows = [];
+        for (const card of document.querySelectorAll('.tool-card')) {
+            rows.push(card);
+            // Blacklist entries become individual rows navigated with up/down
+            const tbody = card.querySelector('#blacklist-tbody');
+            if (tbody) {
+                for (const tr of tbody.querySelectorAll('tr')) {
+                    const btn = tr.querySelector('.bl-remove-btn');
+                    if (btn && btn.offsetParent !== null && !btn.disabled) {
+                        rows.push(tr);
+                    }
+                }
+            }
+        }
+        return rows;
     }
 
     function _toolItems(rowEl) {
+        // Blacklist entry row — just the remove button
+        if (rowEl.tagName === 'TR') {
+            return [...rowEl.querySelectorAll('.bl-remove-btn')]
+                .filter(el => el.offsetParent !== null && !el.disabled);
+        }
         return [...rowEl.querySelectorAll('button.nav-btn, a.nav-btn')].filter(el => {
             return el.offsetParent !== null && !el.disabled;
         });
@@ -315,6 +335,23 @@
         return [...document.querySelectorAll('#ctx-completion-sub .ctx-item')].filter(el => {
             return !el.classList.contains('disabled');
         });
+    }
+
+    // Modal items: buttons in the currently visible modal
+    const _MODAL_IDS = [
+        'editModal', 'filterModal',
+        'backup-modal', 'bg-modal', 'import-modal',
+        'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
+    ];
+    function _modalItems() {
+        for (const id of _MODAL_IDS) {
+            const el = document.getElementById(id);
+            if (el && el.style.display !== 'none' && el.style.display !== '') {
+                return [...el.querySelectorAll('button:not(:disabled), a.nav-btn')]
+                    .filter(e => e.offsetParent !== null && !e.disabled);
+            }
+        }
+        return [];
     }
 
     // ── Get the currently focused element ────────────────────────────────────
@@ -401,9 +438,16 @@
                 break;
             }
 
-            case 'modal':
-                _clearFocus();
+            case 'modal': {
+                const mitems = _modalItems();
+                if (mitems.length) {
+                    _state.modalItem = Math.min(_state.modalItem, mitems.length - 1);
+                    _applyFocus(mitems[_state.modalItem]);
+                } else {
+                    _clearFocus();
+                }
                 break;
+            }
 
             default:
                 _dbgNote(`syncFocus: unknown zone "${_state.zone}", resetting`);
@@ -447,6 +491,7 @@
         _state.zone       = zone;
         _state.col        = 0;
         _state.subItem    = -1;
+        _state.modalItem  = 0;
     }
 
     function _popZone() {
@@ -464,6 +509,15 @@
 
     function _handleUp() {
         switch (_state.zone) {
+
+            case 'modal': {
+                const mitems = _modalItems();
+                if (mitems.length) {
+                    _state.modalItem = (_state.modalItem - 1 + mitems.length) % mitems.length;
+                    _syncFocus();
+                }
+                break;
+            }
 
             case 'ctx-menu': {
                 if (_state.subItem >= 0) {
@@ -574,6 +628,15 @@
     function _handleDown() {
         switch (_state.zone) {
 
+            case 'modal': {
+                const mitems = _modalItems();
+                if (mitems.length) {
+                    _state.modalItem = (_state.modalItem + 1) % mitems.length;
+                    _syncFocus();
+                }
+                break;
+            }
+
             case 'ctx-menu': {
                 if (_state.subItem >= 0) {
                     const subs = _ctxSubItems();
@@ -668,6 +731,15 @@
     function _handleLeft() {
         switch (_state.zone) {
 
+            case 'modal': {
+                const mitems = _modalItems();
+                if (mitems.length && _state.modalItem > 0) {
+                    _state.modalItem--;
+                    _syncFocus();
+                }
+                break;
+            }
+
             case 'ctx-menu': {
                 if (_state.subItem >= 0) {
                     // Exit submenu back to parent, remove force-open class
@@ -751,6 +823,15 @@
 
     function _handleRight() {
         switch (_state.zone) {
+
+            case 'modal': {
+                const mitems = _modalItems();
+                if (mitems.length && _state.modalItem < mitems.length - 1) {
+                    _state.modalItem++;
+                    _syncFocus();
+                }
+                break;
+            }
 
             case 'ctx-menu': {
                 // Enter submenu if the focused item has one
@@ -844,6 +925,12 @@
 
     function _handleA() {
         switch (_state.zone) {
+
+            case 'modal': {
+                const mitems = _modalItems();
+                mitems[_state.modalItem]?.click();
+                break;
+            }
 
             case 'ctx-menu': {
                 if (_state.subItem >= 0) {
@@ -1227,6 +1314,12 @@
             }
             _gp.prev[i] = pressed;
         });
+
+        // ── Right stick (scroll) ──────────────────────────────────────────────
+        const rsy = gp.axes[AXIS_IDX.ry] || 0;
+        if (Math.abs(rsy) > STICK_DEAD) {
+            window.scrollBy({ top: rsy * 10, behavior: 'auto' });
+        }
 
         // ── Left stick ────────────────────────────────────────────────────────
         const ax = gp.axes[AXIS_IDX.lx] || 0;
