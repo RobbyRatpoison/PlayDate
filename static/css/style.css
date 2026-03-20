@@ -360,6 +360,13 @@ input[type="range"].gamepad-focus {
     outline-offset: 2px;
 }
 
+/* Any button inside a modal overlay */
+.modal-overlay button.gamepad-focus {
+    outline: 2px solid var(--steam-focus) !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.4);
+}
+
 /* Blacklist remove buttons */
 .bl-remove-btn.gamepad-focus {
     outline: 2px solid var(--steam-focus);

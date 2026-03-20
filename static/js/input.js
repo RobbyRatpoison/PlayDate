@@ -36,8 +36,25 @@
         let html = `<div style="font-weight:bold;margin-bottom:4px;color:#66c0f4;">PlayDate Input Debug <span style="font-weight:normal;color:#8f98a0;font-size:0.75em;">(F9 to hide)</span></div>`;
 
         // State
-        html += `<div style="margin-bottom:4px;">zone=<b>${_state.zone}</b> row=<b>${_state.row}</b> col=<b>${_state.col}</b> active=<b>${_state.active}</b> gpSeen=<b>${_gpEverSeen}</b></div>`;
-        html += `<div style="margin-bottom:6px;">prevZone=<b>${_state.prevZone}</b> prevRow=<b>${_state.prevRow}</b> prevCol=<b>${_state.prevCol}</b></div>`;
+        html += `<div style="margin-bottom:4px;">zone=<b>${_state.zone}</b> row=<b>${_state.row}</b> col=<b>${_state.col}</b> modal=<b>${_state.modalItem}</b> active=<b>${_state.active}</b></div>`;
+        html += `<div style="margin-bottom:4px;">prevZone=<b>${_state.prevZone}</b> prevRow=<b>${_state.prevRow}</b> prevCol=<b>${_state.prevCol}</b> gpSeen=<b>${_gpEverSeen}</b></div>`;
+
+        // Modal detail — shown whenever zone=modal OR a modal is open
+        const _dbgOpenModal = _MODAL_IDS.find(id => {
+            const el = document.getElementById(id);
+            return el && el.style.display !== 'none' && el.style.display !== '';
+        });
+        if (_dbgOpenModal || _state.zone === 'modal') {
+            const mitems = _modalItems();
+            html += `<div style="color:#f0a030;margin-bottom:2px;">modal open: <b>${_dbgOpenModal || 'none'}</b> | items found: <b>${mitems.length}</b> | zone: <b>${_state.zone}</b></div>`;
+            html += `<div style="font-family:monospace;font-size:0.72em;margin-bottom:4px;">`;
+            mitems.forEach((el, i) => {
+                const active = i === _state.modalItem && _state.zone === 'modal';
+                const text = (el.textContent || '').trim().replace(/\s+/g,' ').slice(0, 22);
+                html += `<div style="color:${active ? '#66c0f4' : '#8f98a0'};${active ? 'font-weight:bold;' : ''}">${active ? '→' : '  '} [${i}] &lt;${el.tagName.toLowerCase()}&gt; ${text}</div>`;
+            });
+            html += `</div>`;
+        }
 
         if (!gp) {
             html += `<div style="color:#ff8080;">No gamepad detected</div>`;
@@ -1216,7 +1233,7 @@
         if (typeof openEditModalById === 'function') {
             openEditModalById(appid);
             _pushZone('modal');
-            _syncFocus();
+            requestAnimationFrame(() => { if (_state.zone === 'modal') _syncFocus(); });
         } else {
             fetch(`/api/game/${appid}`)
                 .then(r => r.json())
@@ -1224,7 +1241,7 @@
                     if (data.status === 'success' && typeof openEditModal === 'function') {
                         openEditModal(data.game);
                         _pushZone('modal');
-                        _syncFocus();
+                        requestAnimationFrame(() => { if (_state.zone === 'modal') _syncFocus(); });
                     }
                 })
                 .catch(() => {});
@@ -1411,7 +1428,7 @@
                     _popZone();
                 }
                 _pushZone('modal');
-                _syncFocus();
+                requestAnimationFrame(() => { if (_state.zone === 'modal') _syncFocus(); });
             } else if (!nowVisible) {
                 if (_state.zone === 'modal') _popZone();
                 _syncFocus();
