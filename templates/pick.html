@@ -346,6 +346,8 @@
         color: #0e1621;
     }
     .status-btn:not(.active):hover { background: #243447; color: #c7d5e0; }
+    .status-btn.gamepad-focus { outline: 2px solid var(--steam-focus); outline-offset: 2px; }
+    .status-btn.active.gamepad-focus { box-shadow: 0 0 8px rgba(102, 192, 244, 0.5); }
 </style>
 {% endblock %}
 
@@ -410,7 +412,7 @@
 
             <!-- Completion status filters -->
             <div class="control-row">
-                <div class="control-label">Completion Status</div>
+                <div class="control-label">Status</div>
                 <div class="status-filters" id="status-filters">
                     <button class="status-btn active" data-status="Never Played" onclick="toggleStatus(this)">Never Played</button>
                     <button class="status-btn active" data-status="Unfinished"   onclick="toggleStatus(this)">Unfinished</button>
