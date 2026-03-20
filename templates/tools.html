@@ -1913,7 +1913,7 @@ async function toggleBlacklist() {
                 <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
                 <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
                 <td style="padding:9px 10px; text-align:right;">
-                    <button onclick="removeFromBlacklist(${e.appid}, this)"
+                    <button onclick="removeFromBlacklist(${e.appid}, this)" class="nav-btn"
                         style="background:none; border:1px solid var(--danger-color); color:var(--danger-text); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
                         onmouseover="this.style.background='rgba(163,42,42,0.2)'"
                         onmouseout="this.style.background='none'">Remove</button>
