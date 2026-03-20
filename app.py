@@ -31,8 +31,7 @@ from utils import sync_local_install_status, record_launch
 from config import BASE_DIR
 from imports import inspect_database, execute_import
 from scrapers import scrape_blaeo_games
-from database import get_db, init_db, update_game_data
-from migrate_tags import migrate_missing_tags, cancel_migration
+from database import get_db, init_db, update_game_data, add_to_blacklist, remove_from_blacklist, get_blacklist
 import re
 import scrapers
 import threading
@@ -59,9 +58,18 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(index_bp)
     app.register_blueprint(library_bp)
 
+    # ── Inject background timestamp and builtin filters into every template ──────
+    @app.context_processor
+    def inject_globals():
+        from config import BUILTIN_FILTERS, load_theme
+        bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
+        ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
+        return dict(background_ts=ts, builtin_filters=BUILTIN_FILTERS, theme_vars=load_theme())
+
     # ── Cancellation state for populate ──────────────────────────────────────
     _populate_cancel  = threading.Event()
-    _populate_state   = {"running": False, "last_result": None}
+    _populate_state   = {"running": False, "last_result": None,
+                         "current": 0, "total": 0, "current_name": ""}
 
     # ── Routes ────────────────────────────────────────────────────────────────
 
@@ -69,7 +77,9 @@ def create_app(template_folder=None, static_folder=None):
     def pick():
         from config import load_state
         state = load_state()
-        has_filters = bool(state.get('filter_tree') and state['filter_tree'].get('items'))
+        has_filters = bool(state.get('filter_tree') and (
+            state['filter_tree'].get('items') or state['filter_tree'].get('custom_sql')
+        ))
         return render_template('pick.html', state=state, has_filters=has_filters)
 
     @app.route('/api/pick-game', methods=['POST'])
@@ -82,6 +92,7 @@ def create_app(template_folder=None, static_folder=None):
         data         = request.json or {}
         mode         = data.get('mode', 'random')
         use_filtered = data.get('use_filtered', False)
+        statuses     = data.get('statuses', None)  # None means all statuses
         w_tags       = float(data.get('w_tags',      65))
         w_review     = float(data.get('w_review',    35))
         w_staleness  = float(data.get('w_staleness',  0))
@@ -104,6 +115,11 @@ def create_app(template_folder=None, static_folder=None):
                     tree_sql = build_tree_sql(filter_tree, params)
                     if tree_sql and tree_sql != '1=1':
                         where = tree_sql
+
+        if statuses is not None:
+            placeholders = ','.join('?' * len(statuses))
+            where = f"({where}) AND completion_status IN ({placeholders})"
+            params = list(params) + list(statuses)
 
         smart_where = where
         if mode in ('smart', 'weighted'):
@@ -285,15 +301,30 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/populate-status')
     def populate_status():
-        return jsonify({"running": _populate_state["running"], "last_result": _populate_state["last_result"]})
+        return jsonify({
+            "running":      _populate_state["running"],
+            "last_result":  _populate_state["last_result"],
+            "current":      _populate_state["current"],
+            "total":        _populate_state["total"],
+            "current_name": _populate_state["current_name"],
+        })
 
     @app.route('/add-new')
     def add_new():
         _populate_cancel.clear()
-        _populate_state["running"] = True
-        _populate_state["last_result"] = None
+        _populate_state["running"]      = True
+        _populate_state["last_result"]  = None
+        _populate_state["current"]      = 0
+        _populate_state["total"]        = 0
+        _populate_state["current_name"] = ""
+
+        def _progress(current, total, name):
+            _populate_state["current"]      = current
+            _populate_state["total"]        = total
+            _populate_state["current_name"] = name
+
         try:
-            result = scrapers.add_new(_populate_cancel)
+            result = scrapers.add_new(_populate_cancel, progress_cb=_progress)
             _populate_state["last_result"] = result
         finally:
             _populate_state["running"] = False
@@ -309,6 +340,27 @@ def create_app(template_folder=None, static_folder=None):
         try:
             count = sync_local_install_status()
             return jsonify({"status": "success", "count": count})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/open-url', methods=['POST'])
+    def open_url_route():
+        import subprocess, platform
+        url = (request.json or {}).get('url', '')
+        if not url:
+            return jsonify({"status": "error", "message": "No URL provided"}), 400
+        # Only allow http/https/steam schemes
+        if not (url.startswith('http://') or url.startswith('https://') or url.startswith('steam://')):
+            return jsonify({"status": "error", "message": "Scheme not allowed"}), 400
+        try:
+            sys = platform.system()
+            if sys == 'Darwin':
+                subprocess.Popen(['open', url])
+            elif sys == 'Linux':
+                subprocess.Popen(['xdg-open', url])
+            else:
+                subprocess.Popen(f'start "" "{url}"', shell=True)
+            return jsonify({"status": "success"})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -381,6 +433,146 @@ def create_app(template_folder=None, static_folder=None):
         else:
             return jsonify({"status": "error", "message": "Failed to download image. Check the URL and try again."}), 500
 
+    @app.route('/api/set-background', methods=['POST'])
+    def set_background():
+        if 'background' not in request.files:
+            return jsonify({"status": "error", "message": "No file uploaded."}), 400
+        f = request.files['background']
+        if not f.filename:
+            return jsonify({"status": "error", "message": "Empty filename."}), 400
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in ('.jpg', '.jpeg', '.png', '.webp'):
+            return jsonify({"status": "error", "message": "Unsupported format. Use JPG, PNG, or WebP."}), 400
+        try:
+            bg_dir  = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
+            os.makedirs(bg_dir, exist_ok=True)
+            bg_path = os.path.join(bg_dir, 'background.jpg')
+            # Convert/copy via Pillow so we always write a JPEG regardless of input format
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(f.read())).convert('RGB')
+            img.save(bg_path, 'JPEG', quality=92)
+            return jsonify({"status": "success"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/reset-background', methods=['POST'])
+    def reset_background():
+        try:
+            bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
+            if os.path.exists(bg_path):
+                os.remove(bg_path)
+            return jsonify({"status": "success"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/game/<int:appid>')
+    def get_game(appid):
+        try:
+            db  = get_db()
+            row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
+            db.close()
+            if row:
+                return jsonify({"status": "success", "game": dict(row)})
+            return jsonify({"status": "error", "message": "Game not found"}), 404
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/set-completion/<int:appid>', methods=['POST'])
+    def set_completion(appid):
+        status = (request.json or {}).get('status', '').strip()
+        allowed = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
+        if status not in allowed:
+            return jsonify({"status": "error", "message": f"Invalid status: {status!r}"}), 400
+        try:
+            update_game_data(appid, completion_status=status)
+            return jsonify({"status": "success", "completion_status": status})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/bulk-rescrape', methods=['POST'])
+    def bulk_rescrape():
+        """
+        Re-scrape Steam metadata for a list of appids.
+        Runs synchronously and streams a JSON result when done.
+        Called in chunks from the frontend to show progress.
+        """
+        from scrapers import fetch_store_data, fetch_tag_data, fetch_review_data, fetch_cheevo_data
+
+        data   = request.json or {}
+        appids = data.get('appids', [])
+        if not appids:
+            return jsonify({"status": "error", "message": "No appids provided."}), 400
+
+        updated = 0
+        failed  = 0
+        for appid in appids:
+            try:
+                store_data  = fetch_store_data(appid)  or {}
+                review_data = fetch_review_data(appid) or {}
+                tag_data    = fetch_tag_data(appid)    or {}
+                cheevo_data = fetch_cheevo_data(appid) or {}
+
+                game_data = {}
+                game_data.update(store_data)
+                game_data.update(review_data)
+                game_data.update(tag_data)
+                game_data.update(cheevo_data)
+
+                if game_data:
+                    update_game_data(appid, **game_data)
+                    updated += 1
+                else:
+                    failed += 1
+
+            except Exception as e:
+                log.warning(f"bulk_rescrape: failed for appid {appid}: {e}")
+                failed += 1
+
+        return jsonify({"status": "success", "updated": updated, "failed": failed})
+
+    @app.route('/api/shuffle-shelf/<shelf_id>')
+    def shuffle_shelf(shelf_id):
+        try:
+            from database import get_db
+            from config import load_state, BUILTIN_FILTERS
+            state = load_state()
+            shelves = state.get('shelves', [])
+            shelf = next((s for s in shelves if s['id'] == shelf_id), None)
+            if not shelf:
+                return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
+
+            # Resolve WHERE clause
+            custom = (shelf.get('custom_sql') or '').strip()
+            filter_key = shelf.get('filter_key') or shelf.get('preset', 'all_games')
+            saved_filters = state.get('saved_filters', {})
+
+            if custom:
+                import re
+                where = re.sub(r'\s*\bORDER\s+BY\s+.+$', '', custom, flags=re.IGNORECASE).strip()
+                where = re.sub(r'(?i)^\s*WHERE\s+', '', where).strip() or '1=1'
+            elif filter_key in BUILTIN_FILTERS and BUILTIN_FILTERS[filter_key]['where']:
+                where = BUILTIN_FILTERS[filter_key]['where']
+            elif filter_key in saved_filters:
+                from index import _filter_tree_to_sql
+                where = _filter_tree_to_sql(saved_filters[filter_key])
+            else:
+                where = '1=1'
+
+            limit = shelf.get('limit', 10)
+            db = get_db()
+            rows = db.execute(
+                f"SELECT appid, name, installed, completion_status FROM games "
+                f"WHERE {where} ORDER BY RANDOM() LIMIT ?",
+                (limit,)
+            ).fetchall()
+            db.close()
+            games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or ''} for r in rows]
+            return jsonify({'status': 'success', 'games': games})
+        except Exception as e:
+            log.exception(f"shuffle_shelf error for {shelf_id}: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     @app.route('/api/bulk-edit', methods=['POST'])
     def bulk_edit():
         from library import bulk_edit_games
@@ -437,11 +629,82 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/delete-game/<int:appid>', methods=['DELETE'])
     def delete_game(appid):
+        data      = request.json or {}
+        blacklist = data.get('blacklist', False)
+        name      = data.get('name', '')
         try:
+            # Delete DB entry
             db = get_db()
             db.execute("DELETE FROM games WHERE appid = ?", (appid,))
             db.commit()
             db.close()
+
+            # Delete cover image if it exists
+            img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', f'{appid}.jpg')
+            if os.path.exists(img_path):
+                os.remove(img_path)
+
+            # Optionally blacklist
+            if blacklist:
+                add_to_blacklist(appid, name)
+
+            return jsonify({"status": "success"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/bulk-delete', methods=['POST'])
+    def bulk_delete():
+        data    = request.json or {}
+        appids  = data.get('appids', [])
+        if not appids:
+            return jsonify({"status": "error", "message": "No appids provided."}), 400
+        try:
+            placeholders = ','.join('?' * len(appids))
+            db = get_db()
+            db.execute(f"DELETE FROM games WHERE appid IN ({placeholders})", appids)
+            db.commit()
+            db.close()
+
+            # Delete cover images
+            deleted_imgs = 0
+            for appid in appids:
+                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', f'{appid}.jpg')
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+                    deleted_imgs += 1
+
+            return jsonify({"status": "success", "deleted": len(appids), "images_removed": deleted_imgs})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/blacklist', methods=['GET'])
+    def blacklist_get():
+        try:
+            return jsonify({"status": "success", "entries": get_blacklist()})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/blacklist/add', methods=['POST'])
+    def blacklist_add():
+        data  = request.json or {}
+        appid = data.get('appid')
+        name  = data.get('name', '')
+        if not appid:
+            return jsonify({"status": "error", "message": "No appid provided."}), 400
+        try:
+            add_to_blacklist(appid, name)
+            return jsonify({"status": "success"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/blacklist/remove', methods=['POST'])
+    def blacklist_remove():
+        data  = request.json or {}
+        appid = data.get('appid')
+        if not appid:
+            return jsonify({"status": "error", "message": "No appid provided."}), 400
+        try:
+            remove_from_blacklist(appid)
             return jsonify({"status": "success"})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
@@ -462,17 +725,6 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/api/migrate-tags', methods=['POST'])
-    def start_tag_migration():
-        thread = threading.Thread(target=migrate_missing_tags)
-        thread.daemon = True
-        thread.start()
-        return jsonify({"status": "success", "message": "Migration started."})
-
-    @app.route('/api/cancel-tags', methods=['POST'])
-    def stop_tag_migration():
-        cancel_migration()
-        return jsonify({"status": "success"})
 
     @app.route('/api/pagywosg-tags')
     def pagywosg_tags():
@@ -614,6 +866,147 @@ def create_app(template_folder=None, static_folder=None):
                                 )
             size = os.path.getsize(save_path)
             return jsonify({"status": "success", "path": save_path, "size": size})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    # ── CSV EXPORT ────────────────────────────────────────────────────────────
+
+    def _build_csv_rows(filter_tree=None):
+        """
+        Query the DB and return (header_list, rows_list) for CSV export.
+        Applies filter_tree if provided, otherwise exports all games.
+        Playtime is converted from minutes to decimal hours.
+        Achievements percentage is computed when both fields are present.
+        """
+        import csv, io
+        from library import build_tree_sql, _strip_sql_wrapper, is_safe_sql
+
+        params = []
+        where  = '1=1'
+        if filter_tree:
+            custom_sql = _strip_sql_wrapper(filter_tree.get('custom_sql', ''))
+            if custom_sql:
+                where = custom_sql if is_safe_sql(custom_sql) else '1=0'
+            else:
+                from library import build_tree_sql
+                tree_sql = build_tree_sql(filter_tree, params)
+                if tree_sql and tree_sql != '1=1':
+                    where = tree_sql
+
+        db   = get_db()
+        rows = db.execute(
+            f"SELECT name, appid, completion_status, tags, groups, "
+            f"playtime_forever, last_played, date_added, installed, "
+            f"review_score, review_percentage, developers, publishers, "
+            f"release_date, unlocked_achievements, total_achievements "
+            f"FROM games WHERE {where} ORDER BY name ASC",
+            params
+        ).fetchall()
+        db.close()
+
+        headers = [
+            'Name', 'AppID', 'Completion Status', 'Tags', 'Groups',
+            'Playtime (hrs)', 'Last Played', 'Date Added', 'Installed',
+            'Review Score', 'Review %', 'Developers', 'Publishers',
+            'Release Date', 'Achievements Unlocked', 'Achievements Total',
+            'Achievement %'
+        ]
+
+        out = []
+        for r in rows:
+            pt_mins = r['playtime_forever'] or 0
+            pt_hrs  = round(pt_mins / 60, 1) if pt_mins else 0
+            unlocked = r['unlocked_achievements'] or 0
+            total    = r['total_achievements']    or 0
+            cheevo_pct = f"{round(unlocked / total * 100, 1)}%" if total else ''
+            out.append([
+                r['name']               or '',
+                r['appid'],
+                r['completion_status']  or '',
+                r['tags']               or '',
+                r['groups']             or '',
+                pt_hrs,
+                r['last_played']        or '',
+                r['date_added']         or '',
+                'Yes' if r['installed'] else 'No',
+                r['review_score']       or '',
+                r['review_percentage']  if r['review_percentage'] is not None else '',
+                r['developers']         or '',
+                r['publishers']         or '',
+                r['release_date']       or '',
+                unlocked,
+                total,
+                cheevo_pct,
+            ])
+        return headers, out
+
+    @app.route('/api/export-csv', methods=['POST'])
+    def export_csv():
+        """Stream a CSV file as a download (browser/fallback path)."""
+        import csv, io
+        from flask import send_file
+        data        = request.json or {}
+        filter_tree = data.get('filter_tree')
+        try:
+            headers, rows = _build_csv_rows(filter_tree)
+            buf = io.StringIO()
+            w   = csv.writer(buf)
+            w.writerow(headers)
+            w.writerows(rows)
+            buf.seek(0)
+            byte_buf = io.BytesIO(buf.getvalue().encode('utf-8-sig'))  # utf-8-sig for Excel compat
+            from datetime import datetime
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            return send_file(byte_buf, mimetype='text/csv', as_attachment=True,
+                             download_name=f'playdate_library_{ts}.csv')
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/export-csv-to-path', methods=['POST'])
+    def export_csv_to_path():
+        """Write CSV directly to a user-chosen path (pywebview save-dialog path)."""
+        import csv
+        data        = request.json or {}
+        save_path   = data.get('path', '').strip()
+        filter_tree = data.get('filter_tree')
+        if not save_path:
+            return jsonify({"status": "error", "message": "No path provided."}), 400
+        try:
+            headers, rows = _build_csv_rows(filter_tree)
+            with open(save_path, 'w', newline='', encoding='utf-8-sig') as f:
+                w = csv.writer(f)
+                w.writerow(headers)
+                w.writerows(rows)
+            size = os.path.getsize(save_path)
+            return jsonify({"status": "success", "path": save_path,
+                            "size": size, "count": len(rows)})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/current-filter')
+    def current_filter():
+        """Return the active filter_tree from state — used by the tools page CSV exporter."""
+        from config import load_state
+        state       = load_state()
+        filter_tree = state.get('filter_tree')
+        return jsonify({"status": "success", "filter_tree": filter_tree})
+
+    @app.route('/api/theme-to-path', methods=['POST'])
+    def theme_to_path():
+        """Write a theme JSON directly to a user-chosen path."""
+        from config import DEFAULT_THEME
+        data      = request.json or {}
+        save_path = data.get('path', '').strip()
+        theme     = data.get('theme', {})
+        if not save_path:
+            return jsonify({"status": "error", "message": "No path provided."}), 400
+        clean = {k: v for k, v in theme.items() if k in DEFAULT_THEME}
+        if not clean:
+            return jsonify({"status": "error", "message": "No valid theme data."}), 400
+        try:
+            with open(save_path, 'w', encoding='utf-8') as f:
+                json.dump({"playdate_theme": clean}, f, indent=2)
+            return jsonify({"status": "success", "path": save_path})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 

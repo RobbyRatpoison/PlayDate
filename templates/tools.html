@@ -14,19 +14,19 @@
 
     .tools-header h1 {
         font-size: clamp(1.5rem, 3vw, 2.4rem);
-        color: white;
+        color: var(--nav-active);
         margin: 0 0 4px;
     }
 
     .tools-header p {
-        color: #8f98a0;
+        color: var(--muted-text);
         font-size: 1rem;
         margin: 0;
     }
 
     .tool-card {
-        background: #1a2332;
-        border: 1px solid #2a3f55;
+        background: var(--panel-alt);
+        border: 1px solid var(--border-color);
         border-radius: 8px;
         padding: 22px 28px;
         margin-bottom: 16px;
@@ -42,20 +42,20 @@
 
     .tool-card p {
         margin: 0 0 14px;
-        color: #8f98a0;
+        color: var(--muted-text);
         font-size: 0.95rem;
         line-height: 1.6;
     }
 
     .tool-status {
         font-size: 0.92rem;
-        color: #8f98a0;
+        color: var(--muted-text);
         margin-top: 10px;
         min-height: 1.2rem;
     }
 
-    .tool-status.success { color: #5c7e10; }
-    .tool-status.error   { color: #ff4d4d; }
+    .tool-status.success { color: var(--accent-green); }
+    .tool-status.error   { color: var(--danger-text); }
     .tool-status.info    { color: var(--steam-focus); }
 
     /* Import wizard */
@@ -71,7 +71,7 @@
         gap: 8px;
         margin-bottom: 16px;
         font-size: 0.88rem;
-        color: #8f98a0;
+        color: var(--muted-text);
     }
 
     .step-indicator span {
@@ -82,13 +82,13 @@
 
     .step-indicator span.active {
         background: var(--steam-focus);
-        color: #1b2838;
+        color: var(--accent-text);
         font-weight: bold;
     }
 
     .step-indicator span.done {
-        background: #5c7e10;
-        color: white;
+        background: var(--accent-green);
+        color: var(--nav-active);
     }
 
     .mapping-row {
@@ -106,26 +106,26 @@
 
     .mapping-arrow {
         text-align: center;
-        color: #8f98a0;
+        color: var(--muted-text);
         font-size: 1rem;
     }
 
     .mapping-remove {
         background: none;
         border: none;
-        color: #ff4d4d;
+        color: var(--danger-text);
         font-size: 1.2rem;
         cursor: pointer;
         padding: 0;
         line-height: 1;
     }
 
-    .mapping-remove:hover { color: #ff0000; }
+    .mapping-remove:hover { color: var(--danger-color); }
 
     .add-mapping-btn {
         background: none;
-        border: 1px dashed #444;
-        color: #8f98a0;
+        border: 1px dashed var(--border-color);
+        color: var(--muted-text);
         padding: 7px 16px;
         border-radius: 4px;
         cursor: pointer;
@@ -140,7 +140,7 @@
     }
 
     .import-result {
-        background: #111c28;
+        background: var(--steam-input);
         border-radius: 6px;
         padding: 16px;
         margin-top: 12px;
@@ -149,7 +149,7 @@
 
     label {
         font-size: 0.92rem;
-        color: #c2c8cc;
+        color: var(--steam-text);
         display: block;
         margin-bottom: 5px;
     }
@@ -167,15 +167,15 @@
         border-radius: 20px;
         font-size: 0.75rem;
         cursor: pointer;
-        border: 1px solid #2a3f55;
-        background: #0e1923;
-        color: #8f98a0;
+        border: 1px solid var(--border-color);
+        background: var(--steam-input);
+        color: var(--muted-text);
         transition: all 0.15s;
         user-select: none;
         white-space: nowrap;
     }
     .pag-tag-chip:hover { border-color: var(--steam-focus); color: var(--steam-focus); }
-    .pag-tag-chip.selected { background: var(--steam-focus); border-color: var(--steam-focus); color: #0e1621; font-weight: bold; }
+    .pag-tag-chip.selected { background: var(--steam-focus); border-color: var(--steam-focus); color: var(--accent-text); font-weight: bold; }
     .pag-tag-chip.hidden { display: none; }
 
     /* ── PAGYWOSG completion buttons ── */
@@ -184,13 +184,335 @@
         border-radius: 20px;
         font-size: 0.78rem;
         cursor: pointer;
-        border: 1px solid #2a3f55;
-        background: #0e1923;
-        color: #8f98a0;
+        border: 1px solid var(--border-color);
+        background: var(--steam-input);
+        color: var(--muted-text);
         transition: all 0.15s;
     }
-    .pag-comp-btn.active { background: #1a3a52; border-color: #4a8ab0; color: #c2c8cc; }
+    .pag-comp-btn.active { background: var(--steam-blue); border-color: var(--steam-focus); color: var(--steam-text); }
     .pag-comp-btn:hover { border-color: var(--steam-focus); }
+
+    /* ── Theme Editor ── */
+    .theme-editor-body {
+        display: none;
+        margin-top: 18px;
+    }
+    .theme-editor-body.open {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        align-items: start;
+    }
+
+    .theme-vars-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .theme-var-row {
+        display: grid;
+        grid-template-columns: 32px 1fr 80px;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .theme-var-row input[type="color"] {
+        width: 32px;
+        height: 32px;
+        padding: 2px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: none;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .theme-var-label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .theme-var-label strong {
+        font-size: 0.82rem;
+        color: var(--steam-text);
+    }
+
+    .theme-var-label span {
+        font-size: 0.73rem;
+        color: var(--muted-text);
+    }
+
+    .theme-var-hex {
+        background: var(--steam-input);
+        border: 1px solid var(--border-color);
+        color: var(--steam-text);
+        font-family: monospace;
+        font-size: 0.78rem;
+        padding: 5px 7px;
+        border-radius: 4px;
+        width: 100%;
+        box-sizing: border-box;
+        text-transform: lowercase;
+    }
+
+    /* ── Preview panel ── */
+    .theme-preview-panel {
+        position: sticky;
+        top: 0;
+    }
+
+    .theme-preview-label {
+        font-size: 0.72rem;
+        color: var(--muted-text);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+    }
+
+    /* Tab strip */
+    .tp-tabs {
+        display: flex;
+        border: 1px solid var(--border-color);
+        border-bottom: none;
+        border-radius: 5px 5px 0 0;
+        overflow: hidden;
+    }
+    .tp-tab {
+        flex: 1;
+        padding: 4px 0;
+        font-size: 8px;
+        font-weight: 600;
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        cursor: pointer;
+        background: var(--steam-input);
+        color: var(--muted-text);
+        border: none;
+        border-right: 1px solid var(--border-color);
+        transition: background 0.15s, color 0.15s;
+        font-family: 'Segoe UI', sans-serif;
+    }
+    .tp-tab:last-child { border-right: none; }
+    .tp-tab.active { background: var(--steam-blue); color: var(--steam-focus); }
+
+    .theme-preview-frame {
+        border: 1px solid var(--border-color);
+        border-radius: 0 0 6px 6px;
+        overflow: hidden;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 10px;
+    }
+
+    .tp-pane { display: none; }
+    .tp-pane.active { display: block; }
+
+    /* Nav bar */
+    .tp-nav {
+        background: var(--nav-bg);
+        border-bottom: 1px solid var(--border-color);
+        padding: 5px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .tp-nav-links { display: flex; gap: 8px; }
+    .tp-nav-link {
+        color: var(--muted-text);
+        font-size: 9px;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+    .tp-nav-link.active { color: var(--nav-active); }
+    .tp-nav-btn {
+        background: var(--steam-blue);
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        padding: 2px 7px;
+        font-size: 8px;
+        font-weight: 600;
+        color: var(--steam-text);
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+    }
+    .tp-nav-exit {
+        background: var(--danger-color);
+        border: 1px solid var(--danger-color);
+        border-radius: 4px;
+        padding: 2px 7px;
+        font-size: 8px;
+        font-weight: 600;
+        color: var(--nav-active);
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+    }
+
+    /* Page body */
+    .tp-body {
+        background: var(--steam-blue);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    /* Text */
+    .tp-primary-text { font-size: 8.5px; color: var(--steam-text); line-height: 1.5; }
+    .tp-primary-text em { color: var(--muted-text); font-style: normal; }
+    .tp-h1 { font-size: 13px; font-weight: bold; color: var(--nav-active); margin-bottom: 2px; }
+    .tp-subtitle { font-size: 7.5px; color: var(--muted-text); margin-bottom: 6px; }
+    .tp-section-label {
+        font-size: 8px; font-weight: bold; letter-spacing: 0.07em;
+        text-transform: uppercase; color: var(--muted-text); margin-bottom: 4px;
+    }
+
+    /* Game cards */
+    .tp-cards { display: flex; gap: 5px; }
+    .tp-card {
+        background: var(--steam-input); border: 1px solid var(--border-color);
+        border-radius: 3px; width: 36px; height: 54px; flex-shrink: 0;
+        display: flex; align-items: flex-end; overflow: hidden;
+    }
+    .tp-card-label {
+        background: rgba(0,0,0,0.55); color: var(--steam-text);
+        font-size: 6px; padding: 2px 3px; width: 100%;
+        text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tp-card:nth-child(1) { background: linear-gradient(160deg, #1a3a52 0%, var(--steam-input) 100%); }
+    .tp-card:nth-child(2) { background: linear-gradient(160deg, #2a1a38 0%, var(--steam-input) 100%); }
+    .tp-card:nth-child(3) { background: linear-gradient(160deg, #1a3828 0%, var(--steam-input) 100%); }
+    .tp-card:nth-child(4) { background: linear-gradient(160deg, #38281a 0%, var(--steam-input) 100%); }
+
+    /* Library search bar */
+    .tp-search-row { display: flex; gap: 4px; align-items: center; }
+    .tp-search-input {
+        flex: 1; background: var(--steam-input); border: 1px solid var(--border-color);
+        border-radius: 3px; padding: 3px 6px; font-size: 7.5px; color: var(--input-text); min-width: 0;
+    }
+    .tp-search-btn {
+        background: var(--steam-focus); border: 1px solid var(--steam-focus);
+        border-radius: 3px; padding: 3px 6px; font-size: 7.5px;
+        font-weight: 600; color: var(--accent-text); white-space: nowrap; flex-shrink: 0;
+    }
+    .tp-clear-btn {
+        background: var(--steam-input); border: 1px solid var(--danger-color);
+        border-radius: 3px; padding: 3px 6px; font-size: 7.5px;
+        font-weight: 600; color: var(--danger-text); white-space: nowrap; flex-shrink: 0;
+    }
+
+    /* Panel-alt surface */
+    .tp-panel-alt {
+        background: var(--panel-alt); border: 1px solid var(--border-color);
+        border-radius: 4px; padding: 7px 9px;
+    }
+    .tp-panel-alt-title {
+        font-size: 8px; font-weight: bold; text-transform: uppercase;
+        letter-spacing: 0.07em; color: var(--steam-focus); margin-bottom: 3px;
+    }
+    .tp-panel-alt-desc { font-size: 7.5px; color: var(--muted-text); margin-bottom: 6px; line-height: 1.4; }
+
+    /* Buttons */
+    .tp-btn-row { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+    .tp-btn {
+        background: var(--steam-blue); border: 1px solid var(--border-color);
+        border-radius: 3px; padding: 2px 7px; font-size: 7.5px; font-weight: 600;
+        color: var(--steam-text); text-transform: uppercase; letter-spacing: 0.4px; display: inline-block;
+    }
+    .tp-btn-accent {
+        background: var(--steam-focus); border: 1px solid var(--steam-focus);
+        border-radius: 3px; padding: 2px 7px; font-size: 7.5px; font-weight: 600;
+        color: var(--accent-text); text-transform: uppercase; letter-spacing: 0.4px; display: inline-block;
+    }
+    .tp-btn-save {
+        background: var(--accent-green); border: 1px solid var(--accent-green);
+        border-radius: 3px; padding: 2px 7px; font-size: 7.5px; font-weight: 600;
+        color: var(--nav-active); text-transform: uppercase; letter-spacing: 0.4px; display: inline-block;
+    }
+    .tp-btn-danger {
+        background: var(--danger-color); border: 1px solid var(--danger-color);
+        border-radius: 3px; padding: 2px 7px; font-size: 7.5px; font-weight: 600;
+        color: var(--nav-active); text-transform: uppercase; letter-spacing: 0.4px; display: inline-block;
+    }
+    .tp-btn-danger-outline {
+        background: var(--steam-input); border: 1px solid var(--danger-color);
+        border-radius: 3px; padding: 2px 7px; font-size: 7.5px; font-weight: 600;
+        color: var(--danger-text); text-transform: uppercase; letter-spacing: 0.4px; display: inline-block;
+    }
+
+    /* Status messages */
+    .tp-status { font-size: 7.5px; padding: 1px 0; }
+    .tp-status.success { color: var(--accent-green); }
+    .tp-status.error   { color: var(--danger-text); }
+    .tp-status.info    { color: var(--steam-focus); }
+    .tp-status.warning { color: var(--warning-color); }
+    .tp-status.muted   { color: var(--muted-text); }
+
+    /* Notices */
+    .tp-warning {
+        border: 1px solid var(--warning-color); border-radius: 3px;
+        padding: 3px 6px; font-size: 7px; color: var(--warning-color); background: rgba(0,0,0,0.15);
+    }
+    .tp-danger-notice {
+        border: 1px solid var(--danger-color); border-radius: 3px;
+        padding: 3px 6px; font-size: 7px; color: var(--danger-text); background: rgba(0,0,0,0.15);
+    }
+
+    /* Modal */
+    .tp-modal-wrap {
+        background: rgba(0,0,0,0.55); border-radius: 4px;
+        padding: 6px; display: flex; justify-content: center;
+    }
+    .tp-modal {
+        background: var(--steam-blue); border: 1px solid var(--steam-focus);
+        border-radius: 5px; padding: 7px 9px; width: 100%;
+    }
+    .tp-modal-header {
+        display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;
+    }
+    .tp-modal-title { font-size: 9px; font-weight: bold; color: var(--steam-text); }
+    .tp-modal-close { color: var(--muted-text); font-size: 9px; }
+    .tp-modal-field {
+        background: var(--steam-input); border: 1px solid var(--border-color);
+        border-radius: 3px; padding: 3px 5px; font-size: 7.5px;
+        color: var(--input-text); margin-bottom: 4px;
+    }
+    .tp-modal-field.placeholder { color: var(--muted-text); }
+    .tp-modal-hint { font-size: 7px; color: var(--steam-focus); margin-bottom: 5px; }
+    .tp-modal-divider { border: none; border-top: 1px solid var(--border-color); margin: 5px 0; }
+    .tp-modal-label { font-size: 7px; color: var(--muted-text); margin-bottom: 3px; display: block; }
+    .tp-modal-save {
+        background: var(--accent-green); border: none; border-radius: 3px;
+        padding: 3px 8px; font-size: 7.5px; font-weight: bold;
+        color: var(--nav-active); width: 100%; text-align: center;
+    }
+
+    /* Filter chips */
+    .tp-chip-or {
+        display: inline-block; background: #3a2a0a; border: 1px solid #6a4a10;
+        color: #c08030; border-radius: 3px; padding: 1px 5px; font-size: 7px; font-weight: bold;
+    }
+    .tp-chip-and {
+        display: inline-block; background: var(--steam-input); border: 1px solid var(--border-color);
+        color: var(--steam-focus); border-radius: 3px; padding: 1px 5px; font-size: 7px; font-weight: bold;
+    }
+    .tp-filter-row { display: flex; gap: 3px; align-items: center; margin-bottom: 3px; }
+    .tp-filter-pill {
+        background: var(--steam-input); border: 1px solid var(--border-color);
+        border-radius: 10px; padding: 1px 6px; font-size: 7px; color: var(--steam-text);
+    }
+    .tp-filter-pill.active {
+        background: var(--steam-focus); border-color: var(--steam-focus); color: var(--accent-text);
+    }
+
+    .theme-actions {
+        display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+        margin-top: 14px; padding-top: 14px;
+        border-top: 1px solid var(--border-color); grid-column: 1 / -1;
+    }
 </style>
 {% endblock %}
 
@@ -206,8 +528,22 @@
     <div class="tool-card">
         <h3>Edit Home Layout</h3>
         <p>Rearrange, rename, add, or remove shelves on the home page. Configure what each shelf displays using presets or custom SQL, set row heights, column widths, game limits, and dedup priority.</p>
-        <p style="color:#8f98a0;font-size:0.85rem;margin-top:6px;">Tip: press <kbd style="background:#0e1923;border:1px solid #2a3f55;border-radius:3px;padding:1px 5px;font-family:monospace;color:#c2c8cc;">E</kbd> anywhere on the home page to open the editor directly.</p>
+        <p style="color:var(--muted-text);font-size:0.85rem;margin-top:6px;">Tip: press <kbd style="background:var(--steam-input);border:1px solid var(--border-color);border-radius:3px;padding:1px 5px;font-family:monospace;color:var(--steam-text);">E</kbd> anywhere on the home page to open the editor directly.</p>
         <a onclick="window.location.href='/?edit=1'" class="nav-btn" style="display:inline-flex; cursor:pointer;">Open Home Layout Editor</a>
+    </div>
+
+    <!-- ── BACKGROUND IMAGE ── -->
+    <div class="tool-card">
+        <h3>Background Image</h3>
+        <p>Replace the app background with a custom image, or reset to the default.</p>
+        <button class="nav-btn" onclick="openBgModal()">Change Background</button>
+    </div>
+
+    <!-- ── BACKUP & RESTORE ── -->
+    <div class="tool-card">
+        <h3>Backup &amp; Restore</h3>
+        <p>Save a snapshot of your library, settings, and cover art. Restore from any previous backup to roll back changes or migrate to a new machine.</p>
+        <button class="nav-btn" onclick="openBackupModal()">Open Backup &amp; Restore</button>
     </div>
 
     <!-- ── BLAEO SYNC ── -->
@@ -225,48 +561,45 @@
         <button class="nav-btn" onclick="pagToggleOpen(this)">Configure This Month</button>
 
         <div id="pagywosg-body" style="display:none; margin-top:18px;">
-        <div id="pagywosg-loading" style="color:#8f98a0; font-size:0.88rem; margin-bottom:12px;">Loading tags…</div>
+        <div id="pagywosg-loading" style="color:var(--muted-text); font-size:0.88rem; margin-bottom:12px;">Loading tags…</div>
         <div id="pagywosg-inner" style="display:none;">
 
-            <!-- ── WINS ONLY section (comes first, matching post structure) ── -->
             <div style="margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
                     <span style="color:var(--steam-focus); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — Wins Only</span>
-                    <span style="color:#666; font-size:0.75rem; font-style:italic;">only applies to games won on SteamGifts</span>
+                    <span style="color:var(--muted-text); font-size:0.75rem; font-style:italic;">only applies to games won on SteamGifts</span>
                 </div>
                 <input type="text" id="pag-wins-search" placeholder="Search tags…"
-                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; color:#c2c8cc; font-size:0.82rem; outline:none;"
+                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--steam-input); border:1px solid var(--border-color); border-radius:5px; color:var(--steam-text); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('wins')"
-                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='#2a3f55'">
-                <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; padding:8px;"></div>
+                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='var(--border-color)'">
+                <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:8px;"></div>
                 <div id="pag-wins-conds" style="margin-top:10px;"></div>
-                <button onclick="pagAddCond('wins')" style="margin-top:6px; background:none; border:1px dashed #3a5570; color:#8f98a0; padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                <button onclick="pagAddCond('wins')" style="margin-top:6px; background:none; border:1px dashed var(--border-color); color:var(--muted-text); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
                     onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
-                    onmouseout="this.style.borderColor='#3a5570';this.style.color='#8f98a0'">+ Add Condition</button>
+                    onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--muted-text)'">+ Add Condition</button>
             </div>
 
-            <div style="border-top:1px solid #2a3f55; margin-bottom:20px;"></div>
+            <div style="border-top:1px solid var(--border-color); margin-bottom:20px;"></div>
 
-            <!-- ── ALL GAMES section ── -->
             <div style="margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                    <span style="color:#c2c8cc; font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — All Games</span>
-                    <span style="color:#666; font-size:0.75rem; font-style:italic;">applies to your whole library</span>
+                    <span style="color:var(--steam-text); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — All Games</span>
+                    <span style="color:var(--muted-text); font-size:0.75rem; font-style:italic;">applies to your whole library</span>
                 </div>
                 <input type="text" id="pag-all-search" placeholder="Search tags…"
-                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; color:#c2c8cc; font-size:0.82rem; outline:none;"
+                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--steam-input); border:1px solid var(--border-color); border-radius:5px; color:var(--steam-text); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('all')"
-                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='#2a3f55'">
-                <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; padding:8px;"></div>
+                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='var(--border-color)'">
+                <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:8px;"></div>
                 <div id="pag-all-conds" style="margin-top:10px;"></div>
-                <button onclick="pagAddCond('all')" style="margin-top:6px; background:none; border:1px dashed #3a5570; color:#8f98a0; padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                <button onclick="pagAddCond('all')" style="margin-top:6px; background:none; border:1px dashed var(--border-color); color:var(--muted-text); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
                     onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
-                    onmouseout="this.style.borderColor='#3a5570';this.style.color='#8f98a0'">+ Add Condition</button>
+                    onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--muted-text)'">+ Add Condition</button>
             </div>
 
-            <!-- ── Completion filter ── -->
             <div style="margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                <span style="color:#8f98a0; font-size:0.8rem; white-space:nowrap;">Completion status</span>
+                <span style="color:var(--muted-text); font-size:0.8rem; white-space:nowrap;">Completion status</span>
                 <div id="pag-completion-btns" style="display:flex; flex-wrap:wrap; gap:5px;">
                     <button class="pag-comp-btn active" data-val="Never Played" onclick="pagToggleComp(this)">Never Played</button>
                     <button class="pag-comp-btn active" data-val="Unfinished" onclick="pagToggleComp(this)">Unfinished</button>
@@ -276,89 +609,395 @@
                 </div>
             </div>
 
-            <!-- ── SQL preview ── -->
             <div style="margin-bottom:14px;">
-                <button onclick="pagToggleSql()" style="background:none;border:none;color:#8f98a0;padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
+                <button onclick="pagToggleSql()" style="background:none;border:none;color:var(--muted-text);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
                     <span id="pag-sql-chevron">▶</span> Show SQL Preview
                 </button>
                 <div id="pag-sql-box" style="display:none; margin-top:8px;">
-                    <pre id="pag-sql-text" style="margin:0;padding:10px 14px;background:#0b1520;border:1px solid #1e3348;border-radius:5px;color:#66c0f4;font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
+                    <pre id="pag-sql-text" style="margin:0;padding:10px 14px;background:var(--steam-input);border:1px solid var(--border-color);border-radius:5px;color:var(--steam-focus);font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
                 </div>
             </div>
 
-            <!-- ── Actions ── -->
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                 <button class="nav-btn" onclick="pagSaveFilter()">Save as Filter</button>
                 <button class="nav-btn" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
             </div>
             <div id="pag-status" class="tool-status"></div>
 
-        </div><!-- end pagywosg-inner -->
-        </div><!-- end pagywosg-body -->
+        </div>
+        </div>
     </div>
 
-    <!-- ── BACKUP & RESTORE ── -->
+    <!-- ── BLACKLIST MANAGER ── -->
     <div class="tool-card">
-        <h3>Backup &amp; Restore</h3>
-        <p>Save a snapshot of your library, settings, and optionally your cover art. Restore from any previous backup to roll back changes or migrate to a new machine.</p>
-
-        <!-- ── BACKUP ── -->
-        <div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #2a3f55;">
-            <div style="font-size: 0.88rem; font-weight: bold; color: #c2c8cc; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Create Backup</div>
-
-            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
-                <div style="background: #0e1923; border: 1px solid #2a3f55; border-radius: 6px; padding: 10px 14px;">
-                    <div style="font-size: 0.82rem; color: #8f98a0; margin-bottom: 6px;">Always included:</div>
-                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-                        <span style="font-size: 0.82rem; color: #c2c8cc;">📦 games.db</span>
-                        <span style="font-size: 0.82rem; color: #c2c8cc;">⚙️ config.json</span>
-                        <span style="font-size: 0.82rem; color: #c2c8cc;">🗂️ state.json</span>
-                    </div>
-                </div>
-                <div style="background: #0e1923; border: 1px solid #2a3f55; border-radius: 6px; padding: 10px 14px;">
-                    <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
-                        <input type="checkbox" id="backup-include-art" style="width: auto; margin: 2px 0 0; flex-shrink: 0;">
-                        <div>
-                            <span style="font-size: 0.82rem; color: #c2c8cc; font-weight: bold;">🖼️ Include cover art</span>
-                            <div style="font-size: 0.78rem; color: #8f98a0; margin-top: 2px;">Includes all downloaded and custom cover images. Recommended if you've manually set any artwork. Can add hundreds of MB to the backup.</div>
-                        </div>
-                    </label>
-                </div>
-            </div>
-
-            <button class="nav-btn" id="backup-btn" onclick="runBackup()">Download Backup</button>
-            <div id="backup-status" class="tool-status"></div>
-        </div>
-
-        <!-- ── RESTORE ── -->
-        <div>
-            <div style="font-size: 0.88rem; font-weight: bold; color: #c2c8cc; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em;">Restore from Backup</div>
-
-            <div style="background: rgba(193,120,0,0.08); border: 1px solid rgba(193,120,0,0.35); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #c9a03a; line-height: 1.6;">
-                ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, and state.json. This cannot be undone. Make a backup first if you want to keep your current data.
-            </div>
-
-            <div id="restore-drop-zone"
-                 style="border: 2px dashed #2a3f55; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; margin-bottom: 12px;"
-                 onclick="document.getElementById('restore-file-input').click()"
-                 ondragover="restoreDragOver(event)"
-                 ondragleave="restoreDragLeave(event)"
-                 ondrop="restoreDrop(event)">
-                <div style="font-size: 1.5rem; margin-bottom: 6px;">📂</div>
-                <div style="color: #8f98a0; font-size: 0.88rem;">Drop a <strong style="color:#c2c8cc;">.zip</strong> backup here, or <span style="color: var(--steam-focus); text-decoration: underline;">click to choose a file</span></div>
-                <div id="restore-filename" style="color: var(--steam-focus); font-size: 0.82rem; margin-top: 6px; display: none;"></div>
-            </div>
-            <input type="file" id="restore-file-input" accept=".zip" style="display:none" onchange="restoreFileSelected(this)">
-
-            <button class="nav-btn" id="restore-btn" onclick="runRestore()" disabled style="opacity:0.4; cursor:not-allowed;">Restore</button>
-            <div id="restore-status" class="tool-status"></div>
+        <h3>Blacklist Manager</h3>
+        <p>Blacklisted games are permanently skipped by "Populate PlayDate" and will never be re-added to your library. To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
+        <button id="blacklist-toggle-btn" class="nav-btn" onclick="toggleBlacklist()">Manage Blacklist</button>
+        <div id="blacklist-status" class="tool-status"></div>
+        <div id="blacklist-container" style="display:none; margin-top:16px;">
+            <div id="blacklist-empty" style="display:none; color:var(--muted-text); font-size:0.9rem;">No blacklisted games.</div>
+            <table id="blacklist-table" style="width:100%; border-collapse:collapse; display:none;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border-color);">
+                        <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Game</th>
+                        <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">App ID</th>
+                        <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Blacklisted</th>
+                        <th style="padding:8px 10px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="blacklist-tbody"></tbody>
+            </table>
         </div>
     </div>
 
     <!-- ── DB IMPORTER ── -->
     <div class="tool-card">
         <h3>Import Data from Another Database</h3>
-        <p>Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated. Works with PlayDate backups, older versions, or any database with compatible structure.</p>
+        <p>Copy column data from another database into your current library. Games are matched by AppID. Works with PlayDate backups, older versions, or any compatible database.</p>
+        <button class="nav-btn" onclick="openImportModal()">Open Importer</button>
+    </div>
+
+    <!-- ── CSV EXPORT ── -->
+    <div class="tool-card">
+        <h3>Export Library to CSV</h3>
+        <p>Export your game library as a CSV file for use in spreadsheets. Includes name, completion status, tags, groups, playtime, review data, achievements, and more.</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="nav-btn" onclick="runCsvExport(false)">Export Full Library</button>
+            <button class="nav-btn" onclick="runCsvExport(true)">Export Current Filter</button>
+        </div>
+        <div id="csv-export-status" class="tool-status"></div>
+    </div>
+
+    <!-- ── THEME EDITOR ── -->
+    <div class="tool-card" id="theme-editor-card">
+        <h3>Theme Editor</h3>
+        <p>Customize the color scheme of the entire app. Changes are previewed live and applied instantly across all pages when saved.</p>
+        <button class="nav-btn" onclick="themeToggleOpen(this)">Customize Theme</button>
+
+        <div id="theme-editor-body" class="theme-editor-body">
+
+            <!-- Left: color pickers -->
+            <div class="theme-vars-panel" id="theme-vars-panel">
+                <!-- rows injected by JS -->
+            </div>
+
+            <!-- Right: tabbed live preview -->
+            <div class="theme-preview-panel">
+                <div class="theme-preview-label">Live Preview</div>
+
+                <!-- Tab strip -->
+                <div class="tp-tabs">
+                    <button class="tp-tab active" onclick="tpSwitchTab(this,'tp-home')">Home</button>
+                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-library')">Library</button>
+                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-tools')">Tools</button>
+                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-modals')">Modals</button>
+                </div>
+
+                <div class="theme-preview-frame">
+
+                    <!-- ── TAB 1: HOME ── -->
+                    <div id="tp-home" class="tp-pane active">
+                        <div class="tp-nav">
+                            <div class="tp-nav-links">
+                                <span class="tp-nav-link active">Home</span>
+                                <span class="tp-nav-link">Library</span>
+                                <span class="tp-nav-link">Pick</span>
+                                <span class="tp-nav-link">Tools</span>
+                            </div>
+                            <div style="display:flex;gap:4px;">
+                                <div class="tp-nav-btn">Populate</div>
+                                <div class="tp-nav-exit">Exit</div>
+                            </div>
+                        </div>
+                        <div class="tp-body">
+                            <div class="tp-primary-text">Your library — <em>1,234 games tracked</em></div>
+                            <div>
+                                <div class="tp-section-label">Recently Added</div>
+                                <div class="tp-cards">
+                                    <div class="tp-card"><div class="tp-card-label">Game 1</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game 2</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game 3</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game 4</div></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="tp-section-label">Installed</div>
+                                <div class="tp-cards">
+                                    <div class="tp-card"><div class="tp-card-label">Game 5</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game 6</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game 7</div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── TAB 2: LIBRARY ── -->
+                    <div id="tp-library" class="tp-pane">
+                        <div class="tp-nav">
+                            <div class="tp-nav-links">
+                                <span class="tp-nav-link">Home</span>
+                                <span class="tp-nav-link active">Library</span>
+                                <span class="tp-nav-link">Pick</span>
+                                <span class="tp-nav-link">Tools</span>
+                            </div>
+                            <div class="tp-nav-btn">Populate</div>
+                        </div>
+                        <div class="tp-body">
+                            <!-- Search bar with all button types -->
+                            <div class="tp-search-row">
+                                <div class="tp-search-input">Search games…</div>
+                                <div class="tp-search-btn">Search</div>
+                                <div class="tp-clear-btn">✕ Clear</div>
+                            </div>
+                            <div class="tp-btn-row">
+                                <div class="tp-btn">Filters</div>
+                                <div class="tp-btn">Bulk Edit</div>
+                                <div class="tp-btn-accent">Select (3)</div>
+                            </div>
+                            <!-- Game grid -->
+                            <div>
+                                <div class="tp-section-label">Showing 847 games</div>
+                                <div class="tp-cards">
+                                    <div class="tp-card"><div class="tp-card-label">Game A</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game B</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game C</div></div>
+                                    <div class="tp-card"><div class="tp-card-label">Game D</div></div>
+                                </div>
+                            </div>
+                            <!-- Filter error banner -->
+                            <div class="tp-danger-notice">✘ Filter error: unknown column</div>
+                        </div>
+                    </div>
+
+                    <!-- ── TAB 3: TOOLS ── -->
+                    <div id="tp-tools" class="tp-pane">
+                        <div class="tp-nav">
+                            <div class="tp-nav-links">
+                                <span class="tp-nav-link">Home</span>
+                                <span class="tp-nav-link">Library</span>
+                                <span class="tp-nav-link">Pick</span>
+                                <span class="tp-nav-link active">Tools</span>
+                            </div>
+                            <div class="tp-nav-btn">Populate</div>
+                        </div>
+                        <div class="tp-body">
+                            <div class="tp-h1">Tools</div>
+                            <div class="tp-subtitle">Utilities for managing your PlayDate library.</div>
+
+                            <!-- Tool card (panel-alt surface) -->
+                            <div class="tp-panel-alt">
+                                <div class="tp-panel-alt-title">Backup &amp; Restore</div>
+                                <div class="tp-panel-alt-desc">Save a snapshot of your library and cover art.</div>
+                                <div class="tp-btn-row">
+                                    <div class="tp-btn">Open Tool</div>
+                                </div>
+                            </div>
+
+                            <!-- All button varieties in one row -->
+                            <div class="tp-panel-alt">
+                                <div class="tp-panel-alt-title">Button Types</div>
+                                <div class="tp-btn-row" style="margin-bottom:4px;">
+                                    <div class="tp-btn">Default</div>
+                                    <div class="tp-btn-accent">Accent</div>
+                                    <div class="tp-btn-save">Save</div>
+                                </div>
+                                <div class="tp-btn-row">
+                                    <div class="tp-btn-danger">Delete</div>
+                                    <div class="tp-btn-danger-outline">↺ Reset</div>
+                                </div>
+                            </div>
+
+                            <!-- Status messages -->
+                            <div class="tp-panel-alt">
+                                <div class="tp-panel-alt-title">Status Messages</div>
+                                <div class="tp-status success">✔ Operation complete.</div>
+                                <div class="tp-status error">✘ Something went wrong.</div>
+                                <div class="tp-status info">ℹ Syncing data…</div>
+                                <div class="tp-status warning">⚠ Type mismatch detected.</div>
+                                <div class="tp-status muted">No results found.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── TAB 4: MODALS ── -->
+                    <div id="tp-modals" class="tp-pane">
+                        <div class="tp-nav">
+                            <div class="tp-nav-links">
+                                <span class="tp-nav-link active">Home</span>
+                                <span class="tp-nav-link">Library</span>
+                            </div>
+                            <div class="tp-nav-btn">Populate</div>
+                        </div>
+                        <div class="tp-body">
+
+                            <!-- Edit game modal -->
+                            <div class="tp-modal-wrap">
+                                <div class="tp-modal">
+                                    <div class="tp-modal-header">
+                                        <div class="tp-modal-title">Edit Game</div>
+                                        <div class="tp-modal-close">✕</div>
+                                    </div>
+                                    <div class="tp-modal-label">Completion Status</div>
+                                    <div class="tp-modal-field placeholder">Never Played ▾</div>
+                                    <div class="tp-modal-label">Custom Title</div>
+                                    <div class="tp-modal-field">Dishonored 2</div>
+                                    <div class="tp-modal-hint">▸ View on Steam Store</div>
+                                    <div class="tp-modal-divider"></div>
+                                    <div class="tp-btn-row">
+                                        <div class="tp-modal-save" style="flex:2;">Save Changes</div>
+                                        <div class="tp-btn-danger" style="flex:1;text-align:center;">Delete</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Warning + notices -->
+                            <div class="tp-warning">⚠ This will overwrite existing data.</div>
+                            <div class="tp-danger-notice">✘ 3 games could not be imported.</div>
+
+                            <!-- Filter chips preview -->
+                            <div class="tp-panel-alt">
+                                <div class="tp-panel-alt-title">Filter Builder</div>
+                                <div class="tp-filter-row">
+                                    <div class="tp-filter-pill active">Completion</div>
+                                    <div class="tp-chip-and">AND</div>
+                                    <div class="tp-filter-pill">Tags</div>
+                                    <div class="tp-chip-or">OR</div>
+                                    <div class="tp-filter-pill">Groups</div>
+                                </div>
+                                <div class="tp-btn-row" style="margin-top:5px;">
+                                    <div class="tp-btn">Apply</div>
+                                    <div class="tp-btn-danger-outline">✕ Clear</div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+                        <!-- Actions row (spans full width) -->
+            <div class="theme-actions">
+                <button class="nav-btn" onclick="themeSave()">Save Theme</button>
+                <button class="nav-btn" onclick="themeExport()">Export Theme</button>
+                <button class="nav-btn" onclick="document.getElementById('theme-import-input').click()">Import Theme</button>
+                <input type="file" id="theme-import-input" accept=".json" style="display:none" onchange="themeImport(this)">
+                <button class="nav-btn" onclick="themeReset()" style="border-color:var(--danger-color);color:var(--danger-text);"
+                    onmouseover="this.style.background='var(--danger-color)';this.style.color='var(--nav-active)'"
+                    onmouseout="this.style.background='';this.style.color='var(--danger-text)'">Reset to Default</button>
+                <div id="theme-status" class="tool-status"></div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<!-- ── BACKGROUND IMAGE MODAL ── -->
+<div id="bg-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:460px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Background Image</h2>
+            <button onclick="closeBgModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <p style="color:var(--muted-text); font-size:0.9rem; margin:0 0 16px;">Replace the app background with a custom image. JPG, PNG, and WebP are supported.</p>
+
+        <div id="bg-drop-zone"
+             style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
+             onclick="document.getElementById('bg-file-input').click()"
+             ondragover="bgDragOver(event)"
+             ondragleave="bgDragLeave(event)"
+             ondrop="bgDrop(event)">
+            <div style="font-size:1.5rem; margin-bottom:6px;">🖼️</div>
+            <div style="color:var(--muted-text); font-size:0.88rem;">Drop an image here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
+            <div id="bg-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
+        </div>
+        <input type="file" id="bg-file-input" accept=".jpg,.jpeg,.png,.webp" style="display:none" onchange="bgFileSelected(this)">
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+            <button class="nav-btn" id="bg-upload-btn" onclick="runSetBackground()" disabled style="opacity:0.4; cursor:not-allowed;">Apply Background</button>
+            <button class="nav-btn" id="bg-reset-btn" onclick="runResetBackground()">Reset to Default</button>
+            <button class="nav-btn" onclick="closeBgModal()">Cancel</button>
+        </div>
+        <div id="bg-status" class="tool-status"></div>
+    </div>
+</div>
+
+<!-- ── BACKUP & RESTORE MODAL ── -->
+<div id="backup-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:520px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Backup &amp; Restore</h2>
+            <button onclick="closeBackupModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Tab toggle -->
+        <div style="display:flex; border:1px solid var(--border-color); border-radius:6px; overflow:hidden; margin-bottom:20px;">
+            <button id="backup-tab-btn" onclick="setBackupTab('backup')"
+                style="flex:1; padding:8px; border:none; cursor:pointer; background:var(--steam-focus); color:var(--accent-text); font-weight:bold; font-size:0.85rem; transition:all 0.15s;">
+                Create Backup
+            </button>
+            <button id="restore-tab-btn" onclick="setBackupTab('restore')"
+                style="flex:1; padding:8px; border:none; cursor:pointer; background:transparent; color:var(--muted-text); font-size:0.85rem; transition:all 0.15s;">
+                Restore from Backup
+            </button>
+        </div>
+
+        <!-- Backup tab -->
+        <div id="backup-tab">
+            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
+                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
+                    <div style="font-size:0.82rem; color:var(--muted-text); margin-bottom:6px;">Always included:</div>
+                    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                        <span style="font-size:0.82rem; color:var(--steam-text);">📦 games.db</span>
+                        <span style="font-size:0.82rem; color:var(--steam-text);">⚙️ config.json</span>
+                        <span style="font-size:0.82rem; color:var(--steam-text);">🗂️ state.json</span>
+                    </div>
+                </div>
+                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
+                    <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin:0;">
+                        <input type="checkbox" id="backup-include-art" style="width:auto; margin:2px 0 0; flex-shrink:0;">
+                        <div>
+                            <span style="font-size:0.82rem; color:var(--steam-text); font-weight:bold;">🖼️ Include cover art</span>
+                            <div style="font-size:0.78rem; color:var(--muted-text); margin-top:2px;">Recommended if you've manually set any artwork. Can add hundreds of MB.</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <button class="nav-btn" id="backup-btn" onclick="runBackup()">Download Backup</button>
+            <div id="backup-status" class="tool-status"></div>
+        </div>
+
+        <!-- Restore tab -->
+        <div id="restore-tab" style="display:none;">
+            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.82rem; color:var(--warning-color); line-height:1.6;">
+                ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, and state.json. This cannot be undone.
+            </div>
+            <div id="restore-drop-zone"
+                 style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
+                 onclick="document.getElementById('restore-file-input').click()"
+                 ondragover="restoreDragOver(event)"
+                 ondragleave="restoreDragLeave(event)"
+                 ondrop="restoreDrop(event)">
+                <div style="font-size:1.5rem; margin-bottom:6px;">📂</div>
+                <div style="color:var(--muted-text); font-size:0.88rem;">Drop a <strong style="color:var(--steam-text);">.zip</strong> backup here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
+                <div id="restore-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
+            </div>
+            <input type="file" id="restore-file-input" accept=".zip" style="display:none" onchange="restoreFileSelected(this)">
+            <button class="nav-btn" id="restore-btn" onclick="runRestore()" disabled style="opacity:0.4; cursor:not-allowed;">Restore</button>
+            <div id="restore-status" class="tool-status"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── DB IMPORT MODAL ── -->
+<div id="import-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:620px; max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Import Data from Another Database</h2>
+            <button onclick="closeImportModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <p style="color:var(--muted-text); font-size:0.88rem; margin:0 0 16px;">Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
 
         <div class="step-indicator">
             <span id="step-ind-1" class="active">1 · Upload File</span>
@@ -366,59 +1005,43 @@
             <span id="step-ind-3">3 · Done</span>
         </div>
 
-        <!-- Step 1: Upload -->
         <div id="import-step-1" class="import-step active">
             <p style="margin-bottom:10px;">Select the <strong>.db</strong> file you want to import data <em>from</em>. Your current library will not be affected until you confirm the import in step 2.</p>
-            <button class="nav-btn" onclick="document.getElementById('db-file-input').click()">
-                Choose .db File
-            </button>
+            <button class="nav-btn" onclick="document.getElementById('db-file-input').click()">Choose .db File</button>
             <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display:none" onchange="uploadDatabase(this)">
             <div id="upload-status" class="tool-status"></div>
         </div>
 
-        <!-- Step 2: Configure mappings -->
         <div id="import-step-2" class="import-step">
-
-            <div style="background:rgba(102,192,244,0.07); border:1px solid rgba(102,192,244,0.2); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:#8f98a0; line-height:1.6;">
-                <strong style="color:#c2c8cc;">How this works:</strong> Choose which table and columns to read from the uploaded file, then map each source column to the matching column in your library. Only rows where the AppID matches an existing game will be updated.
+            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:var(--muted-text); line-height:1.6;">
+                <strong style="color:var(--steam-text);">How this works:</strong> Choose which table and columns to read from the uploaded file, then map each source column to the matching column in your library.
             </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
                 <div>
                     <label>Table in uploaded file</label>
-                    <select id="source-table" onchange="onTableChange()" style="width:100%; padding:8px 32px 8px 8px;">
-                    </select>
-                    <small style="color:#666; font-size:0.78rem;">Most PlayDate databases only have one table: <em>games</em>.</small>
+                    <select id="source-table" onchange="onTableChange()" style="width:100%; padding:8px 32px 8px 8px;"></select>
+                    <small style="color:var(--muted-text); font-size:0.78rem;">Most PlayDate databases only have one table: <em>games</em>.</small>
                 </div>
                 <div>
                     <label>AppID column (for matching)</label>
                     <select id="appid-col" style="width:100%; padding:8px 32px 8px 8px;"></select>
-                    <small style="color:#666; font-size:0.78rem;">This column is used to match rows — it won't be imported as data.</small>
+                    <small style="color:var(--muted-text); font-size:0.78rem;">This column is used to match rows — it won't be imported as data.</small>
                 </div>
             </div>
-
-            <label style="margin-bottom:10px;">
-                Column mappings
-                <span style="color:#666; font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span>
-            </label>
-
-            <div style="display:grid; grid-template-columns: 1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:0 2px;">
-                <span style="font-size:0.78rem; color:#666; text-align:center;">From uploaded file</span>
+            <label style="margin-bottom:10px;">Column mappings <span style="color:var(--muted-text); font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span></label>
+            <div style="display:grid; grid-template-columns:1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:0 2px;">
+                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">From uploaded file</span>
                 <span></span>
-                <span style="font-size:0.78rem; color:#666; text-align:center;">Into your library</span>
+                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">Into your library</span>
                 <span></span>
             </div>
-
             <div id="mapping-rows"></div>
             <button class="add-mapping-btn" onclick="addMappingRow()">+ Add Column</button>
-
-            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.88rem; color:#8f98a0;">
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.88rem; color:var(--muted-text);">
                 <input type="checkbox" id="normalize-dates" checked style="width:auto; margin:0;">
                 <label for="normalize-dates" style="display:inline; margin:0; cursor:pointer;">Auto-convert dates to YYYY-MM-DD format</label>
             </div>
-
-            <div id="import-type-warning" style="display:none; background:rgba(193,120,0,0.1); border:1px solid #c97c00; border-radius:5px; padding:9px 13px; margin-top:12px; font-size:0.85rem; color:#c97c00;"></div>
-
+            <div id="import-type-warning" style="display:none; background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:5px; padding:9px 13px; margin-top:12px; font-size:0.85rem; color:var(--warning-color);"></div>
             <div style="display:flex; gap:10px; margin-top:16px;">
                 <button class="nav-btn" onclick="executeImport()">Run Import</button>
                 <button class="nav-btn" onclick="resetImport()" style="opacity:0.6;">Start Over</button>
@@ -426,16 +1049,58 @@
             <div id="import-status" class="tool-status"></div>
         </div>
 
-        <!-- Step 3: Result -->
         <div id="import-step-3" class="import-step">
             <div id="import-result" class="import-result"></div>
             <button class="nav-btn" onclick="resetImport()" style="margin-top:12px;">Import Another File</button>
         </div>
     </div>
-
 </div>
 
 <script>
+// ── MODAL HELPERS ───────────────────────────────────────────────────────────
+function openBgModal() {
+    document.getElementById('bg-modal').style.display = 'flex';
+}
+function closeBgModal() {
+    document.getElementById('bg-modal').style.display = 'none';
+    document.getElementById('bg-status').textContent = '';
+    document.getElementById('bg-filename').style.display = 'none';
+    document.getElementById('bg-filename').textContent = '';
+    const btn = document.getElementById('bg-upload-btn');
+    btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
+    document.getElementById('bg-file-input').value = '';
+    _bgFile = null;
+}
+
+function openBackupModal() {
+    document.getElementById('backup-modal').style.display = 'flex';
+    setBackupTab('backup');
+}
+function closeBackupModal() {
+    document.getElementById('backup-modal').style.display = 'none';
+    document.getElementById('backup-status').textContent = '';
+    document.getElementById('restore-status').textContent = '';
+}
+
+function setBackupTab(tab) {
+    const isBackup = tab === 'backup';
+    document.getElementById('backup-tab').style.display    = isBackup ? '' : 'none';
+    document.getElementById('restore-tab').style.display   = isBackup ? 'none' : '';
+    document.getElementById('backup-tab-btn').style.background  = isBackup ? 'var(--steam-focus)' : 'transparent';
+    document.getElementById('backup-tab-btn').style.color        = isBackup ? 'var(--accent-text)' : 'var(--muted-text)';
+    document.getElementById('restore-tab-btn').style.background  = isBackup ? 'transparent' : 'var(--steam-focus)';
+    document.getElementById('restore-tab-btn').style.color       = isBackup ? 'var(--muted-text)' : 'var(--accent-text)';
+}
+
+function openImportModal() {
+    document.getElementById('import-modal').style.display = 'flex';
+    resetImport();
+}
+function closeImportModal() {
+    document.getElementById('import-modal').style.display = 'none';
+    resetImport();
+}
+
 // ── BLAEO ──
 async function runBlaeo() {
     const btn = document.getElementById('blaeo-btn');
@@ -542,8 +1207,10 @@ function pagAddCond(pool) {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;';
 
+    const sharedSelStyle = 'padding:5px 24px 5px 8px; background-color:var(--steam-input); border:1px solid var(--border-color); border-radius:4px; color:var(--steam-text); font-size:0.82rem;';
+
     const colSel = document.createElement('select');
-    colSel.style.cssText = 'padding:5px 24px 5px 8px; background-color:#0e1923; border:1px solid #2a3f55; border-radius:4px; color:#c2c8cc; font-size:0.82rem;';
+    colSel.style.cssText = sharedSelStyle;
     PAG_COLUMNS.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.value; opt.textContent = c.label;
@@ -551,7 +1218,7 @@ function pagAddCond(pool) {
     });
 
     const opSel = document.createElement('select');
-    opSel.style.cssText = 'padding:5px 24px 5px 8px; background-color:#0e1923; border:1px solid #2a3f55; border-radius:4px; color:#c2c8cc; font-size:0.82rem;';
+    opSel.style.cssText = sharedSelStyle;
     PAG_OPS.forEach(o => {
         const opt = document.createElement('option');
         opt.value = o.value; opt.textContent = o.label;
@@ -561,13 +1228,13 @@ function pagAddCond(pool) {
     const valInput = document.createElement('input');
     valInput.type = 'text';
     valInput.placeholder = 'value';
-    valInput.style.cssText = 'flex:1; min-width:100px; padding:5px 8px; background:#0e1923; border:1px solid #2a3f55; border-radius:4px; color:#c2c8cc; font-size:0.82rem; outline:none;';
+    valInput.style.cssText = 'flex:1; min-width:100px; padding:5px 8px; background:var(--steam-input); border:1px solid var(--border-color); border-radius:4px; color:var(--steam-text); font-size:0.82rem; outline:none;';
     valInput.onfocus = () => valInput.style.borderColor = 'var(--steam-focus)';
-    valInput.onblur  = () => valInput.style.borderColor = '#2a3f55';
+    valInput.onblur  = () => valInput.style.borderColor = 'var(--border-color)';
 
     const removeBtn = document.createElement('button');
     removeBtn.textContent = '✕';
-    removeBtn.style.cssText = 'background:none; border:none; color:#ff4d4d; font-size:1rem; cursor:pointer; padding:0 2px; line-height:1;';
+    removeBtn.style.cssText = 'background:none; border:none; color:var(--danger-text); font-size:1rem; cursor:pointer; padding:0 2px; line-height:1;';
     removeBtn.onclick = () => { row.remove(); pagUpdateSql(); };
 
     colSel.onchange = pagUpdateSql;
@@ -646,7 +1313,7 @@ function pagBuildWhere() {
 function pagUpdateSql() {
     const box = document.getElementById('pag-sql-box');
     if (box.style.display !== 'none') {
-        document.getElementById('pag-sql-text').textContent = `SELECT * FROM games WHERE\n${pagBuildWhere()}`;
+        sqlHighlightPre(document.getElementById('pag-sql-text'), `SELECT * FROM games WHERE\n${pagBuildWhere()}`);
     }
 }
 
@@ -656,7 +1323,7 @@ function pagToggleSql() {
     const open = box.style.display === 'none';
     box.style.display = open ? 'block' : 'none';
     chevron.textContent = open ? '▼' : '▶';
-    if (open) document.getElementById('pag-sql-text').textContent = `SELECT * FROM games WHERE\n${pagBuildWhere()}`;
+    if (open) sqlHighlightPre(document.getElementById('pag-sql-text'), `SELECT * FROM games WHERE\n${pagBuildWhere()}`);
 }
 
 async function pagSaveFilter() {
@@ -792,11 +1459,11 @@ function addMappingRow() {
         if (sType && tType && isNumeric(sType) !== isNumeric(tType)) {
             arrow.textContent = '⚠';
             arrow.title = `Type mismatch: ${sType} → ${tType}`;
-            arrow.style.color = '#c97c00';
+            arrow.style.color = 'var(--warning-color)';
         } else {
             arrow.textContent = '→';
             arrow.title = sType && tType ? `${sType} → ${tType}` : '';
-            arrow.style.color = '#8f98a0';
+            arrow.style.color = 'var(--muted-text)';
         }
         refreshTypeWarnings();
     }
@@ -883,10 +1550,10 @@ async function executeImport() {
         if (data.status === 'success') {
             const warnings = data.type_warnings || [];
             const warnHtml = warnings.length
-                ? `<div style="margin-top:10px; color:#c97c00; font-size:0.8rem;"><strong>⚠ Type warnings:</strong><br>${warnings.map(w => `• ${w}`).join('<br>')}</div>`
+                ? `<div style="margin-top:10px; color:var(--warning-color); font-size:0.8rem;"><strong>⚠ Type warnings:</strong><br>${warnings.map(w => `• ${w}`).join('<br>')}</div>`
                 : '';
             document.getElementById('import-result').innerHTML = `
-                <div style="color: #5c7e10; font-size: 1rem; margin-bottom: 8px;">✔ Import complete</div>
+                <div style="color:var(--accent-green); font-size: 1rem; margin-bottom: 8px;">✔ Import complete</div>
                 <div>Updated: <strong>${data.updated}</strong> games</div>
                 <div>Skipped (no match or empty): <strong>${data.skipped}</strong> games</div>
                 ${warnHtml}
@@ -1012,7 +1679,7 @@ function restoreDragOver(e) {
 
 function restoreDragLeave(e) {
     const zone = document.getElementById('restore-drop-zone');
-    zone.style.borderColor = '#2a3f55';
+    zone.style.borderColor = 'var(--border-color)';
     zone.style.background  = '';
 }
 
@@ -1054,7 +1721,7 @@ async function runRestore() {
     const status = document.getElementById('restore-status');
     const btn    = document.getElementById('restore-btn');
 
-    const confirmed = confirm(
+    const confirmed = await confirm(
         `Restore from "${_restoreFile.name}"?\n\n` +
         `This will overwrite your current games.db, config.json, and state.json.\n` +
         `The page will reload after restore completes.`
@@ -1085,6 +1752,595 @@ async function runRestore() {
         btn.disabled    = false;
         btn.textContent = 'Restore';
     }
+}
+
+// ── BACKGROUND CHANGER ──────────────────────────────────────────────────────
+let _bgFile = null;
+
+function bgDragOver(e) {
+    e.preventDefault();
+    const zone = document.getElementById('bg-drop-zone');
+    zone.style.borderColor = 'var(--steam-focus)';
+    zone.style.background  = 'rgba(102,192,244,0.05)';
+}
+
+function bgDragLeave(e) {
+    const zone = document.getElementById('bg-drop-zone');
+    zone.style.borderColor = 'var(--border-color)';
+    zone.style.background  = '';
+}
+
+function bgDrop(e) {
+    e.preventDefault();
+    bgDragLeave(e);
+    const file = e.dataTransfer.files[0];
+    if (file) setBgFile(file);
+}
+
+function bgFileSelected(input) {
+    if (input.files[0]) setBgFile(input.files[0]);
+}
+
+function setBgFile(file) {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    const status  = document.getElementById('bg-status');
+    if (!allowed.includes(file.type)) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ Unsupported format. Use JPG, PNG, or WebP.';
+        return;
+    }
+    _bgFile = file;
+    const label = document.getElementById('bg-filename');
+    label.textContent = `Selected: ${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
+    label.style.display = 'block';
+    const btn = document.getElementById('bg-upload-btn');
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor  = 'pointer';
+    status.textContent = '';
+}
+
+async function runSetBackground() {
+    if (!_bgFile) return;
+    const btn    = document.getElementById('bg-upload-btn');
+    const status = document.getElementById('bg-status');
+    btn.disabled    = true;
+    btn.textContent = 'Applying…';
+    status.className   = 'tool-status info';
+    status.textContent = 'Uploading…';
+
+    const formData = new FormData();
+    formData.append('background', _bgFile);
+
+    try {
+        const res  = await fetch('/api/set-background', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.className   = 'tool-status success';
+            status.textContent = '✔ Background updated. Reloading…';
+            // Bust the CSS cache so the new image loads immediately on reload
+            setTimeout(() => window.location.reload(), 800);
+        } else {
+            throw new Error(data.message || 'Unknown error');
+        }
+    } catch (e) {
+        status.className   = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+        btn.disabled    = false;
+        btn.textContent = 'Apply Background';
+    }
+}
+
+async function runResetBackground() {
+    const status = document.getElementById('bg-status');
+    if (!await confirm('Reset the background to the default image?')) return;
+    const btn = document.getElementById('bg-reset-btn');
+    btn.disabled    = true;
+    btn.textContent = 'Resetting…';
+    status.className   = 'tool-status info';
+    status.textContent = 'Resetting…';
+    try {
+        const res  = await fetch('/api/reset-background', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.className   = 'tool-status success';
+            status.textContent = '✔ Background reset. Reloading…';
+            setTimeout(() => window.location.reload(), 800);
+        } else {
+            throw new Error(data.message || 'Unknown error');
+        }
+    } catch (e) {
+        status.className   = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Reset to Default';
+    }
+}
+
+// ── BLACKLIST MANAGER ────────────────────────────────────────────────────────
+let _blacklistLoaded = false;
+
+async function toggleBlacklist() {
+    const btn       = document.getElementById('blacklist-toggle-btn');
+    const container = document.getElementById('blacklist-container');
+    const status    = document.getElementById('blacklist-status');
+
+    // If already showing, hide it
+    if (container.style.display !== 'none') {
+        container.style.display = 'none';
+        btn.textContent = 'Manage Blacklist';
+        return;
+    }
+
+    // If already loaded, just show
+    if (_blacklistLoaded) {
+        container.style.display = 'block';
+        btn.textContent = 'Hide Blacklist';
+        return;
+    }
+
+    // First load — fetch from server
+    const empty = document.getElementById('blacklist-empty');
+    const table = document.getElementById('blacklist-table');
+    const tbody = document.getElementById('blacklist-tbody');
+
+    status.className = 'tool-status info';
+    status.textContent = 'Loading…';
+
+    try {
+        const res  = await fetch('/api/blacklist');
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+
+        status.textContent = '';
+        _blacklistLoaded = true;
+        container.style.display = 'block';
+        btn.textContent = 'Hide Blacklist';
+        const entries = data.entries || [];
+
+        if (entries.length === 0) {
+            empty.style.display = 'block';
+            table.style.display = 'none';
+            return;
+        }
+
+        empty.style.display = 'none';
+        table.style.display = 'table';
+        tbody.innerHTML = entries.map(e => `
+            <tr id="bl-row-${e.appid}" style="border-bottom:1px solid var(--border-color);">
+                <td style="padding:9px 10px; color:var(--steam-text); font-size:0.88rem;">${_escHtml(e.name || '—')}</td>
+                <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
+                <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
+                <td style="padding:9px 10px; text-align:right;">
+                    <button onclick="removeFromBlacklist(${e.appid}, this)"
+                        style="background:none; border:1px solid var(--danger-color); color:var(--danger-text); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
+                        onmouseover="this.style.background='rgba(163,42,42,0.2)'"
+                        onmouseout="this.style.background='none'">Remove</button>
+                </td>
+            </tr>`).join('');
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+function _escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function removeFromBlacklist(appid, btn) {
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+        const res  = await fetch('/api/blacklist/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appid })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const row = document.getElementById(`bl-row-${appid}`);
+            if (row) row.remove();
+            const tbody = document.getElementById('blacklist-tbody');
+            if (!tbody.querySelector('tr')) {
+                document.getElementById('blacklist-table').style.display = 'none';
+                document.getElementById('blacklist-empty').style.display = 'block';
+            }
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Remove';
+            alert('Failed: ' + data.message);
+        }
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Remove';
+        alert('Network error.');
+    }
+}
+
+// ── Theme Preview Tab Switcher ───────────────────────────────────────────────
+function tpSwitchTab(btn, paneId) {
+    // Deactivate all tabs and panes
+    btn.closest('.tp-tabs').querySelectorAll('.tp-tab').forEach(t => t.classList.remove('active'));
+    btn.closest('.theme-preview-panel').querySelectorAll('.tp-pane').forEach(p => p.classList.remove('active'));
+    // Activate selected
+    btn.classList.add('active');
+    document.getElementById(paneId).classList.add('active');
+}
+
+// ── Theme Editor ─────────────────────────────────────────────────────────────
+
+const THEME_VAR_META = [
+    // Surfaces
+    { key: '--steam-blue',    label: 'Main Background',    desc: 'Primary surface: cards, modals, nav buttons' },
+    { key: '--steam-input',   label: 'Input Background',   desc: 'Text fields, game cards, deep inset areas' },
+    { key: '--panel-alt',     label: 'Panel Surface',      desc: 'Elevated panels, dialogs, context menu, tool cards' },
+    // Text
+    { key: '--steam-text',    label: 'Primary Text',       desc: 'Main body text' },
+    { key: '--input-text',    label: 'Input Text',         desc: 'Text typed inside fields and selects' },
+    { key: '--muted-text',    label: 'Secondary Text',     desc: 'Captions, labels, subdued text' },
+    // Accent
+    { key: '--steam-focus',   label: 'Accent Color',       desc: 'Links, borders, highlights, button hover' },
+    { key: '--accent-text',   label: 'Accent Text',        desc: 'Text on accent-colored surfaces (buttons, chips)' },
+    { key: '--accent-green',  label: 'Save / Positive',    desc: 'Save buttons and positive action elements' },
+    // Nav
+    { key: '--nav-bg',        label: 'Nav Bar Background', desc: 'Top navigation bar background' },
+    { key: '--nav-active',    label: 'Active Nav Link',    desc: 'Currently selected page in the nav bar' },
+    // Borders
+    { key: '--border-color',  label: 'Border Color',       desc: 'All panel and input borders' },
+    // Danger / Warning
+    { key: '--danger-color',  label: 'Danger Color',       desc: 'Exit button, Reset, Clear Filters, Delete actions' },
+    { key: '--danger-text',   label: 'Danger Text',        desc: 'Red text on danger elements and warnings' },
+    { key: '--warning-color', label: 'Warning Color',      desc: 'Amber warnings, type mismatches, caution notices' },
+];
+
+let _themeOpen = false;
+let _themeVars = {};   // currently displayed values (may be unsaved)
+let _themeDefs = {};   // server-side defaults
+
+function themeToggleOpen(btn) {
+    _themeOpen = !_themeOpen;
+    const body = document.getElementById('theme-editor-body');
+    body.classList.toggle('open', _themeOpen);
+    btn.textContent = _themeOpen ? 'Close Theme Editor' : 'Customize Theme';
+    if (_themeOpen && Object.keys(_themeVars).length === 0) {
+        _themeLoad();
+    }
+}
+
+async function _themeLoad() {
+    const panel = document.getElementById('theme-vars-panel');
+    panel.innerHTML = '<div style="color:var(--muted-text);font-size:0.88rem;">Loading…</div>';
+    try {
+        const res  = await fetch('/api/theme');
+        const data = await res.json();
+        _themeVars = Object.assign({}, data.theme);
+        _themeDefs = Object.assign({}, data.defaults);
+        _themeRenderPanel();
+    } catch (e) {
+        panel.innerHTML = '<div style="color:var(--danger-text);font-size:0.88rem;">Failed to load theme.</div>';
+    }
+}
+
+function _themeRenderPanel() {
+    const panel = document.getElementById('theme-vars-panel');
+    panel.innerHTML = '';
+
+    for (const meta of THEME_VAR_META) {
+        const rawVal = _themeVars[meta.key] || _themeDefs[meta.key] || '#000000';
+        const hexVal = _cssValueToHex(rawVal);
+
+        const row = document.createElement('div');
+        row.className = 'theme-var-row';
+        row.innerHTML = `
+            <input type="color" id="thpick-${meta.key.replace('--','')}"
+                   value="${hexVal}"
+                   oninput="themePickerChange('${meta.key}', this.value)">
+            <div class="theme-var-label">
+                <strong>${meta.label}</strong>
+                <span>${meta.desc}</span>
+            </div>
+            <input type="text" class="theme-var-hex"
+                   id="thhex-${meta.key.replace('--','')}"
+                   value="${hexVal}" maxlength="9"
+                   oninput="themeHexChange('${meta.key}', this.value)"
+                   onblur="themeHexBlur('${meta.key}', this.value)">
+        `;
+        panel.appendChild(row);
+    }
+}
+
+function _cssValueToHex(val) {
+    if (/^#[0-9a-fA-F]{3,8}$/.test(val.trim())) return val.trim();
+    const m = val.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (m) {
+        return '#' + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+    }
+    return '#000000';
+}
+
+function _applyVarToDocument(key, val) {
+    document.documentElement.style.setProperty(key, val);
+}
+
+function themePickerChange(key, hex) {
+    _themeVars[key] = hex;
+    const safeKey = key.replace('--', '');
+    const hexInput = document.getElementById(`thhex-${safeKey}`);
+    if (hexInput) hexInput.value = hex;
+    _applyVarToDocument(key, hex);
+    _themeSetStatus('');
+}
+
+function themeHexChange(key, raw) {
+    const clean = raw.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(clean) || /^#[0-9a-fA-F]{3}$/.test(clean)) {
+        _themeVars[key] = clean;
+        const safeKey = key.replace('--', '');
+        const picker = document.getElementById(`thpick-${safeKey}`);
+        if (picker) picker.value = clean;
+        _applyVarToDocument(key, clean);
+        _themeSetStatus('');
+    }
+}
+
+function themeHexBlur(key, raw) {
+    const clean = raw.trim();
+    if (!/^#[0-9a-fA-F]{3,8}$/.test(clean)) {
+        const safeKey = key.replace('--', '');
+        const hexInput = document.getElementById(`thhex-${safeKey}`);
+        if (hexInput) hexInput.value = _cssValueToHex(_themeVars[key] || '#000000');
+    }
+}
+
+async function themeSave() {
+    _themeSetStatus('Saving…', 'info');
+    try {
+        const res  = await fetch('/api/theme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: _themeVars })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            _themeSetStatus('✔ Theme saved.', 'success');
+        } else {
+            _themeSetStatus('✘ ' + (data.message || 'Save failed.'), 'error');
+        }
+    } catch (e) {
+        _themeSetStatus('✘ Network error.', 'error');
+    }
+}
+
+async function themeReset() {
+    _themeSetStatus('Resetting…', 'info');
+    try {
+        const res  = await fetch('/api/theme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reset: true })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            _themeVars = Object.assign({}, data.theme);
+            for (const [k, v] of Object.entries(_themeVars)) {
+                _applyVarToDocument(k, v);
+            }
+            _themeRenderPanel();
+            _themeSetStatus('✔ Reset to defaults.', 'success');
+        } else {
+            _themeSetStatus('✘ Reset failed.', 'error');
+        }
+    } catch (e) {
+        _themeSetStatus('✘ Network error.', 'error');
+    }
+}
+
+async function themeExport() {
+    if (Object.keys(_themeVars).length === 0) {
+        _themeSetStatus('✘ Open the theme editor first to load a theme.', 'error');
+        return;
+    }
+
+    const now = new Date();
+    const ts  = now.getFullYear().toString()
+        + String(now.getMonth()+1).padStart(2,'0')
+        + String(now.getDate()).padStart(2,'0');
+    const suggestedName = `playdate-theme-${ts}.json`;
+
+    // ── Path 1: pywebview native Save-As dialog ──────────────────────────────
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
+        const chosenPath = await window.pywebview.api.pick_save_path(
+            suggestedName, ['JSON Files (*.json)']
+        );
+        if (!chosenPath) {
+            _themeSetStatus('Export cancelled.', '');
+            return;
+        }
+        try {
+            const res  = await fetch('/api/theme-to-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme: _themeVars, path: chosenPath })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                _themeSetStatus(`✔ Theme saved → ${chosenPath}`, 'success');
+            } else {
+                _themeSetStatus('✘ ' + (data.message || 'Save failed.'), 'error');
+            }
+        } catch (e) {
+            _themeSetStatus('✘ Network error.', 'error');
+        }
+        return;
+    }
+
+    // ── Path 2: browser blob download fallback ───────────────────────────────
+    const payload = JSON.stringify({ playdate_theme: _themeVars }, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = suggestedName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    _themeSetStatus('✔ Theme exported.', 'success');
+}
+
+// ── CSV EXPORT ───────────────────────────────────────────────────────────────
+
+async function runCsvExport(useFilter) {
+    const status = document.getElementById('csv-export-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Preparing export…';
+
+    // Fetch the active filter tree from state if exporting filtered view
+    let filterTree = null;
+    if (useFilter) {
+        try {
+            const stateRes  = await fetch('/api/update_state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})   // no-op update just to read current state
+            });
+            // State isn't exposed as a GET, so read it from the page instead
+            // The filter_tree is embedded in the page as a JS variable on library.html;
+            // on tools.html we request it from the server directly.
+            const res  = await fetch('/api/current-filter');
+            const data = await res.json();
+            filterTree = data.filter_tree || null;
+        } catch (e) {
+            filterTree = null;
+        }
+    }
+
+    const now = new Date();
+    const ts  = now.getFullYear().toString()
+        + String(now.getMonth()+1).padStart(2,'0')
+        + String(now.getDate()).padStart(2,'0')
+        + '_' + String(now.getHours()).padStart(2,'0')
+        + String(now.getMinutes()).padStart(2,'0');
+    const scope         = useFilter ? 'filtered' : 'full';
+    const suggestedName = `playdate_library_${scope}_${ts}.csv`;
+
+    // ── Path 1: pywebview native Save-As dialog ──────────────────────────────
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
+        const chosenPath = await window.pywebview.api.pick_save_path(
+            suggestedName, ['CSV Files (*.csv)']
+        );
+        if (!chosenPath) {
+            status.textContent = 'Export cancelled.';
+            status.className   = 'tool-status';
+            return;
+        }
+        try {
+            const res  = await fetch('/api/export-csv-to-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: chosenPath, filter_tree: filterTree })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const sizeKB = Math.round((data.size || 0) / 1024);
+                status.className   = 'tool-status success';
+                status.textContent = `✔ Exported ${data.count} games (${sizeKB} KB) → ${chosenPath}`;
+            } else {
+                throw new Error(data.message || 'Export failed.');
+            }
+        } catch (e) {
+            status.className   = 'tool-status error';
+            status.textContent = '✘ ' + e.message;
+        }
+        return;
+    }
+
+    // ── Path 2: browser blob download fallback ───────────────────────────────
+    try {
+        const res = await fetch('/api/export-csv', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filter_tree: filterTree })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || `Server error ${res.status}`);
+        }
+        const blob     = await res.blob();
+        const url      = URL.createObjectURL(blob);
+        const a        = document.createElement('a');
+        a.href         = url;
+        a.download     = suggestedName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        const sizeKB = Math.round(blob.size / 1024);
+        status.className   = 'tool-status success';
+        status.textContent = `✔ Export downloaded (${sizeKB} KB)`;
+    } catch (e) {
+        status.className   = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+function themeImport(input) {
+    const file = input.files[0];
+    input.value = ''; // reset so same file can be re-imported
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const parsed = JSON.parse(e.target.result);
+
+            // Validate wrapper key
+            if (!parsed.playdate_theme || typeof parsed.playdate_theme !== 'object') {
+                _themeSetStatus('✘ Not a valid PlayDate theme file.', 'error');
+                return;
+            }
+
+            const incoming = parsed.playdate_theme;
+            const knownKeys = new Set(THEME_VAR_META.map(m => m.key));
+
+            // Accept only known keys; skip anything unrecognised
+            let loaded = 0;
+            const merged = Object.assign({}, _themeVars); // start from current
+            for (const [k, v] of Object.entries(incoming)) {
+                if (!knownKeys.has(k)) continue;
+                const hex = _cssValueToHex(String(v));
+                if (hex === '#000000' && !String(v).match(/^#?0{3,6}$|black/i)) continue; // skip unparseable
+                merged[k] = hex;
+                loaded++;
+            }
+
+            if (loaded === 0) {
+                _themeSetStatus('✘ No valid color values found in file.', 'error');
+                return;
+            }
+
+            // Apply to document and pickers
+            _themeVars = merged;
+            for (const [k, v] of Object.entries(_themeVars)) {
+                _applyVarToDocument(k, v);
+            }
+            _themeRenderPanel();
+            _themeSetStatus(`✔ Theme imported — ${loaded} color${loaded !== 1 ? 's' : ''} loaded. Hit Save to apply permanently.`, 'success');
+
+        } catch (err) {
+            _themeSetStatus('✘ Could not parse file. Make sure it is a valid JSON theme.', 'error');
+        }
+    };
+    reader.readAsText(file);
+}
+
+function _themeSetStatus(msg, cls) {
+    const el = document.getElementById('theme-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'tool-status' + (cls ? ' ' + cls : '');
 }
 </script>
 {% endblock %}

@@ -58,6 +58,7 @@
                 <div class="fmg-actions">
                     <button class="fmg-add-cond" onclick="addAdvancedRow(this.closest('.fmg-container'))">+ Condition</button>
                     <button class="fmg-add-group" onclick="addAdvancedGroup(this.closest('.fmg-container'))">+ Group</button>
+                    <button class="fmg-add-cond" onclick="addAdvancedExprRow(this.closest('.fmg-container'))">+ Expression</button>
                     <span class="fmg-logic-toggle" onclick="toggleGroupLogic(this.closest('.fmg-container'))" style="margin-left:8px;">AND</span>
                 </div>
             </div>
@@ -117,6 +118,18 @@
 
     <!-- Footer -->
     <div style="padding:14px 24px; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:10px; flex-shrink:0;">
+        <!-- Quick filters (built-in presets) -->
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="color:#4a6a8a; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;">Quick:</span>
+            {% for key, f in builtin_filters.items() if f.where is not none %}
+            <button onclick="applyBuiltinFilter('{{ key }}')"
+                style="background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:20px; padding:3px 12px; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
+                onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                onmouseout="this.style.borderColor='#2a3f55';this.style.color='#8f98a0'">
+                {{ f.label }}
+            </button>
+            {% endfor %}
+        </div>
         <!-- Saved filters row -->
         <div style="display:flex; gap:8px; align-items:center;">
             <select id="saved-filters-select" class="nav-dropdown" onchange="loadSavedFilterFromModal(this)"
@@ -332,6 +345,15 @@ select.nav-dropdown:hover {
     line-height: 1;
 }
 .fm-pill-remove:hover { color: #ff4d4d; }
+
+/* Expression row (custom SQL snippet inside the group builder) */
+.fm-expr-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin-bottom: 7px;
+}
+.fm-expr-row .fm-remove { align-self: flex-start; margin-top: 2px; }
 </style>
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -339,14 +361,14 @@ select.nav-dropdown:hover {
 // ═══════════════════════════════════════════════════════════════
 
 const FM_FILTER_CONFIG = {
-    'tags':               { label: 'Tag',                  type: 'select', comparisons: {'LIKE':'includes','NOT LIKE':'excludes'},
+    'tags':               { label: 'Tag',                  type: 'select', comparisons: {'LIKE':'includes','NOT LIKE':'excludes','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_tags | tojson if unique_tags is defined else '[]' }} },
-    'completion_status':  { label: 'Completion Status',    type: 'select', comparisons: {'=':'is','!=':'is not'},
+    'completion_status':  { label: 'Completion Status',    type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: ['Never Played','Unfinished','Beaten','Completed',"Won't Play"] },
-    'installed':          { label: 'Installed',            type: 'select', comparisons: {'=':'is'},
+    'installed':          { label: 'Installed',            type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {'1':'Yes','0':'No'} },
-    'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches'} },
-    'groups':             { label: 'Group',                type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not'},
+    'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'groups':             { label: 'Group',                type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_groups | tojson if unique_groups is defined else '[]' }} },
     'release_date':       { label: 'Release Date',         type: 'date_text',
                             comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
@@ -354,15 +376,17 @@ const FM_FILTER_CONFIG = {
                             comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
     'last_played':        { label: 'Last Played',          type: 'date_text',
                             comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'never played','IS NOT NULL':'has been played'} },
-    'playtime_forever':   { label: 'Playtime (mins)',      type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly'} },
-    'review_percentage':  { label: 'Review %',             type: 'number', comparisons: {'>':'over','<':'under','=':'is'} },
-    'weighted_percentage':{ label: 'Weighted Review %',    type: 'number', comparisons: {'>':'over','<':'under','=':'is'} },
-    'review_score':       { label: 'Review Score',         type: 'select', comparisons: {'=':'is','!=':'is not'},
+    'playtime_forever':   { label: 'Playtime (mins)',      type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'review_percentage':  { label: 'Review %',             type: 'number', comparisons: {'>':'over','<':'under','=':'is','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'weighted_percentage':{ label: 'Weighted Review %',    type: 'number', comparisons: {'>':'over','<':'under','=':'is','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'review_score':       { label: 'Review Score',         type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: ["Overwhelmingly Positive","Very Positive","Positive","Mostly Positive","Mixed","Mostly Negative","Negative","Very Negative","Overwhelmingly Negative","No Reviews","Not Enough Reviews"] },
-    'developers':         { label: 'Developer',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
-    'publishers':         { label: 'Publisher',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
-    'art_source':         { label: 'Artwork Source',       type: 'select', comparisons: {'=':'is','!=':'is not'},
+    'developers':         { label: 'Developer',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'publishers':         { label: 'Publisher',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'art_source':         { label: 'Artwork Source',       type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: ['capsule','sgdb_capsule','header'] },
+    'unlocked_achievements': { label: 'Unlocked Achievements', type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'total_achievements':    { label: 'Total Achievements',    type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
 };
 
 // Operators that need no value input
@@ -420,7 +444,9 @@ function populateModalFromTree(tree) {
             document.getElementById('fm-custom-sql-toggle').style.color = 'var(--steam-focus)';
         } else {
             const hasGroups = tree.items.some(i => i.type === 'group');
-            if (hasGroups) {
+            const hasExpr   = tree.items.some(i => i.type === 'custom_expr');
+            const hasValCol = tree.items.some(i => i.type === 'condition' && i.value_col);
+            if (hasGroups || hasExpr || hasValCol) {
                 setFilterMode('advanced');
                 buildAdvancedFromTree(tree);
             } else {
@@ -501,20 +527,28 @@ function updateSqlPreview() {
     const text = sql
         ? `SELECT * FROM games\nWHERE ${sql}\nORDER BY name ASC`
         : 'SELECT * FROM games ORDER BY name ASC  -- (no filters)';
-    // Always update the text so it's ready when the panel opens
     const el = document.getElementById('fm-sql-text');
-    if (el) el.textContent = text;
+    if (el) sqlHighlightPre(el, text);
 }
 
 // ── Tree → SQL (client-side preview only) ──────────────────────
 
 function treeToSql(node) {
     if (!node) return '';
+    if (node.type === 'custom_expr') {
+        return node.sql ? `(${node.sql})` : '';
+    }
     if (node.type === 'condition') {
         const col = node.column;
         const op  = node.operator;
-        const val = node.value;
         if (!col) return '';
+        // Column vs column
+        if (node.value_col) {
+            if (['=','!=','<','>','<=','>='].includes(op))
+                return `${col} ${op} ${node.value_col}`;
+            return '';
+        }
+        const val = node.value;
         if (NO_VALUE_OPS.has(op)) {
             return op === 'IS NULL'
                 ? `(${col} IS NULL OR ${col} = '')`
@@ -525,11 +559,8 @@ function treeToSql(node) {
             const likeOp = (op === 'LIKE' || op === '=') ? 'LIKE' : 'NOT LIKE';
             return `',' || ${col} || ',' ${likeOp} '%,${val},%'`;
         }
-        // Date pattern LIKE — user supplies their own wildcards
         const DATE_COLS = new Set(['release_date','date_added','last_played']);
-        if (DATE_COLS.has(col) && op === 'LIKE') {
-            return `${col} LIKE '${val}'`;
-        }
+        if (DATE_COLS.has(col) && op === 'LIKE') return `${col} LIKE '${val}'`;
         if (op === 'LIKE')     return `${col} LIKE '%${val}%'`;
         if (op === 'NOT LIKE') return `${col} NOT LIKE '%${val}%'`;
         if (op === '=')        return `${col} = '${val}'`;
@@ -552,7 +583,7 @@ function updateActivePills(tree) {
 }
 
 function flattenConditions(node) {
-    if (node.type === 'condition') return [node];
+    if (node.type === 'condition' || node.type === 'custom_expr') return [node];
     if (node.type === 'group') return (node.items||[]).flatMap(flattenConditions);
     return [];
 }
@@ -640,44 +671,36 @@ function addSimpleRow(data = null) {
     return row;
 }
 
-function populateRowControls(colSel, opContainer, valContainer, data) {
-    const col = colSel.value;
-    const cfg = FM_FILTER_CONFIG[col];
-    const initOp  = data ? data.operator : null;
-    const initVal = data ? data.value    : '';
+// ── Column-vs-column comparison helpers ─────────────────────────
+const _COL_COMPARE_OPS = new Set(['=','!=','>','<','>=','<=']);
+const _COL_COMPARE_NUMERIC = ['playtime_forever','review_percentage','weighted_percentage','unlocked_achievements','total_achievements'];
+const _COL_COMPARE_DATE    = ['release_date','date_added','last_played'];
 
-    // Operator select
-    opContainer.innerHTML = '';
-    const opSel = document.createElement('select');
-    opSel.className = 'fm-op-select';
-    Object.entries(cfg.comparisons).forEach(([k, label]) => {
-        const opt = document.createElement('option');
-        opt.value = k; opt.textContent = label;
-        if (k === initOp) opt.selected = true;
-        opSel.appendChild(opt);
-    });
-    opContainer.appendChild(opSel);
-
-    opSel.addEventListener('change', () => { updateValueField(cfg, opSel, valContainer, ''); updateSqlPreview(); });
-    updateValueField(cfg, opSel, valContainer, initVal);
+function _compatibleCols(colName) {
+    if (_COL_COMPARE_NUMERIC.includes(colName)) return _COL_COMPARE_NUMERIC.filter(c => c !== colName);
+    if (_COL_COMPARE_DATE.includes(colName))    return _COL_COMPARE_DATE.filter(c => c !== colName);
+    return [];
 }
 
-function updateValueField(cfg, opSel, valContainer, initVal) {
-    valContainer.innerHTML = '';
-    const op = opSel.value;
+function _buildColSelect(container, compatCols, initValCol) {
+    const sel = document.createElement('select');
+    sel.className = 'fm-val-col-select';
+    sel.style.cssText = 'padding:6px 9px;background-color:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;border-radius:5px;font-size:0.85rem;width:100%;box-sizing:border-box;';
+    compatCols.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = FM_FILTER_CONFIG[c] ? FM_FILTER_CONFIG[c].label : c;
+        if (c === initValCol) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    sel.addEventListener('change', updateSqlPreview);
+    container.appendChild(sel);
+}
 
-    if (NO_VALUE_OPS.has(op)) {
-        const placeholder = document.createElement('span');
-        placeholder.style.cssText = 'color:#666;font-size:0.8rem;padding:0 8px;';
-        placeholder.textContent = '(no value needed)';
-        valContainer.appendChild(placeholder);
-        return;
-    }
-
+function _buildLiteralInput(container, cfg, op, initVal) {
     let el;
     if (cfg.type === 'select') {
         el = document.createElement('select');
-        const opts = Array.isArray(cfg.options) ? cfg.options : Object.entries(cfg.options).map(([v,l])=>({v,l}));
         if (Array.isArray(cfg.options)) {
             cfg.options.forEach(o => {
                 const opt = document.createElement('option');
@@ -697,16 +720,7 @@ function updateValueField(cfg, opSel, valContainer, initVal) {
         el = document.createElement('input');
         el.type = 'text';
         el.value = initVal || '';
-        if (op === 'LIKE') {
-            el.placeholder = 'e.g. %-03-% (March) or 2023-%';
-        } else if (op === '>' || op === '<') {
-            el.placeholder = 'YYYY-MM-DD';
-        } else {
-            el.placeholder = 'YYYY-MM-DD';
-        }
-        // Attach hint to valContainer after el
-        valContainer._hint = null;
-        el.addEventListener('change', () => {});
+        el.placeholder = op === 'LIKE' ? 'e.g. %-03-% (March) or 2023-%' : 'YYYY-MM-DD';
     } else {
         el = document.createElement('input');
         el.type = cfg.type || 'text';
@@ -716,10 +730,97 @@ function updateValueField(cfg, opSel, valContainer, initVal) {
     el.className = 'fm-val-input';
     el.addEventListener('input', updateSqlPreview);
     el.addEventListener('change', updateSqlPreview);
-    valContainer.appendChild(el);
-    if (valContainer._hint) {
-        valContainer.appendChild(valContainer._hint);
+    container.appendChild(el);
+}
+
+function populateRowControls(colSel, opContainer, valContainer, data) {
+    const col        = colSel.value;
+    const cfg        = FM_FILTER_CONFIG[col];
+    const initOp     = data ? data.operator   : null;
+    const initVal    = data ? (data.value    || '') : '';
+    const initValCol = data ? (data.value_col || '') : '';
+
+    // Operator select
+    opContainer.innerHTML = '';
+    const opSel = document.createElement('select');
+    opSel.className = 'fm-op-select';
+    Object.entries(cfg.comparisons).forEach(([k, label]) => {
+        const opt = document.createElement('option');
+        opt.value = k; opt.textContent = label;
+        if (k === initOp) opt.selected = true;
+        opSel.appendChild(opt);
+    });
+    opContainer.appendChild(opSel);
+
+    opSel.addEventListener('change', () => { updateValueField(cfg, opSel, valContainer, '', col); updateSqlPreview(); });
+    updateValueField(cfg, opSel, valContainer, initVal, col, initValCol);
+}
+
+function updateValueField(cfg, opSel, valContainer, initVal, colName = '', initValCol = '') {
+    valContainer.innerHTML = '';
+    valContainer.style.display = '';
+    const op = opSel.value;
+
+    if (NO_VALUE_OPS.has(op)) {
+        const placeholder = document.createElement('span');
+        placeholder.style.cssText = 'color:#666;font-size:0.8rem;padding:0 8px;';
+        placeholder.textContent = '(no value needed)';
+        valContainer.appendChild(placeholder);
+        return;
     }
+
+    const compatCols  = _compatibleCols(colName);
+    const canColCmp   = compatCols.length > 0 && _COL_COMPARE_OPS.has(op);
+    const startColMode = canColCmp && !!initValCol;
+
+    if (canColCmp) {
+        valContainer.style.cssText = 'display:flex;gap:6px;align-items:center;';
+        const inputWrap = document.createElement('div');
+        inputWrap.style.flex = '1';
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.title = 'Toggle column comparison';
+        toggleBtn.textContent = '⇄';
+        toggleBtn.style.cssText = 'flex-shrink:0;border-radius:4px;padding:3px 7px;font-size:0.85rem;cursor:pointer;border:1px solid;transition:all 0.15s;';
+
+        function applyToggleStyle(colMode) {
+            if (colMode) {
+                toggleBtn.style.background = '#2a5a2a';
+                toggleBtn.style.borderColor = '#3a7a3a';
+                toggleBtn.style.color = '#80c080';
+            } else {
+                toggleBtn.style.background = '#1b3a52';
+                toggleBtn.style.borderColor = '#2a5a7a';
+                toggleBtn.style.color = 'var(--steam-focus)';
+            }
+        }
+
+        function renderInput(colMode) {
+            inputWrap.innerHTML = '';
+            if (colMode) {
+                _buildColSelect(inputWrap, compatCols, initValCol);
+            } else {
+                _buildLiteralInput(inputWrap, cfg, op, initVal);
+            }
+            applyToggleStyle(colMode);
+        }
+
+        renderInput(startColMode);
+        toggleBtn.onclick = () => {
+            const nowColMode = !!inputWrap.querySelector('.fm-val-col-select');
+            initValCol = '';
+            initVal = '';
+            renderInput(!nowColMode);
+            updateSqlPreview();
+        };
+
+        valContainer.appendChild(toggleBtn);
+        valContainer.appendChild(inputWrap);
+        return;
+    }
+
+    _buildLiteralInput(valContainer, cfg, op, initVal);
 }
 
 // ═══════════════════════════════════════════
@@ -748,6 +849,8 @@ function buildAdvancedFromTree(tree) {
             addAdvancedRow(root, item);
         } else if (item.type === 'group') {
             addAdvancedGroup(root, item);
+        } else if (item.type === 'custom_expr') {
+            addAdvancedExprRow(root, item);
         }
     });
 }
@@ -853,6 +956,7 @@ function addAdvancedGroup(parentGroupEl, existingTree = null) {
         <div class="fmg-actions">
             <button class="fmg-add-cond" onclick="addAdvancedRow(this.closest('.fmg-container'))">+ Condition</button>
             <button class="fmg-add-group" onclick="addAdvancedGroup(this.closest('.fmg-container'))">+ Group</button>
+            <button class="fmg-add-cond" onclick="addAdvancedExprRow(this.closest('.fmg-container'))">+ Expression</button>
             <span class="fmg-logic-toggle ${logic==='OR'?'or-mode':''}" onclick="toggleGroupLogic(this.closest('.fmg-container'))" style="margin-left:8px;">${logic}</span>
         </div>
     `;
@@ -863,6 +967,7 @@ function addAdvancedGroup(parentGroupEl, existingTree = null) {
         existingTree.items.forEach(item => {
             if (item.type === 'condition') addAdvancedRow(groupEl, item);
             else if (item.type === 'group') addAdvancedGroup(groupEl, item);
+            else if (item.type === 'custom_expr') addAdvancedExprRow(groupEl, item);
         });
     }
     // No auto-add — user clicks + Condition when ready
@@ -870,6 +975,53 @@ function addAdvancedGroup(parentGroupEl, existingTree = null) {
     updateSqlPreview();
     return groupEl;
 }
+// ── Custom Expression Row ───────────────────────────────────────
+
+const _EXPR_STYLE = 'width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:6px 10px;border-radius:5px;resize:vertical;min-height:42px;outline:none;';
+
+function addAdvancedExprRow(groupEl, data = null) {
+    const rowsEl = groupEl.querySelector(':scope > .fmg-rows');
+    const logic  = groupEl.dataset.logic || 'AND';
+    addConnectorIfNeeded(rowsEl, logic);
+
+    const row = document.createElement('div');
+    row.className = 'fm-expr-row';
+
+    const badge = document.createElement('span');
+    badge.textContent = 'EXPR';
+    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--steam-focus);border-radius:4px;padding:3px 7px;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;align-self:flex-start;margin-top:1px;';
+
+    const ta = document.createElement('textarea');
+    ta.className = 'fm-expr-input';
+    ta.style.cssText = _EXPR_STYLE;
+    ta.placeholder = 'e.g. unlocked_achievements < total_achievements';
+    ta.value = (data && data.sql) || '';
+    ta.addEventListener('input', updateSqlPreview);
+    ta.addEventListener('focus', () => ta.style.borderColor = 'var(--steam-focus)');
+    ta.addEventListener('blur',  () => ta.style.borderColor = '#2a3f55');
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'fm-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.style.alignSelf = 'flex-start';
+    removeBtn.onclick = () => {
+        const prev = row.previousElementSibling;
+        if (prev && prev.classList.contains('fmg-connector')) prev.remove();
+        row.remove();
+        updateSqlPreview();
+    };
+
+    row.appendChild(badge);
+    row.appendChild(ta);
+    row.appendChild(removeBtn);
+    rowsEl.appendChild(row);
+
+    // Init syntax highlighting on the expression textarea
+    sqlHighlightInit(ta);
+    updateSqlPreview();
+    return row;
+}
+
 // ── Custom SQL ──────────────────────────────────────────────────
 
 let _customSqlActive = false;
@@ -882,7 +1034,9 @@ function toggleCustomSql() {
     if (_customSqlActive) {
         btn.style.borderColor = 'var(--steam-focus)';
         btn.style.color = 'var(--steam-focus)';
-        document.getElementById('fm-custom-sql-input').focus();
+        const ta = document.getElementById('fm-custom-sql-input');
+        sqlHighlightInit(ta);
+        ta.focus();
     } else {
         document.getElementById('fm-custom-sql-input').value = '';
         document.getElementById('fm-custom-sql-warning').style.display = 'none';
@@ -1142,6 +1296,13 @@ function parseSqlExpression(sql) {
         if (!valTok || (valTok.type !== 'value' && valTok.type !== 'word')) return null;
         consume();
         let val = valTok.val;
+
+        // Column vs column: right-hand side is a known column and op is a compare op
+        if (valTok.type === 'word' && KNOWN.has(val) && _COL_COMPARE_OPS.has(op)) {
+            if (!KNOWN.has(col)) return null;
+            return { type: 'condition', column: col, operator: op, value_col: val };
+        }
+
         if (op === 'LIKE' || op === 'NOT LIKE') {
             if (valTok.isConcat) {
                 // ',' || col || ',' LIKE '%,value,%'  →  strip %,  and  ,%
@@ -1195,6 +1356,10 @@ function parseSqlExpression(sql) {
 function collectRowData(rowEl) {
     const col = rowEl.querySelector('.fm-col-select')?.value;
     const op  = rowEl.querySelector('.fm-op-select')?.value;
+    const valColEl = rowEl.querySelector('.fm-val-col-select');
+    if (valColEl) {
+        return { type: 'condition', column: col, operator: op, value_col: valColEl.value };
+    }
     const valEl = rowEl.querySelector('.fm-val-input');
     const val = valEl ? valEl.value : '';
     return { type: 'condition', column: col, operator: op, value: val };
@@ -1206,10 +1371,13 @@ function collectGroupData(groupEl) {
     const items = [];
 
     Array.from(rowsEl.children).forEach(child => {
-        if (child.classList.contains('fmg-connector')) return; // skip AND/OR labels
-        if (child.classList.contains('fm-row')) {
+        if (child.classList.contains('fmg-connector')) return;
+        if (child.classList.contains('fm-expr-row')) {
+            const sql = child.querySelector('.fm-expr-input')?.value?.trim();
+            if (sql) items.push({ type: 'custom_expr', sql });
+        } else if (child.classList.contains('fm-row')) {
             const cond = collectRowData(child);
-            if (cond.column && (cond.value || NO_VALUE_OPS.has(cond.operator))) {
+            if (cond.column && (cond.value_col || cond.value || NO_VALUE_OPS.has(cond.operator))) {
                 items.push(cond);
             }
         } else if (child.classList.contains('fmg-container')) {
@@ -1226,7 +1394,7 @@ function collectTree() {
         const items = [];
         document.querySelectorAll('#fm-simple-rows .fm-row').forEach(row => {
             const cond = collectRowData(row);
-            if (cond.column && (cond.value || NO_VALUE_OPS.has(cond.operator))) {
+            if (cond.column && (cond.value_col || cond.value || NO_VALUE_OPS.has(cond.operator))) {
                 items.push(cond);
             }
         });
@@ -1263,7 +1431,21 @@ async function clearAllFilters() {
     });
 }
 
-var _savedFilters = (typeof _savedFilters !== 'undefined') ? _savedFilters : {{ state.get('saved_filters', {}) | tojson if state is defined else '{}' }};
+// _savedFilters may already be declared by the host page (e.g. index.html)
+if (typeof _savedFilters === 'undefined') {
+    var _savedFilters = {{ state.get('saved_filters', {}) | tojson if state is defined else '{}' }};
+}
+
+const _builtinFilterWheres = {{ builtin_filters | tojson if builtin_filters is defined else '{}' }};
+
+async function applyBuiltinFilter(key) {
+    const preset = _builtinFilterWheres[key];
+    if (!preset || !preset.where) return;
+    const tree = { type: 'group', logic: 'AND', items: [], custom_sql: preset.where };
+    updateActivePills(tree);
+    await sendStateUpdate({ filter_tree: tree });
+    closeFilterModal();
+}
 
 function loadSavedFilterFromModal(selectEl) {
     const name = selectEl.value;
@@ -1304,7 +1486,7 @@ async function deleteSavedFilterFromModal() {
     const selectEl = document.getElementById('saved-filters-select');
     const name = selectEl.value;
     if (!name) { alert('Select a saved filter first.'); return; }
-    if (!confirm(`Delete saved filter "${name}"?`)) return;
+    if (!await confirm(`Delete saved filter "${name}"?`)) return;
     try {
         const res = await fetch('/api/delete-filter', {
             method: 'POST',

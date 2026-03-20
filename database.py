@@ -59,6 +59,15 @@ def init_db():
         if column_name not in columns:
             cursor.execute(f"ALTER TABLE games ADD COLUMN {column_name} {column_type}")
 
+    # Blacklist table — appids that should be skipped by Populate
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS blacklist (
+            appid INTEGER PRIMARY KEY,
+            name TEXT,
+            date_blacklisted TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
     """Inserts a basic game record if it doesn't exist."""
@@ -127,3 +136,40 @@ def bulk_update_column(appids, column, value):
         print(f"Bulk update failed: {e}")
     finally:
         conn.close()
+
+# ── Blacklist helpers ──────────────────────────────────────────────────────────
+
+def get_blacklist():
+    """Return all blacklisted entries sorted by date_blacklisted DESC."""
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT appid, name, date_blacklisted FROM blacklist ORDER BY date_blacklisted DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+def add_to_blacklist(appid, name):
+    """Add an appid to the blacklist. Safe to call if already present."""
+    from datetime import datetime
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn.execute(
+        "INSERT OR REPLACE INTO blacklist (appid, name, date_blacklisted) VALUES (?, ?, ?)",
+        (int(appid), name, datetime.now().strftime('%Y-%m-%d'))
+    )
+    conn.commit()
+    conn.close()
+
+def remove_from_blacklist(appid):
+    """Remove an appid from the blacklist."""
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn.execute("DELETE FROM blacklist WHERE appid = ?", (int(appid),))
+    conn.commit()
+    conn.close()
+
+def get_blacklisted_appids():
+    """Return a set of blacklisted appids for fast membership testing."""
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    rows = conn.execute("SELECT appid FROM blacklist").fetchall()
+    conn.close()
+    return {row[0] for row in rows}

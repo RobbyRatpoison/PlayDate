@@ -54,6 +54,7 @@ import webview
 from app import create_app
 from config import BASE_DIR
 from database import init_db
+from utils import find_steam_path, start_steamapps_watcher, stop_steamapps_watcher
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PORT      = 5000
@@ -121,21 +122,37 @@ class PyWebviewAPI:
         except Exception as e:
             log.warning(f"Fullscreen toggle failed: {e}")
 
-    def pick_save_path(self, suggested_name):
+    def open_url(self, url):
+        """Open a URL in the system default browser, bringing it to the foreground."""
+        import subprocess, platform
+        try:
+            sys = platform.system()
+            if sys == 'Darwin':
+                subprocess.Popen(['open', url])
+            elif sys == 'Linux':
+                subprocess.Popen(['xdg-open', url])
+            else:  # Windows
+                subprocess.Popen(f'start "" "{url}"', shell=True)
+        except Exception as e:
+            log.warning(f"open_url failed for {url!r}: {e}")
+
+    def pick_save_path(self, suggested_name, file_types=None):
         """
         Open a native Save-As dialog and return the chosen path string,
         or None if the user cancelled.
+        file_types: list of strings like ['ZIP Files (*.zip)'], defaults to ZIP.
         """
         if _webview_window is None:
             return None
+        if file_types is None:
+            file_types = ('ZIP Files (*.zip)',)
         try:
             paths = _webview_window.create_file_dialog(
                 webview.SAVE_DIALOG,
                 save_filename=suggested_name,
-                file_types=('ZIP Files (*.zip)',),
+                file_types=tuple(file_types),
             )
             if paths:
-                # pywebview returns a tuple; grab the first element
                 path = paths[0] if isinstance(paths, (list, tuple)) else paths
                 return str(path)
         except Exception as e:
@@ -165,6 +182,21 @@ if __name__ == '__main__':
     except Exception as e:
         log.critical(f"Database initialization failed: {e}", exc_info=True)
         raise
+
+    # 2b. Start steamapps filesystem watcher
+    _steamapps_path = find_steam_path()
+    if _steamapps_path:
+        start_steamapps_watcher(_steamapps_path)
+    else:
+        log.warning("Steam path not found — steamapps watcher not started")
+
+    # 2c. Sync recent playtime from Steam API in background
+    def _run_playtime_sync():
+        from scrapers import sync_recent_playtime
+        sync_recent_playtime()
+
+    threading.Thread(target=_run_playtime_sync, daemon=True).start()
+    log.info("Playtime sync started in background.")
 
     # 3. Start Flask in a background thread
     flask_thread = threading.Thread(target=_run_flask, args=(flask_app,), daemon=True)
@@ -201,4 +233,5 @@ if __name__ == '__main__':
 
     # 8. Clean exit
     log.info("Window closed. PlayDate exiting.")
+    stop_steamapps_watcher()
     sys.exit(0)

@@ -1,4 +1,4 @@
-from config import load_state
+from config import load_state, BUILTIN_FILTERS
 from database import get_db
 from utils import get_all_unique_groups, get_all_unique_tags
 from flask import Blueprint, jsonify, render_template, request, redirect, url_for
@@ -76,6 +76,16 @@ def build_condition_sql(cond, params):
 
     if col not in SAFE_COLUMNS:
         return '1=1'
+
+    # Column vs column comparison (no value parameterisation needed)
+    val_col = cond.get('value_col', '')
+    if val_col:
+        if val_col not in SAFE_COLUMNS:
+            return '1=1'
+        if op in ('=', '!=', '<', '>', '<=', '>='):
+            return f"{col} {op} {val_col}"
+        return '1=1'
+
     if val == '' and op not in ('IS NULL', 'IS NOT NULL'):
         return '1=1'
 
@@ -122,6 +132,12 @@ def build_tree_sql(node, params):
 
     if node_type == 'condition':
         return build_condition_sql(node, params)
+
+    if node_type == 'custom_expr':
+        sql = node.get('sql', '').strip()
+        if sql and is_safe_sql(sql):
+            return f"({sql})"
+        return '1=1'
 
     if node_type == 'group':
         items = node.get('items', [])
@@ -215,7 +231,8 @@ def library():
     tags   = get_all_unique_tags()
 
     return render_template('library.html', games=games, state=state,
-                           unique_tags=tags, unique_groups=groups, sql_error=sql_error)
+                           unique_tags=tags, unique_groups=groups,
+                           sql_error=sql_error, builtin_filters=BUILTIN_FILTERS)
 
 
 @library_bp.route('/update_game', methods=['POST'])
@@ -227,7 +244,11 @@ def update_game():
     from database import update_game_data
     try:
         update_game_data(appid, **data)
-        return redirect(url_for('library.library'))
+        db = get_db()
+        row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
+        db.close()
+        game = dict(row) if row else {"appid": appid}
+        return jsonify({"status": "success", "game": game})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -244,7 +265,7 @@ def bulk_edit_games(data):
         'completion_status', 'tags', 'groups', 'developers', 'publishers',
         'release_date', 'review_score', 'review_percentage', 'weighted_percentage',
         'total_reviews', 'positive_reviews', 'playtime_forever', 'date_added',
-        'installed', 'art_source'
+        'installed', 'art_source', 'unlocked_achievements', 'total_achievements'
     }
     if column not in allowed_columns:
         return jsonify({"status": "error", "message": f"Column '{column}' is not editable."}), 400

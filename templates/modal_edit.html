@@ -104,10 +104,10 @@
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 15px; padding-right: 30px;">
             <h2 style="margin: 0; color: #ffffff;">Edit Game Details</h2>
             <div style="display: flex; gap: 10px;">
-                <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" style="height: auto; padding: 8px 16px; border: 1px solid var(--steam-focus); background: transparent;">
+                <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" style="height: auto; padding: 8px 16px; border: 1px solid var(--steam-focus);">
                     Sync Steam Data
                 </button>
-                <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" style="height: auto; padding: 8px 16px; border: 1px solid #a32a2a; background: #a32a2a;">
+                <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" style="height: auto; padding: 8px 16px; border: 1px solid var(--danger-color); background: var(--danger-color); color: var(--nav-active);">
                     Delete Game
                 </button>
             </div>
@@ -121,7 +121,7 @@
             </a>
         </p>
 
-        <form id="edit-game-form" action="/update_game" method="POST">
+        <form id="edit-game-form">
             <input type="hidden" name="edit-appid" id="edit-appid">
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; column-gap: 20px; row-gap: 0; align-items: start;">
@@ -253,6 +253,11 @@
                                    placeholder="Paste a direct image URL..."
                                    style="flex:1; min-width:0;"
                                    oninput="onArtUrlInput(this.value)">
+                            <button type="button" id="art-steam-btn" class="nav-btn"
+                                    onclick="fetchSteamArt()"
+                                    style="padding:8px 12px; white-space:nowrap;">
+                                Steam Art
+                            </button>
                             <button type="button" id="art-preview-btn" class="nav-btn"
                                     onclick="previewArtUrl()"
                                     style="padding:8px 12px; white-space:nowrap;">
@@ -270,6 +275,11 @@
         </form>
     </div>
 </div>
+
+<style>
+    #meta-btn { color: var(--steam-focus); background: transparent; }
+    #meta-btn:hover { background: var(--steam-focus) !important; color: #1b2838 !important; }
+</style>
 
 <script>
     function safeSet(id, value, type = 'value') {
@@ -374,9 +384,48 @@
         tempImg.src = url;
     }
 
+    function fetchSteamArt() {
+        const appid  = document.getElementById('edit-appid').value;
+        const img    = document.getElementById('art-current');
+        const label  = document.getElementById('art-column-label');
+        const status = document.getElementById('art-status');
+        const urlInput = document.getElementById('new-art-url');
+        const btn    = document.getElementById('art-steam-btn');
+
+        if (!appid) return;
+        const steamUrl = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
+
+        btn.textContent = 'Loading...';
+        btn.disabled = true;
+        status.textContent = '';
+
+        const tempImg = new Image();
+        tempImg.onload = () => {
+            urlInput.value = steamUrl;
+            img.src = steamUrl;
+            label.textContent = 'Steam Art Preview';
+            label.style.color = 'var(--steam-focus)';
+            status.style.color = '#5c7e10';
+            status.textContent = '✔ Steam art loaded — save to apply.';
+            btn.textContent = 'Steam Art';
+            btn.disabled = false;
+        };
+        tempImg.onerror = () => {
+            status.style.color = '#ff8080';
+            status.textContent = '✘ No Steam artwork found for this game.';
+            btn.textContent = 'Steam Art';
+            btn.disabled = false;
+        };
+        tempImg.src = steamUrl;
+    }
+
     function closeModal() {
         const form = document.getElementById('edit-game-form');
-        if (form) form.reset();
+        if (form) {
+            form.reset();
+            const saveBtn = form.querySelector('[type="submit"]');
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'SAVE CHANGES'; }
+        }
         document.getElementById('new-art-url').value = '';
         document.getElementById('art-status').textContent = '';
         document.getElementById('art-current').src = '';
@@ -387,13 +436,27 @@
 
     async function deleteGame() {
         const appid = document.getElementById('edit-appid').value;
-        const name = document.getElementById('edit-name').value || `AppID ${appid}`;
-        if (!confirm(`Remove "${name}" from your PlayDate library?\n\nThis only removes it from PlayDate's database — it won't affect Steam or uninstall the game.`)) return;
+        const name  = document.getElementById('edit-name').value || `AppID ${appid}`;
+
+        // Step 1 — confirm deletion
+        if (!await confirm(`Remove "${name}" from your PlayDate library?\n\nThis deletes the game's database entry and cover image. It will not affect Steam or uninstall the game.`)) return;
+
+        // Step 2 — offer blacklist
+        const blacklist = await confirm(
+            `Blacklist "${name}"?\n\n` +
+            `Blacklisted games are permanently skipped by "Populate PlayDate" so they won't be re-added to your library in the future.\n\n` +
+            `OK = Blacklist this game\nCancel = Just delete it`
+        );
+
         const btn = document.getElementById('delete-btn');
         btn.disabled = true;
         btn.textContent = 'Deleting...';
         try {
-            const res = await fetch(`/api/delete-game/${appid}`, { method: 'DELETE' });
+            const res = await fetch(`/api/delete-game/${appid}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blacklist, name })
+            });
             const result = await res.json();
             if (result.status === 'success') {
                 closeModal();
@@ -484,9 +547,55 @@
                 }
             }
 
-            this.submit();
+            // Submit form data via fetch — no page reload
+            try {
+                const formData = new FormData(this);
+                const res = await fetch('/update_game', { method: 'POST', body: formData });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    _patchGameCard(result.game);
+                    closeModal();
+                } else {
+                    artStatus.style.color = '#ff4d4d';
+                    artStatus.textContent = '✘ ' + (result.message || 'Save failed.');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'SAVE CHANGES';
+                }
+            } catch (err) {
+                artStatus.style.color = '#ff4d4d';
+                artStatus.textContent = '✘ Network error saving changes.';
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'SAVE CHANGES';
+            }
         });
     });
+
+    // Fully replace the cached game entry with fresh data from the server,
+    // then update the visible card elements.
+    function _patchGameCard(game) {
+        const appid = String(game.appid);
+
+        // Replace the entry in the GAMES array (library page) or _games (other pages)
+        if (typeof GAMES !== 'undefined') {
+            const idx = GAMES.findIndex(g => String(g.appid) === appid);
+            if (idx !== -1) Object.assign(GAMES[idx], game);
+        } else if (typeof _games !== 'undefined') {
+            const idx = _games.findIndex(g => String(g.appid) === appid);
+            if (idx !== -1) Object.assign(_games[idx], game);
+        }
+
+        // Update visible card elements
+        const card = document.querySelector(`.game-card[data-appid="${appid}"]`);
+        if (!card) return;
+        const nameEl = card.querySelector('.game-name');
+        if (nameEl) nameEl.textContent = game.name || '';
+        const statusEl = card.querySelector('.completion-badge');
+        if (statusEl) statusEl.textContent = game.completion_status || '';
+
+        // Bust the artwork cache so the updated image shows immediately
+        const img = card.querySelector('.game-capsule');
+        if (img) img.src = `/static/img/library/${appid}.jpg?v=` + Date.now();
+    }
 
     window.onclick = function(event) {
         if (event.target.className === 'modal-overlay') {

@@ -1,9 +1,19 @@
 :root {
-    --steam-blue: #1b2838;
-    --steam-input: #101822;
-    --steam-text: #c7d5e0;
-    --steam-focus: #66c0f4;
-    --accent-green: #5c7e10;
+    --steam-blue:    #1b2838;
+    --steam-input:   #101822;
+    --panel-alt:     #1a2332;
+    --steam-text:    #c7d5e0;
+    --input-text:    #ffffff;
+    --muted-text:    #8f98a0;
+    --steam-focus:   #66c0f4;
+    --accent-text:   #0e1621;
+    --accent-green:  #5c7e10;
+    --nav-bg:        rgba(23, 26, 33, 0.85);
+    --nav-active:    #ffffff;
+    --border-color:  #2a475e;
+    --danger-color:  #a32a2a;
+    --danger-text:   #ff8080;
+    --warning-color: #c97c00;
 }
 
 html {
@@ -42,8 +52,8 @@ pre, code, kbd, blockquote,
 /* Standardization for all inputs (Modal & Maintenance) */
 input, textarea {
     background: var(--steam-input);
-    border: 1px solid #2a475e;
-    color: white;
+    border: 1px solid var(--border-color);
+    color: var(--input-text);
     padding: 10px;
     border-radius: 4px;
     width: 100%;
@@ -52,12 +62,12 @@ input, textarea {
 
 /* All selects get dark background + visible chevron */
 select {
-    background-color: #333;
+    background-color: var(--steam-input);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238f98a0' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    border: 1px solid #2a475e;
-    color: white;
+    border: 1px solid var(--border-color);
+    color: var(--steam-text);
     padding: 10px 32px 10px 10px;
     border-radius: 4px;
     width: 100%;
@@ -77,7 +87,7 @@ select {
 
 /* Fallback for missing images */
 .img-placeholder {
-    background: linear-gradient(135deg, #2a475e 0%, #1b2838 100%);
+    background: linear-gradient(135deg, var(--border-color) 0%, var(--steam-blue) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -92,8 +102,8 @@ select {
     align-items: center;
     height: 5vh;
     padding: 0 40px;
-    background: rgba(23, 26, 33, 0.8);
-    border-bottom: 1px solid var(--border-blue);
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--border-color);
     box-sizing: border-box;
     position: fixed;
     top: 0;
@@ -110,7 +120,7 @@ select {
 }
 
 .nav-links a {
-    color: #8f98a0;
+    color: var(--muted-text);
     text-decoration: none;
     font-weight: bold;
     margin-right: 30px;
@@ -121,11 +131,11 @@ select {
 }
 
 .nav-links a:hover {
-    color: var(--text-blue);
+    color: var(--steam-focus);
 }
 
 .nav-links a.active {
-    color: white;
+    color: var(--nav-active);
     border-bottom-color: var(--steam-focus);
 }
 
@@ -139,7 +149,7 @@ select {
 .game-card {
     aspect-ratio: 2 / 3;
     background: var(--steam-input);
-    border: 1px solid #2a475e;
+    border: 1px solid var(--border-color);
     overflow: hidden;
     position: relative;
     border-radius: 4px;
@@ -194,19 +204,20 @@ select {
 
 .nav-btn:hover {
     background: var(--steam-focus);
-    color: #1b2838;
+    color: var(--steam-blue);
     box-shadow: 0 0 10px rgba(102, 192, 244, 0.4);
 }
 
 .nav-btn:active {
-    background: #4ea9e0;
+    background: var(--steam-focus);
+    filter: brightness(0.85);
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
     transform: translateY(1px);
 }
 
 .btn-save {
     background: var(--accent-green);
-    color: white;
+    color: var(--nav-active);
     border: none;
     padding: 12px;
     width: 100%;
@@ -219,7 +230,7 @@ select {
 .nav-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-    background: #2a2e33;
+    background: var(--panel-alt);
 }
 
 .btn-save:hover {
@@ -227,12 +238,124 @@ select {
 }
 
 .exit-btn {
-    border-color: #a32a2a !important;
-    color: #cccccc !important;
+    border-color: var(--danger-color) !important;
+    color: var(--steam-text) !important;
     margin-left: auto;
-    background-color: #a32a2a !important;
+    background-color: var(--danger-color) !important;
 }
 
 .exit-btn:hover {
-    color: white !important;
+    color: var(--nav-active) !important;
+}
+
+/* ── Gamepad / controller focus indicators ───────────────────────────────────
+   Applied via .gamepad-focus class by input.js.
+   Each selector mirrors the existing :hover style for that element type.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Home page capsules — scale up like hover, but no border/glow */
+.shelf-capsule-wrap.gamepad-focus .shelf-capsule {
+    transform: scale(1.0);
+}
+
+/* Library game cards — matches border-color hover + adds glow */
+.game-card.gamepad-focus {
+    border-color: var(--steam-focus) !important;
+    box-shadow: 0 0 0 2px var(--steam-focus), 0 0 12px rgba(102, 192, 244, 0.35);
+    transform: scale(1.05);
+}
+
+/* Pick result cards — matches scale(1.0) hover */
+.result-card.gamepad-focus {
+    border-color: var(--steam-focus) !important;
+    transform: scale(1.0);
+    box-shadow: 0 0 0 2px var(--steam-focus), 0 0 10px rgba(102, 192, 244, 0.3);
+}
+
+/* Nav page links */
+.nav-links a.gamepad-focus {
+    color: var(--steam-focus);
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 4px;
+    border-radius: 2px;
+}
+
+/* Nav buttons (POPULATE, fullscreen, EXIT) */
+.nav-links button.gamepad-focus,
+#fullscreen-button.gamepad-focus,
+#exit-button.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
+}
+
+/* Generic .nav-btn anywhere (tools page, pick page, library toolbar etc.) */
+.nav-btn.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* Library toolbar — covers SEARCH, order toggle, clear filters (no .nav-btn class) */
+.search-nav-bar button.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* Library toolbar sort select */
+.search-nav-bar select.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* Pick mode toggle buttons — bright outline visible against both active and inactive states */
+.mode-toggle button.gamepad-focus {
+    outline: 3px solid #fff;
+    outline-offset: -3px;
+    box-shadow: 0 0 10px rgba(102, 192, 244, 0.6);
+}
+
+/* Pick main button */
+.pick-btn.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
+    box-shadow: 0 0 10px rgba(102, 192, 244, 0.4);
+}
+
+/* Pick weighted sliders */
+input[type="range"].gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 4px;
+}
+
+/* Slider row highlight when focused */
+.slider-row:has(input[type="range"].gamepad-focus) {
+    background: rgba(102, 192, 244, 0.08);
+    border-radius: 6px;
+    outline: 1px solid rgba(102, 192, 244, 0.3);
+}
+
+/* Pick pool toggle */
+.toggle-switch.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 4px;
+    border-radius: 4px;
+}
+
+/* Context menu items — matches :hover background */
+.ctx-item.gamepad-focus {
+    background: #243447;
+}
+
+/* Force submenu visible when opened via gamepad (normally only shows on :hover) */
+.ctx-item.ctx-sub-open .ctx-sub {
+    display: block;
+}
+
+/* pd-dialog buttons */
+#pd-btn-ok.gamepad-focus,
+#pd-btn-cancel.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
 }

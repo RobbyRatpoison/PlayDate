@@ -25,16 +25,70 @@ else:
 
 CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
 STATE_PATH  = os.path.join(BASE_DIR, 'state.json')
+THEME_PATH  = os.path.join(BASE_DIR, 'theme.json')
+
+# ── Theme defaults — single source of truth for all CSS variables ─────────────
+DEFAULT_THEME = {
+    "--steam-blue":    "#1b2838",
+    "--steam-input":   "#101822",
+    "--panel-alt":     "#1a2332",
+    "--steam-text":    "#c7d5e0",
+    "--input-text":    "#ffffff",
+    "--muted-text":    "#8f98a0",
+    "--steam-focus":   "#66c0f4",
+    "--accent-text":   "#0e1621",
+    "--accent-green":  "#5c7e10",
+    "--nav-bg":        "#171a21",
+    "--nav-active":    "#ffffff",
+    "--border-color":  "#2a475e",
+    "--danger-color":  "#a32a2a",
+    "--danger-text":   "#ff8080",
+    "--warning-color": "#c97c00",
+}
+
+def load_theme():
+    """Returns the active theme dict, falling back to defaults for any missing keys."""
+    theme = dict(DEFAULT_THEME)
+    if os.path.exists(THEME_PATH):
+        try:
+            with open(THEME_PATH, 'r') as f:
+                saved = json.load(f)
+            for k in DEFAULT_THEME:
+                if k in saved:
+                    theme[k] = saved[k]
+        except Exception:
+            pass
+    return theme
+
+def save_theme(vars_dict):
+    """Persist a theme dict to theme.json. Unknown keys are silently dropped."""
+    clean = {k: v for k, v in vars_dict.items() if k in DEFAULT_THEME}
+    with open(THEME_PATH, 'w') as f:
+        json.dump(clean, f, indent=4)
+
+# ── Built-in filter presets — single source of truth for index + library ──────
+BUILTIN_FILTERS = {
+    "all_games":     {"label": "All Games",      "where": "1=1"},
+    "installed":     {"label": "Installed",       "where": "installed = 1"},
+    "not_installed": {"label": "Not Installed",   "where": "installed = 0"},
+    "never_played":  {"label": "Never Played",    "where": "completion_status = 'Never Played'"},
+    "unfinished":    {"label": "Unfinished",      "where": "completion_status = 'Unfinished'"},
+    "not_beaten":    {"label": "Not Beaten",      "where": "completion_status IN ('Never Played', 'Unfinished')"},
+    "beaten":        {"label": "Beaten",          "where": "completion_status IN ('Beaten', 'Completed')"},
+    # Widget presets — no SQL
+    "clock":          {"label": "Clock",             "where": None},
+    "completion_pie": {"label": "Completion Chart",  "where": None},
+}
 
 DEFAULT_SHELVES = [
     # ── Row 1: Recently Added + Clock + Recently Released (top_row split) ──
     {
         "id": "recently_added",
         "label": "RECENTLY ADDED",
-        "preset": "all_games",
-        "filter_key": "all_games",
+        "preset": "never_played",
+        "filter_key": "never_played",
         "custom_sql": None,
-        "limit": 4,
+        "limit": 5,
         "row_height": 30,
         "col_width": 2,
         "split_group": "top_row",
@@ -61,10 +115,10 @@ DEFAULT_SHELVES = [
     {
         "id": "recently_released",
         "label": "RECENTLY RELEASED",
-        "preset": "all_games",
-        "filter_key": "all_games",
+        "preset": "never_played",
+        "filter_key": "never_played",
         "custom_sql": None,
-        "limit": 4,
+        "limit": 5,
         "row_height": 30,
         "col_width": 2,
         "split_group": "top_row",
@@ -81,7 +135,7 @@ DEFAULT_SHELVES = [
         "filter_key": "installed",
         "custom_sql": None,
         "limit": 10,
-        "row_height": 39,
+        "row_height": 38,
         "col_width": None,
         "split_group": None,
         "sort_col": "last_played", "sort_dir": None,
@@ -93,8 +147,8 @@ DEFAULT_SHELVES = [
     {
         "id": "discovery",
         "label": "SHUFFLE",
-        "preset": "all_games",
-        "filter_key": "all_games",
+        "preset": "not_beaten",
+        "filter_key": "not_beaten",
         "custom_sql": None,
         "limit": 15,
         "row_height": 22,
@@ -261,3 +315,20 @@ def update_state_api():
     new_data = request.json
     save_state(new_data)
     return jsonify({"status": "success"})
+
+@config_bp.route('/api/theme', methods=['GET'])
+def get_theme():
+    return jsonify({"status": "success", "theme": load_theme(), "defaults": DEFAULT_THEME})
+
+@config_bp.route('/api/theme', methods=['POST'])
+def post_theme():
+    data = request.json or {}
+    if data.get('reset'):
+        if os.path.exists(THEME_PATH):
+            os.remove(THEME_PATH)
+        return jsonify({"status": "success", "theme": dict(DEFAULT_THEME)})
+    vars_dict = data.get('theme', {})
+    if not vars_dict:
+        return jsonify({"status": "error", "message": "No theme data provided."}), 400
+    save_theme(vars_dict)
+    return jsonify({"status": "success", "theme": load_theme()})

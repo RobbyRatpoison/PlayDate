@@ -1,8 +1,84 @@
 import os
 import platform
 import re
+import logging
 from database import get_db, update_game_data
 from datetime import datetime
+
+log = logging.getLogger(__name__)
+
+# ── Steamapps filesystem watcher ──────────────────────────────────────────────
+_watcher_observer = None
+
+
+def start_steamapps_watcher(steamapps_path: str):
+    """
+    Watch the steamapps folder for appmanifest_*.acf changes and automatically
+    update installed status in the DB.  Safe to call from any thread.
+    Returns the Observer instance (already started), or None if watchdog is
+    unavailable or the path doesn't exist.
+    """
+    global _watcher_observer
+
+    if not steamapps_path or not os.path.isdir(steamapps_path):
+        log.warning(f"Steamapps watcher: path not found — {steamapps_path!r}")
+        return None
+
+    try:
+        from watchdog.observers import Observer
+        from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileDeletedEvent, FileMovedEvent
+    except ImportError:
+        log.warning("watchdog not installed — filesystem watcher disabled")
+        return None
+
+    class _ManifestHandler(FileSystemEventHandler):
+        """Reacts to appmanifest_*.acf create / delete / move events."""
+
+        def _is_manifest(self, path: str) -> bool:
+            name = os.path.basename(path)
+            return name.startswith("appmanifest_") and name.endswith(".acf")
+
+        def _on_change(self, event_type: str, path: str):
+            if self._is_manifest(path):
+                log.info(f"Steamapps watcher: {event_type} — {os.path.basename(path)} — syncing install status")
+                try:
+                    sync_local_install_status()
+                except Exception as e:
+                    log.error(f"Steamapps watcher: sync failed — {e}")
+
+        def on_created(self, event):
+            if not event.is_directory:
+                self._on_change("created", event.src_path)
+
+        def on_deleted(self, event):
+            if not event.is_directory:
+                self._on_change("deleted", event.src_path)
+
+        def on_moved(self, event):
+            if not event.is_directory:
+                # A move in or out of the folder both matter
+                self._on_change("moved", event.dest_path)
+
+    stop_steamapps_watcher()  # stop any previous instance
+
+    observer = Observer()
+    observer.schedule(_ManifestHandler(), path=steamapps_path, recursive=False)
+    observer.start()
+    _watcher_observer = observer
+    log.info(f"Steamapps watcher started on: {steamapps_path}")
+    return observer
+
+
+def stop_steamapps_watcher():
+    """Stop the running observer, if any."""
+    global _watcher_observer
+    if _watcher_observer is not None:
+        try:
+            _watcher_observer.stop()
+            _watcher_observer.join(timeout=3)
+        except Exception as e:
+            log.warning(f"Steamapps watcher stop error: {e}")
+        _watcher_observer = None
 
 def find_steam_path():
     """Attempts to locate the Steam installation path, prioritizing Linux."""

@@ -1,19 +1,13 @@
 import re
 import sqlite3
 from flask import Blueprint, render_template, request
-from config import load_state, get_default_shelves
+from config import load_state, get_default_shelves, BUILTIN_FILTERS
 from database import get_db
 
 index_bp = Blueprint('index', __name__)
 
-# ── Built-in filter definitions ───────────────────────────────────────────────
-FILTER_QUERIES = {
-    "all_games":    {"label": "All Games",    "where": "1=1"},
-    "installed":    {"label": "Installed",    "where": "installed = 1"},
-    "not_installed":{"label": "Not Installed","where": "installed = 0"},
-    "clock":        {"label": "Clock [Widget]",      "where": None},
-    "completion_pie":{"label": "Completion [Widget]","where": None},
-}
+# FILTER_QUERIES is now BUILTIN_FILTERS in config.py — aliased here for compatibility
+FILTER_QUERIES = BUILTIN_FILTERS
 
 SORT_COLUMNS = {
     "name":                "Name",

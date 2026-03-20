@@ -12,6 +12,9 @@ waitress==3.0.2
 
 # Desktop window
 pywebview==6.1
+# pythonnet is a Windows-only transitive dependency of pywebview.
+# Pinned to rc0 for Python 3.14 support; update when stable 3.1.0 releases.
+pythonnet==3.1.0rc0
 
 # HTTP & scraping
 requests==2.32.5
@@ -32,3 +35,4 @@ Pillow==12.1.1
 # Utilities
 RapidFuzz==3.14.3
 python-dotenv==1.2.2
+watchdog==6.0.0

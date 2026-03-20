@@ -64,7 +64,6 @@ hiddenimports = [
     'index',
     'library',
     'main',
-    'migrate_tags',
     'scrapers',
     'utils',
 

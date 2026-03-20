@@ -320,6 +320,32 @@
     }
 
     .pool-info { display: none; }
+
+    /* ── Status filter toggles ── */
+    .status-filters {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .status-btn {
+        background: transparent;
+        border: 1px solid #2a475e;
+        border-radius: 5px;
+        color: #8f98a0;
+        padding: 5px 12px;
+        font-size: 0.78rem;
+        font-weight: bold;
+        cursor: pointer;
+        letter-spacing: 0.03em;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .status-btn.active {
+        background: var(--steam-focus);
+        border-color: var(--steam-focus);
+        color: #0e1621;
+    }
+    .status-btn:not(.active):hover { background: #243447; color: #c7d5e0; }
 </style>
 {% endblock %}
 
@@ -381,6 +407,18 @@
                 <span class="mode-desc">(No filter active)</span>
                 {% endif %}
             </div>
+
+            <!-- Completion status filters -->
+            <div class="control-row">
+                <div class="control-label">Completion Status</div>
+                <div class="status-filters" id="status-filters">
+                    <button class="status-btn active" data-status="Never Played" onclick="toggleStatus(this)">Never Played</button>
+                    <button class="status-btn active" data-status="Unfinished"   onclick="toggleStatus(this)">Unfinished</button>
+                    <button class="status-btn"        data-status="Beaten"        onclick="toggleStatus(this)">Beaten</button>
+                    <button class="status-btn"        data-status="Completed"     onclick="toggleStatus(this)">Completed</button>
+                    <button class="status-btn"        data-status="Won't Play"   onclick="toggleStatus(this)">Won't Play</button>
+                </div>
+            </div>
         </div>
 
         <button class="pick-btn" id="pick-btn" onclick="pickGame()">PICK 6</button>
@@ -400,6 +438,13 @@
 
 <script>
 let currentMode = 'random';
+
+function toggleStatus(btn) {
+    btn.classList.toggle('active');
+    // Ensure at least one status remains active
+    const active = [...document.querySelectorAll('.status-btn.active')];
+    if (active.length === 0) btn.classList.add('active');
+}
 
 const modeDescs = {
     random:   'Picks any game with equal probability.',
@@ -429,7 +474,9 @@ async function pickGame() {
 
     const useFiltered = document.getElementById('filtered-toggle').checked;
 
-    const payload = { mode: currentMode, use_filtered: useFiltered };
+    const activeStatuses = [...document.querySelectorAll('.status-btn.active')]
+        .map(b => b.dataset.status);
+    const payload = { mode: currentMode, use_filtered: useFiltered, statuses: activeStatuses };
     if (currentMode === 'weighted') {
         payload.w_tags       = parseInt(document.getElementById('w-tags').value);
         payload.w_review     = parseInt(document.getElementById('w-review').value);
@@ -466,6 +513,7 @@ function makeCard(game, reason) {
 
     const card = document.createElement('div');
     card.className = 'result-card';
+    card.dataset.appid = appid;
     card.innerHTML = `
         <div class="result-art" onclick="launchGame(${appid})" style="cursor:pointer;">
             <img src="${localSrc}" alt="${game.name}"
@@ -477,6 +525,8 @@ function makeCard(game, reason) {
 function showResults(picks, poolSize) {
     const container = document.getElementById('result-cards');
     container.innerHTML = '';
+    // Expose picks as _games so the context menu can read name/status without a fetch
+    window._games = (picks || []).map(p => p.game);
     (picks || []).forEach(p => container.appendChild(makeCard(p.game, p.reason)));
 
     // Set mode badge

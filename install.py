@@ -137,14 +137,40 @@ class InstallerApp(tk.Tk):
         self._log.tag_configure("pkg",  foreground="#8f98a0")
 
         # ── Footer ────────────────────────────────────────────────────────────
-        self._btn_var = tk.StringVar(value="Installing…")
-        self._btn = tk.Button(self, textvariable=self._btn_var,
-                              bg=BTN_BG, fg=BTN_FG,
-                              font=("Segoe UI", 10, "bold"),
-                              relief="flat", cursor="arrow",
-                              state="disabled", padx=20, pady=8,
-                              command=self.destroy)
-        self._btn.pack(pady=12)
+        footer = tk.Frame(self, bg=BG)
+        footer.pack(fill="x", pady=(0, 12))
+
+        self._shortcut_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            footer, text="Create desktop shortcut",
+            variable=self._shortcut_var,
+            bg=BG, fg=FG, selectcolor=DARK,
+            activebackground=BG, activeforeground=FG,
+            font=("Segoe UI", 9)
+        ).pack(pady=(4, 0))
+
+        btn_row = tk.Frame(footer, bg=BG)
+        btn_row.pack(pady=8)
+
+        self._btn_launch = tk.Button(
+            btn_row, text="Launch PlayDate",
+            bg=SUCCESS, fg=BTN_FG,
+            font=("Segoe UI", 10, "bold"),
+            relief="flat", cursor="arrow",
+            state="disabled", padx=20, pady=8,
+            command=self._launch_and_close
+        )
+        self._btn_launch.pack(side="left", padx=(0, 8))
+
+        self._btn_close = tk.Button(
+            btn_row, text="Installing…",
+            bg=BTN_BG, fg=BTN_FG,
+            font=("Segoe UI", 10, "bold"),
+            relief="flat", cursor="arrow",
+            state="disabled", padx=20, pady=8,
+            command=self.destroy
+        )
+        self._btn_close.pack(side="left")
 
     # ── Thread-safe UI helpers ─────────────────────────────────────────────────
     def _log_line(self, msg, tag="info"):
@@ -168,20 +194,23 @@ class InstallerApp(tk.Tk):
             self._prog["value"] = pct
         self.after(0, _do)
 
+    def _launch_and_close(self):
+        subprocess.Popen([VENV_PYTHON, MAIN_PY])
+        self.destroy()
+
     def _finish_ok(self):
         def _do():
             self._prog["value"] = 100
             self._step_var.set("Installation complete!")
-            self._btn_var.set("Close")
-            self._btn.configure(state="normal", bg=SUCCESS, cursor="hand2")
+            self._btn_launch.configure(state="normal", cursor="hand2")
+            self._btn_close.configure(state="normal", text="Finish", cursor="hand2")
         self.after(0, _do)
 
     def _finish_err(self, msg):
         def _do():
             self._step_var.set("Installation failed.")
             self._log_line(f"\n✘  {msg}", "err")
-            self._btn_var.set("Close")
-            self._btn.configure(state="normal", bg=ERROR, cursor="hand2")
+            self._btn_close.configure(state="normal", text="Close", bg=ERROR, cursor="hand2")
         self.after(0, _do)
 
     # ── Install logic (runs on background thread) ──────────────────────────────
@@ -208,6 +237,13 @@ class InstallerApp(tk.Tk):
         self._set_step("Step 2 — Checking Python…")
         ver = sys.version.split()[0]
         self._log_line(f"✔  Python {ver} at {sys.executable}", "ok")
+
+        major, minor = sys.version_info[:2]
+        if major == 3 and minor < 10:
+            msg = ("Python " + str(major) + "." + str(minor) + " is too old.\n\n"
+                   "PlayDate requires Python 3.10 or newer.\n\n"
+                   "Please install Python 3.10 or later from python.org and re-run the installer.")
+            raise RuntimeError(msg)
 
         if SYSTEM == "Linux":
             # Check python3-gi
@@ -272,11 +308,22 @@ class InstallerApp(tk.Tk):
         with open(REQ_FILE) as f:
             pkgs = [l.strip() for l in f if l.strip() and not l.startswith("#")]
         total = len(pkgs)
-        self._log_line(f"→  Upgrading pip…", "info")
-        subprocess.check_call(
-            [VENV_PIP, "install", "--quiet", "--upgrade", "pip"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        self._log_line("→  Upgrading pip…", "info")
+        try:
+            result = subprocess.run(
+                [VENV_PYTHON, "-m", "pip", "install", "--quiet", "--upgrade", "pip"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                self._log_line("✔  pip upgraded", "ok")
+            else:
+                # Non-fatal: warn and continue — existing pip is likely fine
+                self._log_line("⚠  pip upgrade failed (non-fatal) — continuing with existing pip", "warn")
+                if result.stderr.strip():
+                    for ln in result.stderr.strip().splitlines():
+                        self._log_line(f"  {ln}", "warn")
+        except Exception as e:
+            self._log_line(f"⚠  pip upgrade skipped: {e}", "warn")
 
         self._log_line(f"→  Installing {total} packages…", "info")
         installed = 0
@@ -285,7 +332,7 @@ class InstallerApp(tk.Tk):
         # and fail because the original build directory no longer exists.
         # --system-site-packages on the venv already provides the system
         # selinux bindings, so we tell pip to leave them alone.
-        pip_cmd = [VENV_PIP, "install", "-r", REQ_FILE]
+        pip_cmd = [VENV_PYTHON, "-m", "pip", "install", "-r", REQ_FILE]
         if SYSTEM == "Linux":
             try:
                 with open("/etc/os-release") as f:
@@ -411,7 +458,56 @@ class InstallerApp(tk.Tk):
         elif SYSTEM == "Windows":
             self._set_step("Step 6 — Adding Start Menu shortcut…")
             self._register_windows()
+        if self._shortcut_var.get():
+            self._register_desktop_shortcut()
         self._advance("Step 6 — Registration complete")
+
+    def _register_desktop_shortcut(self):
+        """Copy a shortcut to the user's desktop (wallpaper area)."""
+        if SYSTEM == "Linux":
+            desktop_dir = os.path.expanduser("~/Desktop")
+            if not os.path.isdir(desktop_dir):
+                self._log_line("⚠  ~/Desktop not found — skipping desktop shortcut", "warn")
+                return
+            dest = os.path.join(desktop_dir, "PlayDate.desktop")
+            src  = os.path.join(os.path.expanduser("~/.local/share/applications"), "playdate.desktop")
+            try:
+                shutil.copy(src, dest)
+                os.chmod(dest, 0o755)
+                self._log_line("✔  Desktop shortcut created", "ok")
+            except Exception as e:
+                self._log_line(f"⚠  Could not create desktop shortcut: {e}", "warn")
+        elif SYSTEM == "Windows":
+            desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
+            shortcut = os.path.join(desktop_dir, "PlayDate.lnk")
+            ps = (
+                f"$ws = New-Object -ComObject WScript.Shell; "
+                f"$s = $ws.CreateShortcut('{shortcut}'); "
+                f"$s.TargetPath = '{LAUNCHER_BAT}'; "
+                f"$s.WorkingDirectory = '{INSTALL_DIR}'; "
+                f"$s.IconLocation = '{ICON_PATH}'; "
+                f"$s.Description = 'Your personal Steam library manager'; "
+                f"$s.Save()"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", ps],
+                capture_output=True
+            )
+            if result.returncode == 0:
+                self._log_line("✔  Desktop shortcut created", "ok")
+            else:
+                self._log_line("⚠  Could not create desktop shortcut (non-fatal)", "warn")
+        elif SYSTEM == "Darwin":
+            desktop_dir = os.path.expanduser("~/Desktop")
+            dest = os.path.join(desktop_dir, "PlayDate.app")
+            src  = os.path.expanduser("~/Applications/PlayDate.app")
+            try:
+                if os.path.isdir(dest):
+                    shutil.rmtree(dest)
+                shutil.copytree(src, dest)
+                self._log_line("✔  Desktop shortcut created", "ok")
+            except Exception as e:
+                self._log_line(f"⚠  Could not create desktop shortcut: {e}", "warn")
 
     def _register_macos(self):
         app_bundle   = os.path.expanduser("~/Applications/PlayDate.app")

@@ -110,8 +110,8 @@ def scrape_games_from_profile(vanity_or_id):
     except Exception as e:
         print(f"Error scraping Steam profile: {e}")
         return None
-
-def add_new(cancel_event=None):
+def add_new(cancel_event=None, progress_cb=None):
+    limit = 0  # 0 = unlimited
     config = load_config()
     if not config:
         return {"status": "error", "message": "No config found"}
@@ -125,7 +125,7 @@ def add_new(cancel_event=None):
     # Fetch game list via API or public profile scraper
     if has_api_key:
         print("Fetching games via Steam API.")
-        url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&include_played_free_games=1"
+        url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&include_played_free_games=1&skip_unvetted_apps=false"
         try:
             response = requests.get(url, headers=headers, timeout=15)
             if response.status_code == 403:
@@ -148,57 +148,77 @@ def add_new(cancel_event=None):
 
     # Process new games
     db = get_db()
-    installed_ids = get_locally_installed_appids()
-    existing_ids = [row['appid'] for row in db.execute("SELECT appid FROM games").fetchall()]
+    installed_ids   = get_locally_installed_appids()
+    existing_ids    = {row['appid'] for row in db.execute("SELECT appid FROM games").fetchall()}
+    blacklisted_ids = {row['appid'] for row in db.execute("SELECT appid FROM blacklist").fetchall()}
     db.close()
 
+    new_games = [g for g in reversed(games) if g['appid'] not in existing_ids and g['appid'] not in blacklisted_ids]
+    total_new = len(new_games)
+
     new_count = 0
-    for game in reversed(games):
+    skip_count = 0
+    for game in new_games:
         if cancel_event and cancel_event.is_set():
             print(f"Populate cancelled after {new_count} games.")
             return {"status": "cancelled", "added": new_count}
 
         appid = game['appid']
-        if appid not in existing_ids:
-            playtime = game['playtime_forever']
-            last_played = game['last_played']
-            played = "Unfinished" if playtime > 0 else "Never Played"
-            today = datetime.now().strftime('%Y-%m-%d')
-            artwork_source = download_capsule(appid)
+        if True:
+            try:
+                if progress_cb:
+                    progress_cb(new_count, total_new, game['name'])
+                playtime = game['playtime_forever']
+                last_played = game['last_played']
+                played = "Unfinished" if playtime > 0 else "Never Played"
+                today = datetime.now().strftime('%Y-%m-%d')
+                artwork_source = download_capsule(appid)
 
-            game_data = {
-                'playtime_forever': playtime,
-                'date_added': today,
-                'completion_status': played,
-                'last_played': last_played,
-                'art_source': artwork_source,
-                'installed': 1 if appid in installed_ids else 0
-            }
+                game_data = {
+                    'playtime_forever': playtime,
+                    'date_added': today,
+                    'completion_status': played,
+                    'last_played': last_played,
+                    'art_source': artwork_source,
+                    'installed': 1 if appid in installed_ids else 0
+                }
 
-            store_info = fetch_store_data(appid)
-            if store_info:
-                game_data.update(store_info)
+                store_info = fetch_store_data(appid)
+                if store_info:
+                    game_data.update(store_info)
 
-            review_info = fetch_review_data(appid)
-            if review_info:
-                game_data.update(review_info)
+                review_info = fetch_review_data(appid)
+                if review_info:
+                    game_data.update(review_info)
 
-            tag_info = fetch_tag_data(appid)
-            if tag_info:
-                game_data.update(tag_info)
+                tag_info = fetch_tag_data(appid)
+                if tag_info:
+                    game_data.update(tag_info)
 
-            if has_api_key:
-                cheevo_info = fetch_cheevo_data(appid)
-                if cheevo_info:
-                    game_data.update(cheevo_info)
+                if has_api_key:
+                    cheevo_info = fetch_cheevo_data(appid)
+                    if cheevo_info:
+                        game_data.update(cheevo_info)
 
-            add_new_game(appid, game['name'])
-            update_game_data(appid, **game_data)
+                add_new_game(appid, game['name'])
+                update_game_data(appid, **game_data)
 
-            new_count += 1
-            print(f"Scraped data for game #{new_count}: {game['name']}")
+                new_count += 1
+                if progress_cb:
+                    progress_cb(new_count, total_new, game['name'])
+                print(f"Scraped data for game #{new_count}: {game['name']}")
+
+            except Exception as e:
+                skip_count += 1
+                print(f"Error processing {game.get('name', appid)} (AppID {appid}): {e} — skipping.")
+
             time.sleep(1.2)
 
+            if limit > 0 and new_count >= limit:
+                return {"status": "success", "added": new_count}
+
+    if skip_count:
+        print(f"Populate complete. Added {new_count}, skipped {skip_count} due to errors.")
     return {"status": "success", "added": new_count}
 
 # Scrape Player API (Name, Playtime, Last Played)
@@ -213,38 +233,28 @@ def fetch_player_data(appid):
     if not api_key or not steam_id:
         return None
 
-    def _parse_game(game):
+    # Use the single-game endpoint instead of fetching the entire library
+    url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&include_played_free_games=1&skip_unvetted_apps=false&appids_filter[0]={appid}"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        games = response.json().get('response', {}).get('games', [])
+
+        if not games:
+            return None
+
+        game = games[0]
         last_played_unix = game.get('rtime_last_played', 0)
         last_played_date = datetime.fromtimestamp(last_played_unix).strftime('%Y-%m-%d') if last_played_unix > 0 else '0'
         return {
-            'name': game.get('name', ''),
+            'name': game.get('name'),
             'playtime_forever': game.get('playtime_forever', 0),
             'last_played': last_played_date
         }
-
-    base = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true"
-
-    try:
-        # Fast path: filtered single-game fetch (works for paid games)
-        resp = requests.get(f"{base}&appids_filter[0]={appid}", timeout=10)
-        resp.raise_for_status()
-        games = resp.json().get('response', {}).get('games', [])
-        if games:
-            return _parse_game(games[0])
-
-        # appids_filter silently drops free games even with include_played_free_games=1.
-        # Fall back to full library fetch and find the game there.
-        print(f"appids_filter returned nothing for {appid} — retrying with full library (likely a free game)")
-        resp2 = requests.get(f"{base}&include_played_free_games=1", timeout=15)
-        resp2.raise_for_status()
-        match = next((g for g in resp2.json().get('response', {}).get('games', []) if g.get('appid') == appid), None)
-        if match:
-            return _parse_game(match)
-
     except Exception as e:
         print(f"Error fetching player data for {appid}: {e}")
-
-    return None
+        return None
 
 # Scrape Storefront API (Devs, Pubs, Release Date)
 def fetch_store_data(appid):
@@ -255,7 +265,7 @@ def fetch_store_data(appid):
     url = f"https://store.steampowered.com/api/appdetails?appids={appid}&l=english"
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
         json_data = response.json()
 
@@ -289,14 +299,14 @@ def fetch_store_data(appid):
 
 # Scrape Reviews API (Percentage, Description)
 def fetch_review_data(appid):
-    # purchase_type=all is required — the default ('steam') only counts purchasers,
-    # so free-to-play games return an empty summary. cc+l ensure consistent responses.
-    url = f"https://store.steampowered.com/appreviews/{appid}?json=1&purchase_type=all&cc=us&l=english"
+    # Re-adding the num_per_page=0 from your old working version
+    url = f"https://store.steampowered.com/appreviews/{appid}?json=1"
 
     try:
+        # Adding a timeout like your old code had to prevent hanging
         response = requests.get(url, timeout=20)
-        response.raise_for_status()
 
+        # Checking for 200 status code specifically as your old code did
         if response.status_code == 200:
             data = response.json()
             summary = data.get('query_summary', {})
@@ -339,17 +349,17 @@ def fetch_cheevo_data(appid):
     api_key = config['api_key']
     steam_id = config['steam_id']
 
-    url = f"https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={appid}&key={api_key}&steamid={steam_id}"
+    url = f"https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid={appid}&key={api_key}&steamid={steam_id}&include_played_free_games=1&skip_unvetted_apps=false"
 
     try:
-        response = requests.get(url)
-        # Steam returns HTTP 400 for games with no achievements — don't raise, parse the body instead
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
         json_data = response.json()
 
         playerstats = json_data.get('playerstats', {})
         if not playerstats.get('success'):
-            print(f"No achievement data found for {appid} (game has no achievements)")
-            return {'total_achievements': 0, 'unlocked_achievements': 0}
+            print(f"No achievement data found for {appid} (Game might not have them)")
+            return None
 
         achievements = playerstats.get('achievements', [])
 
@@ -412,22 +422,16 @@ def scrape_blaeo_games():
 
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-    try:
-        driver = webdriver.Chrome(options=chrome_options)
-    except Exception:
-        return {
-            "status": "error",
-            "message": "Chrome not found. Please install Google Chrome to use BLAEO sync."
-        }
+    driver = webdriver.Chrome(options=chrome_options)
 
-    # Map BLAEO CSS class suffixes to PlayDate completion statuses.
-    # Keys are the raw string after stripping 'game-' from the class name.
+    # BLAEO classes are lowercase. 'game-never-played' becomes 'Never-played'
+    # after your .replace().capitalize() logic.
     status_map = {
-        "never-played": "Never Played",
-        "wont-play":    "Won't Play",
-        "unfinished":   "Unfinished",
-        "beaten":       "Beaten",
-        "completed":    "Completed",
+        "Never-played": "Never Played",
+        "Wont-play": "Won't Play",
+        "Unfinished": "Unfinished",
+        "Beaten": "Beaten",
+        "Completed": "Completed"
     }
 
     try:
@@ -477,16 +481,14 @@ def scrape_blaeo_games():
 
                 # Extract status from class (e.g., class="game game-never-played")
                 classes = row.get('class', [])
-                raw_status = None
+                raw_status = "Unknown"
                 for c in classes:
                     if c.startswith("game-") and c != "game":
-                        raw_status = c.replace("game-", "")
-                        break
+                        # c.replace("game-", "") -> "never-played"
+                        # .capitalize() -> "Never-played"
+                        raw_status = c.replace("game-", "").capitalize()
 
-                clean_status = status_map.get(raw_status)
-                if not clean_status:
-                    print(f"Unknown BLAEO status class '{raw_status}' for appid {appid} — skipping status update")
-                    clean_status = None
+                clean_status = status_map.get(raw_status, raw_status)
 
                 # Extract Group Tags
                 tag_elements = row.select("a.list-tag")
@@ -499,19 +501,14 @@ def scrape_blaeo_games():
                 if db_row:
                     existing_groups_str = db_row['groups'] if db_row['groups'] else ""
                     existing_groups_set = set(g.strip() for g in existing_groups_str.split(',') if g.strip())
+
                     updated_groups_set = existing_groups_set.union(set(blaeo_groups))
                     new_groups_str = ",".join(sorted(updated_groups_set))
 
-                    if clean_status:
-                        cursor.execute(
-                            "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
-                            (clean_status, new_groups_str, appid)
-                        )
-                    else:
-                        cursor.execute(
-                            "UPDATE games SET groups = ? WHERE appid = ?",
-                            (new_groups_str, appid)
-                        )
+                    cursor.execute(
+                        "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
+                        (clean_status, new_groups_str, appid)
+                    )
                     updated_count += 1
                 else:
                     # This helps you see if the scraper found games you haven't added yet
@@ -532,3 +529,74 @@ def scrape_blaeo_games():
 
     finally:
         driver.quit()
+
+def sync_recent_playtime():
+    """
+    On startup: fetch GetRecentlyPlayedGames (up to 100 games, last 2 weeks)
+    and update playtime_forever + last_played for any that exist in the DB.
+    Runs in a background thread — safe to call without blocking startup.
+    Requires an API key; silently skips if unconfigured.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    try:
+        config = load_config()
+        if not config:
+            return
+        api_key  = config.get('api_key', '').strip()
+        steam_id = config.get('steam_id', '').strip()
+        if not api_key or not steam_id:
+            log.info("sync_recent_playtime: no API key configured, skipping.")
+            return
+
+        url = (
+            f"https://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v1/"
+            f"?key={api_key}&steamid={steam_id}&count=100&format=json"
+        )
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        recent = data.get('response', {}).get('games', [])
+        if not recent:
+            log.info("sync_recent_playtime: no recently played games returned.")
+            return
+
+        db = get_db()
+        # Build a set of appids we actually have in the DB to avoid unnecessary updates
+        existing = {
+            row[0]
+            for row in db.execute("SELECT appid FROM games").fetchall()
+        }
+
+        updated = 0
+        for g in recent:
+            appid    = g.get('appid')
+            playtime = g.get('playtime_forever', 0)
+            rtime    = g.get('rtime_last_played', 0)
+            if appid not in existing:
+                continue
+            last_played = (
+                datetime.fromtimestamp(rtime).strftime('%Y-%m-%d')
+                if rtime and rtime > 0 else None
+            )
+            if last_played:
+                db.execute(
+                    "UPDATE games SET playtime_forever = ?, last_played = ? WHERE appid = ?",
+                    (playtime, last_played, appid)
+                )
+            else:
+                db.execute(
+                    "UPDATE games SET playtime_forever = ? WHERE appid = ?",
+                    (playtime, appid)
+                )
+            updated += 1
+
+        db.commit()
+        db.close()
+        log.info(f"sync_recent_playtime: updated {updated} games.")
+
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"sync_recent_playtime failed: {e}")
