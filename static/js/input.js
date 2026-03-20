@@ -1394,22 +1394,6 @@
         }
     };
 
-    // ── Context menu zone cleanup ─────────────────────────────────────────────
-    const _ctxMenuEl = document.getElementById('ctx-menu');
-    if (_ctxMenuEl) {
-        const _ctxObserver = new MutationObserver(() => {
-            if (!_ctxMenuEl.classList.contains('visible') && _state.active) {
-                document.querySelectorAll('.ctx-sub-open').forEach(el => el.classList.remove('ctx-sub-open'));
-                // Always restore to content zone when ctx-menu closes —
-                // even if zone was never pushed (B pressed before rAF fired)
-                if (_state.zone === 'ctx-menu') _popZone();
-                // else zone is already content/nav — just re-sync focus
-                _syncFocus();
-            }
-        });
-        _ctxObserver.observe(_ctxMenuEl, { attributes: true, attributeFilter: ['class'] });
-    }
-
     // ── Modal zone cleanup ────────────────────────────────────────────────────
     function _watchModal(id) {
         const el = document.getElementById(id);
@@ -1435,8 +1419,6 @@
             }
         }).observe(el, { attributes: true, attributeFilter: ['style'] });
     }
-    _watchModal('editModal');
-    _watchModal('filterModal');
 
     // Page-specific modals — just restore focus on close, no zone push needed
     // since these are opened by button clicks that don't push zone
@@ -1449,13 +1431,38 @@
             }
         }).observe(el, { attributes: true, attributeFilter: ['style'] });
     }
-    // Library bulk modals
-    _watchModalClose('bulk-edit-modal');
-    _watchModalClose('bulk-rescrape-modal');
-    _watchModalClose('bulk-delete-modal');
-    // Tools modals — full zone push/pop so focus enters and returns correctly
-    _watchModal('backup-modal');
-    _watchModal('bg-modal');
-    _watchModal('import-modal');
+
+    // ── DOM-ready observers (modal elements don't exist until DOMContentLoaded) ─
+    document.addEventListener('DOMContentLoaded', () => {
+        // Context menu zone cleanup
+        const _ctxMenuEl = document.getElementById('ctx-menu');
+        if (_ctxMenuEl) {
+            const _ctxObserver = new MutationObserver(() => {
+                if (!_ctxMenuEl.classList.contains('visible') && _state.active) {
+                    document.querySelectorAll('.ctx-sub-open').forEach(el => el.classList.remove('ctx-sub-open'));
+                    // Always restore to content zone when ctx-menu closes —
+                    // even if zone was never pushed (B pressed before rAF fired)
+                    if (_state.zone === 'ctx-menu') _popZone();
+                    // else zone is already content/nav — just re-sync focus
+                    _syncFocus();
+                }
+            });
+            _ctxObserver.observe(_ctxMenuEl, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        // Edit / filter modals (base.html — present on every page)
+        _watchModal('editModal');
+        _watchModal('filterModal');
+
+        // Library bulk modals
+        _watchModalClose('bulk-edit-modal');
+        _watchModalClose('bulk-rescrape-modal');
+        _watchModalClose('bulk-delete-modal');
+
+        // Tools modals — full zone push/pop so focus enters and returns correctly
+        _watchModal('backup-modal');
+        _watchModal('bg-modal');
+        _watchModal('import-modal');
+    });
 
 })();
