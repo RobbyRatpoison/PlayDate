@@ -1318,7 +1318,7 @@
         // ── Right stick (scroll) ──────────────────────────────────────────────
         const rsy = gp.axes[AXIS_IDX.ry] || 0;
         if (Math.abs(rsy) > STICK_DEAD) {
-            window.scrollBy({ top: rsy * 10, behavior: 'auto' });
+            window.scrollBy({ top: rsy * 20, behavior: 'auto' });
         }
 
         // ── Left stick ────────────────────────────────────────────────────────
