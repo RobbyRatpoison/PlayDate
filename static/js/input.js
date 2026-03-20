@@ -348,7 +348,8 @@
             const el = document.getElementById(id);
             if (el && el.style.display !== 'none' && el.style.display !== '') {
                 return [...el.querySelectorAll('button:not(:disabled), a.nav-btn')]
-                    .filter(e => e.offsetParent !== null && !e.disabled);
+                    .filter(e => e.offsetParent !== null && !e.disabled
+                             && e.textContent.trim() !== '✕' && e.textContent.trim() !== '×');
             }
         }
         return [];
@@ -987,8 +988,12 @@
                             const cards = _libraryCards();
                             const card  = cards[_state.row];
                             if (!card) break;
-                            const appid = parseInt(card.dataset.appid);
-                            if (appid) launchGame(appid);
+                            if (document.body.classList.contains('select-mode')) {
+                                card.click(); // toggles selection via onCardClick
+                            } else {
+                                const appid = parseInt(card.dataset.appid);
+                                if (appid) launchGame(appid);
+                            }
                         }
                         break;
                     }
@@ -1211,6 +1216,7 @@
         if (typeof openEditModalById === 'function') {
             openEditModalById(appid);
             _pushZone('modal');
+            _syncFocus();
         } else {
             fetch(`/api/game/${appid}`)
                 .then(r => r.json())
@@ -1218,6 +1224,7 @@
                     if (data.status === 'success' && typeof openEditModal === 'function') {
                         openEditModal(data.game);
                         _pushZone('modal');
+                        _syncFocus();
                     }
                 })
                 .catch(() => {});
@@ -1404,6 +1411,7 @@
                     _popZone();
                 }
                 _pushZone('modal');
+                _syncFocus();
             } else if (!nowVisible) {
                 if (_state.zone === 'modal') _popZone();
                 _syncFocus();
