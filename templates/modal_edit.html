@@ -104,10 +104,10 @@
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 15px; padding-right: 30px;">
             <h2 style="margin: 0; color: #ffffff;">Edit Game Details</h2>
             <div style="display: flex; gap: 10px;">
-                <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" style="height: auto; padding: 8px 16px; border: 1px solid var(--steam-focus);">
+                <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--steam-focus);">
                     Sync Steam Data
                 </button>
-                <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" style="height: auto; padding: 8px 16px; border: 1px solid var(--danger-color); background: var(--danger-color); color: var(--nav-active);">
+                <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--danger-color); background: var(--danger-color); color: var(--nav-active);">
                     Delete Game
                 </button>
             </div>
@@ -253,12 +253,12 @@
                                    placeholder="Paste a direct image URL..."
                                    style="flex:1; min-width:0;"
                                    oninput="onArtUrlInput(this.value)">
-                            <button type="button" id="art-steam-btn" class="nav-btn"
+                            <button type="button" id="art-steam-btn" class="nav-btn" data-modal-row="1"
                                     onclick="fetchSteamArt()"
                                     style="padding:8px 12px; white-space:nowrap;">
                                 Steam Art
                             </button>
-                            <button type="button" id="art-preview-btn" class="nav-btn"
+                            <button type="button" id="art-preview-btn" class="nav-btn" data-modal-row="1"
                                     onclick="previewArtUrl()"
                                     style="padding:8px 12px; white-space:nowrap;">
                                 Preview
@@ -269,8 +269,8 @@
                 </div>            </div>
 
             <div style="display: flex; gap: 15px; margin-top: 20px; border-top: 1px solid #2a475e; padding-top: 15px;">
-                <button type="submit" class="btn-save" style="flex: 2; margin: 0;">SAVE CHANGES</button>
-                <button type="button" onclick="closeModal()" class="nav-btn" style="flex: 1; height: auto; padding: 12px;">CANCEL</button>
+                <button type="submit" class="btn-save" data-modal-row="2" style="flex: 2; margin: 0;">SAVE CHANGES</button>
+                <button type="button" onclick="closeModal()" class="nav-btn" data-modal-row="2" style="flex: 1; height: auto; padding: 12px;">CANCEL</button>
             </div>
         </form>
     </div>

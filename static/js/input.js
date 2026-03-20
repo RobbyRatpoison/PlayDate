@@ -36,7 +36,7 @@
         let html = `<div style="font-weight:bold;margin-bottom:4px;color:#66c0f4;">PlayDate Input Debug <span style="font-weight:normal;color:#8f98a0;font-size:0.75em;">(F9 to hide)</span></div>`;
 
         // State
-        html += `<div style="margin-bottom:4px;">zone=<b>${_state.zone}</b> row=<b>${_state.row}</b> col=<b>${_state.col}</b> modal=<b>${_state.modalItem}</b> active=<b>${_state.active}</b></div>`;
+        html += `<div style="margin-bottom:4px;">zone=<b>${_state.zone}</b> row=<b>${_state.row}</b> col=<b>${_state.col}</b> mRow=<b>${_state.modalRow}</b> mCol=<b>${_state.modalCol}</b> active=<b>${_state.active}</b></div>`;
         html += `<div style="margin-bottom:4px;">prevZone=<b>${_state.prevZone}</b> prevRow=<b>${_state.prevRow}</b> prevCol=<b>${_state.prevCol}</b> gpSeen=<b>${_gpEverSeen}</b></div>`;
 
         // Modal detail — shown whenever zone=modal OR a modal is open
@@ -45,13 +45,16 @@
             return el && el.style.display !== 'none' && el.style.display !== '';
         });
         if (_dbgOpenModal || _state.zone === 'modal') {
-            const mitems = _modalItems();
-            html += `<div style="color:#f0a030;margin-bottom:2px;">modal open: <b>${_dbgOpenModal || 'none'}</b> | items found: <b>${mitems.length}</b> | zone: <b>${_state.zone}</b></div>`;
+            const mgrid = _modalGrid();
+            const totalItems = mgrid.reduce((s, r) => s + r.length, 0);
+            html += `<div style="color:#f0a030;margin-bottom:2px;">modal open: <b>${_dbgOpenModal || 'none'}</b> | rows: <b>${mgrid.length}</b> items: <b>${totalItems}</b> | zone: <b>${_state.zone}</b></div>`;
             html += `<div style="font-family:monospace;font-size:0.72em;margin-bottom:4px;">`;
-            mitems.forEach((el, i) => {
-                const active = i === _state.modalItem && _state.zone === 'modal';
-                const text = (el.textContent || '').trim().replace(/\s+/g,' ').slice(0, 22);
-                html += `<div style="color:${active ? '#66c0f4' : '#8f98a0'};${active ? 'font-weight:bold;' : ''}">${active ? '→' : '  '} [${i}] &lt;${el.tagName.toLowerCase()}&gt; ${text}</div>`;
+            mgrid.forEach((row, ri) => {
+                row.forEach((el, ci) => {
+                    const active = ri === _state.modalRow && ci === _state.modalCol && _state.zone === 'modal';
+                    const text = (el.textContent || '').trim().replace(/\s+/g,' ').slice(0, 22);
+                    html += `<div style="color:${active ? '#66c0f4' : '#8f98a0'};${active ? 'font-weight:bold;' : ''}">${active ? '→' : '  '} [${ri},${ci}] &lt;${el.tagName.toLowerCase()}&gt; ${text}</div>`;
+                });
             });
             html += `</div>`;
         }
@@ -156,7 +159,8 @@
         col:          0,
         savedCol:     0,
         subItem:      -1,
-        modalItem:    0,
+        modalRow:     0,
+        modalCol:     0,
         focusedAppid: null,
     };
 
@@ -372,6 +376,22 @@
         return [];
     }
 
+    // Returns buttons grouped into rows. If any button has data-modal-row, group by
+    // that attribute (sorted by row number). Otherwise returns all as a single row.
+    function _modalGrid() {
+        const items = _modalItems();
+        if (!items.length) return [];
+        const tagged = items.filter(e => e.dataset.modalRow !== undefined);
+        if (!tagged.length) return [items];
+        const map = new Map();
+        for (const e of tagged) {
+            const r = parseInt(e.dataset.modalRow);
+            if (!map.has(r)) map.set(r, []);
+            map.get(r).push(e);
+        }
+        return [...map.keys()].sort((a, b) => a - b).map(r => map.get(r));
+    }
+
     // ── Get the currently focused element ────────────────────────────────────
     function _focusedEl() {
         return document.querySelector('.gamepad-focus');
@@ -457,10 +477,12 @@
             }
 
             case 'modal': {
-                const mitems = _modalItems();
-                if (mitems.length) {
-                    _state.modalItem = Math.min(_state.modalItem, mitems.length - 1);
-                    _applyFocus(mitems[_state.modalItem]);
+                const mgrid = _modalGrid();
+                if (mgrid.length) {
+                    _state.modalRow = Math.min(_state.modalRow, mgrid.length - 1);
+                    const row = mgrid[_state.modalRow];
+                    _state.modalCol = Math.min(_state.modalCol, row.length - 1);
+                    _applyFocus(row[_state.modalCol]);
                 } else {
                     _clearFocus();
                 }
@@ -509,7 +531,8 @@
         _state.zone       = zone;
         _state.col        = 0;
         _state.subItem    = -1;
-        _state.modalItem  = 0;
+        _state.modalRow   = 0;
+        _state.modalCol   = 0;
     }
 
     function _popZone() {
@@ -529,9 +552,10 @@
         switch (_state.zone) {
 
             case 'modal': {
-                const mitems = _modalItems();
-                if (mitems.length) {
-                    _state.modalItem = (_state.modalItem - 1 + mitems.length) % mitems.length;
+                const mgrid = _modalGrid();
+                if (mgrid.length && _state.modalRow > 0) {
+                    _state.modalRow--;
+                    _state.modalCol = Math.min(_state.modalCol, mgrid[_state.modalRow].length - 1);
                     _syncFocus();
                 }
                 break;
@@ -647,9 +671,10 @@
         switch (_state.zone) {
 
             case 'modal': {
-                const mitems = _modalItems();
-                if (mitems.length) {
-                    _state.modalItem = (_state.modalItem + 1) % mitems.length;
+                const mgrid = _modalGrid();
+                if (mgrid.length && _state.modalRow < mgrid.length - 1) {
+                    _state.modalRow++;
+                    _state.modalCol = Math.min(_state.modalCol, mgrid[_state.modalRow].length - 1);
                     _syncFocus();
                 }
                 break;
@@ -750,9 +775,9 @@
         switch (_state.zone) {
 
             case 'modal': {
-                const mitems = _modalItems();
-                if (mitems.length && _state.modalItem > 0) {
-                    _state.modalItem--;
+                const mgrid = _modalGrid();
+                if (mgrid.length && _state.modalCol > 0) {
+                    _state.modalCol--;
                     _syncFocus();
                 }
                 break;
@@ -843,10 +868,13 @@
         switch (_state.zone) {
 
             case 'modal': {
-                const mitems = _modalItems();
-                if (mitems.length && _state.modalItem < mitems.length - 1) {
-                    _state.modalItem++;
-                    _syncFocus();
+                const mgrid = _modalGrid();
+                if (mgrid.length) {
+                    const row = mgrid[_state.modalRow];
+                    if (_state.modalCol < row.length - 1) {
+                        _state.modalCol++;
+                        _syncFocus();
+                    }
                 }
                 break;
             }
@@ -945,8 +973,10 @@
         switch (_state.zone) {
 
             case 'modal': {
-                const mitems = _modalItems();
-                mitems[_state.modalItem]?.click();
+                const mgrid = _modalGrid();
+                if (mgrid.length) {
+                    mgrid[_state.modalRow]?.[_state.modalCol]?.click();
+                }
                 break;
             }
 
