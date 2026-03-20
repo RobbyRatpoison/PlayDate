@@ -313,12 +313,14 @@
     // ── Current filter tree from server (may already contain a name condition) ──
     const _serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
 
-    // Strip any top-level name LIKE condition so repeated searches don't nest.
+    // Strip the name LIKE condition added by search, unwrapping the preserved base if present.
     function _baseTree(tree) {
         if (!tree || !tree.items) return tree;
         const items = tree.items.filter(
             item => !(item.type === 'condition' && item.column === 'name' && item.operator === 'LIKE')
         );
+        // If only one group child remains it was our wrapped base — unwrap it.
+        if (items.length === 1 && items[0].type === 'group') return items[0];
         return { ...tree, items };
     }
 
@@ -329,10 +331,12 @@
         if (!query.trim()) {
             return base || { type: 'group', logic: 'AND', items: [] };
         }
-        if (!base || !base.items || base.items.length === 0) {
+        const hasBase = base && (base.custom_sql || (base.items && base.items.length > 0));
+        if (!hasBase) {
             return { type: 'group', logic: 'AND', items: [nameCond] };
         }
-        return { type: 'group', logic: 'AND', items: [nameCond, ...base.items] };
+        // Wrap base as a child so custom_sql and nested structure are preserved.
+        return { type: 'group', logic: 'AND', items: [nameCond, base] };
     }
 
     function handleSearch(event, query) {
