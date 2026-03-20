@@ -317,10 +317,13 @@ def fetch_review_data(appid):
             # Using your old working percentage calculation
             percent = int((positive / total) * 100) if total > 0 else 0
 
-            if total <= 10:
+            if total == 0:
                 weighted = 0
+            elif total < 10:
+                weighted = int(percent * 0.25)
             elif total < 100:
-                weighted = int(percent * total / 100)
+                factor = 0.25 + 0.75 * (total - 10) / 90
+                weighted = int(percent * factor)
             else:
                 weighted = percent
 
