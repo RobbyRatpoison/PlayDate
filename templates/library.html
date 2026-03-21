@@ -856,9 +856,12 @@ async function runBulkDelete() {
 </script>
 
 <!-- Bulk Rescrape Modal -->
-<div id="bulk-rescrape-modal" class="modal-overlay" style="display:none;">
+<div id="bulk-rescrape-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkRescrapeModal();">
     <div class="modal-content" style="width:460px;">
-        <h2 style="margin:0 0 14px; color:var(--steam-focus);">Re-scrape Steam Data</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h2 style="margin:0; color:var(--steam-focus);">Re-scrape Steam Data</h2>
+            <button onclick="closeBulkRescrapeModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
 
         <!-- Scope toggle -->
         <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
@@ -904,9 +907,12 @@ async function runBulkDelete() {
 </div>
 
 <!-- Bulk Delete Modal -->
-<div id="bulk-delete-modal" class="modal-overlay" style="display:none;">
+<div id="bulk-delete-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkDeleteModal();">
     <div class="modal-content" style="width:460px;">
-        <h2 style="margin:0 0 14px; color:#ff8080;">Bulk Delete</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h2 style="margin:0; color:#ff8080;">Bulk Delete</h2>
+            <button onclick="closeBulkDeleteModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
 
         <!-- Scope toggle -->
         <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
@@ -944,9 +950,12 @@ async function runBulkDelete() {
         </div>
     </div>
 </div>
-<div id="bulk-edit-modal" class="modal-overlay" style="display:none;">
+<div id="bulk-edit-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkEditModal();">
     <div class="modal-content" style="width:500px;">
-        <h2 style="margin:0 0 14px; color:#fff;">Bulk Edit</h2>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h2 style="margin:0; color:#fff;">Bulk Edit</h2>
+            <button onclick="closeBulkEditModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
 
         <!-- Scope toggle -->
         <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">

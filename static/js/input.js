@@ -125,6 +125,23 @@
         if (e.key === 'F9') {
             if (_dbgEl) _dbgEl.style.display = _dbgEl.style.display === 'none' ? 'block' : 'none';
         }
+        if (e.key === 'Escape') {
+            // Close edit/filter modals (global close fns, checked first)
+            const editModal = document.getElementById('editModal');
+            if (editModal && editModal.style.display !== 'none') {
+                if (_state.zone === 'modal') _popZone();
+                if (typeof closeModal === 'function') closeModal();
+                return;
+            }
+            const filterModal = document.getElementById('filterModal');
+            if (filterModal && filterModal.style.display !== 'none') {
+                if (_state.zone === 'modal') _popZone();
+                if (typeof closeFilterModal === 'function') closeFilterModal();
+                return;
+            }
+            // Close any other open modal (tools page, bulk edit, etc.)
+            _closeAnyOpenModal();
+        }
     });
 
     // ── Page detection ────────────────────────────────────────────────────────
