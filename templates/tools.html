@@ -558,9 +558,213 @@
     <div class="tool-card" id="pagywosg-card">
         <h3>PAGYWOSG Filter Builder</h3>
         <p>Build this month's eligible pool from the monthly post criteria and save it as a library filter.</p>
-        <button class="nav-btn" onclick="pagToggleOpen(this)">Configure This Month</button>
+        <button class="nav-btn" onclick="openPagModal()">Configure This Month</button>
+    </div>
 
-        <div id="pagywosg-body" style="display:none; margin-top:18px;">
+    <!-- ── BLACKLIST MANAGER ── -->
+    <div class="tool-card">
+        <h3>Blacklist Manager</h3>
+        <p>Blacklisted games are permanently skipped by "Populate PlayDate" and will never be re-added to your library. To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
+        <button class="nav-btn" onclick="openBlacklistModal()">Manage Blacklist</button>
+    </div>
+
+    <!-- ── DB IMPORTER ── -->
+    <div class="tool-card">
+        <h3>Import Data from Another Database</h3>
+        <p>Copy column data from another database into your current library. Games are matched by AppID. Works with PlayDate backups, older versions, or any compatible database.</p>
+        <button class="nav-btn" onclick="openImportModal()">Open Importer</button>
+    </div>
+
+    <!-- ── CSV EXPORT ── -->
+    <div class="tool-card">
+        <h3>Export Library to CSV</h3>
+        <p>Export your game library as a CSV file for use in spreadsheets. Includes name, completion status, tags, groups, playtime, review data, achievements, and more.</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="nav-btn" onclick="runCsvExport(false)">Export Full Library</button>
+            <button class="nav-btn" onclick="runCsvExport(true)">Export Current Filter</button>
+        </div>
+        <div id="csv-export-status" class="tool-status"></div>
+    </div>
+
+    <!-- ── THEME EDITOR ── -->
+    <div class="tool-card" id="theme-editor-card">
+        <h3>Theme Editor</h3>
+        <p>Customize the color scheme of the entire app. Changes are previewed live and applied instantly across all pages when saved.</p>
+        <button class="nav-btn" onclick="openThemeModal()">Customize Theme</button>
+    </div>
+
+</div>
+
+<!-- ── BACKGROUND IMAGE MODAL ── -->
+<div id="bg-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:460px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Background Image</h2>
+            <button onclick="closeBgModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <p style="color:var(--muted-text); font-size:0.9rem; margin:0 0 16px;">Replace the app background with a custom image. JPG, PNG, and WebP are supported.</p>
+
+        <div id="bg-drop-zone"
+             style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
+             onclick="document.getElementById('bg-file-input').click()"
+             ondragover="bgDragOver(event)"
+             ondragleave="bgDragLeave(event)"
+             ondrop="bgDrop(event)">
+            <div style="font-size:1.5rem; margin-bottom:6px;">🖼️</div>
+            <div style="color:var(--muted-text); font-size:0.88rem;">Drop an image here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
+            <div id="bg-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
+        </div>
+        <input type="file" id="bg-file-input" accept=".jpg,.jpeg,.png,.webp" style="display:none" onchange="bgFileSelected(this)">
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+            <button class="nav-btn" id="bg-upload-btn" data-modal-row="0" onclick="runSetBackground()" disabled style="opacity:0.4; cursor:not-allowed;">Apply Background</button>
+            <button class="nav-btn" id="bg-reset-btn" data-modal-row="0" onclick="runResetBackground()">Reset to Default</button>
+            <button class="nav-btn" data-modal-row="0" onclick="closeBgModal()">Cancel</button>
+        </div>
+        <div id="bg-status" class="tool-status"></div>
+    </div>
+</div>
+
+<!-- ── BACKUP & RESTORE MODAL ── -->
+<div id="backup-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:520px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Backup &amp; Restore</h2>
+            <button onclick="closeBackupModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Tab toggle -->
+        <div style="display:flex; border:1px solid var(--border-color); border-radius:6px; overflow:hidden; margin-bottom:20px;">
+            <button id="backup-tab-btn" data-modal-row="0" onclick="setBackupTab('backup')"
+                style="flex:1; padding:8px; border:none; cursor:pointer; background:var(--steam-focus); color:var(--accent-text); font-weight:bold; font-size:0.85rem; transition:all 0.15s;">
+                Create Backup
+            </button>
+            <button id="restore-tab-btn" data-modal-row="0" onclick="setBackupTab('restore')"
+                style="flex:1; padding:8px; border:none; cursor:pointer; background:transparent; color:var(--muted-text); font-size:0.85rem; transition:all 0.15s;">
+                Restore from Backup
+            </button>
+        </div>
+
+        <!-- Backup tab -->
+        <div id="backup-tab">
+            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
+                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
+                    <div style="font-size:0.82rem; color:var(--muted-text); margin-bottom:6px;">Always included:</div>
+                    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                        <span style="font-size:0.82rem; color:var(--steam-text);">📦 games.db</span>
+                        <span style="font-size:0.82rem; color:var(--steam-text);">⚙️ config.json</span>
+                        <span style="font-size:0.82rem; color:var(--steam-text);">🗂️ state.json</span>
+                    </div>
+                </div>
+                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
+                    <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin:0;">
+                        <input type="checkbox" id="backup-include-art" style="width:auto; margin:2px 0 0; flex-shrink:0;">
+                        <div>
+                            <span style="font-size:0.82rem; color:var(--steam-text); font-weight:bold;">🖼️ Include cover art</span>
+                            <div style="font-size:0.78rem; color:var(--muted-text); margin-top:2px;">Recommended if you've manually set any artwork. Can add hundreds of MB.</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <button class="nav-btn" id="backup-btn" data-modal-row="1" onclick="runBackup()">Download Backup</button>
+            <div id="backup-status" class="tool-status"></div>
+        </div>
+
+        <!-- Restore tab -->
+        <div id="restore-tab" style="display:none;">
+            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.82rem; color:var(--warning-color); line-height:1.6;">
+                ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, and state.json. This cannot be undone.
+            </div>
+            <div id="restore-drop-zone"
+                 style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
+                 onclick="document.getElementById('restore-file-input').click()"
+                 ondragover="restoreDragOver(event)"
+                 ondragleave="restoreDragLeave(event)"
+                 ondrop="restoreDrop(event)">
+                <div style="font-size:1.5rem; margin-bottom:6px;">📂</div>
+                <div style="color:var(--muted-text); font-size:0.88rem;">Drop a <strong style="color:var(--steam-text);">.zip</strong> backup here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
+                <div id="restore-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
+            </div>
+            <input type="file" id="restore-file-input" accept=".zip" style="display:none" onchange="restoreFileSelected(this)">
+            <button class="nav-btn" id="restore-btn" data-modal-row="1" onclick="runRestore()" disabled style="opacity:0.4; cursor:not-allowed;">Restore</button>
+            <div id="restore-status" class="tool-status"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── DB IMPORT MODAL ── -->
+<div id="import-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:620px; max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Import Data from Another Database</h2>
+            <button onclick="closeImportModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <p style="color:var(--muted-text); font-size:0.88rem; margin:0 0 16px;">Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
+
+        <div class="step-indicator">
+            <span id="step-ind-1" class="active">1 · Upload File</span>
+            <span id="step-ind-2">2 · Map Columns</span>
+            <span id="step-ind-3">3 · Done</span>
+        </div>
+
+        <div id="import-step-1" class="import-step active">
+            <p style="margin-bottom:10px;">Select the <strong>.db</strong> file you want to import data <em>from</em>. Your current library will not be affected until you confirm the import in step 2.</p>
+            <button class="nav-btn" data-modal-row="0" onclick="document.getElementById('db-file-input').click()">Choose .db File</button>
+            <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display:none" onchange="uploadDatabase(this)">
+            <div id="upload-status" class="tool-status"></div>
+        </div>
+
+        <div id="import-step-2" class="import-step">
+            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:var(--muted-text); line-height:1.6;">
+                <strong style="color:var(--steam-text);">How this works:</strong> Choose which table and columns to read from the uploaded file, then map each source column to the matching column in your library.
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+                <div>
+                    <label>Table in uploaded file</label>
+                    <select id="source-table" onchange="onTableChange()" style="width:100%; padding:8px 32px 8px 8px;"></select>
+                    <small style="color:var(--muted-text); font-size:0.78rem;">Most PlayDate databases only have one table: <em>games</em>.</small>
+                </div>
+                <div>
+                    <label>AppID column (for matching)</label>
+                    <select id="appid-col" style="width:100%; padding:8px 32px 8px 8px;"></select>
+                    <small style="color:var(--muted-text); font-size:0.78rem;">This column is used to match rows — it won't be imported as data.</small>
+                </div>
+            </div>
+            <label style="margin-bottom:10px;">Column mappings <span style="color:var(--muted-text); font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span></label>
+            <div style="display:grid; grid-template-columns:1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:0 2px;">
+                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">From uploaded file</span>
+                <span></span>
+                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">Into your library</span>
+                <span></span>
+            </div>
+            <div id="mapping-rows"></div>
+            <button class="add-mapping-btn" onclick="addMappingRow()">+ Add Column</button>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.88rem; color:var(--muted-text);">
+                <input type="checkbox" id="normalize-dates" checked style="width:auto; margin:0;">
+                <label for="normalize-dates" style="display:inline; margin:0; cursor:pointer;">Auto-convert dates to YYYY-MM-DD format</label>
+            </div>
+            <div id="import-type-warning" style="display:none; background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:5px; padding:9px 13px; margin-top:12px; font-size:0.85rem; color:var(--warning-color);"></div>
+            <div style="display:flex; gap:10px; margin-top:16px;">
+                <button class="nav-btn" data-modal-row="0" onclick="executeImport()">Run Import</button>
+                <button class="nav-btn" data-modal-row="0" onclick="resetImport()" style="opacity:0.6;">Start Over</button>
+            </div>
+            <div id="import-status" class="tool-status"></div>
+        </div>
+
+        <div id="import-step-3" class="import-step">
+            <div id="import-result" class="import-result"></div>
+            <button class="nav-btn" data-modal-row="0" onclick="resetImport()" style="margin-top:12px;">Import Another File</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── PAGYWOSG MODAL ── -->
+<div id="pagywosg-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:min(760px,95vw); max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">PAGYWOSG Filter Builder</h2>
+            <button onclick="closePagModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
         <div id="pagywosg-loading" style="color:var(--muted-text); font-size:0.88rem; margin-bottom:12px;">Loading tags…</div>
         <div id="pagywosg-inner" style="display:none;">
 
@@ -619,62 +823,51 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <button class="nav-btn" onclick="pagSaveFilter()">Save as Filter</button>
-                <button class="nav-btn" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
+                <button class="nav-btn" data-modal-row="0" onclick="pagSaveFilter()">Save as Filter</button>
+                <button class="nav-btn" data-modal-row="0" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
             </div>
             <div id="pag-status" class="tool-status"></div>
 
         </div>
-        </div>
     </div>
+</div>
 
-    <!-- ── BLACKLIST MANAGER ── -->
-    <div class="tool-card">
-        <h3>Blacklist Manager</h3>
-        <p>Blacklisted games are permanently skipped by "Populate PlayDate" and will never be re-added to your library. To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
-        <button id="blacklist-toggle-btn" class="nav-btn" onclick="toggleBlacklist()">Manage Blacklist</button>
+<!-- ── BLACKLIST MODAL ── -->
+<div id="blacklist-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:min(640px,95vw); max-height:85vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Blacklist Manager</h2>
+            <button onclick="closeBlacklistModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <p style="color:var(--muted-text); font-size:0.9rem; margin:0 0 14px;">Blacklisted games are permanently skipped by "Populate PlayDate". To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
         <div id="blacklist-status" class="tool-status"></div>
-        <div id="blacklist-container" style="display:none; margin-top:16px;">
-            <div id="blacklist-empty" style="display:none; color:var(--muted-text); font-size:0.9rem;">No blacklisted games.</div>
-            <table id="blacklist-table" style="width:100%; border-collapse:collapse; display:none;">
-                <thead>
-                    <tr style="border-bottom:1px solid var(--border-color);">
-                        <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Game</th>
-                        <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">App ID</th>
-                        <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Blacklisted</th>
-                        <th style="padding:8px 10px;"></th>
-                    </tr>
-                </thead>
-                <tbody id="blacklist-tbody"></tbody>
-            </table>
+        <div id="blacklist-empty" style="display:none; color:var(--muted-text); font-size:0.9rem; margin-bottom:12px;">No blacklisted games.</div>
+        <table id="blacklist-table" style="width:100%; border-collapse:collapse; display:none;">
+            <thead>
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Game</th>
+                    <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">App ID</th>
+                    <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Blacklisted</th>
+                    <th style="padding:8px 10px;"></th>
+                </tr>
+            </thead>
+            <tbody id="blacklist-tbody"></tbody>
+        </table>
+        <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+            <button class="nav-btn" data-modal-row="1" onclick="closeBlacklistModal()">Close</button>
         </div>
     </div>
+</div>
 
-    <!-- ── DB IMPORTER ── -->
-    <div class="tool-card">
-        <h3>Import Data from Another Database</h3>
-        <p>Copy column data from another database into your current library. Games are matched by AppID. Works with PlayDate backups, older versions, or any compatible database.</p>
-        <button class="nav-btn" onclick="openImportModal()">Open Importer</button>
-    </div>
-
-    <!-- ── CSV EXPORT ── -->
-    <div class="tool-card">
-        <h3>Export Library to CSV</h3>
-        <p>Export your game library as a CSV file for use in spreadsheets. Includes name, completion status, tags, groups, playtime, review data, achievements, and more.</p>
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-            <button class="nav-btn" onclick="runCsvExport(false)">Export Full Library</button>
-            <button class="nav-btn" onclick="runCsvExport(true)">Export Current Filter</button>
+<!-- ── THEME EDITOR MODAL ── -->
+<div id="theme-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-content" style="width:min(920px,96vw); max-height:92vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Theme Editor</h2>
+            <button onclick="closeThemeModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-        <div id="csv-export-status" class="tool-status"></div>
-    </div>
 
-    <!-- ── THEME EDITOR ── -->
-    <div class="tool-card" id="theme-editor-card">
-        <h3>Theme Editor</h3>
-        <p>Customize the color scheme of the entire app. Changes are previewed live and applied instantly across all pages when saved.</p>
-        <button class="nav-btn" onclick="themeToggleOpen(this)">Customize Theme</button>
-
-        <div id="theme-editor-body" class="theme-editor-body">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;">
 
             <!-- Left: color pickers -->
             <div class="theme-vars-panel" id="theme-vars-panel">
@@ -743,7 +936,6 @@
                             <div class="tp-nav-btn">Populate</div>
                         </div>
                         <div class="tp-body">
-                            <!-- Search bar with all button types -->
                             <div class="tp-search-row">
                                 <div class="tp-search-input">Search games…</div>
                                 <div class="tp-search-btn">Search</div>
@@ -754,7 +946,6 @@
                                 <div class="tp-btn">Bulk Edit</div>
                                 <div class="tp-btn-accent">Select (3)</div>
                             </div>
-                            <!-- Game grid -->
                             <div>
                                 <div class="tp-section-label">Showing 847 games</div>
                                 <div class="tp-cards">
@@ -764,7 +955,6 @@
                                     <div class="tp-card"><div class="tp-card-label">Game D</div></div>
                                 </div>
                             </div>
-                            <!-- Filter error banner -->
                             <div class="tp-danger-notice">✘ Filter error: unknown column</div>
                         </div>
                     </div>
@@ -783,17 +973,11 @@
                         <div class="tp-body">
                             <div class="tp-h1">Tools</div>
                             <div class="tp-subtitle">Utilities for managing your PlayDate library.</div>
-
-                            <!-- Tool card (panel-alt surface) -->
                             <div class="tp-panel-alt">
                                 <div class="tp-panel-alt-title">Backup &amp; Restore</div>
                                 <div class="tp-panel-alt-desc">Save a snapshot of your library and cover art.</div>
-                                <div class="tp-btn-row">
-                                    <div class="tp-btn">Open Tool</div>
-                                </div>
+                                <div class="tp-btn-row"><div class="tp-btn">Open Tool</div></div>
                             </div>
-
-                            <!-- All button varieties in one row -->
                             <div class="tp-panel-alt">
                                 <div class="tp-panel-alt-title">Button Types</div>
                                 <div class="tp-btn-row" style="margin-bottom:4px;">
@@ -806,8 +990,6 @@
                                     <div class="tp-btn-danger-outline">↺ Reset</div>
                                 </div>
                             </div>
-
-                            <!-- Status messages -->
                             <div class="tp-panel-alt">
                                 <div class="tp-panel-alt-title">Status Messages</div>
                                 <div class="tp-status success">✔ Operation complete.</div>
@@ -829,8 +1011,6 @@
                             <div class="tp-nav-btn">Populate</div>
                         </div>
                         <div class="tp-body">
-
-                            <!-- Edit game modal -->
                             <div class="tp-modal-wrap">
                                 <div class="tp-modal">
                                     <div class="tp-modal-header">
@@ -849,12 +1029,8 @@
                                     </div>
                                 </div>
                             </div>
-
-                            <!-- Warning + notices -->
                             <div class="tp-warning">⚠ This will overwrite existing data.</div>
                             <div class="tp-danger-notice">✘ 3 games could not be imported.</div>
-
-                            <!-- Filter chips preview -->
                             <div class="tp-panel-alt">
                                 <div class="tp-panel-alt-title">Filter Builder</div>
                                 <div class="tp-filter-row">
@@ -869,189 +1045,24 @@
                                     <div class="tp-btn-danger-outline">✕ Clear</div>
                                 </div>
                             </div>
-
                         </div>
                     </div>
 
                 </div>
             </div>
 
-                        <!-- Actions row (spans full width) -->
-            <div class="theme-actions">
-                <button class="nav-btn" onclick="themeSave()">Save Theme</button>
-                <button class="nav-btn" onclick="themeExport()">Export Theme</button>
-                <button class="nav-btn" onclick="document.getElementById('theme-import-input').click()">Import Theme</button>
-                <input type="file" id="theme-import-input" accept=".json" style="display:none" onchange="themeImport(this)">
-                <button class="nav-btn" onclick="themeReset()" style="border-color:var(--danger-color);color:var(--danger-text);"
-                    onmouseover="this.style.background='var(--danger-color)';this.style.color='var(--nav-active)'"
-                    onmouseout="this.style.background='';this.style.color='var(--danger-text)'">Reset to Default</button>
-                <div id="theme-status" class="tool-status"></div>
-            </div>
-
-        </div>
-    </div>
-
-</div>
-
-<!-- ── BACKGROUND IMAGE MODAL ── -->
-<div id="bg-modal" class="modal-overlay" style="display:none;">
-    <div class="modal-content" style="width:460px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Background Image</h2>
-            <button onclick="closeBgModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-        </div>
-        <p style="color:var(--muted-text); font-size:0.9rem; margin:0 0 16px;">Replace the app background with a custom image. JPG, PNG, and WebP are supported.</p>
-
-        <div id="bg-drop-zone"
-             style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
-             onclick="document.getElementById('bg-file-input').click()"
-             ondragover="bgDragOver(event)"
-             ondragleave="bgDragLeave(event)"
-             ondrop="bgDrop(event)">
-            <div style="font-size:1.5rem; margin-bottom:6px;">🖼️</div>
-            <div style="color:var(--muted-text); font-size:0.88rem;">Drop an image here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
-            <div id="bg-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
-        </div>
-        <input type="file" id="bg-file-input" accept=".jpg,.jpeg,.png,.webp" style="display:none" onchange="bgFileSelected(this)">
-
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-            <button class="nav-btn" id="bg-upload-btn" onclick="runSetBackground()" disabled style="opacity:0.4; cursor:not-allowed;">Apply Background</button>
-            <button class="nav-btn" id="bg-reset-btn" onclick="runResetBackground()">Reset to Default</button>
-            <button class="nav-btn" onclick="closeBgModal()">Cancel</button>
-        </div>
-        <div id="bg-status" class="tool-status"></div>
-    </div>
-</div>
-
-<!-- ── BACKUP & RESTORE MODAL ── -->
-<div id="backup-modal" class="modal-overlay" style="display:none;">
-    <div class="modal-content" style="width:520px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Backup &amp; Restore</h2>
-            <button onclick="closeBackupModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
-        <!-- Tab toggle -->
-        <div style="display:flex; border:1px solid var(--border-color); border-radius:6px; overflow:hidden; margin-bottom:20px;">
-            <button id="backup-tab-btn" onclick="setBackupTab('backup')"
-                style="flex:1; padding:8px; border:none; cursor:pointer; background:var(--steam-focus); color:var(--accent-text); font-weight:bold; font-size:0.85rem; transition:all 0.15s;">
-                Create Backup
-            </button>
-            <button id="restore-tab-btn" onclick="setBackupTab('restore')"
-                style="flex:1; padding:8px; border:none; cursor:pointer; background:transparent; color:var(--muted-text); font-size:0.85rem; transition:all 0.15s;">
-                Restore from Backup
-            </button>
-        </div>
-
-        <!-- Backup tab -->
-        <div id="backup-tab">
-            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
-                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
-                    <div style="font-size:0.82rem; color:var(--muted-text); margin-bottom:6px;">Always included:</div>
-                    <div style="display:flex; gap:16px; flex-wrap:wrap;">
-                        <span style="font-size:0.82rem; color:var(--steam-text);">📦 games.db</span>
-                        <span style="font-size:0.82rem; color:var(--steam-text);">⚙️ config.json</span>
-                        <span style="font-size:0.82rem; color:var(--steam-text);">🗂️ state.json</span>
-                    </div>
-                </div>
-                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
-                    <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin:0;">
-                        <input type="checkbox" id="backup-include-art" style="width:auto; margin:2px 0 0; flex-shrink:0;">
-                        <div>
-                            <span style="font-size:0.82rem; color:var(--steam-text); font-weight:bold;">🖼️ Include cover art</span>
-                            <div style="font-size:0.78rem; color:var(--muted-text); margin-top:2px;">Recommended if you've manually set any artwork. Can add hundreds of MB.</div>
-                        </div>
-                    </label>
-                </div>
-            </div>
-            <button class="nav-btn" id="backup-btn" onclick="runBackup()">Download Backup</button>
-            <div id="backup-status" class="tool-status"></div>
-        </div>
-
-        <!-- Restore tab -->
-        <div id="restore-tab" style="display:none;">
-            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.82rem; color:var(--warning-color); line-height:1.6;">
-                ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, and state.json. This cannot be undone.
-            </div>
-            <div id="restore-drop-zone"
-                 style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
-                 onclick="document.getElementById('restore-file-input').click()"
-                 ondragover="restoreDragOver(event)"
-                 ondragleave="restoreDragLeave(event)"
-                 ondrop="restoreDrop(event)">
-                <div style="font-size:1.5rem; margin-bottom:6px;">📂</div>
-                <div style="color:var(--muted-text); font-size:0.88rem;">Drop a <strong style="color:var(--steam-text);">.zip</strong> backup here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
-                <div id="restore-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
-            </div>
-            <input type="file" id="restore-file-input" accept=".zip" style="display:none" onchange="restoreFileSelected(this)">
-            <button class="nav-btn" id="restore-btn" onclick="runRestore()" disabled style="opacity:0.4; cursor:not-allowed;">Restore</button>
-            <div id="restore-status" class="tool-status"></div>
-        </div>
-    </div>
-</div>
-
-<!-- ── DB IMPORT MODAL ── -->
-<div id="import-modal" class="modal-overlay" style="display:none;">
-    <div class="modal-content" style="width:620px; max-height:90vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Import Data from Another Database</h2>
-            <button onclick="closeImportModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-        </div>
-        <p style="color:var(--muted-text); font-size:0.88rem; margin:0 0 16px;">Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
-
-        <div class="step-indicator">
-            <span id="step-ind-1" class="active">1 · Upload File</span>
-            <span id="step-ind-2">2 · Map Columns</span>
-            <span id="step-ind-3">3 · Done</span>
-        </div>
-
-        <div id="import-step-1" class="import-step active">
-            <p style="margin-bottom:10px;">Select the <strong>.db</strong> file you want to import data <em>from</em>. Your current library will not be affected until you confirm the import in step 2.</p>
-            <button class="nav-btn" onclick="document.getElementById('db-file-input').click()">Choose .db File</button>
-            <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display:none" onchange="uploadDatabase(this)">
-            <div id="upload-status" class="tool-status"></div>
-        </div>
-
-        <div id="import-step-2" class="import-step">
-            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:var(--muted-text); line-height:1.6;">
-                <strong style="color:var(--steam-text);">How this works:</strong> Choose which table and columns to read from the uploaded file, then map each source column to the matching column in your library.
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
-                <div>
-                    <label>Table in uploaded file</label>
-                    <select id="source-table" onchange="onTableChange()" style="width:100%; padding:8px 32px 8px 8px;"></select>
-                    <small style="color:var(--muted-text); font-size:0.78rem;">Most PlayDate databases only have one table: <em>games</em>.</small>
-                </div>
-                <div>
-                    <label>AppID column (for matching)</label>
-                    <select id="appid-col" style="width:100%; padding:8px 32px 8px 8px;"></select>
-                    <small style="color:var(--muted-text); font-size:0.78rem;">This column is used to match rows — it won't be imported as data.</small>
-                </div>
-            </div>
-            <label style="margin-bottom:10px;">Column mappings <span style="color:var(--muted-text); font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span></label>
-            <div style="display:grid; grid-template-columns:1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:0 2px;">
-                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">From uploaded file</span>
-                <span></span>
-                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">Into your library</span>
-                <span></span>
-            </div>
-            <div id="mapping-rows"></div>
-            <button class="add-mapping-btn" onclick="addMappingRow()">+ Add Column</button>
-            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.88rem; color:var(--muted-text);">
-                <input type="checkbox" id="normalize-dates" checked style="width:auto; margin:0;">
-                <label for="normalize-dates" style="display:inline; margin:0; cursor:pointer;">Auto-convert dates to YYYY-MM-DD format</label>
-            </div>
-            <div id="import-type-warning" style="display:none; background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:5px; padding:9px 13px; margin-top:12px; font-size:0.85rem; color:var(--warning-color);"></div>
-            <div style="display:flex; gap:10px; margin-top:16px;">
-                <button class="nav-btn" onclick="executeImport()">Run Import</button>
-                <button class="nav-btn" onclick="resetImport()" style="opacity:0.6;">Start Over</button>
-            </div>
-            <div id="import-status" class="tool-status"></div>
-        </div>
-
-        <div id="import-step-3" class="import-step">
-            <div id="import-result" class="import-result"></div>
-            <button class="nav-btn" onclick="resetImport()" style="margin-top:12px;">Import Another File</button>
+        <!-- Actions row -->
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px; padding-top:14px; border-top:1px solid var(--border-color);">
+            <button class="nav-btn" data-modal-row="0" onclick="themeSave()">Save Theme</button>
+            <button class="nav-btn" data-modal-row="0" onclick="themeExport()">Export Theme</button>
+            <button class="nav-btn" data-modal-row="0" onclick="document.getElementById('theme-import-input').click()">Import Theme</button>
+            <input type="file" id="theme-import-input" accept=".json" style="display:none" onchange="themeImport(this)">
+            <button class="nav-btn" data-modal-row="0" onclick="themeReset()" style="border-color:var(--danger-color);color:var(--danger-text);"
+                onmouseover="this.style.background='var(--danger-color)';this.style.color='var(--nav-active)'"
+                onmouseout="this.style.background='';this.style.color='var(--danger-text)'">Reset to Default</button>
+            <div id="theme-status" class="tool-status"></div>
         </div>
     </div>
 </div>
@@ -1156,12 +1167,12 @@ const PAG_OPS = [
     { value: 'lt',           label: '<' },
 ];
 
-function pagToggleOpen(btn) {
-    const body = document.getElementById('pagywosg-body');
-    const open = body.style.display === 'none';
-    body.style.display = open ? 'block' : 'none';
-    btn.textContent = open ? 'Hide' : 'Configure This Month';
-    if (open && !_pagAllTags.length) pagInit();
+function openPagModal() {
+    document.getElementById('pagywosg-modal').style.display = 'flex';
+    if (!_pagAllTags.length) pagInit();
+}
+function closePagModal() {
+    document.getElementById('pagywosg-modal').style.display = 'none';
 }
 
 async function pagInit() {
@@ -1861,29 +1872,19 @@ async function runResetBackground() {
 // ── BLACKLIST MANAGER ────────────────────────────────────────────────────────
 let _blacklistLoaded = false;
 
-async function toggleBlacklist() {
-    const btn       = document.getElementById('blacklist-toggle-btn');
-    const container = document.getElementById('blacklist-container');
-    const status    = document.getElementById('blacklist-status');
+function openBlacklistModal() {
+    document.getElementById('blacklist-modal').style.display = 'flex';
+    if (!_blacklistLoaded) _loadBlacklist();
+}
+function closeBlacklistModal() {
+    document.getElementById('blacklist-modal').style.display = 'none';
+}
 
-    // If already showing, hide it
-    if (container.style.display !== 'none') {
-        container.style.display = 'none';
-        btn.textContent = 'Manage Blacklist';
-        return;
-    }
-
-    // If already loaded, just show
-    if (_blacklistLoaded) {
-        container.style.display = 'block';
-        btn.textContent = 'Hide Blacklist';
-        return;
-    }
-
-    // First load — fetch from server
-    const empty = document.getElementById('blacklist-empty');
-    const table = document.getElementById('blacklist-table');
-    const tbody = document.getElementById('blacklist-tbody');
+async function _loadBlacklist() {
+    const status = document.getElementById('blacklist-status');
+    const empty  = document.getElementById('blacklist-empty');
+    const table  = document.getElementById('blacklist-table');
+    const tbody  = document.getElementById('blacklist-tbody');
 
     status.className = 'tool-status info';
     status.textContent = 'Loading…';
@@ -1895,8 +1896,6 @@ async function toggleBlacklist() {
 
         status.textContent = '';
         _blacklistLoaded = true;
-        container.style.display = 'block';
-        btn.textContent = 'Hide Blacklist';
         const entries = data.entries || [];
 
         if (entries.length === 0) {
@@ -1913,7 +1912,7 @@ async function toggleBlacklist() {
                 <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
                 <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
                 <td style="padding:9px 10px; text-align:right;">
-                    <button onclick="removeFromBlacklist(${e.appid}, this)" class="bl-remove-btn"
+                    <button onclick="removeFromBlacklist(${e.appid}, this)" class="bl-remove-btn" data-modal-row="0"
                         style="background:none; border:1px solid var(--danger-color); color:var(--danger-text); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
                         onmouseover="this.style.background='rgba(163,42,42,0.2)'"
                         onmouseout="this.style.background='none'">Remove</button>
@@ -1995,18 +1994,15 @@ const THEME_VAR_META = [
     { key: '--warning-color', label: 'Warning Color',      desc: 'Amber warnings, type mismatches, caution notices' },
 ];
 
-let _themeOpen = false;
 let _themeVars = {};   // currently displayed values (may be unsaved)
 let _themeDefs = {};   // server-side defaults
 
-function themeToggleOpen(btn) {
-    _themeOpen = !_themeOpen;
-    const body = document.getElementById('theme-editor-body');
-    body.classList.toggle('open', _themeOpen);
-    btn.textContent = _themeOpen ? 'Close Theme Editor' : 'Customize Theme';
-    if (_themeOpen && Object.keys(_themeVars).length === 0) {
-        _themeLoad();
-    }
+function openThemeModal() {
+    document.getElementById('theme-modal').style.display = 'flex';
+    if (Object.keys(_themeVars).length === 0) _themeLoad();
+}
+function closeThemeModal() {
+    document.getElementById('theme-modal').style.display = 'none';
 }
 
 async function _themeLoad() {

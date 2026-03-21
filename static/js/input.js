@@ -385,6 +385,8 @@
         'editModal', 'filterModal',
         'backup-modal', 'bg-modal', 'import-modal',
         'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
+        // Tools page expanding modals
+        'pagywosg-modal', 'blacklist-modal', 'theme-modal',
         // Home page edit mode panels (use style.display)
         'shelf-edit-modal', 'dedup-panel', 'split-picker',
     ];
@@ -1114,9 +1116,12 @@
             ['bulk-rescrape-modal', 'closeBulkRescrapeModal'],
             ['bulk-delete-modal',   'closeBulkDeleteModal'],
             // tools page modals
-            ['backup-modal',  'closeBackupModal'],
-            ['bg-modal',      'closeBgModal'],
-            ['import-modal',  'closeImportModal'],
+            ['backup-modal',     'closeBackupModal'],
+            ['bg-modal',         'closeBgModal'],
+            ['import-modal',     'closeImportModal'],
+            ['pagywosg-modal',   'closePagModal'],
+            ['blacklist-modal',  'closeBlacklistModal'],
+            ['theme-modal',      'closeThemeModal'],
             // home page edit mode panels
             ['shelf-edit-modal', 'semClose'],
             ['dedup-panel',      'closeDedupPanel'],
@@ -1511,6 +1516,9 @@
         _watchModal('backup-modal');
         _watchModal('bg-modal');
         _watchModal('import-modal');
+        _watchModal('pagywosg-modal');
+        _watchModal('blacklist-modal');
+        _watchModal('theme-modal');
 
         // Home page edit mode panels
         _watchModal('shelf-edit-modal');

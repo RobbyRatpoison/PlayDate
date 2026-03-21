@@ -894,11 +894,11 @@ async function runBulkDelete() {
         <div id="br-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
 
         <div style="display:flex; gap:12px;">
-            <button id="br-apply-btn" onclick="runBulkRescrape()"
+            <button id="br-apply-btn" data-modal-row="0" onclick="runBulkRescrape()"
                 style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--steam-focus); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
                 Re-scrape
             </button>
-            <button class="nav-btn" style="flex:1; height:auto; padding:12px;" onclick="closeBulkRescrapeModal()">Cancel</button>
+            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkRescrapeModal()">Cancel</button>
         </div>
     </div>
 </div>
@@ -936,11 +936,11 @@ async function runBulkDelete() {
         <div id="bd-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
 
         <div style="display:flex; gap:12px;">
-            <button id="bd-apply-btn" onclick="runBulkDelete()"
+            <button id="bd-apply-btn" data-modal-row="0" onclick="runBulkDelete()"
                 style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:#a32a2a; color:white; border:none; border-radius:6px; cursor:pointer;">
                 Delete
             </button>
-            <button class="nav-btn" style="flex:1; height:auto; padding:12px;" onclick="closeBulkDeleteModal()">Cancel</button>
+            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkDeleteModal()">Cancel</button>
         </div>
     </div>
 </div>
@@ -1011,18 +1011,18 @@ async function runBulkDelete() {
         <div id="bulk-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
 
         <div style="display:flex; gap:12px;">
-            <button id="bulk-apply-btn" class="btn-save" style="flex:2; margin:0;" onclick="runBulkEdit()">Apply</button>
-            <button class="nav-btn" style="flex:1; height:auto; padding:12px;" onclick="closeBulkEditModal()">Cancel</button>
+            <button id="bulk-apply-btn" class="btn-save" data-modal-row="0" style="flex:2; margin:0;" onclick="runBulkEdit()">Apply</button>
+            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkEditModal()">Cancel</button>
         </div>
 
         <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:8px;">
-            <button onclick="openBulkRescrapeModal()"
+            <button data-modal-row="1" onclick="openBulkRescrapeModal()"
                 style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--steam-focus); border:1px solid var(--steam-focus); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
                 onmouseover="this.style.background='rgba(102,192,244,0.1)'"
                 onmouseout="this.style.background='transparent'">
                 RE-SCRAPE STEAM DATA
             </button>
-            <button onclick="openBulkDeleteModal()"
+            <button data-modal-row="2" onclick="openBulkDeleteModal()"
                 style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:#ff8080; border:1px solid #a32a2a; border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
                 onmouseover="this.style.background='rgba(163,42,42,0.15)'"
                 onmouseout="this.style.background='transparent'">
