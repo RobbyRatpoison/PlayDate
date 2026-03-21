@@ -6,13 +6,17 @@ state.json
 
 # --- Databases ---
 *.db
-library.db
+*.csv
 
 # --- Logs ---
 *.log
 
 # --- Media Assets ---
 /static/img/library/
+/static/img/backgrounds/
+
+# --- User Theme ---
+theme.json
 
 # --- Python Environment ---
 __pycache__/

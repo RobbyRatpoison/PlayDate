@@ -135,7 +135,8 @@
             <select id="saved-filters-select" class="nav-dropdown" onchange="loadSavedFilterFromModal(this)"
                     data-modal-row="3"
                     style="flex:1; height:36px; font-size:0.85rem;"
-                    title="Load a saved filter">
+                    title="Load a saved filter"
+                    data-picker-title="Load saved filter">
                 <option value="">Saved filters…</option>
                 {% for name in state.get('saved_filters', {}) %}
                 <option value="{{ name | e }}">{{ name }}</option>
@@ -1462,6 +1463,11 @@ const _builtinFilterWheres = {{ builtin_filters | tojson if builtin_filters is d
 async function applyBuiltinFilter(key) {
     const preset = _builtinFilterWheres[key];
     if (!preset || !preset.where) return;
+    // "All Games" (where=1=1) means no filter — treat it as a clear
+    if (preset.where === '1=1') {
+        clearAllFilters();
+        return;
+    }
     const tree = { type: 'group', logic: 'AND', items: [], custom_sql: preset.where };
     updateActivePills(tree);
     await sendStateUpdate({ filter_tree: tree });

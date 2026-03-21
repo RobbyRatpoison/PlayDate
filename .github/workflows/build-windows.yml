@@ -76,8 +76,10 @@ jobs:
       # ── 8. Build installer with Inno Setup ────────────────────────────────────
       - name: Build installer with Inno Setup
         run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = if ($tag -match '^v?(\d+\.\d+\.\d+)') { $matches[1] } else { "0.0.0" }
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc playdate.iss
+          & $iscc /DAppVersion="$ver" playdate.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         shell: powershell
 

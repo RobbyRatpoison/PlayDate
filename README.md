@@ -24,7 +24,7 @@ PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, ach
 - **PAGYWOSG filter builder** — build this month's eligible pool from the monthly post criteria and save it as a library filter.
 - **Backup & restore** — export a timestamped zip of your library data and settings, with optional cover art. Restore from any previous backup.
 - **Database import tool** — copy columns from an older PlayDate database into your current library, with column mapping and type-mismatch warnings.
-- **Gamepad & keyboard navigation** — full controller support with spatial grid navigation and a HUD that appears on first input.
+- **Gamepad & keyboard navigation** — full controller support across all pages with 2D spatial grid navigation, modal zone navigation, custom SELECT picker overlay, confirm dialog support, and a HUD that appears on first input. Back button toggles home page edit mode; Start launches the focused game.
 - **Tools page** — tag migration, BLAEO sync, layout editor, backup/restore, and database import all in one place.
 
 ---

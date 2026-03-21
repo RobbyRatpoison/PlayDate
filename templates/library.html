@@ -269,7 +269,7 @@
                 value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% else %}{{ state.get('active_filters', [])|selectattr('column', 'equalto', 'name')|map(attribute='value')|first or '' }}{% endif %}">
         </div>
         <button onclick="triggerSearch()">SEARCH</button>
-        <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' style="min-width:160px;">
+        <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' data-picker-title="Sort by" style="min-width:160px;">
             <option value="name" {{ 'selected' if state.sort == 'name' }}>Alphabetical</option>
             <option value="playtime_forever" {{ 'selected' if state.sort == 'playtime_forever' }}>Hours Played</option>
             <option value="release_date" {{ 'selected' if state.sort == 'release_date' }}>Release Date</option>

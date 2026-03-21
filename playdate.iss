@@ -2,7 +2,9 @@
 ; Build with Inno Setup 6+: https://jrsoftware.org/isinfo.php
 
 #define AppName      "PlayDate"
-#define AppVersion   "1.0.0"
+#ifndef AppVersion
+#define AppVersion "0.0.0"
+#endif
 #define AppPublisher "PlayDate"
 #define AppURL       "https://github.com/RobbyRatpoison/PlayDate"
 #define AppExeName   "PlayDate.exe"

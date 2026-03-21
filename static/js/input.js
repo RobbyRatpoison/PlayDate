@@ -42,7 +42,7 @@
         // Modal detail — shown whenever zone=modal OR a modal is open
         const _dbgOpenModal = _MODAL_IDS.find(id => {
             const el = document.getElementById(id);
-            return el && el.style.display !== 'none' && el.style.display !== '';
+            return el && _isModalVisible(el);
         });
         if (_dbgOpenModal || _state.zone === 'modal') {
             const mgrid = _modalGrid();
@@ -204,7 +204,7 @@
     const STICK_DEAD      = 0.35;
 
     // ── Standard Xbox/standard-mapping button indices ─────────────────────────
-    const BTN_IDX = { a:0, b:1, x:2, y:3, lb:4, rb:5, up:12, down:13, left:14, right:15 };
+    const BTN_IDX = { a:0, b:1, x:2, y:3, lb:4, rb:5, back:8, start:9, up:12, down:13, left:14, right:15 };
     const AXIS_IDX = { lx:0, ly:1, rx:2, ry:3 };
 
     // ── Focus indicator helpers ───────────────────────────────────────────────
@@ -221,6 +221,27 @@
         // Home capsules are always fully visible (shelf overflow:hidden clips them anyway)
         // so skip scrollIntoView there — it causes a reflow that flickers the focus ring off.
         if (PAGE !== 'home') {
+            const scroller = document.querySelector('.container');
+            // First content row → scroll to very top
+            const isFirst = _state.zone === 'content' &&
+                (_state.row === 0 || (PAGE === 'library' && _state.row === -1));
+            if (isFirst && scroller?.firstElementChild) {
+                scroller.firstElementChild.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+            // Last content row → scroll to very bottom
+            const isLast = _state.zone === 'content' && (() => {
+                switch (PAGE) {
+                    case 'tools':   return _state.row === _toolRows().length - 1;
+                    case 'library': return _state.row === _libraryCards().length - 1;
+                    case 'pick':    return _state.row === _pickRows().length - 1;
+                    default: return false;
+                }
+            })();
+            if (isLast) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                return;
+            }
             el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }
     }
@@ -241,6 +262,58 @@
     }
 
     // Home: returns array of { el, items[] } per navigable row.
+    // Proportional fallback: map sourceCol/sourceTotal → nearest col in targetLen.
+    function _proportionalCol(sourceCol, sourceTotal, targetLen) {
+        if (targetLen <= 1) return 0;
+        if (sourceTotal <= 1) return 0;
+        return Math.round((sourceCol / (sourceTotal - 1)) * (targetLen - 1));
+    }
+
+    // Given a target row index, find the best {rowIdx, colIdx} to navigate to.
+    // If the target row is one side of a split row, candidates include items from BOTH sides
+    // so Up/Down can cross between left and right split sides by X proximity.
+    function _findNavTarget(rows, targetIdx, srcItem, srcCol, srcTotal) {
+        const targetRow = rows[targetIdx];
+        if (!targetRow) return { rowIdx: targetIdx, colIdx: 0 };
+
+        const targetEl = targetRow.el;
+        const splitParent = targetEl?.classList?.contains('shelf-split-side')
+            ? targetEl.closest?.('.shelf-split-row') : null;
+
+        // Collect candidates — both split sides or just the target row
+        const candidates = [];
+        if (splitParent) {
+            for (let ri = 0; ri < rows.length; ri++) {
+                if (rows[ri].el.closest?.('.shelf-split-row') === splitParent) {
+                    rows[ri].items.forEach((item, ci) => candidates.push({ item, rowIdx: ri, colIdx: ci }));
+                }
+            }
+        } else {
+            targetRow.items.forEach((item, ci) => candidates.push({ item, rowIdx: targetIdx, colIdx: ci }));
+        }
+
+        if (!candidates.length) return { rowIdx: targetIdx, colIdx: 0 };
+
+        // X-proximity across all candidates
+        if (srcItem) {
+            const sr = srcItem.getBoundingClientRect();
+            if (sr.width > 0 || sr.height > 0) {
+                const srcCx = sr.left + sr.width / 2;
+                let best = candidates[0], bestDist = Infinity;
+                for (const c of candidates) {
+                    const r = c.item.getBoundingClientRect();
+                    const cx = r.left + r.width / 2;
+                    const dist = Math.abs(cx - srcCx);
+                    if (dist < bestDist) { bestDist = dist; best = c; }
+                }
+                return { rowIdx: best.rowIdx, colIdx: best.colIdx };
+            }
+        }
+
+        // Fallback: proportional within the directly targeted row
+        return { rowIdx: targetIdx, colIdx: _proportionalCol(srcCol, srcTotal, targetRow.items.length) };
+    }
+
     // In normal mode: capsule wraps per shelf. In edit mode: edit-bar buttons per shelf.
     // Split rows are always expanded to their individual .shelf-split-side children.
     function _homeRows() {
@@ -399,6 +472,7 @@
 
     // Modal items: IDs of all modal overlays, checked in priority order
     const _MODAL_IDS = [
+        'pd-dialog-overlay',   // base.html confirm/alert — shown via .visible class
         'editModal', 'filterModal',
         'backup-modal', 'bg-modal', 'import-modal',
         'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
@@ -408,13 +482,26 @@
         'shelf-edit-modal', 'dedup-panel', 'split-picker',
     ];
 
+    // Visibility check that handles both inline-style modals and class-toggled ones (.visible)
+    function _isModalVisible(el) {
+        if (!el) return false;
+        if (el.classList.contains('visible')) return true;
+        return el.style.display !== 'none' && el.style.display !== '';
+    }
+
     // Returns buttons grouped into rows. If any element has data-modal-row, groups
     // by that attribute (sorted by row number). Otherwise returns all as a single row.
     // Includes buttons, nav/save links, and tagged selects. Groups by data-modal-row if present.
     function _modalGrid() {
+        // Custom select picker takes priority
+        const picker = document.getElementById('_gp-select-picker');
+        if (picker) {
+            return [...picker.querySelectorAll('button[data-modal-row]')].map(b => [b]);
+        }
+
         for (const id of _MODAL_IDS) {
             const el = document.getElementById(id);
-            if (el && el.style.display !== 'none' && el.style.display !== '') {
+            if (el && _isModalVisible(el)) {
                 const candidates = [...el.querySelectorAll(
                     'button:not(:disabled), a.nav-btn, a.btn-save, select[data-modal-row]'
                 )].filter(e => e.offsetParent !== null && !e.disabled
@@ -636,8 +723,12 @@
                         // Skip empty rows (don't go below 0)
                         while (prev > 0 && rows[prev]?.items.length === 0) prev--;
                         if (prev >= 0 && rows[prev]?.items.length > 0) {
-                            _state.row = prev;
-                            _state.col = Math.min(_state.savedCol, rows[prev].items.length - 1);
+                            const srcItem  = rows[_state.row]?.items[_state.col];
+                            const srcCol   = _state.col;
+                            const srcTotal = rows[_state.row]?.items.length ?? 1;
+                            const target   = _findNavTarget(rows, prev, srcItem, srcCol, srcTotal);
+                            _state.row = target.rowIdx;
+                            _state.col = target.colIdx;
                         } else {
                             // At top row → go to nav (edit toolbar in edit mode)
                             _state.zone = 'nav';
@@ -763,9 +854,12 @@
                         // Skip empty rows
                         while (next < rows.length && rows[next]?.items.length === 0) next++;
                         if (next < rows.length) {
-                            _state.row = next;
-                            const row  = rows[_state.row];
-                            _state.col = Math.min(_state.savedCol, row.items.length - 1);
+                            const srcItem  = rows[_state.row]?.items[_state.col];
+                            const srcCol   = _state.col;
+                            const srcTotal = rows[_state.row]?.items.length ?? 1;
+                            const target   = _findNavTarget(rows, next, srcItem, srcCol, srcTotal);
+                            _state.row = target.rowIdx;
+                            _state.col = target.colIdx;
                         }
                         _syncFocus();
                         break;
@@ -1010,16 +1104,70 @@
         }
     }
 
-    // ── Select cycling (native <select> can't be opened programmatically in WebKit)
-    // Returns true if the element was a SELECT and the option was stepped.
-    function _trySelectStep(el, delta) {
-        if (!el || el.tagName !== 'SELECT') return false;
-        const next = Math.max(0, Math.min(el.options.length - 1, el.selectedIndex + delta));
-        if (next !== el.selectedIndex) {
-            el.selectedIndex = next;
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        return true;
+    // ── Custom SELECT picker (WebKit can't open native <select> programmatically)
+    let _selectPickerSource = null;
+
+    function _openSelectPicker(selectEl) {
+        if (!selectEl || selectEl.tagName !== 'SELECT') return;
+
+        const overlay = document.createElement('div');
+        overlay.id = '_gp-select-picker';
+        overlay.className = 'modal-overlay';
+        overlay.style.zIndex = '9999';
+        overlay.addEventListener('mousedown', e => { if (e.target === overlay) _closeSelectPicker(); });
+
+        const box = document.createElement('div');
+        box.style.cssText = [
+            'background:var(--steam-blue)',
+            'border:1px solid var(--steam-focus)',
+            'border-radius:8px',
+            'padding:8px',
+            'min-width:200px',
+            'max-width:360px',
+            'max-height:60vh',
+            'overflow-y:auto',
+            'box-shadow:0 0 20px rgba(102,192,244,0.2)',
+        ].join(';');
+
+        const title = document.createElement('div');
+        title.style.cssText = 'color:var(--muted-text);font-size:0.75rem;padding:4px 8px 8px;border-bottom:1px solid var(--border-color);margin-bottom:6px;';
+        title.textContent = selectEl.dataset.pickerTitle || 'Select an option';
+        box.appendChild(title);
+
+        Array.from(selectEl.options).forEach((opt, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'nav-btn';
+            btn.dataset.modalRow = i;
+            btn.style.cssText = 'width:100%;text-align:left;margin-bottom:4px;justify-content:flex-start;height:auto;padding:8px 12px;';
+            btn.textContent = opt.text;
+            if (i === selectEl.selectedIndex) {
+                btn.style.background = 'var(--steam-focus)';
+                btn.style.color = 'var(--accent-text)';
+            }
+            btn.addEventListener('click', () => {
+                selectEl.selectedIndex = i;
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                _closeSelectPicker();
+            });
+            box.appendChild(btn);
+        });
+
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        _selectPickerSource = selectEl;
+
+        _pushZone('modal');
+        _state.modalRow = Math.max(0, selectEl.selectedIndex);
+        _state.modalCol = 0;
+        _syncFocus();
+    }
+
+    function _closeSelectPicker() {
+        const picker = document.getElementById('_gp-select-picker');
+        if (picker) picker.remove();
+        _selectPickerSource = null;
+        if (_state.zone === 'modal') _popZone();
+        _syncFocus();
     }
 
     // ── Action handlers ───────────────────────────────────────────────────────
@@ -1031,7 +1179,10 @@
                 const mgrid = _modalGrid();
                 if (mgrid.length) {
                     const el = mgrid[_state.modalRow]?.[_state.modalCol];
-                    if (el && !_trySelectStep(el, 1)) el.click();
+                    if (el) {
+                        if (el.tagName === 'SELECT') _openSelectPicker(el);
+                        else el.click();
+                    }
                 }
                 break;
             }
@@ -1080,7 +1231,10 @@
                         if (_state.row === -1) {
                             const items = _libraryToolbarItems();
                             const el = items[_state.col];
-                            if (el && !_trySelectStep(el, 1)) el.click();
+                            if (el) {
+                                if (el.tagName === 'SELECT') _openSelectPicker(el);
+                                else el.click();
+                            }
                         } else {
                             const cards = _libraryCards();
                             const card  = cards[_state.row];
@@ -1136,6 +1290,16 @@
     }
 
     function _closeAnyOpenModal() {
+        // Close custom select picker first
+        if (document.getElementById('_gp-select-picker')) { _closeSelectPicker(); return true; }
+
+        // pd-dialog-overlay (confirm/alert) — cancel it
+        const dlg = document.getElementById('pd-dialog-overlay');
+        if (dlg && _isModalVisible(dlg)) {
+            document.getElementById('pd-btn-cancel')?.click();
+            return true;
+        }
+
         // Try every known close function in priority order.
         // Also handles page-specific modals (bulk edit, tools modals).
         const checks = [
@@ -1157,7 +1321,7 @@
         ];
         for (const [id, fn] of checks) {
             const el = document.getElementById(id);
-            if (el && el.style.display !== 'none') {
+            if (el && _isModalVisible(el)) {
                 if (typeof window[fn] === 'function') window[fn]();
                 else {
                     // Fallback: click the ✕ button inside the modal
@@ -1341,6 +1505,51 @@
         }
     }
 
+    function _handleBack() {
+        // Home page: toggle edit mode
+        if (PAGE === 'home') {
+            if (document.body.classList.contains('edit-mode')) {
+                if (typeof exitEditMode === 'function') exitEditMode();
+            } else {
+                if (typeof enterEditMode === 'function') enterEditMode();
+            }
+        }
+    }
+
+    function _handleStart() {
+        // Act like A when focused on a game card (launch the game)
+        if (!_state.active) return;
+        if (_state.zone === 'content') {
+            switch (PAGE) {
+                case 'home': {
+                    const rows = _homeRows();
+                    const cap  = rows[_state.row]?.items[_state.col];
+                    const appid = cap ? parseInt(cap.dataset.appid) : null;
+                    if (appid) launchGame(appid);
+                    break;
+                }
+                case 'library': {
+                    if (_state.row >= 0) {
+                        const card = _libraryCards()[_state.row];
+                        const appid = card ? parseInt(card.dataset.appid) : null;
+                        if (appid) launchGame(appid);
+                    }
+                    break;
+                }
+                case 'pick': {
+                    const rows = _pickRows();
+                    const row  = rows[_state.row];
+                    if (row?.type === 'results') {
+                        const card  = row.items[_state.col];
+                        const appid = card ? parseInt(card.dataset.appid) : null;
+                        if (appid) launchGame(appid);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     function _handleLB() {
         const idx = _currentPageIdx();
         if (idx > 0) window.location.href = PAGE_URLS[idx - 1];
@@ -1359,6 +1568,8 @@
         [BTN_IDX.b]:     () => _handleB(),
         [BTN_IDX.x]:     () => _handleX(),
         [BTN_IDX.y]:     () => _handleY(),
+        [BTN_IDX.back]:  () => _handleBack(),
+        [BTN_IDX.start]: () => _handleStart(),
         [BTN_IDX.lb]:    () => _handleLB(),
         [BTN_IDX.rb]:    () => _handleRB(),
         [BTN_IDX.up]:    () => _handleUp(),
@@ -1371,7 +1582,7 @@
     const _REPEAT_BTNS = new Set([BTN_IDX.up, BTN_IDX.down, BTN_IDX.left, BTN_IDX.right]);
 
     // Buttons that fire immediately without needing activation first
-    const _IMMEDIATE_BTNS = new Set([BTN_IDX.lb, BTN_IDX.rb]);
+    const _IMMEDIATE_BTNS = new Set([BTN_IDX.lb, BTN_IDX.rb, BTN_IDX.back]);
 
     function _onButton(i, isRepeat) {
         const handler = _BTN_HANDLERS[i];
@@ -1513,6 +1724,31 @@
         }).observe(el, { attributes: true, attributeFilter: ['style'] });
     }
 
+    // Variant of _watchModal for elements shown via CSS class (e.g. pd-dialog-overlay uses .visible)
+    function _watchModalByClass(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        let _wasVisible = el.classList.contains('visible');
+        new MutationObserver(() => {
+            const nowVisible = el.classList.contains('visible');
+            _dbgNote(`modal:${id} class visible=${nowVisible} wasV=${_wasVisible} zone=${_state.zone}`);
+            if (nowVisible === _wasVisible) return;
+            _wasVisible = nowVisible;
+            if (!_state.active) return;
+            if (nowVisible && _state.zone !== 'modal') {
+                if (_state.zone === 'ctx-menu') {
+                    document.querySelectorAll('.ctx-sub-open').forEach(el => el.classList.remove('ctx-sub-open'));
+                    _popZone();
+                }
+                _pushZone('modal');
+                requestAnimationFrame(() => { if (_state.zone === 'modal') _syncFocus(); });
+            } else if (!nowVisible) {
+                if (_state.zone === 'modal') _popZone();
+                _syncFocus();
+            }
+        }).observe(el, { attributes: true, attributeFilter: ['class'] });
+    }
+
     // ── DOM-ready observers (modal elements don't exist until DOMContentLoaded) ─
     document.addEventListener('DOMContentLoaded', () => {
         // Context menu zone cleanup
@@ -1530,6 +1766,9 @@
             });
             _ctxObserver.observe(_ctxMenuEl, { attributes: true, attributeFilter: ['class'] });
         }
+
+        // pd-dialog-overlay (base.html confirm/alert — visibility via .visible class)
+        _watchModalByClass('pd-dialog-overlay');
 
         // Edit / filter modals (base.html — present on every page)
         _watchModal('editModal');
