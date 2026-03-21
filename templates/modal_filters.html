@@ -8,9 +8,9 @@
             <div style="display:flex; align-items:center; gap:10px;">
                 <!-- Mode toggle -->
                 <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; overflow:hidden; font-size:0.8rem;">
-                    <button id="fm-simple-tab" onclick="setFilterMode('simple')"
+                    <button id="fm-simple-tab" onclick="setFilterMode('simple')" data-modal-row="0"
                         style="padding:5px 14px; border:none; cursor:pointer; background:var(--steam-focus); color:#0e1923; font-weight:bold; transition:all 0.15s;">Simple</button>
-                    <button id="fm-advanced-tab" onclick="setFilterMode('advanced')"
+                    <button id="fm-advanced-tab" onclick="setFilterMode('advanced')" data-modal-row="0"
                         style="padding:5px 14px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">Advanced</button>
                 </div>
                 <button onclick="closeFilterModal()" style="background:none;border:none;color:#8f98a0;font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
@@ -26,9 +26,9 @@
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
                 <span style="color:#8f98a0; font-size:0.82rem;">Combine filters with</span>
                 <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; overflow:hidden; font-size:0.8rem;">
-                    <button id="fm-simple-and" onclick="setSimpleLogic('AND')"
+                    <button id="fm-simple-and" onclick="setSimpleLogic('AND')" data-modal-row="1"
                         style="padding:4px 12px; border:none; cursor:pointer; background:var(--steam-focus); color:#0e1923; font-weight:bold; transition:all 0.15s;">AND</button>
-                    <button id="fm-simple-or" onclick="setSimpleLogic('OR')"
+                    <button id="fm-simple-or" onclick="setSimpleLogic('OR')" data-modal-row="1"
                         style="padding:4px 12px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">OR</button>
                 </div>
                 <span id="fm-simple-logic-desc" style="color:#666; font-size:0.78rem; font-style:italic;">All conditions must match</span>
@@ -122,7 +122,7 @@
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="color:#4a6a8a; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;">Quick:</span>
             {% for key, f in builtin_filters.items() if f.where is not none %}
-            <button onclick="applyBuiltinFilter('{{ key }}')"
+            <button onclick="applyBuiltinFilter('{{ key }}')" data-modal-row="2"
                 style="background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:20px; padding:3px 12px; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
                 onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
                 onmouseout="this.style.borderColor='#2a3f55';this.style.color='#8f98a0'">
@@ -133,6 +133,7 @@
         <!-- Saved filters row -->
         <div style="display:flex; gap:8px; align-items:center;">
             <select id="saved-filters-select" class="nav-dropdown" onchange="loadSavedFilterFromModal(this)"
+                    data-modal-row="3"
                     style="flex:1; height:36px; font-size:0.85rem;"
                     title="Load a saved filter">
                 <option value="">Saved filters…</option>
@@ -140,24 +141,24 @@
                 <option value="{{ name | e }}">{{ name }}</option>
                 {% endfor %}
             </select>
-            <button onclick="renameSavedFilterFromModal()" class="nav-btn"
+            <button onclick="renameSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
                     style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
                 ✎ RENAME
             </button>
-            <button onclick="deleteSavedFilterFromModal()" class="nav-btn"
+            <button onclick="deleteSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
                     style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
                 ✕ DELETE
             </button>
-            <button onclick="saveCurrentFilter()" class="nav-btn"
+            <button onclick="saveCurrentFilter()" class="nav-btn" data-modal-row="3"
                     style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
                 ⭐ SAVE CURRENT
             </button>
         </div>
         <!-- Action row -->
         <div style="display:flex; gap:10px;">
-            <button onclick="applyFilters()" class="btn-save" style="flex:2;margin:0;">APPLY FILTERS</button>
-            <button onclick="clearAllFilters()" class="nav-btn" style="flex:1;">CLEAR ALL</button>
-            <button onclick="closeFilterModal()" class="nav-btn" style="flex:1;">CANCEL</button>
+            <button onclick="applyFilters()" class="btn-save" data-modal-row="4" style="flex:2;margin:0;">APPLY FILTERS</button>
+            <button onclick="clearAllFilters()" class="nav-btn" data-modal-row="4" style="flex:1;">CLEAR ALL</button>
+            <button onclick="closeFilterModal()" class="nav-btn" data-modal-row="4" style="flex:1;">CANCEL</button>
         </div>
     </div>
 </div>
@@ -167,6 +168,26 @@
 /* preserve chevron on nav-dropdown hover */
 select.nav-dropdown:hover {
     background-color: #444;
+}
+
+/* Mode tabs and AND/OR toggle: use white outline so it's visible
+   against both the active (steam-focus bg) and inactive states */
+#fm-simple-tab.gamepad-focus,
+#fm-advanced-tab.gamepad-focus,
+#fm-simple-and.gamepad-focus,
+#fm-simple-or.gamepad-focus {
+    outline: 2px solid #ffffff !important;
+    outline-offset: -2px;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+/* Quick filter pills and saved filter row buttons */
+#filterModal button[data-modal-row="2"].gamepad-focus,
+#filterModal button[data-modal-row="3"].gamepad-focus,
+#filterModal select[data-modal-row="3"].gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.4);
 }
 
 .fm-row {
@@ -1541,8 +1562,8 @@ async function saveCurrentFilter() {
             The full database importer has moved to the <strong style="color:white;">Tools</strong> page. It supports choosing tables, mapping any columns, date normalization, and type checking.
         </p>
         <div style="display:flex; gap:10px;">
-            <a href="/tools" class="btn-save" style="flex:2; margin:0; text-align:center; text-decoration:none; display:flex; align-items:center; justify-content:center;">Go to Tools</a>
-            <button onclick="document.getElementById('importModal').style.display='none'" class="nav-btn" style="flex:1;">Cancel</button>
+            <a href="/tools" class="btn-save" data-modal-row="0" style="flex:2; margin:0; text-align:center; text-decoration:none; display:flex; align-items:center; justify-content:center;">Go to Tools</a>
+            <button onclick="document.getElementById('importModal').style.display='none'" class="nav-btn" data-modal-row="0" style="flex:1;">Cancel</button>
         </div>
     </div>
 </div>

@@ -358,38 +358,36 @@
         });
     }
 
-    // Modal items: buttons in the currently visible modal
+    // Modal items: IDs of all modal overlays, checked in priority order
     const _MODAL_IDS = [
         'editModal', 'filterModal',
         'backup-modal', 'bg-modal', 'import-modal',
         'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
     ];
-    function _modalItems() {
+
+    // Returns buttons grouped into rows. If any element has data-modal-row, groups
+    // by that attribute (sorted by row number). Otherwise returns all as a single row.
+    // Includes buttons, nav/save links, and tagged selects. Groups by data-modal-row if present.
+    function _modalGrid() {
         for (const id of _MODAL_IDS) {
             const el = document.getElementById(id);
             if (el && el.style.display !== 'none' && el.style.display !== '') {
-                return [...el.querySelectorAll('button:not(:disabled), a.nav-btn')]
-                    .filter(e => e.offsetParent !== null && !e.disabled
-                             && e.textContent.trim() !== '✕' && e.textContent.trim() !== '×');
+                const candidates = [...el.querySelectorAll(
+                    'button:not(:disabled), a.nav-btn, a.btn-save, select[data-modal-row]'
+                )].filter(e => e.offsetParent !== null && !e.disabled
+                         && e.textContent.trim() !== '✕' && e.textContent.trim() !== '×');
+                const tagged = candidates.filter(e => e.dataset.modalRow !== undefined);
+                if (!tagged.length) return candidates.length ? [candidates] : [];
+                const map = new Map();
+                for (const e of tagged) {
+                    const r = parseInt(e.dataset.modalRow);
+                    if (!map.has(r)) map.set(r, []);
+                    map.get(r).push(e);
+                }
+                return [...map.keys()].sort((a, b) => a - b).map(r => map.get(r));
             }
         }
         return [];
-    }
-
-    // Returns buttons grouped into rows. If any button has data-modal-row, group by
-    // that attribute (sorted by row number). Otherwise returns all as a single row.
-    function _modalGrid() {
-        const items = _modalItems();
-        if (!items.length) return [];
-        const tagged = items.filter(e => e.dataset.modalRow !== undefined);
-        if (!tagged.length) return [items];
-        const map = new Map();
-        for (const e of tagged) {
-            const r = parseInt(e.dataset.modalRow);
-            if (!map.has(r)) map.set(r, []);
-            map.get(r).push(e);
-        }
-        return [...map.keys()].sort((a, b) => a - b).map(r => map.get(r));
     }
 
     // ── Get the currently focused element ────────────────────────────────────
