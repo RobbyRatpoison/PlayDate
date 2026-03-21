@@ -819,10 +819,10 @@
 
             case 'modal': {
                 const mgrid = _modalGrid();
-                if (mgrid.length && _state.modalCol > 0) {
-                    _state.modalCol--;
-                    _syncFocus();
-                }
+                if (!mgrid.length) break;
+                const el = mgrid[_state.modalRow]?.[_state.modalCol];
+                if (_trySelectStep(el, -1)) break;
+                if (_state.modalCol > 0) { _state.modalCol--; _syncFocus(); }
                 break;
             }
 
@@ -865,8 +865,9 @@
 
                     case 'library': {
                         if (_state.row === -1) {
-                            // Toolbar: move left between toolbar items
-                            if (_state.col > 0) _state.col--;
+                            // Toolbar: cycle select options, or move left between items
+                            const tbLeft = _libraryToolbarItems();
+                            if (!_trySelectStep(tbLeft[_state.col], -1) && _state.col > 0) _state.col--;
                         } else {
                             // Grid: no cross-row wrap
                             if (_state.row > 0) _state.row--;
@@ -912,13 +913,11 @@
 
             case 'modal': {
                 const mgrid = _modalGrid();
-                if (mgrid.length) {
-                    const row = mgrid[_state.modalRow];
-                    if (_state.modalCol < row.length - 1) {
-                        _state.modalCol++;
-                        _syncFocus();
-                    }
-                }
+                if (!mgrid.length) break;
+                const el = mgrid[_state.modalRow]?.[_state.modalCol];
+                if (_trySelectStep(el, 1)) break;
+                const row = mgrid[_state.modalRow];
+                if (_state.modalCol < row.length - 1) { _state.modalCol++; _syncFocus(); }
                 break;
             }
 
@@ -966,9 +965,9 @@
 
                     case 'library': {
                         if (_state.row === -1) {
-                            // Toolbar: move right between toolbar items
+                            // Toolbar: cycle select options, or move right between items
                             const tbItems = _libraryToolbarItems();
-                            if (_state.col < tbItems.length - 1) _state.col++;
+                            if (!_trySelectStep(tbItems[_state.col], 1) && _state.col < tbItems.length - 1) _state.col++;
                         } else {
                             const cards = _libraryCards();
                             if (_state.row < cards.length - 1) _state.row++;
@@ -1010,6 +1009,18 @@
         }
     }
 
+    // ── Select cycling (native <select> can't be opened programmatically in WebKit)
+    // Returns true if the element was a SELECT and the option was stepped.
+    function _trySelectStep(el, delta) {
+        if (!el || el.tagName !== 'SELECT') return false;
+        const next = Math.max(0, Math.min(el.options.length - 1, el.selectedIndex + delta));
+        if (next !== el.selectedIndex) {
+            el.selectedIndex = next;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return true;
+    }
+
     // ── Action handlers ───────────────────────────────────────────────────────
 
     function _handleA() {
@@ -1018,7 +1029,8 @@
             case 'modal': {
                 const mgrid = _modalGrid();
                 if (mgrid.length) {
-                    mgrid[_state.modalRow]?.[_state.modalCol]?.click();
+                    const el = mgrid[_state.modalRow]?.[_state.modalCol];
+                    if (el && !_trySelectStep(el, 1)) el.click();
                 }
                 break;
             }
@@ -1067,9 +1079,7 @@
                         if (_state.row === -1) {
                             const items = _libraryToolbarItems();
                             const el = items[_state.col];
-                            if (el) {
-                                el.click();
-                            }
+                            if (el && !_trySelectStep(el, 1)) el.click();
                         } else {
                             const cards = _libraryCards();
                             const card  = cards[_state.row];
