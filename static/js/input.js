@@ -580,28 +580,26 @@
 
                     case 'home': {
                         const rows = _homeRows();
-                        if (_state.row === 0) {
+                        let prev = _state.row - 1;
+                        // Skip the sibling side of the same split row
+                        if (prev >= 0) {
+                            const curEl    = rows[_state.row]?.el;
+                            const prevEl   = rows[prev]?.el;
+                            const curSplit  = curEl?.closest?.('.shelf-split-row');
+                            const prevSplit = prevEl?.closest?.('.shelf-split-row');
+                            if (curSplit && prevSplit && curSplit === prevSplit) prev--;
+                        }
+                        // Skip empty rows (don't go below 0)
+                        while (prev > 0 && rows[prev]?.items.length === 0) prev--;
+                        if (prev >= 0 && rows[prev]?.items.length > 0) {
+                            _state.row = prev;
+                            _state.col = Math.min(_state.savedCol, rows[prev].items.length - 1);
+                        } else {
+                            // At top row, or sibling-skip landed before row 0 → go to nav
                             _state.zone = 'nav';
                             const navItems = _navItems();
                             const activeLink = document.querySelector('.nav-links a.active');
                             _state.col = activeLink ? navItems.indexOf(activeLink) : 0;
-                        } else {
-                            let prev = _state.row - 1;
-                            // Skip the sibling side of the same split row
-                            if (prev >= 0) {
-                                const curEl   = rows[_state.row]?.el;
-                                const prevEl  = rows[prev]?.el;
-                                const curSplit  = curEl?.closest?.('.shelf-split-row');
-                                const prevSplit = prevEl?.closest?.('.shelf-split-row');
-                                if (curSplit && prevSplit && curSplit === prevSplit) prev--;
-                            }
-                            // Skip empty rows
-                            while (prev > 0 && rows[prev]?.items.length === 0) prev--;
-                            if (prev >= 0) {
-                                _state.row = prev;
-                                const row = rows[_state.row];
-                                if (row) _state.col = Math.min(_state.savedCol, row.items.length - 1);
-                            }
                         }
                         _syncFocus();
                         break;
@@ -1025,11 +1023,7 @@
                             const items = _libraryToolbarItems();
                             const el = items[_state.col];
                             if (el) {
-                                if (el.tagName === 'SELECT') {
-                                    el.focus();
-                                } else {
-                                    el.click();
-                                }
+                                el.click();
                             }
                         } else {
                             const cards = _libraryCards();
@@ -1450,18 +1444,6 @@
         }).observe(el, { attributes: true, attributeFilter: ['style'] });
     }
 
-    // Page-specific modals — just restore focus on close, no zone push needed
-    // since these are opened by button clicks that don't push zone
-    function _watchModalClose(id) {
-        const el = document.getElementById(id);
-        if (!el) return;
-        new MutationObserver(() => {
-            if (el.style.display === 'none' && _state.active) {
-                _syncFocus();
-            }
-        }).observe(el, { attributes: true, attributeFilter: ['style'] });
-    }
-
     // ── DOM-ready observers (modal elements don't exist until DOMContentLoaded) ─
     document.addEventListener('DOMContentLoaded', () => {
         // Context menu zone cleanup
@@ -1484,10 +1466,10 @@
         _watchModal('editModal');
         _watchModal('filterModal');
 
-        // Library bulk modals
-        _watchModalClose('bulk-edit-modal');
-        _watchModalClose('bulk-rescrape-modal');
-        _watchModalClose('bulk-delete-modal');
+        // Library bulk modals — full zone push/pop so focus enters and returns correctly
+        _watchModal('bulk-edit-modal');
+        _watchModal('bulk-rescrape-modal');
+        _watchModal('bulk-delete-modal');
 
         // Tools modals — full zone push/pop so focus enters and returns correctly
         _watchModal('backup-modal');
