@@ -819,10 +819,10 @@
 
             case 'modal': {
                 const mgrid = _modalGrid();
-                if (!mgrid.length) break;
-                const el = mgrid[_state.modalRow]?.[_state.modalCol];
-                if (_trySelectStep(el, -1)) break;
-                if (_state.modalCol > 0) { _state.modalCol--; _syncFocus(); }
+                if (mgrid.length && _state.modalCol > 0) {
+                    _state.modalCol--;
+                    _syncFocus();
+                }
                 break;
             }
 
@@ -865,9 +865,8 @@
 
                     case 'library': {
                         if (_state.row === -1) {
-                            // Toolbar: cycle select options, or move left between items
-                            const tbLeft = _libraryToolbarItems();
-                            if (!_trySelectStep(tbLeft[_state.col], -1) && _state.col > 0) _state.col--;
+                            // Toolbar: move left between toolbar items
+                            if (_state.col > 0) _state.col--;
                         } else {
                             // Grid: no cross-row wrap
                             if (_state.row > 0) _state.row--;
@@ -913,11 +912,13 @@
 
             case 'modal': {
                 const mgrid = _modalGrid();
-                if (!mgrid.length) break;
-                const el = mgrid[_state.modalRow]?.[_state.modalCol];
-                if (_trySelectStep(el, 1)) break;
-                const row = mgrid[_state.modalRow];
-                if (_state.modalCol < row.length - 1) { _state.modalCol++; _syncFocus(); }
+                if (mgrid.length) {
+                    const row = mgrid[_state.modalRow];
+                    if (_state.modalCol < row.length - 1) {
+                        _state.modalCol++;
+                        _syncFocus();
+                    }
+                }
                 break;
             }
 
@@ -965,9 +966,9 @@
 
                     case 'library': {
                         if (_state.row === -1) {
-                            // Toolbar: cycle select options, or move right between items
+                            // Toolbar: move right between toolbar items
                             const tbItems = _libraryToolbarItems();
-                            if (!_trySelectStep(tbItems[_state.col], 1) && _state.col < tbItems.length - 1) _state.col++;
+                            if (_state.col < tbItems.length - 1) _state.col++;
                         } else {
                             const cards = _libraryCards();
                             if (_state.row < cards.length - 1) _state.row++;
