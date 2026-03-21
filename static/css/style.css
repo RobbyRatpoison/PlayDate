@@ -367,6 +367,21 @@ input[type="range"].gamepad-focus {
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.4);
 }
 
+/* Home page edit mode — shelf mini-buttons and add-shelf button */
+.shelf-edit-mini-btn.gamepad-focus {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+    color: var(--steam-focus) !important;
+    border-color: var(--steam-focus) !important;
+}
+
+.add-shelf-btn.gamepad-focus {
+    border-color: var(--steam-focus) !important;
+    color: var(--steam-focus) !important;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
 /* Blacklist remove buttons */
 .bl-remove-btn.gamepad-focus {
     outline: 2px solid var(--steam-focus);

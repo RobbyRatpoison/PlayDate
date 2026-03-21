@@ -211,6 +211,11 @@
     // ── Focusable item queries ────────────────────────────────────────────────
 
     function _navItems() {
+        // In edit mode the regular nav bar is hidden; use the edit toolbar instead
+        if (document.body.classList.contains('edit-mode')) {
+            return [...document.querySelectorAll('.edit-toolbar .nav-btn')]
+                .filter(el => el.offsetParent !== null && !el.disabled);
+        }
         return [
             ...document.querySelectorAll('.nav-links a, .nav-links button'),
             document.getElementById('fullscreen-button'),
@@ -218,26 +223,43 @@
         ].filter(Boolean);
     }
 
-    // Home: returns array of { el, items[] } per navigable row
-    // Split rows are expanded to their individual .shelf-split-side children
+    // Home: returns array of { el, items[] } per navigable row.
+    // In normal mode: capsule wraps per shelf. In edit mode: edit-bar buttons per shelf.
+    // Split rows are always expanded to their individual .shelf-split-side children.
     function _homeRows() {
         const container = document.getElementById('shelf-container');
         if (!container) return [];
+        const editMode = document.body.classList.contains('edit-mode');
         const rows = [];
+
         for (const child of container.children) {
             if (child.classList.contains('add-shelf-btn')) continue;
             if (child.classList.contains('shelf-split-row')) {
-                // Each side becomes its own row
                 for (const side of child.querySelectorAll('.shelf-split-side')) {
-                    const items = _visibleCapsules(side);
+                    const items = editMode ? _editBarButtons(side) : _visibleCapsules(side);
                     if (items.length > 0) rows.push({ el: side, items });
                 }
             } else {
-                const items = _visibleCapsules(child);
+                const items = editMode ? _editBarButtons(child) : _visibleCapsules(child);
                 if (items.length > 0) rows.push({ el: child, items });
             }
         }
+
+        // In edit mode, append the "+ ADD SHELF" button as a final virtual row
+        if (editMode) {
+            const addBtn = container.querySelector('.add-shelf-btn');
+            if (addBtn && addBtn.offsetParent !== null) {
+                rows.push({ el: addBtn, items: [addBtn] });
+            }
+        }
         return rows;
+    }
+
+    function _editBarButtons(shelfEl) {
+        const bar = shelfEl.querySelector('.shelf-edit-bar');
+        if (!bar) return [];
+        return [...bar.querySelectorAll('button.shelf-edit-mini-btn')]
+            .filter(el => el.offsetParent !== null && !el.disabled);
     }
 
     function _visibleCapsules(el) {
@@ -363,6 +385,8 @@
         'editModal', 'filterModal',
         'backup-modal', 'bg-modal', 'import-modal',
         'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
+        // Home page edit mode panels (use style.display)
+        'shelf-edit-modal', 'dedup-panel', 'split-picker',
     ];
 
     // Returns buttons grouped into rows. If any element has data-modal-row, groups
@@ -578,9 +602,12 @@
 
                     case 'home': {
                         const rows = _homeRows();
+                        const editMode = document.body.classList.contains('edit-mode');
                         let prev = _state.row - 1;
-                        // Skip the sibling side of the same split row
-                        if (prev >= 0) {
+                        // In normal mode, skip the sibling side of the same split row
+                        // (both sides are the same visual row). In edit mode each side
+                        // has its own edit bar so we navigate them individually.
+                        if (!editMode && prev >= 0) {
                             const curEl    = rows[_state.row]?.el;
                             const prevEl   = rows[prev]?.el;
                             const curSplit  = curEl?.closest?.('.shelf-split-row');
@@ -593,11 +620,11 @@
                             _state.row = prev;
                             _state.col = Math.min(_state.savedCol, rows[prev].items.length - 1);
                         } else {
-                            // At top row, or sibling-skip landed before row 0 → go to nav
+                            // At top row → go to nav (edit toolbar in edit mode)
                             _state.zone = 'nav';
                             const navItems = _navItems();
                             const activeLink = document.querySelector('.nav-links a.active');
-                            _state.col = activeLink ? navItems.indexOf(activeLink) : 0;
+                            _state.col = editMode ? 0 : (activeLink ? navItems.indexOf(activeLink) : 0);
                         }
                         _syncFocus();
                         break;
@@ -703,10 +730,11 @@
 
                     case 'home': {
                         const rows = _homeRows();
+                        const editMode = document.body.classList.contains('edit-mode');
                         let next = _state.row + 1;
-                        // If the current row and next row share the same .shelf-split-row
-                        // parent, skip the sibling side — treat the whole split as one step.
-                        if (next < rows.length) {
+                        // In normal mode, skip the sibling side of the same split row.
+                        // In edit mode each side has its own edit bar.
+                        if (!editMode && next < rows.length) {
                             const curEl  = rows[_state.row]?.el;
                             const nxtEl  = rows[next]?.el;
                             const curSplit = curEl?.closest?.('.shelf-split-row');
@@ -1089,6 +1117,10 @@
             ['backup-modal',  'closeBackupModal'],
             ['bg-modal',      'closeBgModal'],
             ['import-modal',  'closeImportModal'],
+            // home page edit mode panels
+            ['shelf-edit-modal', 'semClose'],
+            ['dedup-panel',      'closeDedupPanel'],
+            ['split-picker',     'closeSplitPicker'],
         ];
         for (const [id, fn] of checks) {
             const el = document.getElementById(id);
@@ -1140,8 +1172,14 @@
             return;
         }
 
-        // Close any other open modal (bulk edit, tools modals)
+        // Close any other open modal (bulk edit, tools modals, edit-mode panels)
         if (_closeAnyOpenModal()) return;
+
+        // Exit home page edit mode
+        if (PAGE === 'home' && document.body.classList.contains('edit-mode')) {
+            if (typeof exitEditMode === 'function') exitEditMode();
+            return;
+        }
 
         if (typeof isFullscreen === 'function' && isFullscreen()) {
             if (typeof exitFullscreen === 'function') exitFullscreen();
@@ -1473,6 +1511,11 @@
         _watchModal('backup-modal');
         _watchModal('bg-modal');
         _watchModal('import-modal');
+
+        // Home page edit mode panels
+        _watchModal('shelf-edit-modal');
+        _watchModal('dedup-panel');
+        _watchModal('split-picker');
     });
 
 })();

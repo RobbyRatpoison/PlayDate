@@ -283,8 +283,8 @@
         </div>
 
         <div style="display:flex; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border-color);">
-            <button class="btn-save" style="flex:2; margin:0;" onclick="semSave()">Apply</button>
-            <button class="nav-btn" style="flex:1; height:auto; padding:10px;" onclick="semClose()">Cancel</button>
+            <button class="btn-save" data-modal-row="0" style="flex:2; margin:0;" onclick="semSave()">Apply</button>
+            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:10px;" onclick="semClose()">Cancel</button>
         </div>
     </div>
 </div>
@@ -405,7 +405,7 @@
         <ul id="split-picker-pos-list"></ul>
         <button class="shelf-edit-mini-btn" style="margin-top:4px;" onclick="openSplitPicker(_splitPickerFor)">← Back</button>
     </div>
-    <button class="nav-btn" style="width:100%;margin-top:8px;" onclick="closeSplitPicker()">Cancel</button>
+    <button class="nav-btn" data-modal-row="0" style="width:100%;margin-top:8px;" onclick="closeSplitPicker()">Cancel</button>
 </div>
 <div id="split-picker-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:599;" onclick="closeSplitPicker()"></div>
 
@@ -415,8 +415,8 @@
     <p>Drag to set which shelves claim games first when the same game qualifies for multiple shelves. Toggle the switch to exclude a shelf from this logic entirely.</p>
     <ul id="dedup-list"></ul>
     <div style="display:flex;gap:8px;">
-        <button class="nav-btn" style="flex:1;" onclick="saveDedupOrder()">Apply</button>
-        <button class="nav-btn" style="flex:1;" onclick="closeDedupPanel()">Cancel</button>
+        <button class="nav-btn" data-modal-row="0" style="flex:1;" onclick="saveDedupOrder()">Apply</button>
+        <button class="nav-btn" data-modal-row="0" style="flex:1;" onclick="closeDedupPanel()">Cancel</button>
     </div>
 </div>
 <div id="dedup-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:599;" onclick="closeDedupPanel()"></div>
@@ -735,11 +735,15 @@ function semOpen(sid) {
         `<option value="${k}"${shelf.sort_col===k?' selected':''}>${v}</option>`).join('');
     document.getElementById('sem-sort-dir').value = shelf.sort_dir === 'ASC' ? 'ASC' : 'DESC';
 
-    document.getElementById('shelf-edit-modal').classList.add('open');
+    const semEl = document.getElementById('shelf-edit-modal');
+    semEl.classList.add('open');
+    semEl.style.display = 'flex'; // let _watchModal detect the open
 }
 
 function semClose() {
-    document.getElementById('shelf-edit-modal').classList.remove('open');
+    const semEl = document.getElementById('shelf-edit-modal');
+    semEl.classList.remove('open');
+    semEl.style.display = 'none'; // let _watchModal detect the close
     _semShelfId = null;
 }
 
