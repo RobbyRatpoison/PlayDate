@@ -111,20 +111,6 @@ jobs:
           name: "PlayDate ${{ github.ref_name }}"
           draft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: |
             installer/PlayDate-Setup.exe
-          body: |
-            ## PlayDate ${{ github.ref_name }}
-
-            ### Installation
-            1. Download **PlayDate-Setup.exe** below
-            2. Run it and follow the installer wizard
-            3. PlayDate will appear in your Start Menu
-
-            ### Requirements
-            - Windows 10 or 11 (64-bit)
-            - Microsoft Edge WebView2 Runtime (already installed on Windows 10/11)
-
-            ---
-            *Built automatically from tag `${{ github.ref_name }}`*
