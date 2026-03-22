@@ -79,6 +79,17 @@ hiddenimports = [
     'requests',
     'bs4',
     'rapidfuzz',
+
+    # Selenium — lazy-imported in scrape_blaeo_games(), so PyInstaller misses it
+    'selenium',
+    'selenium.webdriver',
+    'selenium.webdriver.chrome',
+    'selenium.webdriver.chrome.options',
+    'selenium.webdriver.common.by',
+    'selenium.webdriver.support.ui',
+    'selenium.webdriver.support.expected_conditions',
+    'webdriver_manager',
+    'webdriver_manager.chrome',
 ]
 
 hiddenimports += collect_submodules('webview')
@@ -99,8 +110,6 @@ a = Analysis(
         # Exclude heavy packages not needed at runtime
         'matplotlib',
         'numpy',
-        'selenium',
-        'webdriver_manager',
         'boto3',
         'botocore',
         'gi',               # Linux GTK — not needed on Windows

@@ -4,11 +4,6 @@ import re
 import requests
 import time
 from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 from images import download_capsule
 from datetime import datetime, timedelta
 from config import load_config
@@ -416,6 +411,12 @@ def fetch_tag_data(appid):
     return None
 
 def scrape_blaeo_games():
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.chrome.options import Options
+    from selenium.common.exceptions import WebDriverException
     config = load_config()
     # Ensure we use the URL from config, or build it if missing
     blaeo_url = config.get('blaeo_url')
@@ -425,7 +426,13 @@ def scrape_blaeo_games():
 
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-    driver = webdriver.Chrome(options=chrome_options)
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+    except WebDriverException:
+        raise RuntimeError(
+            "BLAEO sync requires Google Chrome to be installed. "
+            "Please install Chrome from https://www.google.com/chrome and try again."
+        )
 
     # BLAEO classes are lowercase. 'game-never-played' becomes 'Never-played'
     # after your .replace().capitalize() logic.
