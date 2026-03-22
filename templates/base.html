@@ -727,6 +727,7 @@
 
         let _populating = false;
         let _populatePoller = null;
+        const _configExists = {{ config_exists | tojson }};
 
         function _resetPopulateBtn() {
             const btn = document.getElementById('add-button');
@@ -786,7 +787,8 @@
             }, 2000);
         }
 
-        // On every page load, check if populate is still running server-side
+        // On every page load, check if populate is still running server-side.
+        // Also auto-start populate once per session if config is set.
         (async () => {
             try {
                 const res = await fetch('/api/populate-status');
@@ -796,6 +798,14 @@
                     const btn = document.getElementById('add-button');
                     btn.innerText = "STOP POPULATING";
                     btn.style.borderColor = "#a32a2a";
+                    _startPopulatePoller();
+                } else if (_configExists && !sessionStorage.getItem('_populateTriggered')) {
+                    sessionStorage.setItem('_populateTriggered', '1');
+                    _populating = true;
+                    const btn = document.getElementById('add-button');
+                    btn.innerText = "STOP POPULATING";
+                    btn.style.borderColor = "#a32a2a";
+                    fetch('/add-new').catch(() => {});
                     _startPopulatePoller();
                 }
             } catch(e) {}
