@@ -62,9 +62,18 @@ def create_app(template_folder=None, static_folder=None):
     @app.context_processor
     def inject_globals():
         from config import BUILTIN_FILTERS, load_theme
+        from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
         bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
         ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
-        return dict(background_ts=ts, builtin_filters=BUILTIN_FILTERS, theme_vars=load_theme())
+        return dict(
+            background_ts=ts,
+            builtin_filters=BUILTIN_FILTERS,
+            theme_vars=load_theme(),
+            unique_tags=get_all_unique_tags(),
+            unique_groups=get_all_unique_groups(),
+            unique_genres=get_all_unique_genres(),
+            unique_categories=get_all_unique_categories(),
+        )
 
     # ── Cancellation state for populate ──────────────────────────────────────
     _populate_cancel  = threading.Event()
@@ -407,6 +416,9 @@ def create_app(template_folder=None, static_folder=None):
                 "developers":             store_data.get('developers', ''),
                 "publishers":             store_data.get('publishers', ''),
                 "release_date":           store_data.get('release_date', ''),
+                "genres":                 store_data.get('genres', ''),
+                "categories":             store_data.get('categories', ''),
+                "is_free":                store_data.get('is_free', 0),
                 "review_score":           review_data.get('review_score', ''),
                 "review_percentage":      review_data.get('review_percentage', ''),
                 "weighted_percentage":    review_data.get('weighted_percentage', ''),

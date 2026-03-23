@@ -204,7 +204,28 @@ def get_all_unique_tags():
     all_tags = set()
     for row in rows:
         if row['tags']:
-            # Split by comma, strip whitespace, and add to set
             parts = [g.strip() for g in row['tags'].split(',') if g.strip()]
             all_tags.update(parts)
     return sorted(list(all_tags))
+
+def get_all_unique_genres():
+    db = get_db()
+    rows = db.execute("SELECT genres FROM games WHERE genres IS NOT NULL").fetchall()
+    db.close()
+    all_genres = set()
+    for row in rows:
+        if row['genres']:
+            parts = [g.strip() for g in row['genres'].split(',') if g.strip()]
+            all_genres.update(parts)
+    return sorted(list(all_genres))
+
+def get_all_unique_categories():
+    db = get_db()
+    rows = db.execute("SELECT categories FROM games WHERE categories IS NOT NULL").fetchall()
+    db.close()
+    all_categories = set()
+    for row in rows:
+        if row['categories']:
+            parts = [c.strip() for c in row['categories'].split(',') if c.strip()]
+            all_categories.update(parts)
+    return sorted(list(all_categories))

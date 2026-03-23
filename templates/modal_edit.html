@@ -137,7 +137,7 @@
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; column-gap: 20px; row-gap: 0; align-items: start;">
 
-                <!-- LEFT COLUMN: Title, Dev, Pub, Release Date, Tags -->
+                <!-- LEFT COLUMN: Title, Dev, Pub, Release Date + Free to Play, Groups, Tags -->
                 <div>
                     <label>Game Title</label>
                     <input type="text" name="name" id="edit-name">
@@ -148,14 +148,30 @@
                     <label>Publishers</label>
                     <input type="text" name="publishers" id="edit-pub">
 
-                    <label>Release Date</label>
-                    <input type="text" name="release_date" id="edit-rel" placeholder="YYYY-MM-DD">
+                    <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px;">
+                        <div>
+                            <label>Release Date</label>
+                            <input type="text" name="release_date" id="edit-rel" placeholder="YYYY-MM-DD">
+                        </div>
+                        <div>
+                            <label>Free to Play</label>
+                            <select name="is_free" id="edit-is-free">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                    </div>
 
-                    <label>Tags</label>
-                    <textarea name="tags" id="edit-tags" rows="4" style="resize: none;"></textarea>
+                    <label style="margin-top: 8px;">Groups</label>
+                    <div class="pill-input-box" id="edit-groups-box" style="min-height: 38px;"></div>
+                    <input type="hidden" name="groups" id="edit-groups">
+
+                    <label style="margin-top: 8px;">Tags</label>
+                    <div class="pill-input-box" id="edit-tags-box" style="min-height: 120px;"></div>
+                    <input type="hidden" name="tags" id="edit-tags">
                 </div>
 
-                <!-- MIDDLE COLUMN: Status, dates, playtime, achievements, review scores -->
+                <!-- MIDDLE COLUMN: Status, Installed, dates, playtime, achievements, reviews -->
                 <div>
                     <label>Completion Status</label>
                     <select name="completion_status" id="edit-status">
@@ -164,6 +180,12 @@
                         <option value="Beaten">Beaten</option>
                         <option value="Completed">Completed</option>
                         <option value="Won't Play">Won't Play</option>
+                    </select>
+
+                    <label>Installed</label>
+                    <select name="installed" id="edit-installed">
+                        <option value="0">No</option>
+                        <option value="1">Yes</option>
                     </select>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -177,19 +199,8 @@
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>
-                            <label>Playtime (Mins)</label>
-                            <input type="number" name="playtime_forever" id="edit-playtime">
-                        </div>
-                        <div>
-                            <label>Installed</label>
-                            <select name="installed" id="edit-installed">
-                                <option value="0">No</option>
-                                <option value="1">Yes</option>
-                            </select>
-                        </div>
-                    </div>
+                    <label>Playtime (Mins)</label>
+                    <input type="number" name="playtime_forever" id="edit-playtime">
 
                     <label>Achievements</label>
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -197,6 +208,9 @@
                         <span>/</span>
                         <div style="flex: 1;"><input type="number" name="total_achievements" id="edit-total-ach" placeholder="Total"></div>
                     </div>
+
+                    <label style="margin-top: 8px;">Review Score</label>
+                    <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive">
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
                         <div>
@@ -238,16 +252,18 @@
                     </div>
                 </div>
 
-                <!-- SPAN ROW (cols 1–2): Groups + Review Score, then artwork URL -->
+                <!-- SPAN ROW (cols 1–2): Genres + Categories, then artwork URL -->
                 <div style="grid-column: span 2; display: flex; flex-direction: column; gap: 0; padding-top: 4px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 0;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div>
-                            <label>Groups</label>
-                            <input type="text" name="groups" id="edit-groups" placeholder="Comma-separated groups">
+                            <label>Genres</label>
+                            <div class="pill-input-box" id="edit-genres-box" style="min-height: 60px;"></div>
+                            <input type="hidden" name="genres" id="edit-genres">
                         </div>
                         <div>
-                            <label>Review Score</label>
-                            <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive">
+                            <label>Categories</label>
+                            <div class="pill-input-box" id="edit-categories-box" style="min-height: 60px;"></div>
+                            <input type="hidden" name="categories" id="edit-categories">
                         </div>
                     </div>
 
@@ -277,7 +293,8 @@
                         </div>
                         <div id="art-status" style="font-size:0.75rem; margin-top:5px; min-height:1rem;"></div>
                     </div>
-                </div>            </div>
+                </div>
+            </div>
 
             <div style="display: flex; gap: 15px; margin-top: 20px; border-top: 1px solid #2a475e; padding-top: 15px;">
                 <button type="submit" class="btn-save" data-modal-row="2" style="flex: 2; margin: 0;">SAVE CHANGES</button>
@@ -290,9 +307,194 @@
 <style>
     #meta-btn { color: var(--steam-focus); background: transparent; }
     #meta-btn:hover { background: var(--steam-focus) !important; color: #1b2838 !important; }
+
+    .pill-input-box {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        align-items: center;
+        min-height: 38px;
+        padding: 5px 8px;
+        background: #0e1923;
+        border: 1px solid #2a3f55;
+        border-radius: 4px;
+        cursor: text;
+        box-sizing: border-box;
+        width: 100%;
+    }
+    .pill-input-box:focus-within { border-color: var(--steam-focus); }
+    .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #1a3a52;
+        border: 1px solid #2a5a7a;
+        color: #c2d4e0;
+        border-radius: 3px;
+        padding: 2px 6px;
+        font-size: 0.78rem;
+        white-space: nowrap;
+    }
+    .pill button {
+        background: none;
+        border: none;
+        color: #8f98a0;
+        cursor: pointer;
+        font-size: 0.9rem;
+        line-height: 1;
+        padding: 0;
+        display: flex;
+        align-items: center;
+    }
+    .pill button:hover { color: #ff6b6b; }
+    .pill-text-input {
+        border: none;
+        outline: none;
+        background: transparent;
+        color: #c2c8cc;
+        font-size: 0.85rem;
+        min-width: 80px;
+        flex: 1;
+        padding: 2px 0;
+    }
+    .pill-suggestions {
+        position: absolute;
+        z-index: 9999;
+        background: #0e1923;
+        border: 1px solid var(--steam-focus);
+        border-radius: 4px;
+        max-height: 160px;
+        overflow-y: auto;
+        min-width: 180px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+    .pill-suggestion-item {
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 0.82rem;
+        color: #c2c8cc;
+    }
+    .pill-suggestion-item:hover, .pill-suggestion-item.active { background: #1a3a52; color: #fff; }
 </style>
 
 <script>
+    // ── Pill input widget ────────────────────────────────────────────────────
+    const PILL_SUGGESTIONS = {
+        'edit-tags':       {{ unique_tags       | tojson if unique_tags       is defined else '[]' }},
+        'edit-genres':     {{ unique_genres     | tojson if unique_genres     is defined else '[]' }},
+        'edit-categories': {{ unique_categories | tojson if unique_categories is defined else '[]' }},
+        'edit-groups':     {{ unique_groups     | tojson if unique_groups     is defined else '[]' }},
+    };
+
+    let _activeSuggestionsEl = null;
+
+    function _pillValues(hiddenId) {
+        const h = document.getElementById(hiddenId);
+        return h && h.value ? h.value.split(',').map(v => v.trim()).filter(Boolean) : [];
+    }
+
+    function _pillSync(hiddenId, values) {
+        const h = document.getElementById(hiddenId);
+        if (h) h.value = values.join(',');
+    }
+
+    function _pillRender(hiddenId, boxId) {
+        const box = document.getElementById(boxId);
+        if (!box) return;
+        const values = _pillValues(hiddenId);
+        const existingInput = box.querySelector('.pill-text-input');
+        const savedVal = existingInput ? existingInput.value : '';
+        box.innerHTML = '';
+        values.forEach(v => {
+            const pill = document.createElement('span');
+            pill.className = 'pill';
+            const label = document.createTextNode(v + ' ');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = '×';
+            btn.onclick = () => {
+                const ti = box.querySelector('.pill-text-input');
+                if (ti) ti.value = '';
+                const cur = _pillValues(hiddenId).filter(x => x !== v);
+                _pillSync(hiddenId, cur);
+                _pillRender(hiddenId, boxId);
+                box.querySelector('.pill-text-input')?.focus();
+            };
+            pill.appendChild(label);
+            pill.appendChild(btn);
+            box.appendChild(pill);
+        });
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'pill-text-input';
+        input.value = savedVal;
+        input.autocomplete = 'off';
+        let _activeIdx = -1;
+        input.addEventListener('keydown', e => {
+            const dropdown = _activeSuggestionsEl;
+            const items = dropdown ? dropdown.querySelectorAll('.pill-suggestion-item') : [];
+            if (e.key === 'ArrowDown') { e.preventDefault(); _activeIdx = Math.min(_activeIdx + 1, items.length - 1); items.forEach((el, i) => el.classList.toggle('active', i === _activeIdx)); return; }
+            if (e.key === 'ArrowUp')   { e.preventDefault(); _activeIdx = Math.max(_activeIdx - 1, 0); items.forEach((el, i) => el.classList.toggle('active', i === _activeIdx)); return; }
+            if ((e.key === 'Enter' || e.key === ',') && dropdown && _activeIdx >= 0) { e.preventDefault(); _pillAdd(hiddenId, boxId, items[_activeIdx].textContent); return; }
+            if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); _pillAdd(hiddenId, boxId, input.value); return; }
+            if (e.key === 'Backspace' && input.value === '') { const cur = _pillValues(hiddenId); if (cur.length) { cur.pop(); _pillSync(hiddenId, cur); _pillRender(hiddenId, boxId); } return; }
+            if (e.key === 'Escape') { _dismissSuggestions(); }
+        });
+        input.addEventListener('input', () => { _activeIdx = -1; _showSuggestions(hiddenId, boxId, input); });
+        input.addEventListener('blur', () => { setTimeout(() => { if (input.value.trim()) _pillAdd(hiddenId, boxId, input.value); else _dismissSuggestions(); }, 150); });
+        box.appendChild(input);
+        box.onclick = (e) => { if (e.target === box) input.focus(); };
+    }
+
+    function _pillAdd(hiddenId, boxId, val) {
+        val = val.trim().replace(/,/g, '');
+        if (!val) return;
+        const cur = _pillValues(hiddenId);
+        if (!cur.map(v => v.toLowerCase()).includes(val.toLowerCase())) {
+            cur.push(val);
+            _pillSync(hiddenId, cur);
+        }
+        _dismissSuggestions();
+        const ti = document.getElementById(boxId)?.querySelector('.pill-text-input');
+        if (ti) ti.value = '';
+        _pillRender(hiddenId, boxId);
+        document.getElementById(boxId)?.querySelector('.pill-text-input')?.focus();
+    }
+
+    function _showSuggestions(hiddenId, boxId, input) {
+        _dismissSuggestions();
+        const q = input.value.trim().toLowerCase();
+        if (!q) return;
+        const suggestions = (PILL_SUGGESTIONS[hiddenId] || []).filter(s =>
+            s.toLowerCase().includes(q) && !_pillValues(hiddenId).map(v => v.toLowerCase()).includes(s.toLowerCase())
+        ).slice(0, 8);
+        if (!suggestions.length) return;
+        const dropdown = document.createElement('div');
+        dropdown.className = 'pill-suggestions';
+        const rect = input.getBoundingClientRect();
+        dropdown.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${rect.left}px;`;
+        suggestions.forEach(s => {
+            const item = document.createElement('div');
+            item.className = 'pill-suggestion-item';
+            item.textContent = s;
+            item.onmousedown = (e) => { e.preventDefault(); _pillAdd(hiddenId, boxId, s); };
+            dropdown.appendChild(item);
+        });
+        document.body.appendChild(dropdown);
+        _activeSuggestionsEl = dropdown;
+    }
+
+    function _dismissSuggestions() {
+        if (_activeSuggestionsEl) { _activeSuggestionsEl.remove(); _activeSuggestionsEl = null; }
+    }
+
+    function pillInputSet(hiddenId, boxId, csvString) {
+        _pillSync(hiddenId, csvString ? csvString.split(',').map(v => v.trim()).filter(Boolean) : []);
+        _pillRender(hiddenId, boxId);
+    }
+
+    // ── End pill input widget ────────────────────────────────────────────────
+
     function safeSet(id, value, type = 'value') {
         const el = document.getElementById(id);
         if (el) {
@@ -309,8 +511,11 @@
         safeSet('edit-dev', game.developers);
         safeSet('edit-pub', game.publishers);
         safeSet('edit-rel', game.release_date);
-        safeSet('edit-tags', game.tags);
-        safeSet('edit-groups', game.groups);
+        pillInputSet('edit-tags',       'edit-tags-box',       game.tags);
+        pillInputSet('edit-groups',     'edit-groups-box',     game.groups);
+        pillInputSet('edit-genres',     'edit-genres-box',     game.genres);
+        pillInputSet('edit-categories', 'edit-categories-box', game.categories);
+        safeSet('edit-is-free', game.is_free ?? 0);
         safeSet('edit-status', game.completion_status);
         safeSet('edit-playtime', game.playtime_forever);
         safeSet('edit-installed', game.installed);
@@ -431,12 +636,17 @@
     }
 
     function closeModal() {
+        _dismissSuggestions();
         const form = document.getElementById('edit-game-form');
         if (form) {
             form.reset();
             const saveBtn = form.querySelector('[type="submit"]');
             if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'SAVE CHANGES'; }
         }
+        pillInputSet('edit-tags',       'edit-tags-box',       '');
+        pillInputSet('edit-groups',     'edit-groups-box',     '');
+        pillInputSet('edit-genres',     'edit-genres-box',     '');
+        pillInputSet('edit-categories', 'edit-categories-box', '');
         document.getElementById('new-art-url').value = '';
         document.getElementById('art-status').textContent = '';
         document.getElementById('art-current').src = '';
@@ -499,7 +709,10 @@
                 safeSet('edit-dev', game.developers);
                 safeSet('edit-pub', game.publishers);
                 safeSet('edit-rel', game.release_date);
-                safeSet('edit-tags', game.tags);
+                pillInputSet('edit-tags',       'edit-tags-box',       game.tags);
+                pillInputSet('edit-genres',     'edit-genres-box',     game.genres);
+                pillInputSet('edit-categories', 'edit-categories-box', game.categories);
+                safeSet('edit-is-free', game.is_free ?? 0);
                 safeSet('edit-review-score', game.review_score);
                 safeSet('edit-review-percentage', game.review_percentage);
                 safeSet('edit-total-reviews', game.total_reviews);

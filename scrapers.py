@@ -177,9 +177,12 @@ def fetch_store_data(appid):
 
         # Extract and format the specific fields we want
         extracted = {
-            'developers': ", ".join(data.get('developers', [])), #TEXT
-            'publishers': ", ".join(data.get('publishers', [])), #TEXT
-            'release_date': date_value #TEXT
+            'developers':  ", ".join(data.get('developers', [])),
+            'publishers':  ", ".join(data.get('publishers', [])),
+            'release_date': date_value,
+            'genres':      ",".join(g['description'] for g in data.get('genres', [])),
+            'categories':  ",".join(c['description'] for c in data.get('categories', [])),
+            'is_free':     1 if data.get('is_free') else 0
         }
 
         return extracted

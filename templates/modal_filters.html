@@ -85,7 +85,7 @@
                             style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
                             oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
                         <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
-                            Use standard SQLite syntax. Column names: name, completion_status, tags, groups, installed, release_date, date_added, last_played, playtime_forever, review_percentage, review_score, developers, publishers.
+                            Use standard SQLite syntax. Column names: name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, review_score, developers, publishers.
                         </div>
                         <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
                             <button type="button" onclick="parseSqlToTree()"
@@ -409,6 +409,12 @@ const FM_FILTER_CONFIG = {
                             options: ['capsule','sgdb_capsule','header'] },
     'unlocked_achievements': { label: 'Unlocked Achievements', type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'total_achievements':    { label: 'Total Achievements',    type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'genres':             { label: 'Genre',                 type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                            options: {{ unique_genres | tojson if unique_genres is defined else '[]' }} },
+    'categories':         { label: 'Category',              type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                            options: {{ unique_categories | tojson if unique_categories is defined else '[]' }} },
+    'is_free':            { label: 'Free to Play',          type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
+                            options: {'1':'Yes','0':'No'} },
 };
 
 // Operators that need no value input
@@ -577,7 +583,7 @@ function treeToSql(node) {
                 : `(${col} IS NOT NULL AND ${col} != '')`;
         }
         if (!val && val !== 0) return '';
-        if (col === 'tags' || col === 'groups') {
+        if (col === 'tags' || col === 'groups' || col === 'genres' || col === 'categories') {
             const likeOp = (op === 'LIKE' || op === '=') ? 'LIKE' : 'NOT LIKE';
             return `',' || ${col} || ',' ${likeOp} '%,${val},%'`;
         }

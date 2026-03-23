@@ -52,11 +52,11 @@ main.py → starts Flask (background thread) + pywebview window
 | `database.py` | SQLite CRUD, schema init, auto-migration of missing columns |
 | `library.py` | Filter tree → SQL builder, grid rendering, bulk operations |
 | `index.py` | Home page shelves — queries, deduplication, widget presets |
-| `scrapers.py` | Steam API + HTML scraping for library/metadata import |
+| `scrapers.py` | Steam API + HTML scraping for library/metadata import; BLAEO sync via Selenium (requires Chrome) |
 | `utils.py` | Steam path detection, install status sync, filesystem watcher |
 | `images.py` | Cover art download chain (Steam capsule → SteamGridDB → header) |
 | `imports.py` | Old-database migration tool |
-| `install.py` | Cross-platform GUI installer (tkinter) |
+| `install.py` / `uninstall.py` | Cross-platform GUI installer/uninstaller (tkinter) |
 
 **Frontend:** Vanilla JS + CSS3 in `static/`, Jinja2 templates in `templates/`. No build step, no framework.
 
@@ -68,23 +68,76 @@ All user data lives next to the executable (or project root when running from so
 |------|----------|
 | `games.db` | SQLite — `games` and `blacklist` tables |
 | `config.json` | Steam API key + SteamID |
-| `state.json` | Active filters, shelf layout, sort order |
-| `theme.json` | CSS variable overrides |
-| `playdate.log` | Application logs |
+| `state.json` | Active filters, shelf layout, sort order, saved filters |
+| `theme.json` | CSS variable overrides (only non-default keys stored) |
+| `playdate.log` | Application logs (RotatingFileHandler, 1MB cap) |
 | `static/img/library/{appid}.jpg` | Cached cover art |
 
 `database.py` auto-adds missing columns on startup — no manual migrations needed.
+
+## PyInstaller Path Handling (Critical)
+
+All path resolution must check `sys.frozen` to distinguish running as script vs. frozen exe:
+
+- **Bundle assets** (templates, static): `sys._MEIPASS` when frozen
+- **User data** (config.json, games.db, etc.): `os.path.dirname(sys.executable)` when frozen, `__file__` dir otherwise
+
+User data intentionally lives *next to* the .exe (not inside the bundle) so it survives upgrades. `config.py` sets `BASE_DIR` correctly; always use `BASE_DIR` for data files. Never use bare `__file__` for runtime paths.
 
 ## Filter System
 
 Filters are a recursive JSON tree of AND/OR groups with conditions. They get compiled to SQL `WHERE` clauses by `library.build_tree_sql()`.
 
-**SQL safety:** All user-supplied SQL passes through `is_safe_sql()` in `library.py`, which uses column/keyword/function whitelists and rejects all DML/DDL. Parameterized queries are used everywhere else.
+- **Node types**: `'condition'` (column op value), `'group'` (AND/OR container), `'custom_expr'` (raw SQL)
+- **Comma-separated fields** (tags, groups, developers): use `',' || column || ',' LIKE ?` wrapping to prevent partial matches
+- **SQL safety:** All user-supplied SQL passes through `is_safe_sql()` in `library.py`, which uses column/keyword/function whitelists and rejects all DML/DDL. Parameterized queries are used everywhere else.
 
 ## Key Patterns
 
-- **Long-running operations** (library import, scraping) run in daemon threads with `threading.Event` for cancellation (`_populate_cancel` in `app.py`). Progress is reported via a callback that updates a shared dict polled by the frontend.
-- **PyInstaller compatibility:** Use `sys.frozen` / `sys._MEIPASS` checks (already in `main.py` and `config.py`) whenever resolving file paths — don't use `__file__` for runtime assets.
-- **Steam rate limiting:** `scrapers.py` enforces a 1.2s delay between API calls. Don't remove this.
-- **Graceful degradation:** No API key → public profile HTML scraper. No SteamGridDB key → Steam covers. Missing watchdog → continues without filesystem watcher.
-- **Pick 6 scoring:** Six weighted signals (tag similarity, reviews, staleness, completion bias, playtime, recency) are combined in `app.py`; beaten games build a taste profile used for tag cosine similarity.
+### Threading & Cancellation
+Long-running operations (library import, BLAEO sync) run in daemon threads with `threading.Event` for cancellation (`_populate_cancel` in `app.py`). Progress is tracked in a shared dict (`_populate_state`) polled by the frontend via `/api/populate-status` every second.
+
+### Scrapers
+`scrapers.py` pulls from multiple Steam endpoints per game: `GetOwnedGames` (playtime), Store API (metadata), `appreviews` (review stats), BeautifulSoup tag scraping (birthtime cookie bypasses age gate), and `GetPlayerAchievements`. The **1.2s delay** between API calls is mandatory — don't remove it.
+
+**Review confidence weighting:** raw review percentage is scaled by total review count — <10 reviews gets 25% weight, 10-99 gets 50–100%, 100+ gets full weight. Stored as `weighted_percentage`.
+
+### Cover Art Pipeline
+`images.py` tries in order: Steam `library_600x900.jpg` → SteamGridDB (if key present) → Steam `header.jpg`. All saved as JPEG 95 quality; RGBA/PNG/WEBP converted to RGB first. Once an image is cached locally it's not re-fetched unless manually deleted.
+
+### Graceful Degradation
+No API key → public profile HTML scraper. No SteamGridDB key → Steam covers. Missing watchdog → continues without filesystem watcher. All external calls have try/except returning None/empty on failure.
+
+### Filesystem Watcher
+`utils.py` watches the steamapps folder for `appmanifest_*.acf` changes. On trigger, `sync_local_install_status()` resets all `installed` flags to 0 then bulk-sets found appids to 1. Proton, SteamLinuxRuntime, and Steamworks Shared entries are filtered out by reading .acf content.
+
+### Pick 6 Scoring
+Six weighted signals combined in `app.py`: tag cosine similarity (against a playtime-weighted taste profile built from beaten games), review score, staleness (days since last played, capped at 730), completion bias, playtime (capped at 3000 min), and release recency (capped at 10 years). If no beaten games, profile falls back to top 50 most-played. Selection uses weighted random sampling, not sorted top-N.
+
+## Home Page Shelves
+
+Shelves are defined in `state.json` and rendered by `index.py`. Key fields per shelf:
+- `filter_key`: points to a builtin filter or saved filter name
+- `sort_col`: can be `'RANDOM()'` for shuffle shelves
+- `dedup` + `dedup_priority`: shelves with lower priority numbers are processed first; their appids are excluded from later shelves
+- `split_group`: shelves sharing the same group key render side-by-side in a flex row
+
+## Frontend JS
+
+**`static/js/input.js`** (~1400 lines, IIFE) handles all gamepad and keyboard navigation:
+- Zone-based state machine: `'nav'` (navbar), `'content'` (page grid), `'modal'`, `'ctx-menu'`
+- 2D grid navigation per zone; gamepad buttons mapped to standard XB layout (A/B/X/Y, bumpers, D-pad)
+- Repeat timing: 400ms initial delay, 150ms repeat; stick dead zone: 0.35
+- Modal buttons must have `data-modal-row` attribute for grid-based row grouping
+- Home page split-row shelves require X-proximity matching when navigating between sides
+
+**`static/js/playdate.js`** — shared utilities: SQL syntax highlighter overlay (`sqlHighlightInit()`), state update helper (`sendStateUpdate()`), 8-second auto-hide error banners.
+
+## Database Schema Notes
+
+- `completion_status` values: `'Never Played'`, `'Unfinished'`, `'Beaten'`, `'Completed'`, `"Won't Play"`
+- Comma-separated string columns: `tags`, `groups`, `developers`, `publishers` — no spaces after commas
+- Dates stored as `'YYYY-MM-DD'` strings, not Unix timestamps
+- `installed`: 0/1 integer
+- `art_source`: `'capsule'`, `'sgdb_capsule'`, `'header'`, `'custom'`, `'missing'`, `'error'`
+- `blacklist` table prevents repopulation of removed games

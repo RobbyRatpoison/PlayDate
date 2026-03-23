@@ -11,7 +11,8 @@ SAFE_COLUMNS = {
     'name', 'completion_status', 'installed', 'release_date', 'date_added',
     'last_played', 'playtime_forever', 'review_percentage', 'weighted_percentage',
     'review_score', 'art_source', 'groups', 'tags', 'developers', 'publishers',
-    'total_reviews', 'positive_reviews', 'unlocked_achievements', 'total_achievements'
+    'total_reviews', 'positive_reviews', 'unlocked_achievements', 'total_achievements',
+    'genres', 'categories', 'is_free'
 }
 
 import re as _re
@@ -89,8 +90,8 @@ def build_condition_sql(cond, params):
     if val == '' and op not in ('IS NULL', 'IS NOT NULL'):
         return '1=1'
 
-    # Comma-separated list columns (tags, groups) — exact item match
-    if col in ('tags', 'groups'):
+    # Comma-separated list columns — exact item match
+    if col in ('tags', 'groups', 'genres', 'categories'):
         if op in ('LIKE', '='):
             params.append(f"%,{val},%")
             return f"',' || {col} || ',' LIKE ?"
@@ -265,7 +266,8 @@ def bulk_edit_games(data):
         'completion_status', 'tags', 'groups', 'developers', 'publishers',
         'release_date', 'review_score', 'review_percentage', 'weighted_percentage',
         'total_reviews', 'positive_reviews', 'playtime_forever', 'date_added',
-        'installed', 'art_source', 'unlocked_achievements', 'total_achievements'
+        'installed', 'art_source', 'unlocked_achievements', 'total_achievements',
+        'genres', 'categories', 'is_free'
     }
     if column not in allowed_columns:
         return jsonify({"status": "error", "message": f"Column '{column}' is not editable."}), 400

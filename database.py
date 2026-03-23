@@ -52,7 +52,10 @@ def init_db():
         'weighted_percentage': 'INT',    # Scaling penalties for total_reviews under 100
         'total_reviews': 'INT',
         'positive_reviews': 'INT',
-        'groups': 'TEXT'
+        'groups': 'TEXT',
+        'genres': 'TEXT',                # Comma-separated Steam genres (e.g. Action,RPG)
+        'categories': 'TEXT',            # Comma-separated Steam categories (e.g. Single-player,Co-op)
+        'is_free': 'INT'                 # 1 if free to play, 0 otherwise
     }
 
     for column_name, column_type in required_columns.items():

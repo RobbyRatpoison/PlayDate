@@ -676,6 +676,7 @@ function openBulkRescrapeModal() {
 }
 
 function closeBulkRescrapeModal() {
+    if (document.getElementById('br-apply-btn')?.disabled) return;
     document.getElementById('bulk-rescrape-modal').style.display = 'none';
 }
 
@@ -701,12 +702,15 @@ function onBulkRescrapeScopeChange() {
     }
 }
 
+let _rescrapeCancel = false;
+
 async function runBulkRescrape() {
     const scope  = document.querySelector('input[name="br-scope"]:checked').value;
     const status = document.getElementById('br-status');
     const progress = document.getElementById('br-progress');
     const progressBar = document.getElementById('br-progress-bar');
     const progressLabel = document.getElementById('br-progress-label');
+    const stopBtn = document.getElementById('br-stop-btn');
 
     if (scope === 'selected' && _selectedIds.size === 0) {
         status.className = 'bulk-status-error';
@@ -722,18 +726,22 @@ async function runBulkRescrape() {
     if (!await confirm(`Re-scrape Steam data for ${count} game${count !== 1 ? 's' : ''}?\n\nThis will update tags, store info, and review scores from Steam. It may take several minutes.`)) return;
 
     const btn = document.getElementById('br-apply-btn');
+    _rescrapeCancel = false;
     btn.disabled = true;
     btn.textContent = 'Scraping…';
+    stopBtn.style.display = '';
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Stop';
     status.className = '';
     status.textContent = '';
     progress.style.display = 'block';
     progressBar.style.width = '0%';
     progressLabel.textContent = `0 / ${count}`;
 
-    // Send one game at a time so the progress bar advances per game
-    let updated = 0, failed = 0;
+    let updated = 0, failed = 0, done = 0;
 
     for (let i = 0; i < appids.length; i++) {
+        if (_rescrapeCancel) break;
         try {
             const res  = await fetch('/api/bulk-rescrape', {
                 method:  'POST',
@@ -748,17 +756,23 @@ async function runBulkRescrape() {
         } catch (e) {
             failed += 1;
         }
-        const pct = Math.round(((i + 1) / appids.length) * 100);
+        done = i + 1;
+        const pct = Math.round((done / count) * 100);
         progressBar.style.width = pct + '%';
-        progressLabel.textContent = `${i + 1} / ${count}`;
+        progressLabel.textContent = `${done} / ${count}`;
     }
 
-    status.className = updated > 0 ? 'bulk-status-success' : 'bulk-status-error';
-    status.textContent = `✔ Done — ${updated} updated${failed ? `, ${failed} failed` : ''}.`;
+    stopBtn.style.display = 'none';
     btn.disabled = false;
     btn.textContent = 'Re-scrape';
-    if (updated > 0) {
-        setTimeout(() => { closeBulkRescrapeModal(); window.location.reload(); }, 1200);
+
+    if (_rescrapeCancel) {
+        status.className = 'bulk-status-error';
+        status.textContent = `Stopped after ${done} / ${count} — ${updated} updated.`;
+    } else {
+        status.className = updated > 0 ? 'bulk-status-success' : 'bulk-status-error';
+        status.textContent = `✔ Done — ${updated} updated${failed ? `, ${failed} failed` : ''}.`;
+        if (updated > 0) setTimeout(() => { closeBulkRescrapeModal(); window.location.reload(); }, 1200);
     }
 }
 
@@ -901,6 +915,11 @@ async function runBulkDelete() {
                 style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--steam-focus); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
                 Re-scrape
             </button>
+            <button id="br-stop-btn" data-modal-row="0"
+                onclick="_rescrapeCancel = true; this.disabled = true; this.textContent = 'Stopping…';"
+                style="display:none; flex:1; height:auto; padding:12px; background:var(--danger-color); color:var(--nav-active); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+                Stop
+            </button>
             <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkRescrapeModal()">Cancel</button>
         </div>
     </div>
@@ -998,6 +1017,9 @@ async function runBulkDelete() {
             <option value="positive_reviews">Positive Reviews</option>
             <option value="unlocked_achievements">Unlocked Achievements</option>
             <option value="total_achievements">Total Achievements</option>
+            <option value="genres">Genres</option>
+            <option value="categories">Categories</option>
+            <option value="is_free">Free to Play (0/1)</option>
             <option value="playtime_forever">Playtime (Mins)</option>
             <option value="date_added">Date Added</option>
             <option value="installed">Installed (0/1)</option>
