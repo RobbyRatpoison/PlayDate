@@ -1016,47 +1016,72 @@ def create_app(template_folder=None, static_folder=None):
         import zipfile
         import io
 
+        app.logger.info("Restore: request received")
+
         if 'backup_file' not in request.files:
+            app.logger.warning("Restore: no backup_file in request.files")
             return jsonify({"status": "error", "message": "No file uploaded."}), 400
 
         f = request.files['backup_file']
+        app.logger.info(f"Restore: file received — name={f.filename!r}, content_type={f.content_type!r}")
+
         if not f.filename.endswith('.zip'):
             return jsonify({"status": "error", "message": "File must be a .zip backup."}), 400
 
         try:
-            buf = io.BytesIO(f.read())
+            raw = f.read()
+            app.logger.info(f"Restore: read {len(raw)} bytes from upload")
+            buf = io.BytesIO(raw)
             with zipfile.ZipFile(buf, 'r') as zf:
                 names = zf.namelist()
+                app.logger.info(f"Restore: zip contains {len(names)} entries: {names[:20]}")
+
+                # Build a map from bare filename → zip entry name, stripping any leading folders
+                name_map = {}
+                for n in names:
+                    bare = n.split('/')[-1]
+                    if bare:
+                        name_map.setdefault(bare, n)  # first match wins
 
                 restored = []
                 skipped  = []
 
                 # Core files: restore to BASE_DIR
                 for arcname in ('games.db', 'config.json', 'state.json'):
-                    if arcname in names:
+                    zip_entry = name_map.get(arcname) or (arcname if arcname in names else None)
+                    if zip_entry:
                         dest = os.path.join(BASE_DIR, arcname)
-                        with zf.open(arcname) as src, open(dest, 'wb') as dst:
-                            dst.write(src.read())
+                        with zf.open(zip_entry) as src:
+                            data = src.read()
+                        with open(dest, 'wb') as dst:
+                            dst.write(data)
+                        app.logger.info(f"Restore: wrote {len(data)} bytes → {dest}")
                         restored.append(arcname)
                     else:
+                        app.logger.warning(f"Restore: {arcname!r} not found in zip — skipping")
                         skipped.append(arcname)
 
                 # Art files: restore to static/img/library/
-                art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
+                art_files = [n for n in names if n.endswith('.jpg') and 'library' in n]
                 if art_files:
                     art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
                     os.makedirs(art_dir, exist_ok=True)
                     for arcname in art_files:
-                        dest = os.path.join(BASE_DIR, arcname.replace('/', os.sep))
+                        fname = arcname.split('/')[-1]
+                        dest = os.path.join(art_dir, fname)
                         with zf.open(arcname) as src, open(dest, 'wb') as dst:
                             dst.write(src.read())
+                    app.logger.info(f"Restore: wrote {len(art_files)} cover image(s)")
                     restored.append(f"{len(art_files)} cover image(s)")
 
         except zipfile.BadZipFile:
+            app.logger.exception("Restore: bad zip file")
             return jsonify({"status": "error", "message": "Invalid zip file. Make sure this is a PlayDate backup."}), 400
         except Exception as e:
+            app.logger.exception(f"Restore: unexpected error — {e}")
             return jsonify({"status": "error", "message": f"Restore failed: {str(e)}"}), 500
 
+        app.logger.info(f"Restore: complete — restored={restored}, skipped={skipped}")
         return jsonify({
             "status":   "success",
             "restored": restored,

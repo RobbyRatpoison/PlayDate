@@ -540,11 +540,11 @@
         <a onclick="window.location.href='/?edit=1'" class="nav-btn" style="display:inline-flex; cursor:pointer;">Open Home Layout Editor</a>
     </div>
 
-    <!-- ── BACKGROUND IMAGE ── -->
+    <!-- ── BLACKLIST MANAGER ── -->
     <div class="tool-card">
-        <h3>Background Image</h3>
-        <p>Replace the app background with a custom image, or reset to the default.</p>
-        <button class="nav-btn" onclick="openBgModal()">Change Background</button>
+        <h3>Blacklist Manager</h3>
+        <p>Blacklisted games are permanently skipped by "Populate PlayDate" and will never be re-added to your library. To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
+        <button class="nav-btn" onclick="openBlacklistModal()">Manage Blacklist</button>
     </div>
 
     <!-- ── BACKUP & RESTORE ── -->
@@ -554,12 +554,18 @@
         <button class="nav-btn" onclick="openBackupModal()">Open Backup &amp; Restore</button>
     </div>
 
-    <!-- ── BLAEO SYNC ── -->
+    <!-- ── DB IMPORTER ── -->
     <div class="tool-card">
-        <h3>BLAEO Sync</h3>
-        <p>Fetch completion statuses (Beaten, Completed, Won't Play, etc.) and list tags from your BLAEO backlog profile. Requires Chrome to be installed.</p>
-        <button id="blaeo-btn" class="nav-btn" onclick="runBlaeo()">Sync BLAEO</button>
-        <div id="blaeo-status" class="tool-status"></div>
+        <h3>Import Data from Another Database</h3>
+        <p>Copy column data from another database into your current library. Games are matched by AppID. Works with PlayDate backups, older versions, or any compatible database.</p>
+        <button class="nav-btn" onclick="openImportModal()">Open Importer</button>
+    </div>
+
+    <!-- ── BACKGROUND IMAGE ── -->
+    <div class="tool-card">
+        <h3>Background Image</h3>
+        <p>Replace the app background with a custom image, or reset to the default.</p>
+        <button class="nav-btn" onclick="openBgModal()">Change Background</button>
     </div>
 
     <!-- ── PAGYWOSG FILTER BUILDER ── -->
@@ -569,18 +575,12 @@
         <button class="nav-btn" onclick="openPagModal()">Configure This Month</button>
     </div>
 
-    <!-- ── BLACKLIST MANAGER ── -->
+    <!-- ── BLAEO SYNC ── -->
     <div class="tool-card">
-        <h3>Blacklist Manager</h3>
-        <p>Blacklisted games are permanently skipped by "Populate PlayDate" and will never be re-added to your library. To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
-        <button class="nav-btn" onclick="openBlacklistModal()">Manage Blacklist</button>
-    </div>
-
-    <!-- ── DB IMPORTER ── -->
-    <div class="tool-card">
-        <h3>Import Data from Another Database</h3>
-        <p>Copy column data from another database into your current library. Games are matched by AppID. Works with PlayDate backups, older versions, or any compatible database.</p>
-        <button class="nav-btn" onclick="openImportModal()">Open Importer</button>
+        <h3>BLAEO Sync</h3>
+        <p>Fetch completion statuses (Beaten, Completed, Won't Play, etc.) and list tags from your BLAEO backlog profile. Requires Chrome to be installed.</p>
+        <button id="blaeo-btn" class="nav-btn" onclick="runBlaeo()">Sync BLAEO</button>
+        <div id="blaeo-status" class="tool-status"></div>
     </div>
 
     <!-- ── CSV EXPORT ── -->
