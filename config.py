@@ -213,8 +213,16 @@ def resolve_vanity_url(api_key, steam_id):
 
 @config_bp.app_context_processor
 def inject_config_status():
-    """This makes 'config_exists' available in all your HTML files automatically."""
-    return dict(config_exists=is_configured())
+    """Injects config state into all templates."""
+    config_exists = is_configured()
+    existing = load_config() or {}
+    needs_config = not config_exists or not existing.get('api_key')
+    return dict(
+        config_exists=config_exists,
+        needs_config=needs_config,
+        existing_steam_id=existing.get('steam_id', ''),
+        existing_sgdb_key=existing.get('sgdb_key', ''),
+    )
 
 def load_config():
     """Returns the current configuration data from config.json."""
