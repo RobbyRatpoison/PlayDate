@@ -236,19 +236,18 @@ def save_config():
     if not raw_id:
         return jsonify({"status": "error", "message": "Steam ID or Vanity Name is required."}), 400
 
-    if api_key:
-        resolved_id = resolve_vanity_url(api_key, raw_id)
-        is_valid, message = validate_steam_creds(api_key, resolved_id)
-        if not is_valid:
-            return jsonify({"status": "error", "message": message}), 400
-    else:
-        resolved_id = raw_id
+    if not api_key:
+        return jsonify({"status": "error", "message": "Steam API Key is required."}), 400
+
+    resolved_id = resolve_vanity_url(api_key, raw_id)
+    is_valid, message = validate_steam_creds(api_key, resolved_id)
+    if not is_valid:
+        return jsonify({"status": "error", "message": message}), 400
 
     config_data = {
         "api_key": api_key,
         "steam_id": resolved_id,
         "sgdb_key": sgdb_key,
-        "vanity_name": raw_id if not raw_id.isdigit() else None
     }
 
     with open(CONFIG_PATH, 'w') as f:

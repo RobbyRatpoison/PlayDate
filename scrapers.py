@@ -5,109 +5,13 @@ import requests
 import time
 from bs4 import BeautifulSoup
 from images import download_capsule
-from datetime import datetime, timedelta
+from datetime import datetime
 from config import load_config
 from database import add_new_game, update_game_data, get_db
 from utils import get_locally_installed_appids, sync_local_install_status
 
-# Add new games with basic info
-def parse_steam_date(raw):
-    """
-    Parses Steam's fuzzy date formats from the public profile page.
-    Handles: 'yesterday', 'Feb 28', 'Feb 28, 2023', 'last week', etc.
-    Returns a YYYY-MM-DD string or None if unparseable.
-    """
-    if not raw:
-        return None
-    raw = raw.strip().lower()
-    today = datetime.now()
-
-    if raw == 'yesterday':
-        return (today - timedelta(days=1)).strftime('%Y-%m-%d')
-
-    if raw in ('last week', 'a week ago'):
-        return (today - timedelta(weeks=1)).strftime('%Y-%m-%d')
-
-    # Try "Feb 28" — assume current year
-    try:
-        dt = datetime.strptime(raw, '%b %d')
-        return dt.replace(year=today.year).strftime('%Y-%m-%d')
-    except ValueError:
-        pass
-
-    # Try "Feb 28, 2023"
-    try:
-        dt = datetime.strptime(raw, '%b %d, %Y')
-        return dt.strftime('%Y-%m-%d')
-    except ValueError:
-        pass
-
-    return None
 
 
-def scrape_games_from_profile(vanity_or_id):
-    """
-    Scrapes the public Steam profile games page as a fallback
-    when no API key is available.
-    Returns a list of dicts with appid, name, playtime_forever, last_played.
-    Requires the user's profile and game details to be set to Public.
-    """
-    # Build the profile URL — /profiles/ for SteamID64, /id/ for vanity names
-    if str(vanity_or_id).isdigit():
-        url = f"https://steamcommunity.com/profiles/{vanity_or_id}/games?tab=all"
-    else:
-        url = f"https://steamcommunity.com/id/{vanity_or_id}/games?tab=all"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        if response.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Steam embeds game data as a JS variable: var rgGames = [...]
-        script_tags = soup.find_all('script')
-        games_json = None
-        for script in script_tags:
-            if script.string and 'rgGames' in script.string:
-                match = re.search(r'var rgGames\s*=\s*(\[.*?\]);', script.string, re.DOTALL)
-                if match:
-                    games_json = match.group(1)
-                    break
-
-        if not games_json:
-            print("Could not find game data on Steam profile page. Is the profile public?")
-            return None
-
-        games = json.loads(games_json)
-        results = []
-        for game in games:
-            appid = game.get('appid')
-            name = game.get('name', '')
-            playtime = game.get('hours_forever', '0').replace(',', '')
-            try:
-                playtime_mins = int(float(playtime) * 60)
-            except (ValueError, TypeError):
-                playtime_mins = 0
-
-            last_played_raw = game.get('last_played', '')
-            last_played = parse_steam_date(last_played_raw)
-
-            results.append({
-                'appid': appid,
-                'name': name,
-                'playtime_forever': playtime_mins,
-                'last_played': last_played or '0'
-            })
-
-        return results
-
-    except Exception as e:
-        print(f"Error scraping Steam profile: {e}")
-        return None
 def add_new(cancel_event=None, progress_cb=None):
     limit = 0  # 0 = unlimited
     config = load_config()
@@ -116,33 +20,24 @@ def add_new(cancel_event=None, progress_cb=None):
 
     api_key = config.get('api_key')
     steam_id = config.get('steam_id')
-    vanity_name = config.get('vanity_name') or steam_id
-    has_api_key = bool(api_key)
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-    # Fetch game list via API or public profile scraper
-    if has_api_key:
-        print("Fetching games via Steam API.")
-        url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&include_played_free_games=1&skip_unvetted_apps=false"
-        try:
-            response = requests.get(url, headers=headers, timeout=15)
-            if response.status_code == 403:
-                return {"status": "error", "message": "Steam API: 403 Forbidden. Your API Key may be invalid."}
-            response.raise_for_status()
-            data = response.json()
-            raw_games = data.get('response', {}).get('games', [])
-            if not raw_games:
-                return {"status": "error", "message": "No games returned. Is your Steam Profile set to Public?"}
-            games = [{'appid': g['appid'], 'name': g.get('name', ''), 'playtime_forever': g.get('playtime_forever', 0), 'last_played': datetime.fromtimestamp(g.get('rtime_last_played', 0)).strftime('%Y-%m-%d') if g.get('rtime_last_played', 0) > 0 else '0'} for g in raw_games]
-        except requests.exceptions.JSONDecodeError:
-            return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
-        except Exception as e:
-            return {"status": "error", "message": f"Connection Error: {str(e)}"}
-    else:
-        print("No API key — falling back to public profile scraper.")
-        games = scrape_games_from_profile(vanity_name)
-        if not games:
-            return {"status": "error", "message": "Could not load games from your Steam profile. Make sure your profile and game details are set to Public."}
+    print("Fetching games via Steam API.")
+    url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&include_played_free_games=1&skip_unvetted_apps=false"
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 403:
+            return {"status": "error", "message": "Steam API: 403 Forbidden. Your API Key may be invalid."}
+        response.raise_for_status()
+        data = response.json()
+        raw_games = data.get('response', {}).get('games', [])
+        if not raw_games:
+            return {"status": "error", "message": "No games returned. Is your Steam Profile set to Public?"}
+        games = [{'appid': g['appid'], 'name': g.get('name', ''), 'playtime_forever': g.get('playtime_forever', 0), 'last_played': datetime.fromtimestamp(g.get('rtime_last_played', 0)).strftime('%Y-%m-%d') if g.get('rtime_last_played', 0) > 0 else '0'} for g in raw_games]
+    except requests.exceptions.JSONDecodeError:
+        return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
+    except Exception as e:
+        return {"status": "error", "message": f"Connection Error: {str(e)}"}
 
     # Process new games
     db = get_db()
@@ -193,10 +88,9 @@ def add_new(cancel_event=None, progress_cb=None):
                 if tag_info:
                     game_data.update(tag_info)
 
-                if has_api_key:
-                    cheevo_info = fetch_cheevo_data(appid)
-                    if cheevo_info:
-                        game_data.update(cheevo_info)
+                cheevo_info = fetch_cheevo_data(appid)
+                if cheevo_info:
+                    game_data.update(cheevo_info)
 
                 add_new_game(appid, game['name'])
                 update_game_data(appid, **game_data)

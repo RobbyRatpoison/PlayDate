@@ -5,37 +5,17 @@
         <p style="font-size: 0.9rem; color: #8f98a0; margin-bottom: 20px;">Connect your Steam account to start syncing your library.</p>
 
         <form id="config-form">
+            <label>Steam API Key <span style="color:#ff4d4d;">*</span></label>
+            <input type="password" id="conf-api-key" name="api_key" placeholder="Required to sync your library" required>
+            <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
+                Get your free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color: var(--steam-focus);">steamcommunity.com/dev/apikey</a> — takes about 2 minutes.
+            </small>
+
             <label>Steam ID or Vanity Name <span style="color:#ff4d4d;">*</span></label>
             <input type="text" id="conf-steam-id" name="steam_id" placeholder="e.g. 76561198... or your custom URL name" required>
             <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
                 Your vanity name is the custom part of your Steam profile URL.
             </small>
-
-            <label>Steam API Key <span style="color: #8f98a0; font-weight: normal;">(Optional but recommended)</span></label>
-            <input type="password" id="conf-api-key" name="api_key" placeholder="Leave blank to use public profile scraping">
-            <small style="display:block; color: #8f98a0; margin-bottom: 5px; font-size: 0.75rem;">
-                Get yours at <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color: var(--steam-focus);">steamcommunity.com/dev/apikey</a>
-            </small>
-
-            <!-- Feature comparison -->
-            <div style="background: rgba(255,255,255,0.03); border: 1px solid #2a475e; border-radius: 6px; padding: 12px; margin-bottom: 15px; font-size: 0.78rem; color: #8f98a0;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <div>
-                        <div style="color: var(--steam-focus); font-weight: bold; margin-bottom: 6px;">✔ With API Key</div>
-                        <div>✔ Fast library sync</div>
-                        <div>✔ Exact playtime & dates</div>
-                        <div>✔ Achievement tracking</div>
-                        <div>✔ Private profiles supported</div>
-                    </div>
-                    <div>
-                        <div style="color: #aaa; font-weight: bold; margin-bottom: 6px;">Without API Key</div>
-                        <div>✔ Library sync (slower)</div>
-                        <div>~ Approximate dates</div>
-                        <div>✘ No achievement tracking</div>
-                        <div>✘ Profile must be Public</div>
-                    </div>
-                </div>
-            </div>
 
             <label>SteamGridDB API Key <span style="color: #8f98a0; font-weight: normal;">(Optional)</span></label>
             <input type="password" id="conf-sgdb-key" name="sgdb_key" placeholder="Used for higher quality artwork when Steam's is missing">
@@ -60,7 +40,7 @@
         const sgdbKey = document.getElementById('conf-sgdb-key').value;
 
         btn.disabled = true;
-        btn.innerText = apiKey ? "VERIFYING CREDENTIALS..." : "SAVING...";
+        btn.innerText = "VERIFYING CREDENTIALS...";
         btn.style.backgroundColor = "#5c5c5c";
 
         try {
