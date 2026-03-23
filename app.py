@@ -1036,22 +1036,14 @@ def create_app(template_folder=None, static_folder=None):
                 names = zf.namelist()
                 app.logger.info(f"Restore: zip contains {len(names)} entries: {names[:20]}")
 
-                # Build a map from bare filename → zip entry name, stripping any leading folders
-                name_map = {}
-                for n in names:
-                    bare = n.split('/')[-1]
-                    if bare:
-                        name_map.setdefault(bare, n)  # first match wins
-
                 restored = []
                 skipped  = []
 
                 # Core files: restore to BASE_DIR
                 for arcname in ('games.db', 'config.json', 'state.json'):
-                    zip_entry = name_map.get(arcname) or (arcname if arcname in names else None)
-                    if zip_entry:
+                    if arcname in names:
                         dest = os.path.join(BASE_DIR, arcname)
-                        with zf.open(zip_entry) as src:
+                        with zf.open(arcname) as src:
                             data = src.read()
                         with open(dest, 'wb') as dst:
                             dst.write(data)
@@ -1062,13 +1054,12 @@ def create_app(template_folder=None, static_folder=None):
                         skipped.append(arcname)
 
                 # Art files: restore to static/img/library/
-                art_files = [n for n in names if n.endswith('.jpg') and 'library' in n]
+                art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
                 if art_files:
                     art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
                     os.makedirs(art_dir, exist_ok=True)
                     for arcname in art_files:
-                        fname = arcname.split('/')[-1]
-                        dest = os.path.join(art_dir, fname)
+                        dest = os.path.join(BASE_DIR, arcname.replace('/', os.sep))
                         with zf.open(arcname) as src, open(dest, 'wb') as dst:
                             dst.write(src.read())
                     app.logger.info(f"Restore: wrote {len(art_files)} cover image(s)")
