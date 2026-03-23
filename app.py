@@ -58,6 +58,25 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(index_bp)
     app.register_blueprint(library_bp)
 
+    # ── User-data static files ────────────────────────────────────────────────
+    # When frozen by PyInstaller, Flask's static_folder points into the bundle
+    # (sys._MEIPASS), but downloaded covers and the user background are written
+    # to BASE_DIR (next to the .exe).  These routes serve those files from the
+    # correct location so they're visible on Windows builds.
+    @app.route('/static/img/library/<path:filename>')
+    def serve_library_image(filename):
+        return send_from_directory(
+            os.path.join(BASE_DIR, 'static', 'img', 'library'), filename
+        )
+
+    @app.route('/static/img/backgrounds/<path:filename>')
+    def serve_background_image(filename):
+        bg_dir = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
+        if os.path.exists(os.path.join(bg_dir, filename)):
+            return send_from_directory(bg_dir, filename)
+        # Fall back to the bundled default
+        return app.send_static_file(f'img/backgrounds/{filename}')
+
     # ── Inject background timestamp and builtin filters into every template ──────
     @app.context_processor
     def inject_globals():
