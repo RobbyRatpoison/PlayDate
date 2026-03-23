@@ -6,7 +6,6 @@
     'use strict';
 
     // ── Crash detection ───────────────────────────────────────────────────────
-    console.log('[input.js] IIFE starting');
     window.addEventListener('error', e => {
         console.error('[input.js] Uncaught error:', e.message, 'at', e.filename, e.lineno);
     });
@@ -14,117 +13,7 @@
         console.error('[input.js] Unhandled promise rejection:', e.reason);
     });
 
-    // ── Debug overlay (toggle with F9) ────────────────────────────────────────
-    let _dbgEl = null;
-    const _dbgLog = []; // rolling log of last 12 events
-
-    function _dbgNote(msg) {
-        const ts = performance.now().toFixed(0);
-        _dbgLog.unshift(`[${ts}] ${msg}`);
-        if (_dbgLog.length > 12) _dbgLog.pop();
-        _dbgRender();
-    }
-
-    function _dbgRender() {
-        if (!_dbgEl) return;
-        const gp = (() => {
-            const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-            for (const g of pads) if (g) return g;
-            return null;
-        })();
-
-        let html = `<div style="font-weight:bold;margin-bottom:4px;color:#66c0f4;">PlayDate Input Debug <span style="font-weight:normal;color:#8f98a0;font-size:0.75em;">(F9 to hide)</span></div>`;
-
-        // State
-        html += `<div style="margin-bottom:4px;">zone=<b>${_state.zone}</b> row=<b>${_state.row}</b> col=<b>${_state.col}</b> mRow=<b>${_state.modalRow}</b> mCol=<b>${_state.modalCol}</b> active=<b>${_state.active}</b></div>`;
-        html += `<div style="margin-bottom:4px;">prevZone=<b>${_state.prevZone}</b> prevRow=<b>${_state.prevRow}</b> prevCol=<b>${_state.prevCol}</b> gpSeen=<b>${_gpEverSeen}</b></div>`;
-
-        // Modal detail — shown whenever zone=modal OR a modal is open
-        const _dbgOpenModal = _MODAL_IDS.find(id => {
-            const el = document.getElementById(id);
-            return el && _isModalVisible(el);
-        });
-        if (_dbgOpenModal || _state.zone === 'modal') {
-            const mgrid = _modalGrid();
-            const totalItems = mgrid.reduce((s, r) => s + r.length, 0);
-            html += `<div style="color:#f0a030;margin-bottom:2px;">modal open: <b>${_dbgOpenModal || 'none'}</b> | rows: <b>${mgrid.length}</b> items: <b>${totalItems}</b> | zone: <b>${_state.zone}</b></div>`;
-            html += `<div style="font-family:monospace;font-size:0.72em;margin-bottom:4px;">`;
-            mgrid.forEach((row, ri) => {
-                row.forEach((el, ci) => {
-                    const active = ri === _state.modalRow && ci === _state.modalCol && _state.zone === 'modal';
-                    const text = (el.textContent || '').trim().replace(/\s+/g,' ').slice(0, 22);
-                    html += `<div style="color:${active ? '#66c0f4' : '#8f98a0'};${active ? 'font-weight:bold;' : ''}">${active ? '→' : '  '} [${ri},${ci}] &lt;${el.tagName.toLowerCase()}&gt; ${text}</div>`;
-                });
-            });
-            html += `</div>`;
-        }
-
-        if (!gp) {
-            html += `<div style="color:#ff8080;">No gamepad detected</div>`;
-        } else {
-            html += `<div style="color:#5c7e10;margin-bottom:4px;word-break:break-all;">GP: ${gp.id}</div>`;
-            html += `<div style="margin-bottom:2px;color:#8f98a0;">mapping="${gp.mapping}" btns=${gp.buttons.length} axes=${gp.axes.length}</div>`;
-
-            // Buttons — show ALL, highlight active ones
-            html += `<div style="margin-bottom:2px;color:#8f98a0;">Buttons:</div>`;
-            html += `<div style="font-family:monospace;font-size:0.75em;margin-bottom:4px;line-height:1.8;">`;
-            gp.buttons.forEach((btn, i) => {
-                const v = btn.value;
-                const p = btn.pressed || v > 0.01;
-                const bg = v > 0.5 ? '#66c0f4' : v > 0.01 ? '#f0ad4e' : '#1a2332';
-                const fg = v > 0.5 ? '#0e1621' : '#c7d5e0';
-                html += `<span style="background:${bg};color:${fg};padding:1px 4px;margin:1px;border-radius:3px;border:1px solid #2a475e;display:inline-block;">${i}:${v.toFixed(2)}</span>`;
-            });
-            html += `</div>`;
-
-            // Axes — show ALL
-            html += `<div style="margin-bottom:2px;color:#8f98a0;">Axes:</div>`;
-            html += `<div style="font-family:monospace;font-size:0.75em;margin-bottom:6px;line-height:1.8;">`;
-            gp.axes.forEach((v, i) => {
-                const abs = Math.abs(v);
-                const bg = abs > 0.5 ? '#66c0f4' : abs > 0.1 ? '#f0ad4e' : '#1a2332';
-                const fg = abs > 0.5 ? '#0e1621' : '#c7d5e0';
-                html += `<span style="background:${bg};color:${fg};padding:1px 4px;margin:1px;border-radius:3px;border:1px solid #2a475e;display:inline-block;">${i}:${v.toFixed(2)}</span>`;
-            });
-            html += `</div>`;
-        }
-
-        // Event log
-        html += `<div style="color:#8f98a0;margin-bottom:2px;">Event log:</div>`;
-        html += `<div style="font-family:monospace;font-size:0.75em;line-height:1.5;">`;
-        _dbgLog.forEach((line, i) => {
-            const opacity = 1 - i * 0.07;
-            html += `<div style="opacity:${opacity.toFixed(2)}">${line}</div>`;
-        });
-        html += `</div>`;
-
-        _dbgEl.innerHTML = html;
-    }
-
-    // Continuously refresh the gamepad state display (even without input events)
-    function _dbgLoop() {
-        requestAnimationFrame(_dbgLoop);
-        if (_dbgEl) _dbgRender();
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        _dbgEl = document.createElement('div');
-        _dbgEl.id = 'pd-input-debug';
-        _dbgEl.style.cssText = [
-            'position:fixed', 'bottom:10px', 'right:10px', 'z-index:99999',
-            'background:rgba(10,15,25,0.95)', 'border:1px solid #2a475e',
-            'border-radius:6px', 'padding:10px 12px', 'font-size:0.78rem',
-            'color:#c7d5e0', 'max-width:420px', 'min-width:320px',
-            'line-height:1.4', 'display:none', 'pointer-events:none',
-        ].join(';');
-        document.body.appendChild(_dbgEl);
-        requestAnimationFrame(_dbgLoop);
-    });
-
     document.addEventListener('keydown', e => {
-        if (e.key === 'F9') {
-            if (_dbgEl) _dbgEl.style.display = _dbgEl.style.display === 'none' ? 'block' : 'none';
-        }
         if (e.key === 'Escape') {
             // Close edit/filter modals (global close fns, checked first)
             const editModal = document.getElementById('editModal');
@@ -618,7 +507,6 @@
             }
 
             default:
-                _dbgNote(`syncFocus: unknown zone "${_state.zone}", resetting`);
                 _state.zone = 'nav'; _state.col = 0;
                 _syncFocus();
                 break;
@@ -629,7 +517,6 @@
     function _activate() {
         if (_state.active) return;
         _state.active = true;
-        _dbgNote('ACTIVATE');
         // Start on the active nav link for this page
         const navItems = _navItems();
         const activeLink = document.querySelector('.nav-links a.active');
@@ -652,7 +539,6 @@
 
     // ── Zone helpers ──────────────────────────────────────────────────────────
     function _pushZone(zone) {
-        _dbgNote(`pushZone:${zone} (from ${_state.zone} r${_state.row}c${_state.col})`);
         _state.prevZone   = _state.zone;
         _state.prevRow    = _state.row;
         _state.prevCol    = _state.col;
@@ -664,7 +550,6 @@
     }
 
     function _popZone() {
-        _dbgNote(`popZone → ${_state.prevZone} r${_state.prevRow}c${_state.prevCol}`);
         _state.zone    = _state.prevZone;
         _state.row     = _state.prevRow  ?? _state.row;
         _state.col     = _state.prevCol  ?? _state.col;
@@ -1353,7 +1238,6 @@
         // Close edit/filter modals (these functions are global)
         const editModal = document.getElementById('editModal');
         if (editModal && editModal.style.display !== 'none') {
-            _dbgNote(`B: closing editModal zone=${_state.zone}`);
             if (_state.zone === 'modal') _popZone();
             if (typeof closeModal === 'function') closeModal();
             _syncFocus();
@@ -1362,7 +1246,6 @@
 
         const filterModal = document.getElementById('filterModal');
         if (filterModal && filterModal.style.display !== 'none') {
-            _dbgNote(`B: closing filterModal zone=${_state.zone}`);
             if (_state.zone === 'modal') _popZone();
             if (typeof closeFilterModal === 'function') closeFilterModal();
             _syncFocus();
@@ -1587,7 +1470,6 @@
     function _onButton(i, isRepeat) {
         const handler = _BTN_HANDLERS[i];
         if (!handler) return;
-        if (!isRepeat) _dbgNote(`btn:${i}`);
         // LB/RB fire immediately — no activation step needed
         if (_IMMEDIATE_BTNS.has(i)) {
             handler();
@@ -1614,7 +1496,6 @@
         if (!gp) return;
 
         if (!_gpEverSeen) {
-            _dbgNote('gpEverSeen id=' + gp.id.slice(0, 30));
             _gpEverSeen = true;
             sessionStorage.setItem('pd_gp_seen', '1');
         }
@@ -1705,7 +1586,6 @@
         let _wasVisible = el.style.display !== 'none' && el.style.display !== '';
         new MutationObserver(() => {
             const nowVisible = el.style.display !== 'none' && el.style.display !== '';
-            _dbgNote(`modal:${id} display="${el.style.display}" nowV=${nowVisible} wasV=${_wasVisible} active=${_state.active} zone=${_state.zone}`);
             if (nowVisible === _wasVisible) return;
             _wasVisible = nowVisible;
             if (!_state.active) return;
@@ -1731,7 +1611,6 @@
         let _wasVisible = el.classList.contains('visible');
         new MutationObserver(() => {
             const nowVisible = el.classList.contains('visible');
-            _dbgNote(`modal:${id} class visible=${nowVisible} wasV=${_wasVisible} zone=${_state.zone}`);
             if (nowVisible === _wasVisible) return;
             _wasVisible = nowVisible;
             if (!_state.active) return;

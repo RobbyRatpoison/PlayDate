@@ -27,10 +27,41 @@
                 <button type="submit" id="save-config-btn" class="btn-save" style="width: 100%; margin: 0;">SAVE & CONNECT</button>
             </div>
         </form>
+
+        <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-color);">
+            <p style="font-size: 0.85rem; color: #8f98a0; margin: 0 0 10px;">Already have a backup? Restore it to skip setup entirely.</p>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <button type="button" class="nav-btn" onclick="document.getElementById('config-restore-input').click()">Restore from Backup</button>
+                <input type="file" id="config-restore-input" accept=".zip" style="display:none" onchange="configRunRestore(this)">
+                <span id="config-restore-status" style="font-size:0.85rem; color: var(--muted-text);"></span>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
+    async function configRunRestore(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const status = document.getElementById('config-restore-status');
+        status.style.color = 'var(--muted-text)';
+        status.textContent = 'Restoring…';
+        const formData = new FormData();
+        formData.append('backup_file', file);
+        try {
+            const res = await fetch('/api/restore', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.status !== 'success') throw new Error(data.message || 'Restore failed.');
+            status.style.color = 'var(--accent-green)';
+            status.textContent = '✔ Restored. Reloading…';
+            setTimeout(() => window.location.reload(), 1200);
+        } catch (e) {
+            status.style.color = 'var(--danger-text)';
+            status.textContent = '✘ ' + e.message;
+        }
+        input.value = '';
+    }
+
     // Logic for saving and VALIDATING the initial configuration
     document.getElementById('config-form').addEventListener('submit', async (e) => {
         e.preventDefault();
