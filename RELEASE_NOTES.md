@@ -32,6 +32,22 @@ chmod +x install.sh && ./install.sh
 
 ---
 
+## v1.1.2 — 2026-03-22
+
+### Changes
+- **Steam API key is now required** — Steam's authentication wall broke unauthenticated access to the games list, which also caused Populate PlayDate to fail for users without a key. The config form now requires an API key upfront, with a direct link to get one free in ~2 minutes.
+- **Library populates automatically on startup** — Populate PlayDate runs once per session in the background on launch, and immediately after first-time setup completes.
+- **Config modal re-opens for existing users without an API key** — upgrading users are prompted to add their API key, with existing Steam ID and SteamGridDB key pre-filled.
+- **Restore from backup added to config screen** — users can skip setup entirely by restoring a previous backup directly from the configuration modal.
+
+### Tools Page
+- Reordered: Edit Home Layout → Blacklist Manager → Backup & Restore → Import DB → Background Image → PAGYWOSG → BLAEO Sync → CSV Export → Theme Editor
+
+### Internal
+- Removed F9 gamepad debug overlay
+
+---
+
 ## v1.1.1 — 2026-03-22
 
 ### Bug Fixes
