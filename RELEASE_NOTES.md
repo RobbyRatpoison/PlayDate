@@ -47,11 +47,3 @@ chmod +x install.sh && ./install.sh
 - Removed F9 gamepad debug overlay
 
 ---
-
-## v1.1.1 — 2026-03-22
-
-### Bug Fixes
-- **Fixed startup crash on Windows** — selenium was imported unconditionally at module load, causing a `ModuleNotFoundError` on startup for users who don't have selenium installed. Imports are now deferred inside `scrape_blaeo_games()` so they only load when BLAEO sync is triggered.
-- **Improved BLAEO sync error message** — if Chrome is not installed, users now see a clear explanation and a link to download it, instead of a raw `WebDriverException`.
-
----
