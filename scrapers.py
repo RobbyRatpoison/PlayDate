@@ -52,8 +52,11 @@ def scrape_games_from_profile(vanity_or_id):
     Returns a list of dicts with appid, name, playtime_forever, last_played.
     Requires the user's profile and game details to be set to Public.
     """
-    # Build the profile URL — works with both vanity names and SteamID64
-    url = f"https://steamcommunity.com/id/{vanity_or_id}/games?tab=all"
+    # Build the profile URL — /profiles/ for SteamID64, /id/ for vanity names
+    if str(vanity_or_id).isdigit():
+        url = f"https://steamcommunity.com/profiles/{vanity_or_id}/games?tab=all"
+    else:
+        url = f"https://steamcommunity.com/id/{vanity_or_id}/games?tab=all"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
