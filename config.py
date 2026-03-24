@@ -166,7 +166,9 @@ DEFAULT_STATE = {
     "order": "ASC",
     "active_filters": [],
     "saved_filters": {},
-    "shelves": DEFAULT_SHELVES
+    "shelves": DEFAULT_SHELVES,
+    "artwork_orientation": "vertical",
+    "card_height": 200
 }
 
 def validate_steam_creds(api_key, steam_id):
@@ -284,8 +286,17 @@ def load_state():
             state = json.load(f)
         except json.JSONDecodeError:
             return create_state(force=True)
+    dirty = False
     if 'shelves' not in state:
         state['shelves'] = get_default_shelves()
+        dirty = True
+    if 'artwork_orientation' not in state:
+        state['artwork_orientation'] = 'vertical'
+        dirty = True
+    if 'card_height' not in state:
+        state['card_height'] = 200
+        dirty = True
+    if dirty:
         with open(STATE_PATH, 'w') as f:
             json.dump(state, f, indent=4)
     return state
@@ -309,6 +320,8 @@ def save_state(updates):
 
     if "sort" in updates: state["sort"] = updates["sort"]
     if "order" in updates: state["order"] = updates["order"]
+    if "artwork_orientation" in updates: state["artwork_orientation"] = updates["artwork_orientation"]
+    if "card_height" in updates: state["card_height"] = updates["card_height"]
 
     if "shelves" in updates:
         state["shelves"] = updates["shelves"]

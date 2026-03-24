@@ -45,7 +45,7 @@
 
         .game-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width, 180px), 1fr));
             gap: 25px;
             padding: 20px 0;
             contain: layout style;
@@ -55,25 +55,64 @@
             border-radius: 8px;
             overflow: hidden;
             transition: transform 0.2s;
-            border: 1px solid #333;
+            outline: 1px solid #333;
             aspect-ratio: 2/3;
+        }
+
+        .game-grid.horizontal .game-card {
+            aspect-ratio: 616 / 353;
+        }
+
+        #card-size-slider {
+            width: 90px;
+            cursor: pointer;
+            vertical-align: middle;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 16px;
+            background: transparent;
+            outline: none;
+        }
+        #card-size-slider::-webkit-slider-runnable-track {
+            height: 4px;
+            border-radius: 2px;
+            background: linear-gradient(to right, var(--steam-focus) var(--slider-pct, 37%), var(--panel-alt, #555) var(--slider-pct, 37%));
+        }
+        #card-size-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px; height: 14px;
+            margin-top: -5px;
+            border-radius: 50%;
+            background: var(--steam-focus);
+            cursor: pointer;
+        }
+
+        #art-orient-btn.horizontal {
+            background: var(--steam-focus);
+            color: #1b2838;
+            border-color: var(--steam-focus);
         }
 
         .game-card:hover {
             transform: scale(1.05);
-            border-color: var(--steam-focus);
+            outline-color: var(--steam-focus);
             will-change: transform;
         }
 
         .capsule-container {
             position: relative;
-            aspect-ratio: 2/3; /* Forces the 600x900 ratio */
+            width: 100%;
+            height: 100%;
+            display: block;
         }
 
         .game-capsule {
+            position: absolute;
+            top: 0; left: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Ensures headers don't stretch weirdly */
+            object-fit: cover;
+            display: block;
         }
 
         .game-overlay {
@@ -288,6 +327,11 @@
         <button onclick="openFilterModal()">FILTERS</button>
         <button onclick="openBulkEditModal()">BULK EDIT</button>
         <button id="select-mode-btn" class="select-mode-btn" onclick="toggleSelectMode()">SELECT</button>
+        <button id="art-orient-btn" onclick="toggleArtOrientation()" title="Toggle vertical/horizontal images">⬜ Vertical</button>
+        <input type="range" id="card-size-slider" min="120" max="400" step="10"
+               value="{{ state.get('card_height', 200) }}"
+               oninput="onCardSizeSlider(this.value)"
+               title="Adjust card size">
     </div>
 
     <!-- Filter error banner (shown by playdate.js showFilterError, or server-side sql_error) -->
@@ -309,6 +353,57 @@
 <script>
     // ── All game data in one JS array — no per-card script tags ──
     const GAMES = {{ games | tojson }};
+
+    // ── Artwork orientation + card size (restored from state) ────────────────
+    const _imgV = Date.now(); // cache-buster: prevents stale 404s from browser negative cache
+    let _artOrientation = '{{ state.get("artwork_orientation", "vertical") }}';
+    let _cardSizeTimeout = null;
+
+    (function _initGridPrefs() {
+        const grid   = document.getElementById('game-grid');
+        const btn    = document.getElementById('art-orient-btn');
+        const slider = document.getElementById('card-size-slider');
+        const size   = {{ state.get('card_height', 200) }};
+        document.documentElement.style.setProperty('--card-min-width', size + 'px');
+        if (slider) {
+            slider.value = size;
+            const pct = (size - parseInt(slider.min)) / (parseInt(slider.max) - parseInt(slider.min)) * 100;
+            slider.style.setProperty('--slider-pct', pct + '%');
+        }
+        if (_artOrientation === 'horizontal' && grid) {
+            grid.classList.add('horizontal');
+            if (btn) { btn.textContent = '▬ Horizontal'; btn.classList.add('horizontal'); }
+        }
+    })();
+
+    function toggleArtOrientation() {
+        _artOrientation = _artOrientation === 'vertical' ? 'horizontal' : 'vertical';
+        const grid = document.getElementById('game-grid');
+        const btn  = document.getElementById('art-orient-btn');
+        if (_artOrientation === 'horizontal') {
+            grid.classList.add('horizontal');
+            btn.textContent = '▬ Horizontal';
+            btn.classList.add('horizontal');
+        } else {
+            grid.classList.remove('horizontal');
+            btn.textContent = '⬜ Vertical';
+            btn.classList.remove('horizontal');
+        }
+        // Rebuild cards with correct image paths
+        CARD_HTML_CACHE.clear();
+        document.querySelectorAll('.game-card').forEach(card => { card.innerHTML = ''; delete card.dataset.populated; });
+        observeCards();
+        savePreference({ artwork_orientation: _artOrientation });
+    }
+
+    function onCardSizeSlider(val) {
+        const slider = document.getElementById('card-size-slider');
+        document.documentElement.style.setProperty('--card-min-width', val + 'px');
+        const pct = (val - parseInt(slider.min)) / (parseInt(slider.max) - parseInt(slider.min)) * 100;
+        slider.style.setProperty('--slider-pct', pct + '%');
+        clearTimeout(_cardSizeTimeout);
+        _cardSizeTimeout = setTimeout(() => savePreference({ card_height: parseInt(val) }), 400);
+    }
 
     // ── Current filter tree from server (may already contain a name condition) ──
     const _serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
@@ -371,13 +466,23 @@
     function cardInnerHTML(game) {
         if (CARD_HTML_CACHE.has(game.appid)) return CARD_HTML_CACHE.get(game.appid);
         const escaped = (game.name || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const isHoriz  = _artOrientation === 'horizontal';
+        const src      = isHoriz
+            ? `/static/img/library/horizontal/${game.appid}.jpg?v=${_imgV}`
+            : `/static/img/library/vertical/${game.appid}.jpg?v=${_imgV}`;
+        const fallback = isHoriz
+            ? `/static/img/library/vertical/${game.appid}.jpg?v=${_imgV}`
+            : '';
+        const onerror  = fallback
+            ? `this.onerror=null;this.src='${fallback}';`
+            : 'this.onerror=null;';
         const html = `
             <div class="capsule-container" onclick="launchGame(${game.appid})" style="cursor:pointer;">
-                <img src="/static/img/library/${game.appid}.jpg"
+                <img src="${src}"
                     alt="${escaped}"
                     class="game-capsule"
                     loading="lazy"
-                    onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg';">
+                    onerror="${onerror}">
                 <div class="game-overlay" onclick="event.stopPropagation()">
                     <button class="status-tag"
                         style="background:var(--steam-input);color:var(--steam-text);border:1px solid var(--border-color);cursor:pointer;"
@@ -1023,7 +1128,9 @@ async function runBulkDelete() {
             <option value="playtime_forever">Playtime (Mins)</option>
             <option value="date_added">Date Added</option>
             <option value="installed">Installed (0/1)</option>
-            <option value="art_source">Art Source</option>
+            <option value="vertical_art_source">Vertical Art Source</option>
+            <option value="horizontal_art_source">Horizontal Art Source</option>
+            <option value="icon_source">Icon Source</option>
         </select>
 
         <label>Edit Mode</label>

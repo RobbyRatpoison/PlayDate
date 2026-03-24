@@ -4,7 +4,7 @@ import re
 import requests
 import time
 from bs4 import BeautifulSoup
-from images import download_capsule
+from images import download_vertical, download_horizontal, download_icon, _get_steam_assets
 from datetime import datetime
 from config import load_config
 from database import add_new_game, update_game_data, get_db
@@ -33,7 +33,7 @@ def add_new(cancel_event=None, progress_cb=None):
         raw_games = data.get('response', {}).get('games', [])
         if not raw_games:
             return {"status": "error", "message": "No games returned. Is your Steam Profile set to Public?"}
-        games = [{'appid': g['appid'], 'name': g.get('name', ''), 'playtime_forever': g.get('playtime_forever', 0), 'last_played': datetime.fromtimestamp(g.get('rtime_last_played', 0)).strftime('%Y-%m-%d') if g.get('rtime_last_played', 0) > 0 else '0'} for g in raw_games]
+        games = [{'appid': g['appid'], 'name': g.get('name', ''), 'playtime_forever': g.get('playtime_forever', 0), 'last_played': datetime.fromtimestamp(g.get('rtime_last_played', 0)).strftime('%Y-%m-%d') if g.get('rtime_last_played', 0) > 0 else '0', 'icon_hash': g.get('img_icon_url', '')} for g in raw_games]
     except requests.exceptions.JSONDecodeError:
         return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
     except Exception as e:
@@ -65,15 +65,23 @@ def add_new(cancel_event=None, progress_cb=None):
                 last_played = game['last_played']
                 played = "Unfinished" if playtime > 0 else "Never Played"
                 today = datetime.now().strftime('%Y-%m-%d')
-                artwork_source = download_capsule(appid)
+                icon_hash  = game.get('icon_hash', '')
+
+                assets            = _get_steam_assets(appid)
+                vertical_source   = download_vertical(appid, assets=assets)
+                horizontal_source = download_horizontal(appid, assets=assets)
+                icon_source       = download_icon(appid, icon_hash)
 
                 game_data = {
-                    'playtime_forever': playtime,
-                    'date_added': today,
-                    'completion_status': played,
-                    'last_played': last_played,
-                    'art_source': artwork_source,
-                    'installed': 1 if appid in installed_ids else 0
+                    'playtime_forever':      playtime,
+                    'date_added':            today,
+                    'completion_status':     played,
+                    'last_played':           last_played,
+                    'vertical_art_source':   vertical_source,
+                    'horizontal_art_source': horizontal_source,
+                    'icon_source':           icon_source,
+                    'icon_hash':             icon_hash,
+                    'installed':             1 if appid in installed_ids else 0
                 }
 
                 store_info = fetch_store_data(appid)
@@ -177,12 +185,12 @@ def fetch_store_data(appid):
 
         # Extract and format the specific fields we want
         extracted = {
-            'developers':  ", ".join(data.get('developers', [])),
-            'publishers':  ", ".join(data.get('publishers', [])),
+            'developers':   ", ".join(data.get('developers', [])),
+            'publishers':   ", ".join(data.get('publishers', [])),
             'release_date': date_value,
             'genres':      ",".join(g['description'] for g in data.get('genres', [])),
             'categories':  ",".join(c['description'] for c in data.get('categories', [])),
-            'is_free':     1 if data.get('is_free') else 0
+            'is_free':     1 if data.get('is_free') else 0,
         }
 
         return extracted

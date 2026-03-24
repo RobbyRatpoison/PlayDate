@@ -32,9 +32,14 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.4 — 2026-03-23
+## v1.1.5 — 2026-03-24
 
-### Bug Fix
-- **Windows: game card images now display correctly.** Cover art was being saved next to the `.exe` but Flask was serving static files from inside the PyInstaller bundle — a different directory. Added explicit routes so covers and the custom background image are served from the correct location.
+### New Features
+- **Horizontal card view.** The library page now supports a horizontal image layout. Toggle between vertical and horizontal with the new button in the toolbar.
+- **Adjustable card size.** A slider in the library toolbar lets you resize game cards to your preference.
+- **Icon scraping.** Game icons are now downloaded and stored alongside cover art.
+- **Horizontal cover art.** Horizontal images are now fetched and stored separately from vertical capsule art.
+- **Hi-res cover art.** PlayDate now prefers 2x resolution images where available, falling back to standard resolution.
+- **Improved SteamGridDB browser.** The artwork browser now searches by game name automatically when Steam lookup returns no results. You can also manually search any game name to pull artwork from SteamGridDB's full catalog.
 
 ---

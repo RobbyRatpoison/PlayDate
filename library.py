@@ -10,7 +10,8 @@ library_bp = Blueprint('library', __name__)
 SAFE_COLUMNS = {
     'name', 'completion_status', 'installed', 'release_date', 'date_added',
     'last_played', 'playtime_forever', 'review_percentage', 'weighted_percentage',
-    'review_score', 'art_source', 'groups', 'tags', 'developers', 'publishers',
+    'review_score', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
+    'groups', 'tags', 'developers', 'publishers',
     'total_reviews', 'positive_reviews', 'unlocked_achievements', 'total_achievements',
     'genres', 'categories', 'is_free'
 }
@@ -266,7 +267,8 @@ def bulk_edit_games(data):
         'completion_status', 'tags', 'groups', 'developers', 'publishers',
         'release_date', 'review_score', 'review_percentage', 'weighted_percentage',
         'total_reviews', 'positive_reviews', 'playtime_forever', 'date_added',
-        'installed', 'art_source', 'unlocked_achievements', 'total_achievements',
+        'installed', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
+        'unlocked_achievements', 'total_achievements',
         'genres', 'categories', 'is_free'
     }
     if column not in allowed_columns:

@@ -33,6 +33,11 @@ def init_db():
     cursor.execute("PRAGMA table_info(games)")
     columns = [column[1] for column in cursor.fetchall()]
 
+    # One-time migration: rename art_source → vertical_art_source
+    if 'art_source' in columns and 'vertical_art_source' not in columns:
+        cursor.execute("ALTER TABLE games RENAME COLUMN art_source TO vertical_art_source")
+        columns = [c if c != 'art_source' else 'vertical_art_source' for c in columns]
+
     # Dictionary of all required columns for the current version of PlayDate
     required_columns = {
         'playtime_forever': 'INT',       # Total playtime in minutes
@@ -48,7 +53,10 @@ def init_db():
         'total_achievements': 'INT',     # Total achievements available
         'review_score': 'TEXT',          # e.g., 'Very Positive'
         'review_percentage': 'INT',      # 0-100 score
-        'art_source': 'TEXT',            # Where the artwork came from
+        'vertical_art_source': 'TEXT',   # Source of vertical capsule art
+        'horizontal_art_source': 'TEXT', # Source of horizontal header art
+        'icon_source': 'TEXT',           # Source of game icon
+        'icon_hash': 'TEXT',             # Steam icon hash for re-downloading
         'weighted_percentage': 'INT',    # Scaling penalties for total_reviews under 100
         'total_reviews': 'INT',
         'positive_reviews': 'INT',
@@ -176,3 +184,82 @@ def get_blacklisted_appids():
     rows = conn.execute("SELECT appid FROM blacklist").fetchall()
     conn.close()
     return {row[0] for row in rows}
+
+
+def migrate_image_files():
+    """
+    One-time migration: moves flat library/{appid}.jpg files into
+    library/vertical/ or library/horizontal/ subfolders.
+
+    Games that had art_source='header' (now vertical_art_source='header')
+    have a horizontal image stored as their vertical cover — those get moved
+    to horizontal/ and their DB record is corrected.
+
+    Skipped entirely if the vertical/ subfolder is non-empty.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    from config import BASE_DIR
+    library_dir  = os.path.join(BASE_DIR, 'static', 'img', 'library')
+    vertical_dir = os.path.join(library_dir, 'vertical')
+
+    log.info(f"[migrate_image_files] library_dir = {library_dir}")
+
+    if os.path.exists(vertical_dir) and os.listdir(vertical_dir):
+        log.info("[migrate_image_files] Already migrated — skipping.")
+        return
+
+    log.info("[migrate_image_files] Starting image file migration...")
+
+    horizontal_dir = os.path.join(library_dir, 'horizontal')
+    icons_dir      = os.path.join(library_dir, 'icons')
+    for d in (vertical_dir, horizontal_dir, icons_dir):
+        os.makedirs(d, exist_ok=True)
+        log.info(f"[migrate_image_files] Created directory: {d}")
+
+    # Find games whose "vertical" file is actually a horizontal header image
+    conn = sqlite3.connect(DB_FILE, timeout=10)
+    rows = conn.execute(
+        "SELECT appid FROM games WHERE vertical_art_source = 'header'"
+    ).fetchall()
+    header_appids = {row[0] for row in rows}
+    log.info(f"[migrate_image_files] Games with header source (→ horizontal/): {len(header_appids)}")
+
+    # Move all flat .jpg files to the appropriate subfolder
+    moved = 0
+    skipped = 0
+    try:
+        for filename in os.listdir(library_dir):
+            if not filename.endswith('.jpg'):
+                continue
+            src = os.path.join(library_dir, filename)
+            if not os.path.isfile(src):
+                continue
+            try:
+                appid = int(filename.replace('.jpg', ''))
+            except ValueError:
+                skipped += 1
+                continue
+            dest_dir = horizontal_dir if appid in header_appids else vertical_dir
+            dest = os.path.join(dest_dir, filename)
+            os.rename(src, dest)
+            moved += 1
+    except Exception as e:
+        log.error(f"[migrate_image_files] Error moving files: {e}", exc_info=True)
+
+    log.info(f"[migrate_image_files] Moved {moved} files, skipped {skipped}.")
+
+    # Fix DB records for games that had a horizontal image as their vertical cover
+    if header_appids:
+        placeholders = ', '.join('?' * len(header_appids))
+        conn.execute(
+            f"UPDATE games SET vertical_art_source = 'missing', horizontal_art_source = 'header' "
+            f"WHERE appid IN ({placeholders})",
+            list(header_appids)
+        )
+        conn.commit()
+        log.info(f"[migrate_image_files] Updated DB for {len(header_appids)} header-source games.")
+
+    conn.close()
+    log.info("[migrate_image_files] Migration complete.")

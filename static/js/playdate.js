@@ -13,7 +13,8 @@ const _SQL_HL_COLUMNS = new Set([
     'name','completion_status','tags','groups','installed',
     'release_date','date_added','last_played','playtime_forever',
     'review_percentage','weighted_percentage','review_score',
-    'developers','publishers','art_source','unlocked_achievements',
+    'developers','publishers','vertical_art_source','horizontal_art_source',
+    'icon_source','unlocked_achievements',
     'total_achievements','appid','positive_reviews','total_reviews'
 ]);
 const _SQL_HL_FUNCTIONS = new Set([
@@ -134,7 +135,17 @@ function sqlHighlightPre(preEl, sql) {
     if (preEl) preEl.innerHTML = _sqlHighlightHtml(sql);
 }
 
-async function sendStateUpdate(payload) {
+// Fire-and-forget preference save — keepalive survives page navigation
+function savePreference(payload) {
+    fetch('/api/update_state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true
+    }).catch(() => {});
+}
+
+async function sendStateUpdate(payload, reload = true) {
     try {
         const response = await fetch('/api/update_state', {
             method: 'POST',
@@ -142,7 +153,7 @@ async function sendStateUpdate(payload) {
             body: JSON.stringify(payload)
         });
         if (response.ok) {
-            window.location.reload();
+            if (reload) window.location.reload();
         } else {
             let message = `Server error ${response.status}`;
             try { const d = await response.json(); if (d.message) message = d.message; } catch {}

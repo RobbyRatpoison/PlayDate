@@ -405,8 +405,12 @@ const FM_FILTER_CONFIG = {
                             options: ["Overwhelmingly Positive","Very Positive","Positive","Mostly Positive","Mixed","Mostly Negative","Negative","Very Negative","Overwhelmingly Negative","No Reviews","Not Enough Reviews"] },
     'developers':         { label: 'Developer',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
     'publishers':         { label: 'Publisher',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
-    'art_source':         { label: 'Artwork Source',       type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
-                            options: ['capsule','sgdb_capsule','header'] },
+    'vertical_art_source':   { label: 'Vertical Art Source',   type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                               options: ['capsule_2x','capsule','sgdb_grid','custom','missing'] },
+    'horizontal_art_source': { label: 'Horizontal Art Source', type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                               options: ['header','sgdb_grid_wide','custom','missing'] },
+    'icon_source':           { label: 'Icon Source',           type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                               options: ['steam','sgdb_icon','custom','missing'] },
     'unlocked_achievements': { label: 'Unlocked Achievements', type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'total_achievements':    { label: 'Total Achievements',    type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'genres':             { label: 'Genre',                 type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
@@ -1461,7 +1465,7 @@ async function clearAllFilters() {
 
 // _savedFilters may already be declared by the host page (e.g. index.html)
 if (typeof _savedFilters === 'undefined') {
-    var _savedFilters = {{ state.get('saved_filters', {}) | tojson if state is defined else '{}' }};
+    _savedFilters = {{ state.get('saved_filters', {}) | tojson if state is defined else '{}' }};
 }
 
 const _builtinFilterWheres = {{ builtin_filters | tojson if builtin_filters is defined else '{}' }};

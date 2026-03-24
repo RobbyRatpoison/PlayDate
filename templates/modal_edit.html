@@ -235,24 +235,80 @@
                     </div>
                 </div>
 
-                <!-- RIGHT COLUMN (spans both grid rows): artwork image -->
-                <div style="border-left: 1px solid #2a475e; padding-left: 20px; grid-row: span 2;">
-                    <div id="art-column-label" style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">Current Artwork</div>
-                    <div style="width:100%; border-radius:6px; overflow:hidden; border:1px solid #2a475e; background:#0e1621;">
-                        <img id="art-current"
-                             src=""
-                             alt="capsule art"
-                             style="width:100%; height:auto; display:block;">
-                        <div id="art-placeholder"
-                             style="display:none; padding:40px 0; flex-direction:column;
-                                    align-items:center; justify-content:center; gap:6px; color:#4a6a7a; font-size:0.8rem;">
-                            <span style="font-size:2rem;">🖼</span>
-                            No image found
+                <!-- RIGHT COLUMN (spans both grid rows): artwork panels -->
+                <div style="border-left: 1px solid #2a475e; padding-left: 20px; grid-row: span 2; display:flex; flex-direction:column; gap:10px;">
+                    <!-- Tabs -->
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" class="art-tab-btn active" onclick="openArtTab('vertical')"   id="art-tab-vertical">Vertical</button>
+                        <button type="button" class="art-tab-btn"        onclick="openArtTab('horizontal')" id="art-tab-horizontal">Horizontal</button>
+                        <button type="button" class="art-tab-btn"        onclick="openArtTab('icon')"       id="art-tab-icon">Icon</button>
+                    </div>
+
+                    <!-- Vertical panel -->
+                    <div id="art-panel-vertical" class="art-panel" style="display:flex; flex-direction:column; gap:8px;">
+                        <div style="border-radius:6px; overflow:hidden; border:1px solid #2a475e; background:#0e1621;">
+                            <img id="art-img-vertical" src="" alt="" style="width:100%; height:auto; display:none;">
+                            <div id="art-ph-vertical" class="art-placeholder">
+                                <span style="font-size:1.5rem;">🖼</span>No image
+                            </div>
                         </div>
+                        <div class="art-source-label">Source: <span id="art-source-vertical">—</span></div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('vertical')"       data-modal-row="1">Re-scrape</button>
+                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('vertical')" data-modal-row="1">Custom URL</button>
+                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('vertical')" data-modal-row="1">Browse SGDB</button>{% endif %}
+                        </div>
+                        <div id="art-url-row-vertical" style="display:none; flex-direction:column; gap:6px;">
+                            <input type="text" id="art-url-vertical" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
+                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('vertical')" data-modal-row="1" style="width:100%;">Save</button>
+                        </div>
+                        <div id="art-status-vertical" class="art-status"></div>
+                    </div>
+
+                    <!-- Horizontal panel -->
+                    <div id="art-panel-horizontal" class="art-panel" style="display:none; flex-direction:column; gap:8px;">
+                        <div style="border-radius:6px; overflow:hidden; border:1px solid #2a475e; background:#0e1621;">
+                            <img id="art-img-horizontal" src="" alt="" style="width:100%; height:auto; display:none;">
+                            <div id="art-ph-horizontal" class="art-placeholder">
+                                <span style="font-size:1.5rem;">🖼</span>No image
+                            </div>
+                        </div>
+                        <div class="art-source-label">Source: <span id="art-source-horizontal">—</span></div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('horizontal')"       data-modal-row="1">Re-scrape</button>
+                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('horizontal')" data-modal-row="1">Custom URL</button>
+                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('horizontal')" data-modal-row="1">Browse SGDB</button>{% endif %}
+                        </div>
+                        <div id="art-url-row-horizontal" style="display:none; flex-direction:column; gap:6px;">
+                            <input type="text" id="art-url-horizontal" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
+                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('horizontal')" data-modal-row="1" style="width:100%;">Save</button>
+                        </div>
+                        <div id="art-status-horizontal" class="art-status"></div>
+                    </div>
+
+                    <!-- Icon panel -->
+                    <div id="art-panel-icon" class="art-panel" style="display:none; flex-direction:column; gap:8px;">
+                        <div style="border-radius:6px; overflow:hidden; border:1px solid #2a475e; background:#0e1621; max-width:80px;">
+                            <img id="art-img-icon" src="" alt="" style="width:100%; height:auto; display:none;">
+                            <div id="art-ph-icon" class="art-placeholder">
+                                <span style="font-size:1.5rem;">🖼</span>No image
+                            </div>
+                        </div>
+                        <div class="art-source-label">Source: <span id="art-source-icon">—</span></div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('icon')"       data-modal-row="1">Re-scrape</button>
+                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('icon')" data-modal-row="1">Custom URL</button>
+                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('icon')" data-modal-row="1">Browse SGDB</button>{% endif %}
+                        </div>
+                        <div id="art-url-row-icon" style="display:none; flex-direction:column; gap:6px;">
+                            <input type="text" id="art-url-icon" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
+                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('icon')" data-modal-row="1" style="width:100%;">Save</button>
+                        </div>
+                        <div id="art-status-icon" class="art-status"></div>
                     </div>
                 </div>
 
-                <!-- SPAN ROW (cols 1–2): Genres + Categories, then artwork URL -->
+                <!-- SPAN ROW (cols 1–2): Genres + Categories -->
                 <div style="grid-column: span 2; display: flex; flex-direction: column; gap: 0; padding-top: 4px;">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div>
@@ -265,33 +321,6 @@
                             <div class="pill-input-box" id="edit-categories-box" style="min-height: 60px;"></div>
                             <input type="hidden" name="categories" id="edit-categories">
                         </div>
-                    </div>
-
-                    <div style="margin-top: 12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                            <label style="margin:0;">New Artwork URL</label>
-                            <a id="sgdb-link" href="#" target="_blank"
-                               style="color:var(--steam-focus); font-size:0.75rem; text-decoration:none;">
-                                Search SteamGridDB ↗
-                            </a>
-                        </div>
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" id="new-art-url"
-                                   placeholder="Paste a direct image URL..."
-                                   style="flex:1; min-width:0;"
-                                   oninput="onArtUrlInput(this.value)">
-                            <button type="button" id="art-steam-btn" class="nav-btn" data-modal-row="1"
-                                    onclick="fetchSteamArt()"
-                                    style="padding:8px 12px; white-space:nowrap;">
-                                Steam Art
-                            </button>
-                            <button type="button" id="art-preview-btn" class="nav-btn" data-modal-row="1"
-                                    onclick="previewArtUrl()"
-                                    style="padding:8px 12px; white-space:nowrap;">
-                                Preview
-                            </button>
-                        </div>
-                        <div id="art-status" style="font-size:0.75rem; margin-top:5px; min-height:1rem;"></div>
                     </div>
                 </div>
             </div>
@@ -307,6 +336,22 @@
 <style>
     #meta-btn { color: var(--steam-focus); background: transparent; }
     #meta-btn:hover { background: var(--steam-focus) !important; color: #1b2838 !important; }
+
+    .art-tab-btn {
+        padding: 4px 10px; font-size: 0.72rem; border-radius: 4px;
+        background: transparent; border: 1px solid #2a475e;
+        color: var(--muted-text); cursor: pointer; transition: all 0.15s;
+    }
+    .art-tab-btn:hover  { background: #1a2332; color: var(--steam-text); }
+    .art-tab-btn.active { background: var(--steam-focus); color: #1b2838; border-color: var(--steam-focus); }
+    .art-placeholder {
+        display: flex; padding: 30px 0; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 6px; color: #4a6a7a; font-size: 0.8rem;
+    }
+    .art-source-label { font-size: 0.72rem; color: var(--muted-text); }
+    .art-action-btn   { padding: 5px 9px !important; font-size: 0.72rem !important; }
+    .art-status       { font-size: 0.72rem; min-height: 1rem; }
 
     .pill-input-box {
         display: flex;
@@ -529,110 +574,112 @@
         safeSet('edit-unlocked-ach', game.unlocked_achievements);
         safeSet('edit-total-ach', game.total_achievements);
 
-        // Reset artwork section
-        document.getElementById('new-art-url').value = '';
-        document.getElementById('art-status').textContent = '';
-        // Show current capsule in the single image slot
-        const current = document.getElementById('art-current');
-        const placeholder = document.getElementById('art-placeholder');
-        const localSrc = `/static/img/library/${game.appid}.jpg`;
-        const steamSrc = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${game.appid}/header.jpg`;
-        current.onerror = () => {
-            // Try Steam CDN fallback
-            if (current.src !== steamSrc) { current.src = steamSrc; return; }
-            // Both failed — show placeholder
-            current.style.display = 'none';
-            placeholder.style.display = 'flex';
-            current.onerror = null;
-        };
-        current.onload = () => { placeholder.style.display = 'none'; current.style.display = 'block'; };
-        placeholder.style.display = 'none';
-        current.style.display = 'block';
-        current.src = localSrc;
+        // Reset and populate artwork panels
+        _artCurrentTab = 'vertical';
+        _loadArtPanel('vertical',   `/static/img/library/vertical/${game.appid}.jpg`,   game.vertical_art_source);
+        _loadArtPanel('horizontal', `/static/img/library/horizontal/${game.appid}.jpg`, game.horizontal_art_source);
+        _loadArtPanel('icon',       `/static/img/library/icons/${game.appid}.jpg`,      game.icon_source);
+        openArtTab('vertical');
 
-        const linkEl = document.getElementById('sgdb-link');
-        if (linkEl) linkEl.href = `https://www.steamgriddb.com/search/grids?term=${(game.name || '').replace(/\s+/g, '+')}`;
         const storeLink = document.getElementById('steam-store-link');
         if (storeLink) storeLink.href = `https://store.steampowered.com/app/${game.appid}/`;
         document.getElementById('editModal').style.display = 'flex';
     }
 
-    function onArtUrlInput(val) {
-        document.getElementById('art-status').textContent = '';
-        if (!val.trim()) {
-            // URL cleared — restore the original capsule
-            const appid = document.getElementById('edit-appid').value;
-            const img = document.getElementById('art-current');
-            img.src = `/static/img/library/${appid}.jpg`;
-            document.getElementById('art-column-label').textContent = 'Current Artwork';
+    let _artCurrentTab = 'vertical';
+
+    const _artSourceLabels = {
+        capsule_2x: 'Steam 2x Capsule', capsule: 'Steam Capsule',
+        sgdb_grid:  'SteamGridDB Grid', header: 'Steam Header',
+        sgdb_grid_wide: 'SteamGridDB Wide', steam: 'Steam',
+        sgdb_icon:  'SteamGridDB Icon', custom: 'Custom', missing: 'Missing'
+    };
+
+    function _loadArtPanel(type, src, sourceValue) {
+        const img = document.getElementById(`art-img-${type}`);
+        const ph  = document.getElementById(`art-ph-${type}`);
+        const lbl = document.getElementById(`art-source-${type}`);
+        lbl.textContent = _artSourceLabels[sourceValue] || sourceValue || '—';
+        img.onload  = () => { img.style.display = 'block'; ph.style.display = 'none'; };
+        img.onerror = () => { img.style.display = 'none';  ph.style.display = 'flex'; img.onerror = null; };
+        img.style.display = 'none';
+        ph.style.display  = 'flex';
+        img.src = src;
+        // Reset URL row and status
+        const urlRow = document.getElementById(`art-url-row-${type}`);
+        const urlInput = document.getElementById(`art-url-${type}`);
+        const status = document.getElementById(`art-status-${type}`);
+        if (urlRow)   urlRow.style.display  = 'none';
+        if (urlInput) urlInput.value        = '';
+        if (status)   status.textContent    = '';
+    }
+
+    function openArtTab(type) {
+        _artCurrentTab = type;
+        ['vertical', 'horizontal', 'icon'].forEach(t => {
+            document.getElementById(`art-tab-${t}`).classList.toggle('active', t === type);
+            document.getElementById(`art-panel-${t}`).style.display = t === type ? 'flex' : 'none';
+        });
+    }
+
+    function toggleArtCustomUrl(type) {
+        const row = document.getElementById(`art-url-row-${type}`);
+        const visible = row.style.display !== 'none';
+        row.style.display = visible ? 'none' : 'flex';
+        if (!visible) document.getElementById(`art-url-${type}`).focus();
+    }
+
+    async function saveArtCustomUrl(type) {
+        const appid  = document.getElementById('edit-appid').value;
+        const url    = document.getElementById(`art-url-${type}`).value.trim();
+        const status = document.getElementById(`art-status-${type}`);
+        if (!url) { status.style.color = '#ff8080'; status.textContent = 'Enter a URL first.'; return; }
+        status.style.color = '#aaa'; status.textContent = 'Downloading...';
+        try {
+            const res  = await fetch(`/api/download-artwork/${appid}`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url, orientation: type })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                status.style.color = '#5c7e10'; status.textContent = '✔ Saved!';
+                _loadArtPanel(type, `/static/img/library/${type === 'icon' ? 'icons' : type}/${appid}.jpg?v=${Date.now()}`, 'custom');
+                document.getElementById(`art-url-row-${type}`).style.display = 'none';
+            } else {
+                status.style.color = '#ff8080'; status.textContent = '✘ ' + data.message;
+            }
+        } catch {
+            status.style.color = '#ff8080'; status.textContent = '✘ Network error.';
         }
     }
 
-    function previewArtUrl() {
-        const url = document.getElementById('new-art-url').value.trim();
-        const img = document.getElementById('art-current');
-        const label = document.getElementById('art-column-label');
-        const status = document.getElementById('art-status');
-        const btn = document.getElementById('art-preview-btn');
-
-        if (!url) { status.style.color = '#ff8080'; status.textContent = 'Enter a URL first.'; return; }
-
-        btn.textContent = 'Loading...';
-        btn.disabled = true;
-        status.textContent = '';
-
-        const tempImg = new Image();
-        tempImg.onload = () => {
-            img.src = url;
-            label.textContent = 'Preview';
-            label.style.color = 'var(--steam-focus)';
-            status.style.color = '#5c7e10';
-            status.textContent = '✔ Looking good — save to apply.';
-            btn.textContent = 'Preview';
-            btn.disabled = false;
-        };
-        tempImg.onerror = () => {
-            status.style.color = '#ff8080';
-            status.textContent = '✘ Could not load image from that URL.';
-            btn.textContent = 'Preview';
-            btn.disabled = false;
-        };
-        tempImg.src = url;
+    async function rescrapeArt(type) {
+        const appid  = document.getElementById('edit-appid').value;
+        const status = document.getElementById(`art-status-${type}`);
+        status.style.color = '#aaa'; status.textContent = 'Scraping...';
+        try {
+            const res  = await fetch('/api/artwork/rescrape', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ appid, orientation: type })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const dirMap = { vertical: 'vertical', horizontal: 'horizontal', icon: 'icons' };
+                const src = `/static/img/library/${dirMap[type]}/${appid}.jpg?v=${Date.now()}`;
+                _loadArtPanel(type, src, data.source);
+                status.style.color = '#5c7e10'; status.textContent = '✔ Done!';
+            } else {
+                status.style.color = '#ff8080'; status.textContent = '✘ ' + data.message;
+            }
+        } catch {
+            status.style.color = '#ff8080'; status.textContent = '✘ Network error.';
+        }
     }
 
-    function fetchSteamArt() {
-        const appid  = document.getElementById('edit-appid').value;
-        const img    = document.getElementById('art-current');
-        const label  = document.getElementById('art-column-label');
-        const status = document.getElementById('art-status');
-        const urlInput = document.getElementById('new-art-url');
-        const btn    = document.getElementById('art-steam-btn');
-
-        if (!appid) return;
-        const steamUrl = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
-
-        btn.textContent = 'Loading...';
-        btn.disabled = true;
-        status.textContent = '';
-
-        const tempImg = new Image();
-        tempImg.onload = () => {
-            urlInput.value = steamUrl;
-            img.src = steamUrl;
-            label.textContent = 'Steam Art Preview';
-            label.style.color = 'var(--steam-focus)';
-            status.style.color = '#5c7e10';
-            status.textContent = '✔ Steam art loaded — save to apply.';
-            btn.textContent = 'Steam Art';
-            btn.disabled = false;
-        };
-        tempImg.onerror = () => {
-            status.style.color = '#ff8080';
-            status.textContent = '✘ No Steam artwork found for this game.';
-            btn.textContent = 'Steam Art';
-            btn.disabled = false;
-        };
-        tempImg.src = steamUrl;
+    function openSgdbBrowser(type) {
+        const appid = document.getElementById('edit-appid').value;
+        const name  = document.getElementById('edit-name').value.trim();
+        openSgdbModal(appid, type, name);
     }
 
     function closeModal() {
@@ -647,11 +694,16 @@
         pillInputSet('edit-groups',     'edit-groups-box',     '');
         pillInputSet('edit-genres',     'edit-genres-box',     '');
         pillInputSet('edit-categories', 'edit-categories-box', '');
-        document.getElementById('new-art-url').value = '';
-        document.getElementById('art-status').textContent = '';
-        document.getElementById('art-current').src = '';
-        document.getElementById('art-column-label').textContent = 'Current Artwork';
-        document.getElementById('art-column-label').style.color = '#8f98a0';
+        ['vertical', 'horizontal', 'icon'].forEach(type => {
+            const img = document.getElementById(`art-img-${type}`);
+            if (img) img.src = '';
+            const ph = document.getElementById(`art-ph-${type}`);
+            if (ph) ph.style.display = 'flex';
+            const urlRow = document.getElementById(`art-url-row-${type}`);
+            if (urlRow) urlRow.style.display = 'none';
+            const status = document.getElementById(`art-status-${type}`);
+            if (status) status.textContent = '';
+        });
         document.getElementById('editModal').style.display = 'none';
     }
 
@@ -734,42 +786,10 @@
     document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('edit-game-form').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const appid = document.getElementById('edit-appid').value;
-            const artUrl = document.getElementById('new-art-url').value.trim();
-            const artStatus = document.getElementById('art-status');
+            const appid   = document.getElementById('edit-appid').value;
             const saveBtn = this.querySelector('[type="submit"]');
-
             saveBtn.disabled = true;
             saveBtn.textContent = 'SAVING...';
-
-            if (artUrl) {
-                artStatus.style.color = '#aaa';
-                artStatus.textContent = 'Downloading artwork...';
-                try {
-                    const res = await fetch(`/api/download-artwork/${appid}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: artUrl })
-                    });
-                    const result = await res.json();
-                    if (result.status === 'success') {
-                        artStatus.style.color = '#5c7e10';
-                        artStatus.textContent = '✔ Artwork saved!';
-                    } else {
-                        artStatus.style.color = '#ff4d4d';
-                        artStatus.textContent = '✘ ' + result.message;
-                        saveBtn.disabled = false;
-                        saveBtn.textContent = 'SAVE CHANGES';
-                        return;
-                    }
-                } catch (err) {
-                    artStatus.style.color = '#ff4d4d';
-                    artStatus.textContent = '✘ Network error downloading artwork.';
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'SAVE CHANGES';
-                    return;
-                }
-            }
 
             // Submit form data via fetch — no page reload
             try {
@@ -818,12 +838,274 @@
 
         // Bust the artwork cache so the updated image shows immediately
         const img = card.querySelector('.game-capsule');
-        if (img) img.src = `/static/img/library/${appid}.jpg?v=` + Date.now();
+        if (img) img.src = `/static/img/library/vertical/${appid}.jpg?v=` + Date.now();
     }
 
     window.onclick = function(event) {
         if (event.target.className === 'modal-overlay') {
             closeModal();
         }
+        if (event.target.id === 'sgdb-modal-overlay') {
+            closeSgdbModal();
+        }
     }
 </script>
+
+<!-- ── SteamGridDB Browser Modal ───────────────────────────────────────────── -->
+{% if existing_sgdb_key %}
+<div id="sgdb-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:2000; align-items:center; justify-content:center;">
+    <div style="background:var(--steam-blue); border:1px solid var(--border-color); border-radius:8px; width:700px; max-width:95vw; max-height:85vh; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Header -->
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border-color); flex-shrink:0;">
+            <div>
+                <div style="font-size:1rem; font-weight:600; color:var(--steam-text);">Browse SteamGridDB</div>
+                <div id="sgdb-modal-subtitle" style="font-size:0.75rem; color:var(--muted-text); margin-top:2px;"></div>
+            </div>
+            <button type="button" onclick="closeSgdbModal()" style="background:transparent; border:none; color:var(--muted-text); font-size:1.2rem; cursor:pointer; padding:4px 8px;">✕</button>
+        </div>
+
+        <!-- Name search row (always visible) -->
+        <div style="padding:10px 16px; border-bottom:1px solid var(--border-color); flex-shrink:0; display:flex; gap:8px; align-items:center;">
+            <input id="sgdb-search-input" type="text" placeholder="Search by game name..."
+                style="flex:1; background:var(--panel-alt); border:1px solid var(--border-color); border-radius:4px; color:var(--steam-text); padding:6px 10px; font-size:0.85rem;"
+                onkeydown="if(event.key==='Enter') sgdbSearchByName()">
+            <button type="button" onclick="sgdbSearchByName()" class="art-action-btn" style="padding:6px 14px; white-space:nowrap;">Search</button>
+            <button id="sgdb-back-btn" type="button" onclick="sgdbShowImageGrid()" class="art-action-btn" style="padding:6px 14px; white-space:nowrap; display:none;">Back</button>
+        </div>
+
+        <!-- Loading / empty / status states -->
+        <div id="sgdb-loading" style="display:none; padding:40px; text-align:center; color:var(--muted-text); font-size:0.9rem;">Loading...</div>
+        <div id="sgdb-empty"   style="display:none; padding:24px 40px; text-align:center; color:var(--muted-text); font-size:0.9rem;">No results found. Try searching by name above.</div>
+
+        <!-- Game search results list -->
+        <div id="sgdb-game-list" style="display:none; overflow-y:auto; flex:1; padding:8px 0;"></div>
+
+        <!-- Thumbnail grid -->
+        <div id="sgdb-grid" style="overflow-y:auto; padding:16px; display:flex; flex-wrap:wrap; gap:10px; flex:1;"></div>
+
+        <!-- Preview + confirm bar -->
+        <div id="sgdb-preview-bar" style="display:none; border-top:1px solid var(--border-color); padding:12px 20px; align-items:center; gap:16px; flex-shrink:0;">
+            <img id="sgdb-preview-img" src="" alt="" style="height:80px; width:auto; border-radius:4px; border:1px solid var(--border-color);">
+            <div style="flex:1; font-size:0.8rem; color:var(--muted-text);">
+                <div id="sgdb-preview-dims"></div>
+            </div>
+            <button type="button" id="sgdb-use-btn" class="btn-save" onclick="useSgdbSelection()" style="padding:10px 20px; margin:0; white-space:nowrap;">Use This</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .sgdb-thumb {
+        cursor: pointer; border-radius: 4px; overflow: hidden;
+        border: 2px solid transparent; transition: border-color 0.15s;
+        background: var(--panel-alt);
+    }
+    .sgdb-thumb:hover   { border-color: var(--steam-focus); }
+    .sgdb-thumb.selected { border-color: var(--steam-focus); box-shadow: 0 0 0 2px var(--steam-focus); }
+    .sgdb-thumb img { display:block; width:auto; height:300px; object-fit:cover; }
+    #sgdb-modal-overlay.active { display:flex; }
+    .sgdb-game-row {
+        padding: 9px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+        border-bottom: 1px solid var(--border-color); color: var(--steam-text); font-size: 0.9rem;
+    }
+    .sgdb-game-row:hover { background: var(--panel-alt); }
+    .sgdb-verified-badge { font-size: 0.7rem; color: #5c7e10; background: rgba(92,126,16,0.15); padding: 2px 6px; border-radius: 10px; }
+</style>
+
+<script>
+    let _sgdbAppid      = null;
+    let _sgdbType       = null;
+    let _sgdbName       = null;
+    let _sgdbSelected   = null;  // {url, thumb, width, height}
+    let _sgdbCachedOpts = null;  // options from the appid lookup, kept for "back" navigation
+
+    function openSgdbModal(appid, type, name) {
+        _sgdbAppid    = appid;
+        _sgdbType     = type;
+        _sgdbName     = name || '';
+        _sgdbSelected = null;
+        _sgdbCachedOpts = null;
+
+        const typeLabels = { vertical: 'Vertical Capsule', horizontal: 'Horizontal Header', icon: 'Icon' };
+        document.getElementById('sgdb-modal-subtitle').textContent = typeLabels[type] || type;
+        document.getElementById('sgdb-search-input').value = _sgdbName;
+        document.getElementById('sgdb-back-btn').style.display = 'none';
+        document.getElementById('sgdb-game-list').style.display = 'none';
+        document.getElementById('sgdb-grid').innerHTML = '';
+        document.getElementById('sgdb-preview-bar').style.display = 'none';
+        document.getElementById('sgdb-loading').style.display = 'block';
+        document.getElementById('sgdb-empty').style.display   = 'none';
+        document.getElementById('sgdb-modal-overlay').style.display = 'flex';
+
+        fetch(`/api/sgdb-options/${appid}/${type}`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('sgdb-loading').style.display = 'none';
+                if (!data.options || !data.options.length) {
+                    // Auto-search by name if appid lookup found nothing
+                    if (_sgdbName) {
+                        sgdbSearchByName();
+                    } else {
+                        document.getElementById('sgdb-empty').style.display = 'block';
+                    }
+                    return;
+                }
+                _sgdbCachedOpts = data.options;
+                _sgdbPopulateGrid(data.options);
+            })
+            .catch(() => {
+                document.getElementById('sgdb-loading').style.display = 'none';
+                if (_sgdbName) {
+                    sgdbSearchByName();
+                } else {
+                    document.getElementById('sgdb-empty').style.display = 'block';
+                }
+            });
+    }
+
+    function _sgdbPopulateGrid(options) {
+        const grid = document.getElementById('sgdb-grid');
+        grid.innerHTML = '';
+        document.getElementById('sgdb-game-list').style.display = 'none';
+        grid.style.display = 'flex';
+        document.getElementById('sgdb-empty').style.display = 'none';
+        document.getElementById('sgdb-preview-bar').style.display = 'none';
+        _sgdbSelected = null;
+
+        if (!options || !options.length) {
+            document.getElementById('sgdb-empty').style.display = 'block';
+            grid.style.display = 'none';
+            return;
+        }
+        options.forEach(opt => {
+            const div = document.createElement('div');
+            div.className = 'sgdb-thumb';
+            const img = document.createElement('img');
+            img.src = opt.thumb;
+            img.alt = '';
+            img.onerror = () => div.remove();
+            div.appendChild(img);
+            div.addEventListener('click', () => selectSgdbThumb(div, opt));
+            grid.appendChild(div);
+        });
+    }
+
+    async function sgdbSearchByName() {
+        const term = document.getElementById('sgdb-search-input').value.trim();
+        if (!term) return;
+        document.getElementById('sgdb-loading').style.display = 'block';
+        document.getElementById('sgdb-empty').style.display   = 'none';
+        document.getElementById('sgdb-grid').style.display    = 'none';
+        document.getElementById('sgdb-game-list').style.display = 'none';
+        document.getElementById('sgdb-preview-bar').style.display = 'none';
+        document.getElementById('sgdb-back-btn').style.display = 'none';
+
+        try {
+            const res  = await fetch(`/api/sgdb-search?term=${encodeURIComponent(term)}`);
+            const data = await res.json();
+            document.getElementById('sgdb-loading').style.display = 'none';
+
+            if (!data.results || !data.results.length) {
+                document.getElementById('sgdb-empty').style.display = 'block';
+                document.getElementById('sgdb-empty').textContent   = 'No games found for that name.';
+                return;
+            }
+
+            const list = document.getElementById('sgdb-game-list');
+            list.innerHTML = '';
+            data.results.forEach(g => {
+                const row = document.createElement('div');
+                row.className = 'sgdb-game-row';
+                row.innerHTML = `<span style="flex:1">${g.name}</span>${g.verified ? '<span class="sgdb-verified-badge">Verified</span>' : ''}`;
+                row.addEventListener('click', () => sgdbLoadById(g.id, g.name));
+                list.appendChild(row);
+            });
+            list.style.display = 'block';
+            // Show back button only if we have prior appid results to go back to
+            if (_sgdbCachedOpts) document.getElementById('sgdb-back-btn').style.display = '';
+        } catch {
+            document.getElementById('sgdb-loading').style.display = 'none';
+            document.getElementById('sgdb-empty').style.display   = 'block';
+            document.getElementById('sgdb-empty').textContent     = 'Search failed. Try again.';
+        }
+    }
+
+    async function sgdbLoadById(sgdbId, gameName) {
+        document.getElementById('sgdb-loading').style.display   = 'block';
+        document.getElementById('sgdb-game-list').style.display = 'none';
+        document.getElementById('sgdb-empty').style.display     = 'none';
+
+        try {
+            const res  = await fetch(`/api/sgdb-options-by-id/${sgdbId}/${_sgdbType}`);
+            const data = await res.json();
+            document.getElementById('sgdb-loading').style.display = 'none';
+
+            document.getElementById('sgdb-modal-subtitle').textContent = gameName;
+            document.getElementById('sgdb-back-btn').style.display = '';
+            _sgdbPopulateGrid(data.options || []);
+        } catch {
+            document.getElementById('sgdb-loading').style.display = 'none';
+            document.getElementById('sgdb-empty').style.display   = 'block';
+            document.getElementById('sgdb-grid').style.display    = 'none';
+        }
+    }
+
+    function sgdbShowImageGrid() {
+        // Back button: return to cached appid results
+        document.getElementById('sgdb-search-input').value = '';
+        document.getElementById('sgdb-back-btn').style.display = 'none';
+        const typeLabels = { vertical: 'Vertical Capsule', horizontal: 'Horizontal Header', icon: 'Icon' };
+        document.getElementById('sgdb-modal-subtitle').textContent = typeLabels[_sgdbType] || _sgdbType;
+        if (_sgdbCachedOpts) {
+            _sgdbPopulateGrid(_sgdbCachedOpts);
+        } else {
+            document.getElementById('sgdb-game-list').style.display = 'none';
+            document.getElementById('sgdb-empty').style.display     = 'block';
+            document.getElementById('sgdb-empty').textContent       = 'No results found. Try searching by name above.';
+        }
+    }
+
+    function selectSgdbThumb(el, opt) {
+        document.querySelectorAll('.sgdb-thumb').forEach(t => t.classList.remove('selected'));
+        el.classList.add('selected');
+        _sgdbSelected = opt;
+        const bar = document.getElementById('sgdb-preview-bar');
+        document.getElementById('sgdb-preview-img').src  = opt.thumb;
+        document.getElementById('sgdb-preview-dims').textContent = `${opt.width} × ${opt.height}`;
+        bar.style.display = 'flex';
+    }
+
+    async function useSgdbSelection() {
+        if (!_sgdbSelected) return;
+        const btn    = document.getElementById('sgdb-use-btn');
+        const status = document.getElementById(`art-status-${_sgdbType}`);
+        btn.disabled = true; btn.textContent = 'Saving...';
+        try {
+            const res  = await fetch('/api/artwork/save-sgdb', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ appid: _sgdbAppid, url: _sgdbSelected.url, orientation: _sgdbType })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const dirMap = { vertical: 'vertical', horizontal: 'horizontal', icon: 'icons' };
+                const src = `/static/img/library/${dirMap[_sgdbType]}/${_sgdbAppid}.jpg?v=${Date.now()}`;
+                const sourceMap = { vertical: 'sgdb_grid', horizontal: 'sgdb_grid_wide', icon: 'sgdb_icon' };
+                _loadArtPanel(_sgdbType, src, sourceMap[_sgdbType]);
+                if (status) { status.style.color = '#5c7e10'; status.textContent = '✔ Saved!'; }
+                closeSgdbModal();
+            } else {
+                if (status) { status.style.color = '#ff8080'; status.textContent = '✘ ' + data.message; }
+            }
+        } catch {
+            if (status) { status.style.color = '#ff8080'; status.textContent = '✘ Network error.'; }
+        } finally {
+            btn.disabled = false; btn.textContent = 'Use This';
+        }
+    }
+
+    function closeSgdbModal() {
+        document.getElementById('sgdb-modal-overlay').style.display = 'none';
+        _sgdbSelected = null;
+    }
+</script>
+{% endif %}

@@ -53,7 +53,7 @@ import webview
 
 from app import create_app
 from config import BASE_DIR
-from database import init_db
+from database import init_db, migrate_image_files
 from utils import find_steam_path, start_steamapps_watcher, stop_steamapps_watcher
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -179,6 +179,7 @@ if __name__ == '__main__':
     # 2. Initialise DB
     try:
         init_db()
+        migrate_image_files()
     except Exception as e:
         log.critical(f"Database initialization failed: {e}", exc_info=True)
         raise
