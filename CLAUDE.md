@@ -54,7 +54,7 @@ main.py → starts Flask (background thread) + pywebview window
 | `index.py` | Home page shelves — queries, deduplication, widget presets |
 | `scrapers.py` | Steam API + HTML scraping for library/metadata import; BLAEO sync via Selenium (requires Chrome) |
 | `utils.py` | Steam path detection, install status sync, filesystem watcher |
-| `images.py` | Cover art download chain (Steam capsule → SteamGridDB → header) |
+| `images.py` | Cover art download: vertical capsule, horizontal header, and icon — each with Steam asset manifest → CDN → SteamGridDB fallback chain |
 | `imports.py` | Old-database migration tool |
 | `install.py` / `uninstall.py` | Cross-platform GUI installer/uninstaller (tkinter) |
 
@@ -68,10 +68,12 @@ All user data lives next to the executable (or project root when running from so
 |------|----------|
 | `games.db` | SQLite — `games` and `blacklist` tables |
 | `config.json` | Steam API key + SteamID |
-| `state.json` | Active filters, shelf layout, sort order, saved filters |
+| `state.json` | Active filters, shelf layout, sort order, saved filters, artwork orientation, card height |
 | `theme.json` | CSS variable overrides (only non-default keys stored) |
 | `playdate.log` | Application logs (RotatingFileHandler, 1MB cap) |
-| `static/img/library/{appid}.jpg` | Cached cover art |
+| `static/img/library/vertical/{appid}.jpg` | Cached vertical capsule art |
+| `static/img/library/horizontal/{appid}.jpg` | Cached horizontal header art |
+| `static/img/library/icons/{appid}.jpg` | Cached game icons |
 
 `database.py` auto-adds missing columns on startup — no manual migrations needed.
 
@@ -103,7 +105,13 @@ Long-running operations (library import, BLAEO sync) run in daemon threads with 
 **Review confidence weighting:** raw review percentage is scaled by total review count — <10 reviews gets 25% weight, 10-99 gets 50–100%, 100+ gets full weight. Stored as `weighted_percentage`.
 
 ### Cover Art Pipeline
-`images.py` tries in order: Steam `library_600x900.jpg` → SteamGridDB (if key present) → Steam `header.jpg`. All saved as JPEG 95 quality; RGBA/PNG/WEBP converted to RGB first. Once an image is cached locally it's not re-fetched unless manually deleted.
+`images.py` handles three image types separately — vertical capsule, horizontal header, and icon. For each, `_get_steam_assets(appid)` fetches the full asset manifest from `IStoreBrowseService/GetItems`, which returns content-hash URLs for newer games. During populate, assets are fetched once and passed to all three download functions to avoid redundant API calls.
+
+- **Vertical**: `library_capsule_2x` → `library_capsule` (manifest) → `library_600x900_2x.jpg` / `library_600x900.jpg` (CDN) → SteamGridDB grid (600x900 or 1200x1800)
+- **Horizontal**: `header_image` / `main_capsule` (manifest) → `header.jpg` (CDN) → SteamGridDB wide grid (460x215 or 920x430)
+- **Icon**: SteamGridDB icon → Steam `{hash}_2x.jpg` / `{hash}.jpg`
+
+All saved as JPEG 95 quality; RGBA/PNG/WEBP converted to RGB first. Once cached locally, images are not re-fetched unless manually deleted.
 
 ### Graceful Degradation
 No API key → public profile HTML scraper. No SteamGridDB key → Steam covers. Missing watchdog → continues without filesystem watcher. All external calls have try/except returning None/empty on failure.
@@ -131,7 +139,7 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - Modal buttons must have `data-modal-row` attribute for grid-based row grouping
 - Home page split-row shelves require X-proximity matching when navigating between sides
 
-**`static/js/playdate.js`** — shared utilities: SQL syntax highlighter overlay (`sqlHighlightInit()`), state update helper (`sendStateUpdate()`), 8-second auto-hide error banners.
+**`static/js/playdate.js`** — shared utilities: SQL syntax highlighter overlay (`sqlHighlightInit()`), state update helper (`sendStateUpdate(payload, reload=true)`), fire-and-forget preference save (`savePreference(payload)` — uses `fetch` with `keepalive:true`, no page reload), 8-second auto-hide error banners.
 
 ## Database Schema Notes
 
@@ -139,5 +147,7 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - Comma-separated string columns: `tags`, `groups`, `developers`, `publishers` — no spaces after commas
 - Dates stored as `'YYYY-MM-DD'` strings, not Unix timestamps
 - `installed`: 0/1 integer
-- `art_source`: `'capsule'`, `'sgdb_capsule'`, `'header'`, `'custom'`, `'missing'`, `'error'`
+- `vertical_art_source`: `'capsule_2x'`, `'capsule'`, `'sgdb_grid'`, `'custom'`, `'missing'`
+- `horizontal_art_source`: `'header'`, `'sgdb_grid_wide'`, `'custom'`, `'missing'`
+- `icon_source`: `'sgdb_icon'`, `'steam'`, `'custom'`, `'missing'`
 - `blacklist` table prevents repopulation of removed games
