@@ -1422,13 +1422,8 @@ async function uploadDatabase(input) {
 
 function buildStep2() {
     const tableSelect = document.getElementById('source-table');
-    tableSelect.innerHTML = '';
-    _dbMeta.tables.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t;
-        opt.textContent = t;
-        tableSelect.appendChild(opt);
-    });
+    tableSelect._clearOptions();
+    _dbMeta.tables.forEach(t => tableSelect._addOption(t, t));
     onTableChange();
 }
 
@@ -1437,14 +1432,8 @@ function onTableChange() {
     const cols = _dbMeta.table_columns[table] || [];
 
     const appidSel = document.getElementById('appid-col');
-    appidSel.innerHTML = '';
-    cols.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        if (c.toLowerCase() === 'appid') opt.selected = true;
-        appidSel.appendChild(opt);
-    });
+    appidSel._clearOptions();
+    cols.forEach(c => appidSel._addOption(c, c, c.toLowerCase() === 'appid'));
 
     document.getElementById('mapping-rows').innerHTML = '';
     addMappingRow();
@@ -1527,15 +1516,15 @@ function refreshTypeWarnings() {
 }
 
 function buildColSelect(cols, role) {
-    const sel = document.createElement('select');
-    sel.dataset.role = role;
+    const native = document.createElement('select');
+    native.dataset.role = role;
     cols.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c;
         opt.textContent = c;
-        sel.appendChild(opt);
+        native.appendChild(opt);
     });
-    return sel;
+    return initCustomSelect(native);
 }
 
 async function executeImport() {
@@ -2346,5 +2335,10 @@ function _themeSetStatus(msg, cls) {
     el.textContent = msg;
     el.className = 'tool-status' + (cls ? ' ' + cls : '');
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    initCustomSelect(document.getElementById('source-table'));
+    initCustomSelect(document.getElementById('appid-col'));
+});
 </script>
 {% endblock %}

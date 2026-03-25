@@ -54,7 +54,6 @@
         .game-card {
             border-radius: 8px;
             overflow: hidden;
-            transition: transform 0.2s;
             outline: 1px solid #333;
             aspect-ratio: 2/3;
         }
@@ -93,60 +92,45 @@
             border-color: var(--steam-focus);
         }
 
-        .game-card:hover {
-            transform: scale(1.05);
+        .game-card.hovered {
             outline-color: var(--steam-focus);
-            will-change: transform;
         }
-
-        .capsule-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            display: block;
-        }
-
-        .game-capsule {
-            position: absolute;
-            top: 0; left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
         .game-overlay {
             position: absolute;
             top: 10px;
             right: 10px;
-            padding: 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            opacity: 0;
-            transition: opacity 0.2s;
+            display: none;
             z-index: 10;
-            pointer-events: none;
-            will-change: opacity;
         }
-
-        .game-card:hover .game-overlay {
-            opacity: 1;
-            pointer-events: auto;
+        .game-card.hovered .game-overlay {
+            display: block;
         }
-
         .status-tag {
-            font-size: 1.8rem;
+            font-size: var(--edit-btn-size, 1.8rem);
             padding: 2px 6px;
             border-radius: 3px;
             text-transform: uppercase;
         }
-
         .status-tag:hover {
             background: var(--steam-focus) !important;
             color: #1b2838 !important;
             border-color: var(--steam-focus) !important;
         }
+
+        .capsule-container {
+            position: absolute;
+            inset: 0;
+        }
+
+        .game-capsule {
+            position: absolute;
+            inset: -1px;
+            width: calc(100% + 2px);
+            height: calc(100% + 2px);
+            object-fit: cover;
+            display: block;
+        }
+
 
         .game-details {
             padding: 12px;
@@ -194,7 +178,7 @@
         }
 
         /* Make the filter button match the height */
-        .search-nav-bar button {
+        .search-nav-bar button:not(.custom-select-btn) {
             height: 50px;
             padding: 0 25px;
             border-radius: 8px;
@@ -206,7 +190,7 @@
             transition: background 0.2s;
         }
 
-        .search-nav-bar button:hover {
+        .search-nav-bar button:not(.custom-select-btn):hover {
             background: #444;
         }
 
@@ -239,7 +223,7 @@
             border-color: #66c0e8 !important;
         }
 
-        .nav-dropdown, .order-btn {
+        select.nav-dropdown, .order-btn {
             height: 50px;
             width: auto;
             background-color: #333;
@@ -251,12 +235,33 @@
             font-weight: bold;
         }
 
+        /* Custom-select replacement for .nav-dropdown */
+        div.nav-dropdown {
+            width: auto;
+            min-width: 160px;
+            flex-shrink: 0;
+        }
+
+        div.nav-dropdown .custom-select-btn {
+            height: 50px;
+            background-color: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 0 35px 0 15px;
+            font-weight: bold;
+        }
+
+        div.nav-dropdown .custom-select-btn:hover {
+            background-color: #444;
+        }
+
         .order-btn {
             font-size: 1.2rem;
             min-width: 50px;
         }
 
-        .nav-dropdown:hover, .order-btn:hover {
+        select.nav-dropdown:hover, .order-btn:hover {
             background-color: #444;
         }
 
@@ -359,12 +364,22 @@
     let _artOrientation = '{{ state.get("artwork_orientation", "vertical") }}';
     let _cardSizeTimeout = null;
 
+    function _setCardSize(size) {
+        // In horizontal mode, scale width so the card height matches the slider value
+        const effectiveWidth = _artOrientation === 'horizontal'
+            ? Math.round(size * 616 / 353)
+            : size;
+        document.documentElement.style.setProperty('--card-min-width', effectiveWidth + 'px');
+        const btnRem = Math.min(3.5, Math.max(0.8, size * 0.009));
+        document.documentElement.style.setProperty('--edit-btn-size', btnRem.toFixed(2) + 'rem');
+    }
+
     (function _initGridPrefs() {
         const grid   = document.getElementById('game-grid');
         const btn    = document.getElementById('art-orient-btn');
         const slider = document.getElementById('card-size-slider');
         const size   = {{ state.get('card_height', 200) }};
-        document.documentElement.style.setProperty('--card-min-width', size + 'px');
+        _setCardSize(size);
         if (slider) {
             slider.value = size;
             const pct = (size - parseInt(slider.min)) / (parseInt(slider.max) - parseInt(slider.min)) * 100;
@@ -389,6 +404,8 @@
             btn.textContent = '⬜ Vertical';
             btn.classList.remove('horizontal');
         }
+        // Re-apply card size with new orientation's scaling
+        _setCardSize(parseInt(document.getElementById('card-size-slider').value));
         // Rebuild cards with correct image paths
         CARD_HTML_CACHE.clear();
         document.querySelectorAll('.game-card').forEach(card => { card.innerHTML = ''; delete card.dataset.populated; });
@@ -398,7 +415,7 @@
 
     function onCardSizeSlider(val) {
         const slider = document.getElementById('card-size-slider');
-        document.documentElement.style.setProperty('--card-min-width', val + 'px');
+        _setCardSize(val);
         const pct = (val - parseInt(slider.min)) / (parseInt(slider.max) - parseInt(slider.min)) * 100;
         slider.style.setProperty('--slider-pct', pct + '%');
         clearTimeout(_cardSizeTimeout);
@@ -539,10 +556,19 @@
                     }
                 } else {
                     // ── Unload ────────────────────────────────────────────
-                    // Only unload if it was populated and is well outside the
-                    // viewport (rootMargin keeps a generous buffer, so cards
-                    // that just left the screen are still kept alive).
                     if (card.dataset.populated) {
+                        // Null the img src before clearing so Chromium can
+                        // release the decoded image buffer sooner rather than
+                        // holding it in the image cache indefinitely.
+                        const img = card.querySelector('img');
+                        if (img) img.src = '';
+                        // Remove select-mode listener to prevent accumulation:
+                        // without this, each populate/unload cycle adds another
+                        // copy of the listener to the same card div.
+                        card.removeEventListener('click', onCardClick);
+                        if (card === _hoveredCard) {
+                            _hoveredCard = null;
+                        }
                         card.innerHTML = '';
                         delete card.dataset.populated;
                         // Do NOT touch _selectedIds — selection state is preserved
@@ -551,7 +577,7 @@
                 }
             });
         }, {
-            rootMargin: '600px',  // load 600px ahead, unload 600px behind
+            rootMargin: '300px',  // load 300px ahead, unload 300px behind
             threshold: 0
         });
         document.querySelectorAll('.game-card').forEach(c => _observer.observe(c));
@@ -559,6 +585,42 @@
 
     // Build on load
     document.addEventListener('DOMContentLoaded', buildGrid);
+
+    // ── HOVER DELEGATION ──────────────────────────────────────────
+    // - Throttled to one update per animation frame via rAF so rapid
+    //   mouse movement can't queue more work than the browser can render.
+    // - will-change:transform applied only to the active card (max 1
+    //   compositing layer at a time) rather than all populated cards.
+    // - Exit is instant (no transition) to prevent stacking scale-down
+    //   animations as the mouse sweeps across many cards.
+    let _hoveredCard = null;
+    let _hoverRafPending = false;
+    let _hoverTarget = null;
+
+    function _applyHover() {
+        _hoverRafPending = false;
+        const card = _hoverTarget;
+        if (card === _hoveredCard) return;
+        if (_hoveredCard) _hoveredCard.classList.remove('hovered');
+        _hoveredCard = card;
+        if (card) card.classList.add('hovered');
+    }
+
+    const _grid = document.getElementById('game-grid');
+    _grid.addEventListener('mousemove', e => {
+        _hoverTarget = e.target.closest('.game-card[data-populated]');
+        if (!_hoverRafPending) {
+            _hoverRafPending = true;
+            requestAnimationFrame(_applyHover);
+        }
+    });
+    _grid.addEventListener('mouseleave', () => {
+        _hoverTarget = null;
+        if (!_hoverRafPending) {
+            _hoverRafPending = true;
+            requestAnimationFrame(_applyHover);
+        }
+    });
 
 // ── SELECT MODE ──────────────────────────────────────────────────
 let _selectMode = false;
@@ -588,7 +650,6 @@ function toggleSelectMode() {
 
 function onCardClick(e) {
     // Don't intercept the ✎ edit button
-    if (e.target.closest('.game-overlay')) return;
     const card = e.currentTarget;
     const appid = parseInt(card.id.replace('card-', ''));
     if (_selectedIds.has(appid)) {
@@ -657,8 +718,8 @@ function onBulkScopeChange() {
 function onBulkColumnChange() {
     const col = document.getElementById('bulk-column').value;
     const modeSelect = document.getElementById('bulk-mode');
-    const appendOpt = modeSelect.querySelector('option[value="append"]');
-    const removeOpt = modeSelect.querySelector('option[value="remove"]');
+    const appendOpt = modeSelect._getOption('append');
+    const removeOpt = modeSelect._getOption('remove');
     const isList = LIST_COLUMNS.has(col);
 
     appendOpt.disabled = !isList;
@@ -881,6 +942,133 @@ async function runBulkRescrape() {
     }
 }
 
+// ── BULK ART SCRAPE ─────────────────────────────────────────────
+function openBulkArtScrapeModal() {
+    closeBulkEditModal();
+    const hasSelection = _selectedIds.size > 0;
+    const scopeFiltered = document.getElementById('bas-scope-filtered');
+    const scopeSelected = document.getElementById('bas-scope-selected');
+    if (hasSelection) {
+        scopeSelected.checked = true;
+    } else {
+        scopeFiltered.checked = true;
+    }
+    onBulkArtScopeScopeChange();
+    document.getElementById('bulk-art-scrape-modal').style.display = 'flex';
+    document.getElementById('bas-status').textContent = '';
+    document.getElementById('bas-status').className = '';
+    document.getElementById('bas-progress').style.display = 'none';
+}
+
+function closeBulkArtScrapeModal() {
+    if (document.getElementById('bas-apply-btn')?.disabled) return;
+    document.getElementById('bulk-art-scrape-modal').style.display = 'none';
+}
+
+function onBulkArtScopeScopeChange() {
+    const scope    = document.querySelector('input[name="bas-scope"]:checked').value;
+    const selInfo  = document.getElementById('bas-selected-info');
+    const filtInfo = document.getElementById('bas-filtered-info');
+    if (scope === 'selected') {
+        filtInfo.style.display = 'none';
+        selInfo.style.display  = 'block';
+        selInfo.textContent    = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
+    } else {
+        selInfo.style.display  = 'none';
+        filtInfo.style.display = 'block';
+        filtInfo.textContent   = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
+        _selectedIds.clear();
+        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+        const btn = document.getElementById('select-mode-btn');
+        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    }
+}
+
+let _artScrapeCancel = false;
+
+async function runBulkArtScrape() {
+    const scope  = document.querySelector('input[name="bas-scope"]:checked').value;
+    const source = document.querySelector('input[name="bas-source"]:checked').value;
+    const status = document.getElementById('bas-status');
+    const progress = document.getElementById('bas-progress');
+    const progressBar = document.getElementById('bas-progress-bar');
+    const progressLabel = document.getElementById('bas-progress-label');
+    const stopBtn = document.getElementById('bas-stop-btn');
+
+    const types = [];
+    if (document.getElementById('bas-type-vertical').checked)   types.push('vertical');
+    if (document.getElementById('bas-type-horizontal').checked) types.push('horizontal');
+    if (document.getElementById('bas-type-icon').checked)       types.push('icon');
+
+    if (types.length === 0) {
+        status.className = 'bulk-status-error';
+        status.textContent = 'Select at least one artwork type.';
+        return;
+    }
+    if (scope === 'selected' && _selectedIds.size === 0) {
+        status.className = 'bulk-status-error';
+        status.textContent = 'No games selected.';
+        return;
+    }
+
+    const appids = scope === 'selected'
+        ? Array.from(_selectedIds)
+        : Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+
+    const count = appids.length;
+    const sourceLabel = { auto: 'Steam + SGDB', steam: 'Steam only', sgdb: 'SGDB only' }[source];
+    if (!await confirm(`Scrape artwork for ${count} game${count !== 1 ? 's' : ''}?\n\nTypes: ${types.join(', ')}\nSource: ${sourceLabel}\n\nThis will overwrite existing cached images.`)) return;
+
+    const btn = document.getElementById('bas-apply-btn');
+    _artScrapeCancel = false;
+    btn.disabled = true;
+    btn.textContent = 'Scraping…';
+    stopBtn.style.display = '';
+    stopBtn.disabled = false;
+    stopBtn.textContent = 'Stop';
+    status.className = '';
+    status.textContent = '';
+    progress.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressLabel.textContent = `0 / ${count}`;
+
+    let updated = 0, failed = 0, done = 0;
+
+    for (let i = 0; i < appids.length; i++) {
+        if (_artScrapeCancel) break;
+        try {
+            const res  = await fetch('/api/bulk-art-scrape', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ appids: [appids[i]], types, source })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                updated += data.updated;
+                failed  += data.failed;
+            }
+        } catch (e) {
+            failed += 1;
+        }
+        done = i + 1;
+        const pct = Math.round((done / count) * 100);
+        progressBar.style.width = pct + '%';
+        progressLabel.textContent = `${done} / ${count}`;
+    }
+
+    stopBtn.style.display = 'none';
+    btn.disabled = false;
+    btn.textContent = 'Scrape';
+
+    if (_artScrapeCancel) {
+        status.className = 'bulk-status-error';
+        status.textContent = `Stopped after ${done} / ${count} — ${updated} updated.`;
+    } else {
+        status.className = updated > 0 ? 'bulk-status-success' : 'bulk-status-error';
+        status.textContent = `✔ Done — ${updated} updated${failed ? `, ${failed} failed` : ''}.`;
+    }
+}
+
 // ── BULK DELETE ────────────────────────────────────────────────
 function openBulkDeleteModal() {
     closeBulkEditModal();
@@ -972,6 +1160,11 @@ async function runBulkDelete() {
     }
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    initCustomSelect(document.getElementById('sort-dropdown'));
+    initCustomSelect(document.getElementById('bulk-column'));
+    initCustomSelect(document.getElementById('bulk-mode'));
+});
 </script>
 
 <!-- Bulk Rescrape Modal -->
@@ -1026,6 +1219,102 @@ async function runBulkDelete() {
                 Stop
             </button>
             <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkRescrapeModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Art Scrape Modal -->
+<div id="bulk-art-scrape-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkArtScrapeModal();">
+    <div class="modal-content" style="width:480px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h2 style="margin:0; color:var(--steam-focus);">Bulk Scrape Artwork</h2>
+            <button onclick="closeBulkArtScrapeModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Scope toggle -->
+        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <input type="radio" name="bas-scope" id="bas-scope-filtered" value="filtered"
+                       onchange="onBulkArtScopeScopeChange()" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white; font-size:0.85rem;">All filtered games</strong><br>
+                    <small id="bas-filtered-info" style="color:#8f98a0; font-size:0.75rem;"></small>
+                </span>
+            </label>
+            <div style="width:1px; background:#2a475e;"></div>
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <input type="radio" name="bas-scope" id="bas-scope-selected" value="selected"
+                       onchange="onBulkArtScopeScopeChange()" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
+                    <small id="bas-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
+                </span>
+            </label>
+        </div>
+
+        <!-- Art type checkboxes -->
+        <label style="margin-bottom:6px; display:block;">Artwork Types</label>
+        <div style="display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.88rem;">
+                <input type="checkbox" id="bas-type-vertical" checked style="width:auto; margin:0;"> Vertical
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.88rem;">
+                <input type="checkbox" id="bas-type-horizontal" checked style="width:auto; margin:0;"> Horizontal
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.88rem;">
+                <input type="checkbox" id="bas-type-icon" checked style="width:auto; margin:0;"> Icon
+            </label>
+        </div>
+
+        <!-- Source radio -->
+        <label style="margin-bottom:6px; display:block;">Source</label>
+        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; background:transparent; transition:background 0.15s; font-size:0.85rem;">
+                <input type="radio" name="bas-source" value="auto" checked style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white;">Auto</strong><br>
+                    <small style="color:#8f98a0; font-size:0.72rem;">Steam first, SGDB fallback</small>
+                </span>
+            </label>
+            <div style="width:1px; background:#2a475e;"></div>
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; background:transparent; transition:background 0.15s; font-size:0.85rem;">
+                <input type="radio" name="bas-source" value="steam" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white;">Steam only</strong><br>
+                    <small style="color:#8f98a0; font-size:0.72rem;">No SGDB requests</small>
+                </span>
+            </label>
+            <div style="width:1px; background:#2a475e;"></div>
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; background:transparent; transition:background 0.15s; font-size:0.85rem;">
+                <input type="radio" name="bas-source" value="sgdb" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white;">SGDB only</strong><br>
+                    <small style="color:#8f98a0; font-size:0.72rem;">Requires API key</small>
+                </span>
+            </label>
+        </div>
+
+        <!-- Progress bar -->
+        <div id="bas-progress" style="display:none; margin-bottom:12px;">
+            <div style="background:#0e1923; border-radius:4px; height:8px; overflow:hidden; margin-bottom:4px;">
+                <div id="bas-progress-bar" style="height:100%; background:var(--steam-focus); width:0%; transition:width 0.3s;"></div>
+            </div>
+            <div id="bas-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
+        </div>
+
+        <div id="bas-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
+
+        <div style="display:flex; gap:12px;">
+            <button id="bas-apply-btn" data-modal-row="0" onclick="runBulkArtScrape()"
+                style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--steam-focus); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
+                Scrape
+            </button>
+            <button id="bas-stop-btn" data-modal-row="0"
+                onclick="_artScrapeCancel = true; this.disabled = true; this.textContent = 'Stopping…';"
+                style="display:none; flex:1; height:auto; padding:12px; background:var(--danger-color); color:var(--nav-active); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+                Stop
+            </button>
+            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkArtScrapeModal()">Cancel</button>
         </div>
     </div>
 </div>
@@ -1160,7 +1449,13 @@ async function runBulkDelete() {
                 onmouseout="this.style.background='transparent'">
                 RE-SCRAPE STEAM DATA
             </button>
-            <button data-modal-row="2" onclick="openBulkDeleteModal()"
+            <button data-modal-row="2" onclick="openBulkArtScrapeModal()"
+                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--steam-focus); border:1px solid var(--steam-focus); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
+                onmouseover="this.style.background='rgba(102,192,244,0.1)'"
+                onmouseout="this.style.background='transparent'">
+                BULK SCRAPE ARTWORK
+            </button>
+            <button data-modal-row="3" onclick="openBulkDeleteModal()"
                 style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:#ff8080; border:1px solid #a32a2a; border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
                 onmouseover="this.style.background='rgba(163,42,42,0.15)'"
                 onmouseout="this.style.background='transparent'">

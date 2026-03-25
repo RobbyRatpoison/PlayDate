@@ -92,147 +92,155 @@ def _sgdb_get(endpoint, sgdb_key):
     return None
 
 
-def download_vertical(appid, assets=None):
+def download_vertical(appid, assets=None, source='auto'):
     """
     Downloads vertical capsule art for a game.
-    Tries in order: IStoreBrowseService asset manifest → legacy CDN → SteamGridDB → 'missing'
+    source: 'auto' (Steam → SGDB fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     Pass pre-fetched assets dict to avoid a redundant API call.
     """
     _ensure_dirs()
     save_path = os.path.join(VERTICAL_DIR, f'{appid}.jpg')
     sgdb_key  = _get_sgdb_key()
 
-    # 1. Asset manifest (covers new games with content-hash URLs)
-    if assets is None:
-        assets = _get_steam_assets(appid)
-    for key in ('library_capsule_2x', 'library_capsule'):
-        url = assets.get(key)
-        if url:
+    if source != 'sgdb':
+        # 1. Asset manifest (covers new games with content-hash URLs)
+        if assets is None:
+            assets = _get_steam_assets(appid)
+        for key in ('library_capsule_2x', 'library_capsule'):
+            url = assets.get(key)
+            if url:
+                try:
+                    res = requests.get(url, timeout=5)
+                    if res.status_code == 200 and save_as_jpg(res.content, save_path):
+                        return 'capsule_2x' if '2x' in key else 'capsule'
+                except Exception as e:
+                    print(f"[download_vertical] asset manifest error for {appid}: {e}")
+
+        # 2. Legacy CDN (older games without content-hash URLs)
+        for url, cdn_source in [
+            (f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900_2x.jpg', 'capsule_2x'),
+            (f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg',    'capsule'),
+        ]:
             try:
                 res = requests.get(url, timeout=5)
                 if res.status_code == 200 and save_as_jpg(res.content, save_path):
-                    return 'capsule_2x' if '2x' in key else 'capsule'
+                    return cdn_source
             except Exception as e:
-                print(f"[download_vertical] asset manifest error for {appid}: {e}")
+                print(f"[download_vertical] CDN error for {appid}: {e}")
 
-    # 2. Legacy CDN (older games without content-hash URLs)
-    for url, source in [
-        (f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900_2x.jpg', 'capsule_2x'),
-        (f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg',    'capsule'),
-    ]:
-        try:
-            res = requests.get(url, timeout=5)
-            if res.status_code == 200 and save_as_jpg(res.content, save_path):
-                return source
-        except Exception as e:
-            print(f"[download_vertical] CDN error for {appid}: {e}")
-
-    # 3. SteamGridDB grid (non-animated)
-    if sgdb_key:
-        data = _sgdb_get(f'grids/steam/{appid}?dimensions=600x900,1200x1800', sgdb_key)
-        if data and data.get('success') and data.get('data'):
-            for item in data['data']:
-                if item.get('animated'):
-                    continue
-                try:
-                    img_res = requests.get(item['url'], timeout=5)
-                    if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
-                        return 'sgdb_grid'
-                except Exception as e:
-                    print(f"[download_vertical] SGDB grid download error for {appid}: {e}")
-                break
+    if source != 'steam':
+        # 3. SteamGridDB grid — fetch all, filter to portrait orientation client-side
+        # (SGDB returns 400 for ?dimensions=600x900,1200x1800)
+        if sgdb_key:
+            data = _sgdb_get(f'grids/steam/{appid}', sgdb_key)
+            if data and data.get('success') and data.get('data'):
+                for item in data['data']:
+                    if item.get('animated'):
+                        continue
+                    w, h = item.get('width', 0), item.get('height', 0)
+                    if w and h and w >= h:  # skip landscape/square grids
+                        continue
+                    try:
+                        img_res = requests.get(item['url'], timeout=5)
+                        if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
+                            return 'sgdb_grid'
+                    except Exception as e:
+                        print(f"[download_vertical] SGDB grid download error for {appid}: {e}")
+                    break
 
     return 'missing'
 
 
-def download_horizontal(appid, assets=None):
+def download_horizontal(appid, assets=None, source='auto'):
     """
     Downloads horizontal header art for a game.
-    Tries in order: IStoreBrowseService asset manifest → legacy CDN → SteamGridDB → 'missing'
+    source: 'auto' (Steam → SGDB fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     Pass pre-fetched assets dict to avoid a redundant API call.
     """
     _ensure_dirs()
     save_path = os.path.join(HORIZONTAL_DIR, f'{appid}.jpg')
     sgdb_key  = _get_sgdb_key()
 
-    # 1. Asset manifest (covers new games with content-hash URLs)
-    if assets is None:
-        assets = _get_steam_assets(appid)
-    url = assets.get('header_image') or assets.get('main_capsule')
-    if url:
+    if source != 'sgdb':
+        # 1. Asset manifest (covers new games with content-hash URLs)
+        if assets is None:
+            assets = _get_steam_assets(appid)
+        url = assets.get('header_image') or assets.get('main_capsule')
+        if url:
+            try:
+                res = requests.get(url, timeout=5)
+                if res.status_code == 200 and save_as_jpg(res.content, save_path):
+                    return 'header'
+            except Exception as e:
+                print(f"[download_horizontal] asset manifest error for {appid}: {e}")
+
+        # 2. Legacy CDN fallback
         try:
-            res = requests.get(url, timeout=5)
+            res = requests.get(
+                f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg',
+                timeout=5
+            )
             if res.status_code == 200 and save_as_jpg(res.content, save_path):
                 return 'header'
         except Exception as e:
-            print(f"[download_horizontal] asset manifest error for {appid}: {e}")
+            print(f"[download_horizontal] CDN error for {appid}: {e}")
 
-    # 2. Legacy CDN fallback
-    try:
-        res = requests.get(
-            f'https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg',
-            timeout=5
-        )
-        if res.status_code == 200 and save_as_jpg(res.content, save_path):
-            return 'header'
-    except Exception as e:
-        print(f"[download_horizontal] CDN error for {appid}: {e}")
-
-    # 2. SteamGridDB wide grid (header style, non-animated)
-    if sgdb_key:
-        data = _sgdb_get(f'grids/steam/{appid}?dimensions=460x215,920x430', sgdb_key)
-        if data and data.get('success') and data.get('data'):
-            for item in data['data']:
-                if item.get('animated'):
-                    continue
-                try:
-                    img_res = requests.get(item['url'], timeout=5)
-                    if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
-                        return 'sgdb_grid_wide'
-                except Exception as e:
-                    print(f"[download_horizontal] SGDB wide grid download error for {appid}: {e}")
-                break
+    if source != 'steam':
+        # 3. SteamGridDB wide grid (header style, non-animated)
+        if sgdb_key:
+            data = _sgdb_get(f'grids/steam/{appid}?dimensions=460x215,920x430', sgdb_key)
+            if data and data.get('success') and data.get('data'):
+                for item in data['data']:
+                    if item.get('animated'):
+                        continue
+                    try:
+                        img_res = requests.get(item['url'], timeout=5)
+                        if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
+                            return 'sgdb_grid_wide'
+                    except Exception as e:
+                        print(f"[download_horizontal] SGDB wide grid download error for {appid}: {e}")
+                    break
 
     return 'missing'
 
 
-def download_icon(appid, icon_hash):
+def download_icon(appid, icon_hash, source='auto'):
     """
     Downloads the game icon.
-    Tries in order: Steam icon → SteamGridDB icon → 'missing'
+    source: 'auto' (SGDB first, then Steam fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
+    icon_hash is required for Steam source; ignored for SGDB-only.
     """
-    if not icon_hash:
-        return 'missing'
-
     _ensure_dirs()
     save_path = os.path.join(ICONS_DIR, f'{appid}.jpg')
     sgdb_key  = _get_sgdb_key()
 
-    # 1. SteamGridDB icon (higher quality, non-animated)
-    if sgdb_key:
-        data = _sgdb_get(f'icons/steam/{appid}', sgdb_key)
-        if data and data.get('success') and data.get('data'):
-            for item in data['data']:
-                if item.get('animated'):
-                    continue
-                try:
-                    img_res = requests.get(item['url'], timeout=5)
-                    if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
-                        return 'sgdb_icon'
-                except Exception as e:
-                    print(f"[download_icon] SGDB icon download error for {appid}: {e}")
-                break
+    if source != 'steam':
+        # 1. SteamGridDB icon (higher quality, non-animated)
+        if sgdb_key:
+            data = _sgdb_get(f'icons/steam/{appid}', sgdb_key)
+            if data and data.get('success') and data.get('data'):
+                for item in data['data']:
+                    if item.get('animated'):
+                        continue
+                    try:
+                        img_res = requests.get(item['url'], timeout=5)
+                        if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
+                            return 'sgdb_icon'
+                    except Exception as e:
+                        print(f"[download_icon] SGDB icon download error for {appid}: {e}")
+                    break
 
-    # 2. Steam icon — try 2x first, fall back to standard
-    base_url = f'https://media.steampowered.com/steamcommunity/public/images/apps/{appid}'
-    for icon_url in (f'{base_url}/{icon_hash}_2x.jpg', f'{base_url}/{icon_hash}.jpg'):
-        try:
-            res = requests.get(icon_url, timeout=5)
-            if res.status_code == 200 and save_as_jpg(res.content, save_path):
-                return 'steam'
-        except Exception as e:
-            print(f"[download_icon] Steam icon error for {appid}: {e}")
-            break
+    if source != 'sgdb' and icon_hash:
+        # 2. Steam icon — try 2x first, fall back to standard
+        base_url = f'https://media.steampowered.com/steamcommunity/public/images/apps/{appid}'
+        for icon_url in (f'{base_url}/{icon_hash}_2x.jpg', f'{base_url}/{icon_hash}.jpg'):
+            try:
+                res = requests.get(icon_url, timeout=5)
+                if res.status_code == 200 and save_as_jpg(res.content, save_path):
+                    return 'steam'
+            except Exception as e:
+                print(f"[download_icon] Steam icon error for {appid}: {e}")
+                break
 
     return 'missing'
 

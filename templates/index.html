@@ -276,7 +276,7 @@
         <label>Sort by</label>
         <div style="display:flex; gap:8px;">
             <select id="sem-sort" style="flex:1;"></select>
-            <select id="sem-sort-dir" style="width:90px;">
+            <select id="sem-sort-dir" style="width:160px;">
                 <option value="ASC">▲ Asc</option>
                 <option value="DESC">▼ Desc</option>
             </select>
@@ -716,11 +716,12 @@ function semOpen(sid) {
         ? `<optgroup label="Saved Filters">${savedKeys.map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${k}</option>`).join('')}</optgroup>`
         : '';
 
-    filterSel.innerHTML =
+    filterSel._setOptions(
         `<option value="__custom__"${isCustom?' selected':''} style="color:#F0AD4E;">✎ Custom SQL</option>` +
         `<optgroup label="Presets">${presetOpts}</optgroup>` +
         `<optgroup label="Widgets">${widgetOpts}</optgroup>` +
-        savedOpts;
+        savedOpts
+    );
 
     // SQL panel
     const sqlWrap = document.getElementById('sem-sql-wrap');
@@ -731,8 +732,8 @@ function semOpen(sid) {
 
     // Sort
     const sortSel = document.getElementById('sem-sort');
-    sortSel.innerHTML = Object.entries(_sortCols).map(([k,v]) =>
-        `<option value="${k}"${shelf.sort_col===k?' selected':''}>${v}</option>`).join('');
+    sortSel._setOptions(Object.entries(_sortCols).map(([k,v]) =>
+        `<option value="${k}"${shelf.sort_col===k?' selected':''}>${v}</option>`).join(''));
     document.getElementById('sem-sort-dir').value = shelf.sort_dir === 'ASC' ? 'ASC' : 'DESC';
 
     const semEl = document.getElementById('shelf-edit-modal');
@@ -1279,5 +1280,11 @@ async function resetLayout() {
         else alert('Reset failed: '+data.message);
     } catch(e) { alert('Network error.'); }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    initCustomSelect(document.getElementById('sem-filter'));
+    initCustomSelect(document.getElementById('sem-sort'));
+    initCustomSelect(document.getElementById('sem-sort-dir'));
+});
 </script>
 {% endblock %}

@@ -229,6 +229,11 @@ def library():
             games = []
     db.close()
 
+    # Drop icon_hash — it's a raw Steam hash used only server-side during scraping,
+    # never referenced in browser JS, so no need to ship it to every page load.
+    for g in games:
+        g.pop('icon_hash', None)
+
     groups = get_all_unique_groups()
     tags   = get_all_unique_tags()
 
@@ -244,13 +249,21 @@ def update_game():
     if 'installed' in data:
         data['installed'] = 1 if data['installed'] == '1' else 0
     from database import update_game_data
+    from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
     try:
         update_game_data(appid, **data)
         db = get_db()
         row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
         db.close()
         game = dict(row) if row else {"appid": appid}
-        return jsonify({"status": "success", "game": game})
+        return jsonify({
+            "status": "success",
+            "game": game,
+            "unique_tags":       get_all_unique_tags(),
+            "unique_groups":     get_all_unique_groups(),
+            "unique_genres":     get_all_unique_genres(),
+            "unique_categories": get_all_unique_categories(),
+        })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 

@@ -685,6 +685,54 @@ def create_app(template_folder=None, static_folder=None):
             log.exception(f"shuffle_shelf error for {shelf_id}: {e}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
+    @app.route('/api/bulk-art-scrape', methods=['POST'])
+    def bulk_art_scrape():
+        import time
+        from images import download_vertical, download_horizontal, download_icon, _get_steam_assets
+        data   = request.json or {}
+        appids = data.get('appids', [])
+        types  = data.get('types', ['vertical', 'horizontal', 'icon'])
+        source = data.get('source', 'auto')  # 'auto', 'steam', or 'sgdb'
+
+        if not appids:
+            return jsonify({"status": "error", "message": "No appids provided."}), 400
+
+        updated = 0
+        failed  = 0
+        for appid in appids:
+            try:
+                updates = {}
+                # Fetch Steam asset manifest once and share between vertical + horizontal
+                # to avoid two identical API calls per game.
+                assets = _get_steam_assets(appid) if source != 'sgdb' else {}
+                if 'vertical' in types:
+                    result = download_vertical(appid, assets=assets, source=source)
+                    if result != 'missing':
+                        updates['vertical_art_source'] = result
+                    time.sleep(1.2)
+                if 'horizontal' in types:
+                    result = download_horizontal(appid, assets=assets, source=source)
+                    if result != 'missing':
+                        updates['horizontal_art_source'] = result
+                    time.sleep(1.2)
+                if 'icon' in types:
+                    db  = get_db()
+                    row = db.execute("SELECT icon_hash FROM games WHERE appid = ?", (appid,)).fetchone()
+                    db.close()
+                    icon_hash = row['icon_hash'] if row else None
+                    result = download_icon(appid, icon_hash, source=source)
+                    if result != 'missing':
+                        updates['icon_source'] = result
+                    time.sleep(1.2)
+                if updates:
+                    update_game_data(int(appid), **updates)
+                    updated += 1
+            except Exception as e:
+                log.warning(f"bulk_art_scrape: failed for appid {appid}: {e}")
+                failed += 1
+
+        return jsonify({"status": "success", "updated": updated, "failed": failed})
+
     @app.route('/api/bulk-edit', methods=['POST'])
     def bulk_edit():
         from library import bulk_edit_games
@@ -751,10 +799,11 @@ def create_app(template_folder=None, static_folder=None):
             db.commit()
             db.close()
 
-            # Delete cover image if it exists
-            img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', f'{appid}.jpg')
-            if os.path.exists(img_path):
-                os.remove(img_path)
+            # Delete all cached images
+            for subdir in ('vertical', 'horizontal', 'icons'):
+                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{appid}.jpg')
+                if os.path.exists(img_path):
+                    os.remove(img_path)
 
             # Optionally blacklist
             if blacklist:
@@ -777,13 +826,14 @@ def create_app(template_folder=None, static_folder=None):
             db.commit()
             db.close()
 
-            # Delete cover images
+            # Delete all cached images
             deleted_imgs = 0
             for appid in appids:
-                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', f'{appid}.jpg')
-                if os.path.exists(img_path):
-                    os.remove(img_path)
-                    deleted_imgs += 1
+                for subdir in ('vertical', 'horizontal', 'icons'):
+                    img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{appid}.jpg')
+                    if os.path.exists(img_path):
+                        os.remove(img_path)
+                        deleted_imgs += 1
 
             return jsonify({"status": "success", "deleted": len(appids), "images_removed": deleted_imgs})
         except Exception as e:

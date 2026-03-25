@@ -256,7 +256,7 @@
     // navigated; pressing A on the SEARCH button focuses it for typing instead.
     function _libraryToolbarItems() {
         return [...document.querySelectorAll(
-            '.search-nav-bar button, .search-nav-bar select'
+            '.search-nav-bar button, .search-nav-bar .custom-select'
         )].filter(el => el.offsetParent !== null && !el.disabled);
     }
 
@@ -392,7 +392,7 @@
             const el = document.getElementById(id);
             if (el && _isModalVisible(el)) {
                 const candidates = [...el.querySelectorAll(
-                    'button:not(:disabled), a.nav-btn, a.btn-save, select[data-modal-row]'
+                    'button:not(:disabled), a.nav-btn, a.btn-save, select[data-modal-row], .custom-select[data-modal-row]'
                 )].filter(e => e.offsetParent !== null && !e.disabled
                          && e.textContent.trim() !== '✕' && e.textContent.trim() !== '×');
                 const tagged = candidates.filter(e => e.dataset.modalRow !== undefined);

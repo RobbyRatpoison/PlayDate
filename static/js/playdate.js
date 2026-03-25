@@ -173,3 +173,245 @@ function showFilterError(message) {
     clearTimeout(banner._hideTimer);
     banner._hideTimer = setTimeout(() => { banner.style.display = 'none'; }, 8000);
 }
+
+// ── Custom select dropdown ─────────────────────────────────────────────────
+/**
+ * Replaces a native <select> with a custom div-based dropdown that closes
+ * when the window loses focus (fixing the pywebview/WebKit float-over bug).
+ *
+ * The returned div exposes: .value (get/set), .selectedIndex (get/set),
+ * .options (array of proxies), ._setOptions(html), ._addOption(v,t,sel),
+ * ._clearOptions(), ._getOption(value). Fires 'change' events on selection.
+ */
+function initCustomSelect(nativeSelect) {
+    if (!nativeSelect) return null;
+
+    function parseFromEl(sel) {
+        const items = [];
+        for (const child of sel.children) {
+            if (child.tagName === 'OPTGROUP') {
+                items.push({ type: 'group', label: child.label });
+                for (const opt of child.children) {
+                    if (opt.tagName === 'OPTION') {
+                        items.push({ type: 'opt', value: opt.value, text: opt.text.trim(),
+                            disabled: opt.disabled, selected: opt.selected,
+                            style: opt.getAttribute('style') || '' });
+                    }
+                }
+            } else if (child.tagName === 'OPTION') {
+                items.push({ type: 'opt', value: child.value, text: child.text.trim(),
+                    disabled: child.disabled, selected: child.selected,
+                    style: child.getAttribute('style') || '' });
+            }
+        }
+        return items;
+    }
+
+    let _items = parseFromEl(nativeSelect);
+    let _value = nativeSelect.value || _items.find(i => i.type === 'opt')?.value || '';
+
+    const div = document.createElement('div');
+    div.id = nativeSelect.id;
+    const extraClass = nativeSelect.className.trim();
+    div.className = 'custom-select' + (extraClass ? ' ' + extraClass : '');
+    if (nativeSelect.getAttribute('style')) div.setAttribute('style', nativeSelect.getAttribute('style'));
+    for (const attr of nativeSelect.attributes) {
+        if (attr.name.startsWith('data-') || attr.name === 'title') div.setAttribute(attr.name, attr.value);
+    }
+    div.setAttribute('tabindex', '0');
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'custom-select-btn';
+
+    const panel = document.createElement('div');
+    panel.className = 'custom-select-panel';
+    panel.style.display = 'none';
+
+    div.appendChild(btn);
+    div.appendChild(panel);
+
+    const _opts = () => _items.filter(i => i.type === 'opt');
+    const _find = v => _items.find(i => i.type === 'opt' && i.value === String(v));
+
+    function renderBtn() {
+        const opt = _find(_value);
+        btn.textContent = (opt && opt.text) ? opt.text : '\u00A0';
+        if (_hiddenInput) _hiddenInput.value = _value;
+    }
+
+    function renderPanel() {
+        panel.innerHTML = '';
+        if (_opts().length === 0) {
+            const d = document.createElement('div');
+            d.className = 'custom-select-option disabled';
+            d.textContent = '\u00A0';
+            panel.appendChild(d);
+        }
+        _items.forEach(item => {
+            if (item.type === 'group') {
+                const g = document.createElement('div');
+                g.className = 'custom-select-optgroup';
+                g.textContent = item.label;
+                panel.appendChild(g);
+            } else {
+                const d = document.createElement('div');
+                d.className = 'custom-select-option'
+                    + (item.value === _value ? ' selected' : '')
+                    + (item.disabled ? ' disabled' : '');
+                d.textContent = item.text;
+                if (item.style) d.setAttribute('style', item.style);
+                if (!item.disabled) {
+                    d.addEventListener('mousedown', e => {
+                        e.preventDefault();
+                        _value = item.value;
+                        renderBtn();
+                        renderPanel();
+                        closePanel();
+                        div.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+                }
+                panel.appendChild(d);
+            }
+        });
+    }
+
+    function openPanel() {
+        document.querySelectorAll('.custom-select.open').forEach(el => {
+            if (el !== div) {
+                el.classList.remove('open');
+                el.querySelector('.custom-select-panel').style.display = 'none';
+            }
+        });
+        div.classList.add('open');
+        // Position fixed so the panel escapes overflow:hidden ancestors
+        const rect = btn.getBoundingClientRect();
+        panel.style.position = 'fixed';
+        panel.style.top = rect.bottom + 'px';
+        panel.style.left = rect.left + 'px';
+        panel.style.width = rect.width + 'px';
+        panel.style.display = 'block';
+    }
+    function closePanel() {
+        div.classList.remove('open');
+        panel.style.display = 'none';
+    }
+
+    btn.addEventListener('click', e => {
+        e.stopPropagation();
+        div.classList.contains('open') ? closePanel() : openPanel();
+    });
+    // Programmatic / gamepad click lands on the div itself
+    div.addEventListener('click', e => { if (e.target === div) btn.click(); });
+
+    Object.defineProperty(div, 'value', {
+        get: () => _value,
+        set: v => { _value = String(v); renderBtn(); renderPanel(); },
+        configurable: true,
+    });
+    Object.defineProperty(div, 'selectedIndex', {
+        get: () => _opts().findIndex(o => o.value === _value),
+        set: i => { const o = _opts()[i]; if (o) { _value = o.value; renderBtn(); renderPanel(); } },
+        configurable: true,
+    });
+    Object.defineProperty(div, 'options', {
+        get: () => _opts().map(opt => ({
+            get value()        { return opt.value; },
+            set value(v)       { if (_value === opt.value) _value = String(v); opt.value = String(v); renderBtn(); renderPanel(); },
+            get text()         { return opt.text; },
+            set text(v)        { opt.text = String(v); renderBtn(); renderPanel(); },
+            get textContent()  { return opt.text; },
+            set textContent(v) { opt.text = String(v); renderBtn(); renderPanel(); },
+            get disabled()     { return opt.disabled; },
+            set disabled(v)    { opt.disabled = !!v; renderPanel(); },
+            get selected()     { return opt.value === _value; },
+            remove()           {
+                const idx = _items.indexOf(opt);
+                if (idx >= 0) _items.splice(idx, 1);
+                if (_value === opt.value) _value = _opts()[0]?.value ?? '';
+                renderBtn(); renderPanel();
+            },
+        })),
+        configurable: true,
+    });
+
+    div._setOptions = html => {
+        const tmp = document.createElement('select');
+        tmp.innerHTML = html;
+        _items = parseFromEl(tmp);
+        const sel = _items.find(i => i.type === 'opt' && i.selected);
+        _value = sel?.value ?? _items.find(i => i.type === 'opt')?.value ?? '';
+        renderBtn(); renderPanel();
+    };
+    div._addOption = (value, text, selected = false) => {
+        const isFirst = _opts().length === 0;
+        _items.push({ type: 'opt', value: String(value), text: String(text), disabled: false, selected, style: '' });
+        if (selected || isFirst) _value = String(value);
+        renderBtn(); renderPanel();
+    };
+    div._clearOptions = () => { _items = []; _value = ''; renderBtn(); renderPanel(); };
+    div._getOption = value => {
+        const opt = _find(value);
+        if (!opt) return null;
+        return {
+            get value()        { return opt.value; },
+            set value(v)       { if (_value === opt.value) _value = String(v); opt.value = String(v); renderBtn(); renderPanel(); },
+            get textContent()  { return opt.text; },
+            set textContent(v) { opt.text = String(v); renderBtn(); renderPanel(); },
+            get disabled()     { return opt.disabled; },
+            set disabled(v)    { opt.disabled = !!v; renderPanel(); },
+            remove()           {
+                const idx = _items.indexOf(opt);
+                if (idx >= 0) _items.splice(idx, 1);
+                if (_value === opt.value) _value = _opts()[0]?.value ?? '';
+                renderBtn(); renderPanel();
+            },
+        };
+    };
+
+    if (nativeSelect.onchange) {
+        const handler = nativeSelect.onchange;
+        div.addEventListener('change', function(e) { handler.call(div, e); });
+    }
+
+    // If the native select was a named form field, keep a hidden input so FormData still works
+    let _hiddenInput = null;
+    if (nativeSelect.name) {
+        _hiddenInput = document.createElement('input');
+        _hiddenInput.type = 'hidden';
+        _hiddenInput.name = nativeSelect.name;
+        _hiddenInput.value = _value;
+    }
+
+    renderBtn();
+    renderPanel();
+
+    if (nativeSelect.parentNode) {
+        nativeSelect.parentNode.replaceChild(div, nativeSelect);
+        if (_hiddenInput) div.parentNode.insertBefore(_hiddenInput, div.nextSibling);
+    }
+    return div;
+}
+
+// Close all open custom selects when the window loses focus or user clicks outside
+function _closeAllCustomSelects(exceptEl) {
+    document.querySelectorAll('.custom-select.open').forEach(el => {
+        if (el === exceptEl) return;
+        el.classList.remove('open');
+        const p = el.querySelector('.custom-select-panel');
+        if (p) p.style.display = 'none';
+    });
+}
+window.addEventListener('blur', () => _closeAllCustomSelects(null));
+function _closeOutsideHandler(e) {
+    document.querySelectorAll('.custom-select.open').forEach(el => {
+        if (!el.contains(e.target)) {
+            el.classList.remove('open');
+            const p = el.querySelector('.custom-select-panel');
+            if (p) p.style.display = 'none';
+        }
+    });
+}
+document.addEventListener('mousedown', _closeOutsideHandler);
+document.addEventListener('click', _closeOutsideHandler);
+

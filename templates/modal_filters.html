@@ -132,7 +132,7 @@
         </div>
         <!-- Saved filters row -->
         <div style="display:flex; gap:8px; align-items:center;">
-            <select id="saved-filters-select" class="nav-dropdown" onchange="loadSavedFilterFromModal(this)"
+            <select id="saved-filters-select" onchange="loadSavedFilterFromModal(this)"
                     data-modal-row="3"
                     style="flex:1; height:36px; font-size:0.85rem;"
                     title="Load a saved filter"
@@ -376,6 +376,21 @@ select.nav-dropdown:hover {
     margin-bottom: 7px;
 }
 .fm-expr-row .fm-remove { align-self: flex-start; margin-top: 2px; }
+
+/* Saved filters custom-select — match surrounding .nav-btn style */
+#saved-filters-select .custom-select-btn {
+    background-color: var(--steam-blue);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    height: 36px;
+    font-size: 0.85rem;
+    padding: 0 32px 0 12px;
+}
+#saved-filters-select .custom-select-btn:hover {
+    background-color: var(--steam-focus);
+    color: var(--steam-blue);
+}
 </style>
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -675,14 +690,15 @@ function addSimpleRow(data = null) {
     const val = (data && data.value)    || '';
 
     // Column select
-    const colSel = document.createElement('select');
-    colSel.className = 'fm-col-select';
+    const _colNative = document.createElement('select');
+    _colNative.className = 'fm-col-select';
     Object.entries(FM_FILTER_CONFIG).forEach(([k, cfg]) => {
         const opt = document.createElement('option');
         opt.value = k; opt.textContent = cfg.label;
         if (k === col) opt.selected = true;
-        colSel.appendChild(opt);
+        _colNative.appendChild(opt);
     });
+    const colSel = initCustomSelect(_colNative);
 
     const opContainer  = document.createElement('div');
     const valContainer = document.createElement('div');
@@ -715,16 +731,16 @@ function _compatibleCols(colName) {
 }
 
 function _buildColSelect(container, compatCols, initValCol) {
-    const sel = document.createElement('select');
-    sel.className = 'fm-val-col-select';
-    sel.style.cssText = 'padding:6px 9px;background-color:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;border-radius:5px;font-size:0.85rem;width:100%;box-sizing:border-box;';
+    const native = document.createElement('select');
+    native.className = 'fm-val-col-select';
     compatCols.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c;
         opt.textContent = FM_FILTER_CONFIG[c] ? FM_FILTER_CONFIG[c].label : c;
         if (c === initValCol) opt.selected = true;
-        sel.appendChild(opt);
+        native.appendChild(opt);
     });
+    const sel = initCustomSelect(native);
     sel.addEventListener('change', updateSqlPreview);
     container.appendChild(sel);
 }
@@ -732,36 +748,42 @@ function _buildColSelect(container, compatCols, initValCol) {
 function _buildLiteralInput(container, cfg, op, initVal) {
     let el;
     if (cfg.type === 'select') {
-        el = document.createElement('select');
+        const native = document.createElement('select');
         if (Array.isArray(cfg.options)) {
             cfg.options.forEach(o => {
                 const opt = document.createElement('option');
                 opt.value = o; opt.textContent = o;
                 if (o === initVal) opt.selected = true;
-                el.appendChild(opt);
+                native.appendChild(opt);
             });
         } else {
             Object.entries(cfg.options).forEach(([v, l]) => {
                 const opt = document.createElement('option');
                 opt.value = v; opt.textContent = l;
                 if (v === String(initVal)) opt.selected = true;
-                el.appendChild(opt);
+                native.appendChild(opt);
             });
         }
+        native.className = 'fm-val-input';
+        el = initCustomSelect(native);
+        el.addEventListener('change', updateSqlPreview);
     } else if (cfg.type === 'date_text') {
         el = document.createElement('input');
         el.type = 'text';
         el.value = initVal || '';
         el.placeholder = op === 'LIKE' ? 'e.g. %-03-% (March) or 2023-%' : 'YYYY-MM-DD';
+        el.className = 'fm-val-input';
+        el.addEventListener('input', updateSqlPreview);
+        el.addEventListener('change', updateSqlPreview);
     } else {
         el = document.createElement('input');
         el.type = cfg.type || 'text';
         el.value = initVal || '';
         el.placeholder = 'Enter value…';
+        el.className = 'fm-val-input';
+        el.addEventListener('input', updateSqlPreview);
+        el.addEventListener('change', updateSqlPreview);
     }
-    el.className = 'fm-val-input';
-    el.addEventListener('input', updateSqlPreview);
-    el.addEventListener('change', updateSqlPreview);
     container.appendChild(el);
 }
 
@@ -774,14 +796,15 @@ function populateRowControls(colSel, opContainer, valContainer, data) {
 
     // Operator select
     opContainer.innerHTML = '';
-    const opSel = document.createElement('select');
-    opSel.className = 'fm-op-select';
+    const _opNative = document.createElement('select');
+    _opNative.className = 'fm-op-select';
     Object.entries(cfg.comparisons).forEach(([k, label]) => {
         const opt = document.createElement('option');
         opt.value = k; opt.textContent = label;
         if (k === initOp) opt.selected = true;
-        opSel.appendChild(opt);
+        _opNative.appendChild(opt);
     });
+    const opSel = initCustomSelect(_opNative);
     opContainer.appendChild(opSel);
 
     opSel.addEventListener('change', () => { updateValueField(cfg, opSel, valContainer, '', col); updateSqlPreview(); });
@@ -931,14 +954,15 @@ function addAdvancedRow(groupEl, data = null) {
     row.style.marginBottom = '7px';
 
     const col = (data && data.column) || 'tags';
-    const colSel = document.createElement('select');
-    colSel.className = 'fm-col-select';
+    const _colNative2 = document.createElement('select');
+    _colNative2.className = 'fm-col-select';
     Object.entries(FM_FILTER_CONFIG).forEach(([k, cfg]) => {
         const opt = document.createElement('option');
         opt.value = k; opt.textContent = cfg.label;
         if (k === col) opt.selected = true;
-        colSel.appendChild(opt);
+        _colNative2.appendChild(opt);
     });
+    const colSel = initCustomSelect(_colNative2);
 
     const opContainer  = document.createElement('div');
     const valContainer = document.createElement('div');
@@ -1509,8 +1533,7 @@ async function renameSavedFilterFromModal() {
             const tree = _savedFilters[oldName];
             delete _savedFilters[oldName];
             _savedFilters[newName.trim()] = tree;
-            const opt = selectEl.querySelector(`option[value="${CSS.escape(oldName)}"]`)
-                     || Array.from(selectEl.options).find(o => o.value === oldName);
+            const opt = selectEl._getOption(oldName);
             if (opt) { opt.value = newName.trim(); opt.textContent = newName.trim(); }
             selectEl.value = newName.trim();
         } else {
@@ -1534,7 +1557,7 @@ async function deleteSavedFilterFromModal() {
         if (data.status === 'success') {
             // Remove from dropdown and local cache without reloading
             delete _savedFilters[name];
-            const opt = selectEl.querySelector(`option[value="${name}"]`);
+            const opt = selectEl._getOption(name);
             if (opt) opt.remove();
             selectEl.value = '';
         } else {
@@ -1569,6 +1592,10 @@ async function saveCurrentFilter() {
         else alert('Could not save: ' + data.message);
     } catch (e) { alert('Network error saving filter.'); }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    initCustomSelect(document.getElementById('saved-filters-select'));
+});
 </script>
 
 <div id="importModal" class="modal-overlay" style="display: none;">

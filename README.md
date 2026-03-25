@@ -9,23 +9,45 @@ A local Steam library manager for people who take their backlog seriously.
 
 ## What it does
 
-PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, achievements, cover art), and gives you a clean interface for browsing, filtering, tracking completion, and deciding what to play next. Runs entirely locally as a standalone desktop app — no browser, no cloud, no account required.
+PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, achievements, cover art), and gives you a clean interface for browsing, filtering, tracking completion, and deciding what to play next. Runs entirely locally as a standalone desktop app — no browser, no cloud, no account required beyond your Steam credentials.
 
 ---
 
 ## Features
 
-- **Library grid** — virtual renderer handles 2000+ games without performance issues. Sort, search, and filter by any column.
-- **Filter system** — simple and advanced modes (nested AND/OR groups), custom SQL mode, and saved named filters.
-- **Home page shelves** — configurable rows of games (recently added, installed, shuffle, etc.). Drag to reorder, set limits, col widths, and dedup priority across shelves.
-- **Pick 6** — randomly or intelligently pick games from your library. Smart and Weighted modes build a taste profile from your completion history.
-- **Metadata scraping** — pulls tags, review scores, playtime, achievements, release dates, developers, and cover art from Steam. SteamGridDB supported for custom artwork.
-- **BLAEO sync** — imports completion statuses and list tags from your BLAEO backlog profile.
-- **PAGYWOSG filter builder** — build this month's eligible pool from the monthly post criteria and save it as a library filter.
-- **Backup & restore** — export a timestamped zip of your library data and settings, with optional cover art. Restore from any previous backup.
-- **Database import tool** — copy columns from an older PlayDate database into your current library, with column mapping and type-mismatch warnings.
-- **Gamepad & keyboard navigation** — full controller support across all pages with 2D spatial grid navigation, modal zone navigation, custom SELECT picker overlay, confirm dialog support, and a HUD that appears on first input. Back button toggles home page edit mode; Start launches the focused game.
-- **Tools page** — tag migration, BLAEO sync, layout editor, backup/restore, and database import all in one place.
+### Library
+- **Virtual grid renderer** — handles 2000+ games without performance issues
+- **Vertical and horizontal card views** — toggle between portrait capsule art and landscape header art; adjustable card size slider
+- **Sort and search** — sort by any column, live search by name
+- **Filter system** — simple mode (pick a field, operator, value) and advanced mode (nested AND/OR groups with unlimited conditions); custom SQL expression mode for power users; filters can be saved and reloaded by name
+- **Bulk edit** — apply changes to any field across a filtered or manually selected set of games at once
+- **In-place editing** — edit any game's metadata, artwork, completion status, tags, groups, and more without leaving the library
+
+### Home Page
+- **Configurable shelves** — horizontal rows of game capsules driven by any saved filter or built-in preset (recently played, installed, shuffle, etc.)
+- **Layout editor** — add, remove, and reorder shelves; set limits, column widths, and sort order; shelves can be paired side-by-side
+- **Deduplication** — games already shown on a higher-priority shelf are automatically excluded from lower-priority ones
+
+### Pick 6
+- **Random mode** — pick from your full unbeaten library
+- **Smart mode** — builds a taste profile from your beaten games using tag cosine similarity, then scores candidates by review quality, staleness, playtime, and release recency
+- **Weighted mode** — tune six scoring signals with sliders; toggle individual games in or out of the pool
+
+### Metadata & Artwork
+- **Steam scraper** — imports playtime, tags, review scores, achievement counts, release dates, developers, publishers, and genres from Steam's API and store pages
+- **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB
+- **SteamGridDB browser** — search and apply custom artwork for any game from directly within PlayDate
+- **BLAEO sync** — imports completion statuses and list tags from your BLAEO backlog profile (requires Chrome)
+
+### Tools
+- **PAGYWOSG filter builder** — construct an eligible game pool from the monthly community post criteria and save it as a reusable library filter
+- **Backup & restore** — export a timestamped zip of your library data and settings (optionally including cover art); restore from any previous backup
+- **Database import** — migrate columns from an older PlayDate database into your current one, with column mapping and type-mismatch warnings
+- **Bulk re-scrape** — refresh Steam metadata for any selection of games
+
+### Other
+- **Gamepad & keyboard navigation** — full controller support across all pages with 2D spatial grid navigation, modal zone handling, and a HUD that appears on first input
+- **Completion tracking** — five statuses: Never Played, Unfinished, Beaten, Completed, Won't Play; right-click any card for a quick-set context menu
 
 ---
 
@@ -41,7 +63,8 @@ Download **PlayDate-Setup.exe** from the [latest release](https://github.com/Rob
 chmod +x install.sh && ./install.sh
 ```
 
-Requires Python 3.10+ and `python3-gi` (WebKit/GTK):
+Requires Python 3.10+ and the WebKit/GTK bindings for your distro:
+
 ```bash
 # Debian / Ubuntu
 sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0
@@ -70,7 +93,7 @@ Use **Add or Remove Programs** — PlayDate registers a standard uninstaller. Yo
 ./uninstall.sh
 ```
 
-This removes the launcher, virtual environment, and app launcher entry. Your data files (games.db, config.json, state.json) are left in place by default — the uninstaller asks before removing them.
+Removes the launcher, virtual environment, and app launcher entry. Your data files are left in place by default — the uninstaller asks before removing them.
 
 ---
 
@@ -79,10 +102,10 @@ This removes the launcher, virtual environment, and app launcher entry. Your dat
 On first launch you'll be prompted for:
 
 - **Steam ID** — your SteamID64 or vanity URL name (find it at [steamid.io](https://steamid.io))
-- **Steam Web API Key** — from [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
-- **SteamGridDB API Key** — *(optional — enables custom artwork from SteamGridDB)*
+- **Steam Web API Key** — from [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) *(optional — without it PlayDate falls back to public profile scraping)*
+- **SteamGridDB API Key** — from [steamgriddb.com/profile/preferences/api](https://www.steamgriddb.com/profile/preferences/api) *(optional — enables custom artwork)*
 
-Then hit **Populate PlayDate** to import your library and fetch metadata.
+Then hit **Populate PlayDate** in the navbar to import your library and fetch metadata. This takes a few minutes on first run due to Steam API rate limiting.
 
 ---
 
@@ -93,15 +116,34 @@ PlayDate supports gamepads and keyboard navigation — useful for couch / TV set
 | Input | Action |
 |---|---|
 | D-pad / Left stick / Arrow keys / WASD | Navigate |
-| A / Enter | Confirm / launch focused game |
+| A / Enter | Confirm / open focused game |
 | B / Escape | Back / close modal |
-| X / Square | Open edit modal (Library) |
+| X / Square | Edit focused game (Library) |
 | Y / Triangle / F | Open filters (Library) |
 | LB / RB | Previous / next page |
-| Start | Launch focused game |
+| Start | Launch focused game in Steam |
 | 1 / 2 / 3 / 4 | Jump to Home / Library / Pick / Tools |
 
-The controller HUD appears in the bottom-right corner on first gamepad or keyboard nav input.
+The controller HUD appears in the bottom-right corner on first gamepad or keyboard input.
+
+---
+
+## Data files
+
+All user data lives next to the executable (or in the project folder when running from source):
+
+| File / Folder | Contents |
+|---|---|
+| `games.db` | SQLite database — your game library and blacklist |
+| `config.json` | Steam API key, SteamID, SteamGridDB key |
+| `state.json` | Active filters, sort order, shelf layout, saved filters, artwork orientation, card size |
+| `theme.json` | CSS variable overrides for custom theming |
+| `playdate.log` | Application log (1MB cap, auto-rotated) |
+| `static/img/library/vertical/` | Cached vertical capsule art |
+| `static/img/library/horizontal/` | Cached horizontal header art |
+| `static/img/library/icons/` | Cached game icons |
+
+Data files survive upgrades — they are never overwritten by the installer.
 
 ---
 
@@ -110,12 +152,12 @@ The controller HUD appears in the bottom-right corner on first gamepad or keyboa
 | | |
 |---|---|
 | Python / Flask | Backend server and API routes |
-| Waitress | Production WSGI server |
-| pywebview | Native desktop window (no browser needed) |
-| SQLite | Local database (`games.db`) |
+| Waitress | Production WSGI server (8 threads) |
+| pywebview | Native desktop window — no browser required |
+| SQLite | Local game database |
 | Jinja2 | Server-side HTML templating |
-| Vanilla JS / CSS3 | All frontend logic — no frameworks |
-| requests + BeautifulSoup | Steam metadata scraping |
+| Vanilla JS / CSS3 | All frontend logic — no frameworks, no build step |
+| requests + BeautifulSoup | Steam metadata and tag scraping |
 | Selenium | BLAEO scraper (requires Chrome) |
 
 ---
@@ -134,19 +176,5 @@ Then open `playdate.iss` in Inno Setup to produce `installer/PlayDate-Setup.exe`
 Releases are built automatically via GitHub Actions on version tag push:
 
 ```bash
-git tag v1.0.0 && git push origin v1.0.0
+git tag v1.1.6 && git push origin v1.1.6
 ```
-
----
-
-## Data files
-
-All user data lives next to the executable (or in the project folder when running from source):
-
-| File | Contents |
-|---|---|
-| `games.db` | Your game library |
-| `config.json` | Steam credentials and settings |
-| `state.json` | Filters, sort order, shelf layout |
-| `playdate.log` | Application log |
-| `static/img/library/` | Downloaded cover art |

@@ -774,11 +774,10 @@
                             }
                             setTimeout(() => {
                                 _resetPopulateBtn();
-                                window.location.reload();
+                                if (msg.added > 0) window.location.reload();
                             }, 2000);
                         } else {
                             _resetPopulateBtn();
-                            window.location.reload();
                         }
                     } else {
                         _updatePopulateBtn(data);

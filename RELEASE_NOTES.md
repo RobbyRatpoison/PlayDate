@@ -32,14 +32,18 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.5 — 2026-03-24
+## v1.1.6 — 2026-03-25
 
 ### New Features
-- **Horizontal card view.** The library page now supports a horizontal image layout. Toggle between vertical and horizontal with the new button in the toolbar.
-- **Adjustable card size.** A slider in the library toolbar lets you resize game cards to your preference.
-- **Icon scraping.** Game icons are now downloaded and stored alongside cover art.
-- **Horizontal cover art.** Horizontal images are now fetched and stored separately from vertical capsule art.
-- **Hi-res cover art.** PlayDate now prefers 2x resolution images where available, falling back to standard resolution.
-- **Improved SteamGridDB browser.** The artwork browser now searches by game name automatically when Steam lookup returns no results. You can also manually search any game name to pull artwork from SteamGridDB's full catalog.
+- **New values added via pill fields are immediately available.** After saving a game, any new tags, groups, genres, or categories you entered are instantly available in both the edit modal's autocomplete suggestions and the filter builder — no reload required.
+
+### Bug Fixes
+- **Dropdown menus no longer stay open when switching programs.** All dropdown lists have been replaced with custom-built menus that respect window focus — they close immediately when you switch to another app.
+- **Horizontal grid no longer shows the wrong image after saving.** Editing a game while in horizontal view previously reloaded the card with the vertical image. It now uses whichever orientation is active.
+
+### Improvements
+- **Horizontal card size slider now works consistently.** The card size slider previously made horizontal game cards much smaller than vertical ones at the same setting. The slider now controls card height uniformly across both orientations.
+- **Populate no longer refreshes the page unnecessarily.** The page only reloads after a populate run if at least one new game was added.
+- **Pill input fields now show how to add values.** Tags, groups, genres, and categories fields display a hint explaining that you can type a value and press Enter to add it.
 
 ---
