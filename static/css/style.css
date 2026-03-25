@@ -207,7 +207,8 @@ select {
     gap: 20px;
 }
 
-.nav-links a {
+.nav-links a,
+#hamburger-btn {
     color: var(--muted-text);
     text-decoration: none;
     font-weight: bold;
@@ -218,7 +219,15 @@ select {
     cursor: pointer;
 }
 
-.nav-links a:hover {
+#hamburger-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+}
+
+.nav-links a:hover,
+#hamburger-btn:hover {
     color: var(--steam-focus);
 }
 
@@ -360,8 +369,9 @@ select {
     box-shadow: 0 0 0 2px var(--steam-focus), 0 0 10px rgba(102, 192, 244, 0.3);
 }
 
-/* Nav page links */
-.nav-links a.gamepad-focus {
+/* Nav page links and settings button */
+.nav-links a.gamepad-focus,
+#hamburger-btn.gamepad-focus {
     color: var(--steam-focus);
     outline: 2px solid var(--steam-focus);
     outline-offset: 4px;
@@ -388,6 +398,12 @@ select {
     outline: 2px solid var(--steam-focus);
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* Any custom-select div when focused — highlights the visible button inside */
+.custom-select.gamepad-focus .custom-select-btn {
+    outline: 2px solid var(--steam-focus);
+    outline-offset: 2px;
 }
 
 /* Library toolbar sort select */
@@ -478,4 +494,16 @@ input[type="range"].gamepad-focus {
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
     border-color: var(--steam-focus) !important;
     color: var(--steam-focus) !important;
+}
+
+/* Hamburger menu items */
+.hamburger-item.gamepad-focus {
+    background: #243447;
+    color: var(--steam-focus);
+}
+
+/* Custom select dropdown options */
+.custom-select-option.gamepad-focus {
+    background: #243447;
+    color: var(--steam-focus);
 }

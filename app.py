@@ -322,11 +322,6 @@ def create_app(template_folder=None, static_folder=None):
             "pool_size": len(games)
         })
 
-    @app.route('/tools')
-    def tools():
-        from config import load_state
-        return render_template('tools.html', state=load_state())
-
     @app.route('/api/populate-status')
     def populate_status():
         return jsonify({

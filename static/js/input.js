@@ -15,6 +15,12 @@
 
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
+            // Close dropdown first — must precede modal checks since the modal is still visible underneath
+            if (_state.zone === 'dropdown') {
+                _closeAnyOpenModal();
+                _syncFocus();
+                return;
+            }
             // Close edit/filter modals (global close fns, checked first)
             const editModal = document.getElementById('editModal');
             if (editModal && editModal.style.display !== 'none') {
@@ -39,11 +45,10 @@
         if (p === '/' || p === '') return 'home';
         if (p.startsWith('/library')) return 'library';
         if (p.startsWith('/pick')) return 'pick';
-        if (p.startsWith('/tools')) return 'tools';
         return 'other';
     })();
 
-    const PAGE_URLS = ['/', '/library', '/pick', '/tools'];
+    const PAGE_URLS = ['/', '/library', '/pick'];
 
     function _currentPageIdx() {
         const p = window.location.pathname;
@@ -56,18 +61,21 @@
 
     // ── State ─────────────────────────────────────────────────────────────────
     const _state = {
-        active:       false,
-        zone:         'nav',
-        prevZone:     'content',
-        prevRow:      null,
-        prevCol:      null,
-        row:          0,
-        col:          0,
-        savedCol:     0,
-        subItem:      -1,
-        modalRow:     0,
-        modalCol:     0,
-        focusedAppid: null,
+        active:           false,
+        zone:             'nav',
+        prevZone:         'content',
+        prevRow:          null,
+        prevCol:          null,
+        prevModalRow:     null,
+        prevModalCol:     null,
+        prevModalRowKey:  null,  // data-modal-row VALUE saved on dropdown push (stable across DOM changes)
+        row:              0,
+        col:              0,
+        savedCol:         0,
+        subItem:          -1,
+        modalRow:         0,
+        modalCol:         0,
+        focusedAppid:     null,
     };
 
     // Expose focusedAppid so library.html's observeCards can re-apply the class
@@ -121,7 +129,6 @@
             // Last content row → scroll to very bottom
             const isLast = _state.zone === 'content' && (() => {
                 switch (PAGE) {
-                    case 'tools':   return _state.row === _toolRows().length - 1;
                     case 'library': return _state.row === _libraryCards().length - 1;
                     case 'pick':    return _state.row === _pickRows().length - 1;
                     default: return false;
@@ -147,7 +154,7 @@
             ...document.querySelectorAll('.nav-links a, .nav-links button'),
             document.getElementById('fullscreen-button'),
             document.getElementById('exit-button'),
-        ].filter(Boolean);
+        ].filter(el => el && el.offsetParent !== null);
     }
 
     // Home: returns array of { el, items[] } per navigable row.
@@ -314,36 +321,6 @@
         return rows;
     }
 
-    // Tools: rows = .tool-card elements, plus individual blacklist entry rows when expanded
-    function _toolRows() {
-        const rows = [];
-        for (const card of document.querySelectorAll('.tool-card')) {
-            rows.push(card);
-            // Blacklist entries become individual rows navigated with up/down
-            const tbody = card.querySelector('#blacklist-tbody');
-            if (tbody) {
-                for (const tr of tbody.querySelectorAll('tr')) {
-                    const btn = tr.querySelector('.bl-remove-btn');
-                    if (btn && btn.offsetParent !== null && !btn.disabled) {
-                        rows.push(tr);
-                    }
-                }
-            }
-        }
-        return rows;
-    }
-
-    function _toolItems(rowEl) {
-        // Blacklist entry row — just the remove button
-        if (rowEl.tagName === 'TR') {
-            return [...rowEl.querySelectorAll('.bl-remove-btn')]
-                .filter(el => el.offsetParent !== null && !el.disabled);
-        }
-        return [...rowEl.querySelectorAll('button.nav-btn, a.nav-btn')].filter(el => {
-            return el.offsetParent !== null && !el.disabled;
-        });
-    }
-
     // Context menu items (excludes labels, disabled, hidden)
     function _ctxItems() {
         return [...document.querySelectorAll('#ctx-menu .ctx-item')].filter(el => {
@@ -357,6 +334,19 @@
         return [...document.querySelectorAll('#ctx-completion-sub .ctx-item')].filter(el => {
             return !el.classList.contains('disabled');
         });
+    }
+
+    // Returns navigable items in the currently-open dropdown (hamburger menu or custom select panel).
+    function _dropdownItems() {
+        const hm = document.getElementById('hamburger-menu');
+        if (hm?.classList.contains('open')) {
+            return [...hm.querySelectorAll('.hamburger-item')].filter(el => el.offsetParent !== null);
+        }
+        const cs = document.querySelector('.custom-select.open .custom-select-panel');
+        if (cs) {
+            return [...cs.querySelectorAll('.custom-select-option:not(.disabled)')];
+        }
+        return [];
     }
 
     // Modal items: IDs of all modal overlays, checked in priority order
@@ -394,7 +384,10 @@
                 const candidates = [...el.querySelectorAll(
                     'button:not(:disabled), a.nav-btn, a.btn-save, select[data-modal-row], .custom-select[data-modal-row]'
                 )].filter(e => e.offsetParent !== null && !e.disabled
-                         && e.textContent.trim() !== '✕' && e.textContent.trim() !== '×');
+                         // Exclude ✕/× buttons that have no data-modal-row (those are handled by row -1)
+                         && !((e.textContent.trim() === '✕' || e.textContent.trim() === '×') && e.dataset.modalRow === undefined)
+                         // Never include pill remove buttons (× inside .pill spans)
+                         && !e.closest('.pill'));
                 const tagged = candidates.filter(e => e.dataset.modalRow !== undefined);
                 if (!tagged.length) return candidates.length ? [candidates] : [];
                 const map = new Map();
@@ -407,6 +400,21 @@
             }
         }
         return [];
+    }
+
+    // Returns the ✕ close button of the currently visible modal, or null.
+    function _modalCloseBtn() {
+        for (const id of _MODAL_IDS) {
+            const el = document.getElementById(id);
+            if (el && _isModalVisible(el)) {
+                const btn = [...el.querySelectorAll('button')].find(b => {
+                    const t = b.textContent.trim();
+                    return (t === '✕' || t === '×') && b.offsetParent !== null && b.dataset.modalRow === undefined && !b.closest('.pill');
+                });
+                if (btn) return btn;
+            }
+        }
+        return null;
     }
 
     // ── Get the currently focused element ────────────────────────────────────
@@ -479,21 +487,16 @@
                         break;
                     }
 
-                    case 'tools': {
-                        const rows = _toolRows();
-                        if (!rows.length) break;
-                        _state.row = Math.min(_state.row, rows.length - 1);
-                        const items = _toolItems(rows[_state.row]);
-                        if (!items.length) break;
-                        _state.col = Math.min(_state.col, items.length - 1);
-                        _applyFocus(items[_state.col]);
-                        break;
-                    }
                 }
                 break;
             }
 
             case 'modal': {
+                if (_state.modalRow === -1) {
+                    const closeBtn = _modalCloseBtn();
+                    if (closeBtn) { _applyFocus(closeBtn); break; }
+                    _state.modalRow = 0; // no close btn, fall through
+                }
                 const mgrid = _modalGrid();
                 if (mgrid.length) {
                     _state.modalRow = Math.min(_state.modalRow, mgrid.length - 1);
@@ -502,6 +505,15 @@
                     _applyFocus(row[_state.modalCol]);
                 } else {
                     _clearFocus();
+                }
+                break;
+            }
+
+            case 'dropdown': {
+                const items = _dropdownItems();
+                if (items.length) {
+                    _state.col = Math.min(Math.max(_state.col, 0), items.length - 1);
+                    _applyFocus(items[_state.col]);
                 }
                 break;
             }
@@ -517,12 +529,10 @@
     function _activate() {
         if (_state.active) return;
         _state.active = true;
-        // Start on the active nav link for this page
-        const navItems = _navItems();
-        const activeLink = document.querySelector('.nav-links a.active');
-        const startIdx = activeLink ? navItems.indexOf(activeLink) : 0;
-        _state.zone = 'nav';
-        _state.col  = Math.max(startIdx, 0);
+        _state.zone     = 'content';
+        _state.row      = 0;
+        _state.col      = 0;
+        _state.savedCol = 0;
         _syncFocus();
     }
 
@@ -539,24 +549,55 @@
 
     // ── Zone helpers ──────────────────────────────────────────────────────────
     function _pushZone(zone) {
-        _state.prevZone   = _state.zone;
-        _state.prevRow    = _state.row;
-        _state.prevCol    = _state.col;
-        _state.zone       = zone;
-        _state.col        = 0;
-        _state.subItem    = -1;
-        _state.modalRow   = 0;
-        _state.modalCol   = 0;
+        _state.prevZone         = _state.zone;
+        _state.prevRow          = _state.row;
+        _state.prevCol          = _state.col;
+        _state.prevModalRow     = _state.modalRow;
+        _state.prevModalCol     = _state.modalCol;
+        // When entering dropdown from modal, save the data-modal-row VALUE of the focused
+        // element so we can restore the correct row even if the DOM changes (e.g. filter
+        // modal switching between simple/advanced hides rows and shifts array indices).
+        if (zone === 'dropdown' && _state.zone === 'modal') {
+            const mgrid = _modalGrid();
+            const el = mgrid[_state.modalRow]?.[_state.modalCol];
+            _state.prevModalRowKey = el?.dataset?.modalRow ?? null;
+        } else {
+            _state.prevModalRowKey = null;
+        }
+        _state.zone          = zone;
+        _state.col           = 0;
+        _state.subItem       = -1;
+        // Don't reset modalRow/Col when entering dropdown — we'll restore them on pop
+        if (zone !== 'dropdown') {
+            _state.modalRow  = 0;
+            _state.modalCol  = 0;
+        }
     }
 
     function _popZone() {
+        const returningToModal = _state.prevZone === 'modal';
         _state.zone    = _state.prevZone;
         _state.row     = _state.prevRow  ?? _state.row;
         _state.col     = _state.prevCol  ?? _state.col;
-        _state.prevZone = 'content';
-        _state.prevRow  = null;
-        _state.prevCol  = null;
-        _state.subItem  = -1;
+        if (returningToModal) {
+            if (_state.prevModalRowKey != null) {
+                // Translate the saved data-modal-row VALUE back to an array index.
+                // This survives DOM changes (e.g. filter modal switching modes hides rows).
+                const mgrid = _modalGrid();
+                const idx = mgrid.findIndex(row => row[0]?.dataset?.modalRow === _state.prevModalRowKey);
+                _state.modalRow = idx >= 0 ? idx : (_state.prevModalRow ?? 0);
+            } else {
+                _state.modalRow = _state.prevModalRow ?? _state.modalRow;
+            }
+            _state.modalCol = _state.prevModalCol ?? _state.modalCol;
+        }
+        _state.prevZone        = 'content';
+        _state.prevRow         = null;
+        _state.prevCol         = null;
+        _state.prevModalRow    = null;
+        _state.prevModalCol    = null;
+        _state.prevModalRowKey = null;
+        _state.subItem         = -1;
     }
 
     // ── Direction handlers ────────────────────────────────────────────────────
@@ -565,7 +606,13 @@
         switch (_state.zone) {
 
             case 'modal': {
+                if (_state.modalRow === -1) break; // already at top
                 const mgrid = _modalGrid();
+                if (_state.modalRow === 0) {
+                    if (_modalCloseBtn()) { _state.modalRow = -1; _syncFocus(); }
+                    // else: already at top row, true no-op — do not call _syncFocus() to avoid side effects
+                    break;
+                }
                 if (mgrid.length && _state.modalRow > 0) {
                     _state.modalRow--;
                     _state.modalCol = Math.min(_state.modalCol, mgrid[_state.modalRow].length - 1);
@@ -587,6 +634,15 @@
             }
 
             case 'nav': break; // no-op, already at top
+
+            case 'dropdown': {
+                const items = _dropdownItems();
+                if (items.length && _state.col > 0) {
+                    _state.col--;
+                    _syncFocus();
+                }
+                break;
+            }
 
             case 'content': {
                 switch (PAGE) {
@@ -665,20 +721,6 @@
                         break;
                     }
 
-                    case 'tools': {
-                        if (_state.row === 0) {
-                            _state.zone = 'nav';
-                            const navItems = _navItems();
-                            const activeLink = document.querySelector('.nav-links a.active');
-                            _state.col = activeLink ? navItems.indexOf(activeLink) : 0;
-                        } else {
-                            _state.row--;
-                            const items = _toolItems(_toolRows()[_state.row]);
-                            _state.col = Math.min(_state.savedCol, Math.max(items.length - 1, 0));
-                        }
-                        _syncFocus();
-                        break;
-                    }
                 }
                 break;
             }
@@ -689,6 +731,9 @@
         switch (_state.zone) {
 
             case 'modal': {
+                if (_state.modalRow === -1) {
+                    _state.modalRow = 0; _state.modalCol = 0; _syncFocus(); break;
+                }
                 const mgrid = _modalGrid();
                 if (mgrid.length && _state.modalRow < mgrid.length - 1) {
                     _state.modalRow++;
@@ -717,6 +762,15 @@
                 _state.col      = 0;
                 _state.savedCol = 0;
                 _syncFocus();
+                break;
+            }
+
+            case 'dropdown': {
+                const items = _dropdownItems();
+                if (items.length && _state.col < items.length - 1) {
+                    _state.col++;
+                    _syncFocus();
+                }
                 break;
             }
 
@@ -777,16 +831,6 @@
                         break;
                     }
 
-                    case 'tools': {
-                        const rows = _toolRows();
-                        if (_state.row < rows.length - 1) {
-                            _state.row++;
-                            const items = _toolItems(rows[_state.row]);
-                            _state.col = Math.min(_state.savedCol, Math.max(items.length - 1, 0));
-                        }
-                        _syncFocus();
-                        break;
-                    }
                 }
                 break;
             }
@@ -874,12 +918,6 @@
                         break;
                     }
 
-                    case 'tools': {
-                        if (_state.col > 0) _state.col--;
-                        _state.savedCol = _state.col;
-                        _syncFocus();
-                        break;
-                    }
                 }
                 break;
             }
@@ -975,14 +1013,6 @@
                         break;
                     }
 
-                    case 'tools': {
-                        const rows  = _toolRows();
-                        const items = _toolItems(rows[_state.row]);
-                        if (_state.col < items.length - 1) _state.col++;
-                        _state.savedCol = _state.col;
-                        _syncFocus();
-                        break;
-                    }
                 }
                 break;
             }
@@ -1061,6 +1091,10 @@
         switch (_state.zone) {
 
             case 'modal': {
+                if (_state.modalRow === -1) {
+                    _modalCloseBtn()?.click();
+                    break;
+                }
                 const mgrid = _modalGrid();
                 if (mgrid.length) {
                     const el = mgrid[_state.modalRow]?.[_state.modalCol];
@@ -1096,6 +1130,22 @@
                 const items = _navItems();
                 items[_state.col]?.click();
                 break;
+            }
+
+            case 'dropdown': {
+                const items = _dropdownItems();
+                const el = items[_state.col];
+                if (el) {
+                    if (el.classList.contains('custom-select-option')) {
+                        // bubbles:false — prevents bubbling to document mousedown which would deactivate gamepad
+                        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: false, cancelable: true }));
+                    } else {
+                        el.click();
+                    }
+                    _popZone();
+                    _syncFocus();
+                }
+                return; // skip post-A dropdown detection
             }
 
             case 'content': {
@@ -1155,16 +1205,28 @@
                         break;
                     }
 
-                    case 'tools': {
-                        const rows  = _toolRows();
-                        const items = _toolItems(rows[_state.row]);
-                        items[_state.col]?.click();
-                        break;
-                    }
                 }
                 break;
             }
         }
+
+        // After any A press, enter dropdown zone if a dropdown just opened
+        requestAnimationFrame(() => {
+            if (_state.zone === 'dropdown' || !_state.active) return;
+            const hm = document.getElementById('hamburger-menu');
+            if (hm?.classList.contains('open')) {
+                _pushZone('dropdown');
+                _state.col = 0;
+                _syncFocus();
+                return;
+            }
+            const cs = document.querySelector('.custom-select.open');
+            if (cs) {
+                _pushZone('dropdown');
+                _state.col = 0;
+                _syncFocus();
+            }
+        });
     }
 
     function _closeCtxMenu() {
@@ -1175,6 +1237,24 @@
     }
 
     function _closeAnyOpenModal() {
+        // Close hamburger menu if open
+        const hamburgerMenu = document.getElementById('hamburger-menu');
+        if (hamburgerMenu?.classList.contains('open')) {
+            hamburgerMenu.classList.remove('open');
+            if (_state.zone === 'dropdown') _popZone();
+            return true;
+        }
+
+        // Close open custom select panels
+        const openSelect = document.querySelector('.custom-select.open');
+        if (openSelect) {
+            openSelect.classList.remove('open');
+            const p = openSelect.querySelector('.custom-select-panel');
+            if (p) p.style.display = 'none';
+            if (_state.zone === 'dropdown') _popZone();
+            return true;
+        }
+
         // Close custom select picker first
         if (document.getElementById('_gp-select-picker')) { _closeSelectPicker(); return true; }
 
@@ -1219,6 +1299,13 @@
     }
 
     function _handleB() {
+        // If in dropdown zone, close just the dropdown and return to previous zone
+        if (_state.zone === 'dropdown') {
+            _closeAnyOpenModal();
+            _syncFocus();
+            return;
+        }
+
         // If in ctx-menu submenu, exit submenu first
         if (_state.zone === 'ctx-menu' && _state.subItem >= 0) {
             _state.subItem = -1;

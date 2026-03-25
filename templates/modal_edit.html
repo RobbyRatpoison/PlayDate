@@ -112,15 +112,16 @@
 <div id="editModal" class="modal-overlay" style="display: none;">
     <div class="modal-content" style="width: 1080px; max-width: 96vw; max-height: 95vh; overflow-y: auto; position: relative;">
 
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 15px; padding-right: 30px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 15px;">
             <h2 style="margin: 0; color: #ffffff;">Edit Game Details</h2>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: center;">
                 <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--steam-focus);">
                     Sync Steam Data
                 </button>
                 <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--danger-color); background: var(--danger-color); color: var(--nav-active);">
                     Delete Game
                 </button>
+                <button type="button" onclick="closeModal()" data-modal-row="0" style="background:none; border:none; color:var(--muted-text); font-size:1.3rem; cursor:pointer; padding:4px 8px; line-height:1;">✕</button>
             </div>
         </div>
 

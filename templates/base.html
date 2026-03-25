@@ -44,6 +44,64 @@
     .sql-hl-paren { color: #ffd700; } /* parentheses */
     .sql-hl-id    { color: #c2c8cc; } /* other identifiers */
     </style>
+    <style>
+    /* ── Hamburger menu ──────────────────────────────────────────────────── */
+    .hamburger-wrap {
+        position: relative;
+    }
+    #hamburger-menu {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        background: #1a2332;
+        border: 1px solid #2a475e;
+        border-radius: 8px;
+        padding: 4px 0;
+        min-width: 230px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+        z-index: 9000;
+    }
+    #hamburger-menu.open { display: block; }
+    .hamburger-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 8px 16px;
+        background: none;
+        border: none;
+        color: #c7d5e0;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background 0.1s;
+        white-space: nowrap;
+        font-family: inherit;
+        letter-spacing: normal;
+    }
+    .hamburger-item:hover:not(:disabled) { background: #243447; }
+    .hamburger-item:disabled { opacity: 0.5; cursor: default; }
+    .hamburger-populate {
+        color: var(--steam-focus);
+        font-weight: bold;
+        font-size: 0.82rem;
+        letter-spacing: 0.04em;
+    }
+    .hamburger-sep {
+        height: 1px;
+        background: #2a3f55;
+        margin: 4px 0;
+    }
+    .hamburger-status {
+        padding: 2px 16px 4px;
+        font-size: 0.78rem;
+        color: var(--muted-text);
+        display: none;
+    }
+    .hamburger-status:not(:empty) { display: block; }
+    .hamburger-status.success { color: var(--accent-green); }
+    .hamburger-status.error   { color: var(--danger-text); }
+    .hamburger-status.info    { color: var(--steam-focus); }
+    </style>
     {% block extra_css %}{% endblock %}
     <script>
     // Reveal the body as soon as the DOM is ready
@@ -61,11 +119,29 @@
 <body>
     <div class="nav-header">
         <div class="nav-links">
+            <div class="hamburger-wrap" id="hamburger-wrap">
+                <button id="hamburger-btn" onclick="toggleHamburger()">☰</button>
+                <div id="hamburger-menu">
+                    <button id="add-button" class="hamburger-item hamburger-populate">POPULATE PLAYDATE</button>
+                    <div class="hamburger-sep"></div>
+                    <button class="hamburger-item" onclick="closeHamburger();window.location.href='/?edit=1'">Edit Home Layout</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openBlacklistModal()">Manage Blacklist</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openBackupModal()">Backup &amp; Restore</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openImportModal()">Import Database</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openBgModal()">Background Image</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openPagModal()">PAGYWOSG Filter Builder</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openThemeModal()">Theme Editor</button>
+                    <div class="hamburger-sep"></div>
+                    <button id="blaeo-btn" class="hamburger-item" onclick="runBlaeo()">Sync BLAEO</button>
+                    <div id="blaeo-status" class="hamburger-status"></div>
+                    <button class="hamburger-item" onclick="runCsvExport(false)">Export Full Library to CSV</button>
+                    <button class="hamburger-item" onclick="runCsvExport(true)">Export Current Filter to CSV</button>
+                    <div id="csv-export-status" class="hamburger-status"></div>
+                </div>
+            </div>
             <a class="{{ 'active' if request.path == '/' }}" onclick="window.location.href='/'">HOME</a>
             <a class="{{ 'active' if request.path == '/library' }}" onclick="window.location.href='/library'">LIBRARY</a>
             <a class="{{ 'active' if request.path == '/pick' }}" onclick="window.location.href='/pick'">PICK</a>
-            <a class="{{ 'active' if request.path == '/tools' }}" onclick="window.location.href='/tools'">TOOLS</a>
-            <button id="add-button" class="nav-btn">POPULATE PLAYDATE</button>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
             <button id="fullscreen-button" class="nav-btn" title="Toggle fullscreen (F11)" style="min-width:36px;padding:0 10px;font-size:1rem;">⛶</button>
@@ -194,6 +270,7 @@
 
     {% include 'modal_edit.html' %}
     {% include 'modal_filters.html' %}
+    {% include 'modal_tools.html' %}
 
     <!-- ── Custom context menu ───────────────────────────────────────────────── -->
     <style>
@@ -829,6 +906,18 @@
             // Fire-and-forget the long request; poller handles completion
             fetch('/add-new').catch(() => {});
             _startPopulatePoller();
+        });
+
+        // ── Hamburger menu ────────────────────────────────────────────────────
+        function toggleHamburger() {
+            document.getElementById('hamburger-menu').classList.toggle('open');
+        }
+        function closeHamburger() {
+            document.getElementById('hamburger-menu').classList.remove('open');
+        }
+        document.addEventListener('click', function(e) {
+            const wrap = document.getElementById('hamburger-wrap');
+            if (wrap && !wrap.contains(e.target)) closeHamburger();
         });
 
         document.getElementById('exit-button').addEventListener('click', async () => {

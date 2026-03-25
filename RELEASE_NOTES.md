@@ -32,18 +32,12 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.6 — 2026-03-25
+## v1.1.7 — 2026-03-25
 
-### New Features
-- **New values added via pill fields are immediately available.** After saving a game, any new tags, groups, genres, or categories you entered are instantly available in both the edit modal's autocomplete suggestions and the filter builder — no reload required.
+### Settings Menu
+The Tools page has been removed. All tools are now accessible from a **☰** dropdown in the nav bar, styled to match the HOME / LIBRARY / PICK 6 links.
 
-### Bug Fixes
-- **Dropdown menus no longer stay open when switching programs.** All dropdown lists have been replaced with custom-built menus that respect window focus — they close immediately when you switch to another app.
-- **Horizontal grid no longer shows the wrong image after saving.** Editing a game while in horizontal view previously reloaded the card with the vertical image. It now uses whichever orientation is active.
-
-### Improvements
-- **Horizontal card size slider now works consistently.** The card size slider previously made horizontal game cards much smaller than vertical ones at the same setting. The slider now controls card height uniformly across both orientations.
-- **Populate no longer refreshes the page unnecessarily.** The page only reloads after a populate run if at least one new game was added.
-- **Pill input fields now show how to add values.** Tags, groups, genres, and categories fields display a hint explaining that you can type a value and press Enter to add it.
+### Improved Gamepad Navigation
+Modals and dropdown lists now have improved gamepad support. Dropdown lists (saved filters, custom selects, the settings menu) can be opened, navigated, and confirmed or dismissed with the controller. Focus is better preserved when entering and exiting dropdowns, and navigation boundaries are more reliably enforced.
 
 ---
