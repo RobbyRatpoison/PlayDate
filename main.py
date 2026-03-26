@@ -115,10 +115,7 @@ class PyWebviewAPI:
         if _webview_window is None:
             return
         try:
-            if _webview_window.fullscreen:
-                _webview_window.restore()
-            else:
-                _webview_window.toggle_fullscreen()
+            _webview_window.toggle_fullscreen()
         except Exception as e:
             log.warning(f"Fullscreen toggle failed: {e}")
 
@@ -158,6 +155,63 @@ class PyWebviewAPI:
         except Exception as e:
             log.warning(f"Save dialog failed: {e}")
         return None
+
+
+def _load_window_state():
+    """Return create_window kwargs derived from saved state, with off-screen safety."""
+    from config import load_state
+    state = load_state()
+    ws        = state.get('window_state') or {}
+    fullscreen = state.get('fullscreen', False)
+    maximized = ws.get('maximized', True)
+    width     = ws.get('width', 1280)
+    height    = ws.get('height', 800)
+
+    if fullscreen:
+        return dict(fullscreen=True, maximized=False, width=width, height=height, x=None, y=None)
+
+    if maximized or not ws.get('x') is not None:
+        return dict(fullscreen=False, maximized=True, width=width, height=height, x=None, y=None)
+
+    x, y = ws['x'], ws['y']
+
+    # Validate the saved position against current screens
+    try:
+        screens = webview.screens
+        saved_screen = ws.get('screen')  # fingerprint: {x, y, width, height}
+
+        # Check the fingerprinted monitor still exists
+        screen_ok = not saved_screen or any(
+            s.x == saved_screen['x'] and s.y == saved_screen['y'] and
+            s.width == saved_screen['width'] and s.height == saved_screen['height']
+            for s in screens
+        )
+
+        # Check the window centre is on some screen
+        cx, cy = x + width // 2, y + height // 2
+        on_screen = any(
+            s.x <= cx <= s.x + s.width and s.y <= cy <= s.y + s.height
+            for s in screens
+        )
+
+        if not screen_ok or not on_screen:
+            log.info("Saved window position invalid (screen gone or off-screen) — restoring maximized")
+            return dict(maximized=True, width=width, height=height, x=None, y=None)
+    except Exception as e:
+        log.warning(f"Screen validation failed: {e} — using saved state as-is")
+
+    return dict(fullscreen=False, maximized=False, width=width, height=height, x=x, y=y)
+
+
+def _save_window_state(tracked):
+    """Persist the already-tracked window state dict to state.json.
+    No window property reads here — safe to call from the closing event."""
+    from config import save_state
+    try:
+        save_state({'window_state': dict(tracked)})
+        log.info(f"Window state saved: {tracked}")
+    except Exception as e:
+        log.warning(f"Failed to save window state: {e}")
 
 
 if __name__ == '__main__':
@@ -216,14 +270,89 @@ if __name__ == '__main__':
 
     # 5. Create pywebview window
     _api = PyWebviewAPI()
+    _ws = _load_window_state()
+    _window_maximized = _ws['maximized']
+
     window = webview.create_window(
-        title    = "PlayDate",
-        url      = URL,
-        maximized = True,
-        min_size = (1024, 600),
-        js_api   = _api,
+        title            = "PlayDate",
+        url              = URL,
+        min_size         = (1024, 600),
+        js_api           = _api,
+        background_color = '#1b2838',
+        **_ws,
     )
     _webview_window = window
+
+    # Track window state via events — no property reads at close time (GTK deadlock risk)
+    _tracked = {
+        'maximized': _ws['maximized'],
+        'x': _ws.get('x'), 'y': _ws.get('y'),
+        'width': _ws.get('width', 1280), 'height': _ws.get('height', 800),
+        'screen': None,
+    }
+
+    def _update_screen():
+        try:
+            x, y, w, h = _tracked['x'], _tracked['y'], _tracked['width'], _tracked['height']
+            if None in (x, y): return
+            cx, cy = x + w // 2, y + h // 2
+            for s in webview.screens:
+                if s.x <= cx <= s.x + s.width and s.y <= cy <= s.y + s.height:
+                    _tracked['screen'] = {'x': s.x, 'y': s.y, 'width': s.width, 'height': s.height}
+                    return
+        except Exception: pass
+
+    def _read_pos_bg():
+        # Read position off the GTK main thread to avoid idle_add deadlock
+        def _do():
+            try:
+                _tracked.update({'x': window.x, 'y': window.y})
+                _update_screen()
+            except Exception: pass
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _read_size_bg():
+        def _do():
+            try:
+                _tracked.update({'width': window.width, 'height': window.height})
+            except Exception: pass
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _on_maximized():
+        _tracked['maximized'] = True
+
+    def _on_restored():
+        _tracked['maximized'] = False
+        _read_pos_bg()
+        _read_size_bg()
+
+    def _on_moved():
+        if not _tracked['maximized']:
+            _read_pos_bg()
+
+    def _on_resized():
+        if not _tracked['maximized']:
+            _read_size_bg()
+
+    def _on_shown():
+        # Restore position here — GTK/X11 ignores x/y before window is mapped.
+        # Skip on Wayland: the compositor owns placement and move() causes an offset.
+        _wayland = bool(os.environ.get('WAYLAND_DISPLAY'))
+        if not _wayland and not _ws['maximized'] and _ws.get('x') is not None:
+            try:
+                window.move(_ws['x'], _ws['y'])
+            except Exception as e:
+                log.warning(f"Window move failed: {e}")
+
+    def _on_closing():
+        _save_window_state(_tracked)
+
+    window.events.maximized += _on_maximized
+    window.events.restored  += _on_restored
+    window.events.moved     += _on_moved
+    window.events.resized   += _on_resized
+    window.events.shown     += _on_shown
+    window.events.closing   += _on_closing
 
     # 6. Linux icon fix
     _fix_window_icon(window)

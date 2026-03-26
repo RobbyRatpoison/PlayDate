@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PlayDate 2.0</title>
+    <title>PlayDate</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     {% if theme_vars %}
@@ -49,19 +49,31 @@
     .hamburger-wrap {
         position: relative;
     }
-    #hamburger-btn { position: relative; }
+    #hamburger-btn { display: flex; align-items: center; }
     #update-dot {
-        position: absolute;
-        top: 5px;
-        right: 4px;
-        width: 8px;
-        height: 8px;
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
         background: #e67e22;
         visibility: hidden;
+        margin-left: 5px;
+        flex-shrink: 0;
         pointer-events: none;
     }
     #update-dot.visible { visibility: visible; }
+    #update-menu-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #e67e22;
+        visibility: hidden;
+        margin-left: 8px;
+        vertical-align: middle;
+        pointer-events: none;
+    }
+    #update-menu-dot.visible { visibility: visible; }
+    #update-check-btn { display: flex; align-items: center; }
     #hamburger-menu {
         display: none;
         position: absolute;
@@ -117,6 +129,11 @@
     </style>
     {% block extra_css %}{% endblock %}
     <script>
+    // Seed sessionStorage with server-side fullscreen state so isFullscreen()
+    // is correct on first load (e.g. when the app starts in fullscreen mode).
+    sessionStorage.setItem('_playdateFullscreen', {{ "'1'" if initial_fullscreen else "'0'" }});
+    </script>
+    <script>
     // Reveal the body as soon as the DOM is ready
     document.addEventListener("DOMContentLoaded", function() {
         document.body.classList.add('loaded');
@@ -151,7 +168,7 @@
                     <button class="hamburger-item" onclick="runCsvExport(true)">Export Current Filter to CSV</button>
                     <div id="csv-export-status" class="hamburger-status"></div>
                     <div class="hamburger-sep"></div>
-                    <button id="update-check-btn" class="hamburger-item" onclick="handleUpdateBtn()">Check for Updates</button>
+                    <button id="update-check-btn" class="hamburger-item" onclick="handleUpdateBtn()"><span id="update-check-label">Check for Updates</span><span id="update-menu-dot"></span></button>
                     <button id="autoupdate-toggle-btn" class="hamburger-item" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
                     <div id="update-menu-status" class="hamburger-status"></div>
                 </div>
@@ -969,6 +986,7 @@
             if (window.pywebview && window.pywebview.api && window.pywebview.api.toggle_fullscreen) {
                 await window.pywebview.api.toggle_fullscreen();
                 _setPWVFullscreen(true);
+                savePreference({ fullscreen: true });
             } else {
                 await document.documentElement.requestFullscreen().catch(() => {});
             }
@@ -980,6 +998,7 @@
             if (window.pywebview && window.pywebview.api && window.pywebview.api.toggle_fullscreen) {
                 await window.pywebview.api.toggle_fullscreen();
                 _setPWVFullscreen(false);
+                savePreference({ fullscreen: false });
             } else if (document.fullscreenElement || document.webkitFullscreenElement) {
                 await document.exitFullscreen().catch(() => {});
             }
@@ -1032,7 +1051,8 @@
             _updateAvailable = true;
             _latestVersion = version;
             document.getElementById('update-dot').classList.add('visible');
-            document.getElementById('update-check-btn').textContent = `Install Update (v${version})`;
+            document.getElementById('update-menu-dot').classList.add('visible');
+            document.getElementById('update-check-label').textContent = `Install Update (v${version})`;
         }
 
         function _updateAutoCheckLabel() {
@@ -1044,13 +1064,14 @@
             if (_updateAvailable) {
                 closeHamburger();
                 if (!await confirm(`Install PlayDate v${_latestVersion}?\n\nThe app will close and the update will begin.`)) return;
-                document.getElementById('update-check-btn').textContent = 'Updating\u2026';
+                document.getElementById('update-check-label').textContent = 'Updating\u2026';
                 await fetch('/api/perform-update', { method: 'POST' }).catch(() => {});
                 document.body.innerHTML = '<div style="color:#c7d5e0;text-align:center;margin-top:20%;font-family:sans-serif;font-size:1.2rem;">Update in progress\u2026<br><small>PlayDate will restart shortly.</small></div>';
             } else {
+                const label = document.getElementById('update-check-label');
                 const btn = document.getElementById('update-check-btn');
                 const status = document.getElementById('update-menu-status');
-                btn.textContent = 'Checking\u2026';
+                label.textContent = 'Checking\u2026';
                 btn.disabled = true;
                 try {
                     const resp = await fetch('/api/check-update', { method: 'POST' });
@@ -1058,13 +1079,13 @@
                     if (data.update_available) {
                         _setUpdateAvailable(data.latest_version);
                     } else {
-                        btn.textContent = 'Check for Updates';
+                        label.textContent = 'Check for Updates';
                         status.textContent = data.error ? 'Check failed.' : "You're up to date!";
                         status.className = 'hamburger-status ' + (data.error ? 'error' : 'success');
                         setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 4000);
                     }
                 } catch (e) {
-                    btn.textContent = 'Check for Updates';
+                    label.textContent = 'Check for Updates';
                 }
                 btn.disabled = false;
             }
@@ -1082,7 +1103,20 @@
                 const data = await resp.json();
                 _autoCheckUpdates = data.auto_check;
                 _updateAutoCheckLabel();
-                if (data.update_available) _setUpdateAvailable(data.latest_version);
+                if (data.update_available) { _setUpdateAvailable(data.latest_version); return; }
+                // Startup check runs after 5s — poll until it completes
+                if (!data.checked) {
+                    let polls = 0;
+                    const poller = setInterval(async () => {
+                        if (++polls > 10 || _updateAvailable) { clearInterval(poller); return; }
+                        try {
+                            const r = await fetch('/api/update-status');
+                            const d = await r.json();
+                            if (d.update_available) { _setUpdateAvailable(d.latest_version); clearInterval(poller); }
+                            else if (d.checked) clearInterval(poller);
+                        } catch (e) { clearInterval(poller); }
+                    }, 2000);
+                }
             } catch (e) {}
         })();
 

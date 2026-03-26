@@ -6,7 +6,7 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.1.8"
+__version__ = "1.1.7"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -171,7 +171,8 @@ DEFAULT_STATE = {
     "shelves": DEFAULT_SHELVES,
     "artwork_orientation": "vertical",
     "card_height": 200,
-    "check_for_updates": True
+    "check_for_updates": True,
+    "window_state": None
 }
 
 def validate_steam_creds(api_key, steam_id):
@@ -222,11 +223,13 @@ def inject_config_status():
     config_exists = is_configured()
     existing = load_config() or {}
     needs_config = not config_exists or not existing.get('api_key')
+    state = load_state()
     return dict(
         config_exists=config_exists,
         needs_config=needs_config,
         existing_steam_id=existing.get('steam_id', ''),
         existing_sgdb_key=existing.get('sgdb_key', ''),
+        initial_fullscreen=state.get('fullscreen', False),
     )
 
 def load_config():
@@ -326,6 +329,8 @@ def save_state(updates):
     if "artwork_orientation" in updates: state["artwork_orientation"] = updates["artwork_orientation"]
     if "card_height" in updates: state["card_height"] = updates["card_height"]
     if "check_for_updates" in updates: state["check_for_updates"] = updates["check_for_updates"]
+    if "window_state" in updates: state["window_state"] = updates["window_state"]
+    if "fullscreen" in updates: state["fullscreen"] = updates["fullscreen"]
 
     if "shelves" in updates:
         state["shelves"] = updates["shelves"]
