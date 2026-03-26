@@ -6,6 +6,8 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
+__version__ = "1.1.8"
+
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
 # When frozen (running as PlayDate.exe), sys.executable is the .exe itself and
@@ -168,7 +170,8 @@ DEFAULT_STATE = {
     "saved_filters": {},
     "shelves": DEFAULT_SHELVES,
     "artwork_orientation": "vertical",
-    "card_height": 200
+    "card_height": 200,
+    "check_for_updates": True
 }
 
 def validate_steam_creds(api_key, steam_id):
@@ -322,6 +325,7 @@ def save_state(updates):
     if "order" in updates: state["order"] = updates["order"]
     if "artwork_orientation" in updates: state["artwork_orientation"] = updates["artwork_orientation"]
     if "card_height" in updates: state["card_height"] = updates["card_height"]
+    if "check_for_updates" in updates: state["check_for_updates"] = updates["check_for_updates"]
 
     if "shelves" in updates:
         state["shelves"] = updates["shelves"]

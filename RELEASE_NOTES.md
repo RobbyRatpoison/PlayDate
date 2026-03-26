@@ -32,12 +32,9 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.7 — 2026-03-25
+## v1.1.8 — 2026-03-25
 
-### Settings Menu
-The Tools page has been removed. All tools are now accessible from a **☰** dropdown in the nav bar, styled to match the HOME / LIBRARY / PICK 6 links.
-
-### Improved Gamepad Navigation
-Modals and dropdown lists now have improved gamepad support. Dropdown lists (saved filters, custom selects, the settings menu) can be opened, navigated, and confirmed or dismissed with the controller. Focus is better preserved when entering and exiting dropdowns, and navigation boundaries are more reliably enforced.
+### Auto-Updates
+PlayDate can now check for new versions automatically on startup. When an update is available, a dot appears on the **☰** menu button. Click **Install Update** from the menu to apply it — on Windows the new installer runs automatically; on Linux/macOS the update is extracted in place and the app restarts. Automatic checking can be toggled off from the menu.
 
 ---

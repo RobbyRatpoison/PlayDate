@@ -36,7 +36,20 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # ── 4. Convert favicon.png → favicon.ico (Windows needs .ico) ────────────
+      # ── 4. Set version from tag ───────────────────────────────────────────────
+      - name: Set version from tag
+        shell: python
+        run: |
+          import re
+          tag = "${{ github.ref_name }}"
+          m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
+          ver = m.group(1) if m else "0.0.0"
+          with open("config.py") as f: content = f.read()
+          content = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{ver}"', content)
+          with open("config.py", "w") as f: f.write(content)
+          print(f"Set __version__ = {ver}")
+
+      # ── 5. Convert favicon.png → favicon.ico (Windows needs .ico) ────────────
       - name: Generate favicon.ico
         shell: python
         run: |
@@ -51,7 +64,7 @@ jobs:
           else:
               print("favicon.png not found — skipping ico generation")
 
-      # ── 5. Build with PyInstaller ─────────────────────────────────────────────
+      # ── 6. Build with PyInstaller ─────────────────────────────────────────────
       - name: Build with PyInstaller
         run: pyinstaller playdate.spec
 

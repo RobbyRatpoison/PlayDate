@@ -36,6 +36,52 @@ import re
 import scrapers
 import threading
 import json
+import subprocess
+
+
+# ── Update checking ───────────────────────────────────────────────────────────
+_update_cache = {}  # available, latest_version, installer_url, zipball_url, checked_at, error
+
+def _do_update_check():
+    """Hit the GitHub releases API and populate _update_cache. Thread-safe."""
+    from config import __version__
+    import time
+    try:
+        import requests as _req
+        resp = _req.get(
+            'https://api.github.com/repos/RobbyRatpoison/PlayDate/releases/latest',
+            headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
+            timeout=10
+        )
+        data = resp.json()
+        tag = data.get('tag_name', '')
+        latest = tag.lstrip('v')
+
+        def _parse(v):
+            try: return tuple(int(x) for x in v.split('.'))
+            except: return (0, 0, 0)
+
+        available = _parse(latest) > _parse(__version__)
+
+        installer_url = None
+        for asset in data.get('assets', []):
+            if asset.get('name', '').lower().endswith('.exe'):
+                installer_url = asset['browser_download_url']
+                break
+
+        _update_cache.update({
+            'available': available,
+            'latest_version': latest,
+            'installer_url': installer_url,
+            'zipball_url': data.get('zipball_url'),
+            'checked_at': time.time(),
+            'error': None
+        })
+        log.info(f"Update check: latest={latest}, current={__version__}, available={available}")
+    except Exception as e:
+        import time
+        _update_cache.update({'available': False, 'checked_at': time.time(), 'error': str(e)})
+        log.warning(f"Update check failed: {e}")
 
 
 def create_app(template_folder=None, static_folder=None):
@@ -1235,6 +1281,114 @@ def create_app(template_folder=None, static_folder=None):
             "restored": restored,
             "skipped":  skipped,
         })
+
+    # ── Update checking endpoints ─────────────────────────────────────────────
+    @app.route('/api/update-status')
+    def update_status():
+        from config import load_state, __version__
+        state = load_state()
+        return jsonify({
+            'current_version': __version__,
+            'auto_check': state.get('check_for_updates', True),
+            'update_available': _update_cache.get('available', False),
+            'latest_version': _update_cache.get('latest_version'),
+            'checked': bool(_update_cache),
+            'error': _update_cache.get('error'),
+        })
+
+    @app.route('/api/check-update', methods=['POST'])
+    def check_update():
+        from config import __version__
+        _do_update_check()
+        return jsonify({
+            'update_available': _update_cache.get('available', False),
+            'latest_version': _update_cache.get('latest_version'),
+            'current_version': __version__,
+            'error': _update_cache.get('error'),
+        })
+
+    @app.route('/api/perform-update', methods=['POST'])
+    def perform_update():
+        if not _update_cache.get('available'):
+            return jsonify({'status': 'error', 'message': 'No update available'}), 400
+
+        def _do_update():
+            import time, tempfile, urllib.request
+            time.sleep(0.5)  # let the HTTP response send first
+            try:
+                if getattr(sys, 'frozen', False):
+                    # Windows frozen exe: download installer and launch it
+                    url = _update_cache.get('installer_url')
+                    if not url:
+                        log.error("perform-update: no installer URL cached")
+                        return
+                    tmp = os.path.join(tempfile.gettempdir(), 'PlayDate-Setup.exe')
+                    log.info(f"Downloading installer: {url}")
+                    urllib.request.urlretrieve(url, tmp)
+                    log.info(f"Launching installer: {tmp}")
+                    subprocess.Popen(
+                        [tmp],
+                        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                    )
+                else:
+                    # Linux/macOS from source: download zip, extract over BASE_DIR, pip, restart
+                    import zipfile
+                    url = _update_cache.get('zipball_url')
+                    if not url:
+                        log.error("perform-update: no zipball URL cached")
+                        return
+                    tmp_zip = os.path.join(tempfile.gettempdir(), 'playdate-update.zip')
+                    log.info(f"Downloading source zip: {url}")
+                    urllib.request.urlretrieve(url, tmp_zip)
+                    log.info(f"Extracting to {BASE_DIR}")
+                    with zipfile.ZipFile(tmp_zip) as zf:
+                        members = zf.namelist()
+                        prefix = members[0].split('/')[0] + '/' if members else ''
+                        for member in members:
+                            rel = member[len(prefix):]
+                            if not rel:
+                                continue
+                            target = os.path.join(BASE_DIR, rel)
+                            if member.endswith('/'):
+                                os.makedirs(target, exist_ok=True)
+                            else:
+                                os.makedirs(os.path.dirname(target), exist_ok=True)
+                                with zf.open(member) as src, open(target, 'wb') as dst:
+                                    dst.write(src.read())
+
+                    venv_pip = os.path.join(BASE_DIR, '.venv', 'bin', 'pip')
+                    if os.path.exists(venv_pip):
+                        log.info("Running pip install -r requirements.txt")
+                        subprocess.run(
+                            [venv_pip, 'install', '-r', os.path.join(BASE_DIR, 'requirements.txt')],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                        )
+
+                    launcher = os.path.join(BASE_DIR, 'playdate-launch.sh')
+                    if os.path.exists(launcher):
+                        subprocess.Popen([launcher], start_new_session=True)
+                    else:
+                        subprocess.Popen(
+                            [sys.executable, os.path.join(BASE_DIR, 'main.py')],
+                            start_new_session=True
+                        )
+            except Exception as e:
+                log.error(f"perform-update failed: {e}", exc_info=True)
+                return
+            os._exit(0)
+
+        threading.Thread(target=_do_update, daemon=True).start()
+        return jsonify({'status': 'ok'})
+
+    # ── Background update check on startup ───────────────────────────────────
+    def _startup_update_check():
+        import time
+        time.sleep(5)
+        from config import load_state
+        if load_state().get('check_for_updates', True):
+            _do_update_check()
+
+    threading.Thread(target=_startup_update_check, daemon=True).start()
 
     return app
 
