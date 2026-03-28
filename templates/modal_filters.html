@@ -9,7 +9,7 @@
                 <!-- Mode toggle -->
                 <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; overflow:hidden; font-size:0.8rem;">
                     <button id="fm-simple-tab" onclick="setFilterMode('simple')" data-modal-row="0"
-                        style="padding:5px 14px; border:none; cursor:pointer; background:var(--steam-focus); color:#0e1923; font-weight:bold; transition:all 0.15s;">Simple</button>
+                        style="padding:5px 14px; border:none; cursor:pointer; background:var(--accent); color:#0e1923; font-weight:bold; transition:all 0.15s;">Simple</button>
                     <button id="fm-advanced-tab" onclick="setFilterMode('advanced')" data-modal-row="0"
                         style="padding:5px 14px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">Advanced</button>
                 </div>
@@ -27,7 +27,7 @@
                 <span style="color:#8f98a0; font-size:0.82rem;">Combine filters with</span>
                 <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; overflow:hidden; font-size:0.8rem;">
                     <button id="fm-simple-and" onclick="setSimpleLogic('AND')" data-modal-row="1"
-                        style="padding:4px 12px; border:none; cursor:pointer; background:var(--steam-focus); color:#0e1923; font-weight:bold; transition:all 0.15s;">AND</button>
+                        style="padding:4px 12px; border:none; cursor:pointer; background:var(--accent); color:#0e1923; font-weight:bold; transition:all 0.15s;">AND</button>
                     <button id="fm-simple-or" onclick="setSimpleLogic('OR')" data-modal-row="1"
                         style="padding:4px 12px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">OR</button>
                 </div>
@@ -37,7 +37,7 @@
             <div id="fm-simple-rows"></div>
 
             <button onclick="addSimpleRow()" style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.85rem;margin-top:4px;transition:all 0.2s;"
-                onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                 onmouseout="this.style.borderColor='#3a5570';this.style.color='#8f98a0'">
                 + Add Filter
             </button>
@@ -67,7 +67,7 @@
             <div style="margin-top:12px;">
                 <button id="fm-custom-sql-toggle" onclick="toggleCustomSql()"
                     style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:0.82rem;transition:all 0.2s;"
-                    onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                    onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                     onmouseout="if(!_customSqlActive){this.style.borderColor='#3a5570';this.style.color='#8f98a0';}">
                     ⌨ Custom SQL WHERE Clause
                 </button>
@@ -83,13 +83,13 @@
                         <textarea id="fm-custom-sql-input"
                             placeholder="e.g. (completion_status = 'Never Played' OR completion_status = 'Unfinished') AND playtime_forever > 60"
                             style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
-                            oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
+                            oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
                         <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
                             Use standard SQLite syntax. Column names: name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, review_score, developers, publishers.
                         </div>
                         <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
                             <button type="button" onclick="parseSqlToTree()"
-                                style="background:#1b3a52; border:1px solid #2a5a7a; color:var(--steam-focus); padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap; transition:background 0.15s;"
+                                style="background:#1b3a52; border:1px solid #2a5a7a; color:var(--accent); padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap; transition:background 0.15s;"
                                 onmouseover="this.style.background='#243f5e'" onmouseout="this.style.background='#1b3a52'">
                                 ↑ Parse into builder
                             </button>
@@ -124,7 +124,7 @@
             {% for key, f in builtin_filters.items() if f.where is not none %}
             <button onclick="applyBuiltinFilter('{{ key }}')" data-modal-row="2"
                 style="background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:20px; padding:3px 12px; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
-                onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
+                onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                 onmouseout="this.style.borderColor='#2a3f55';this.style.color='#8f98a0'">
                 {{ f.label }}
             </button>
@@ -186,7 +186,7 @@ select.nav-dropdown:hover {
 #filterModal button[data-modal-row="2"].gamepad-focus,
 #filterModal button[data-modal-row="3"].gamepad-focus,
 #filterModal select[data-modal-row="3"].gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.4);
 }
@@ -213,7 +213,7 @@ select.nav-dropdown:hover {
 }
 .fm-row select:focus, .fm-row input:focus {
     outline: none;
-    border-color: var(--steam-focus);
+    border-color: var(--accent);
 }
 .fm-remove {
     background: none;
@@ -251,7 +251,7 @@ select.nav-dropdown:hover {
     padding: 2px 10px;
     border-radius: 4px;
     background: #1b3a52;
-    color: var(--steam-focus);
+    color: var(--accent);
     font-size: 0.78rem;
     font-weight: bold;
     cursor: pointer;
@@ -282,8 +282,8 @@ select.nav-dropdown:hover {
     transition: all 0.15s;
 }
 .fmg-add-cond:hover, .fmg-add-group:hover {
-    border-color: var(--steam-focus);
-    color: var(--steam-focus);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 .fmg-remove-group {
     margin-left: auto;
@@ -379,7 +379,7 @@ select.nav-dropdown:hover {
 
 /* Saved filters custom-select — match surrounding .nav-btn style */
 #saved-filters-select .custom-select-btn {
-    background-color: var(--steam-blue);
+    background-color: var(--bg-surface);
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
@@ -388,8 +388,8 @@ select.nav-dropdown:hover {
     padding: 0 32px 0 12px;
 }
 #saved-filters-select .custom-select-btn:hover {
-    background-color: var(--steam-focus);
-    color: var(--steam-blue);
+    background-color: var(--accent);
+    color: var(--bg-surface);
 }
 </style>
 <script>
@@ -448,7 +448,7 @@ function setSimpleLogic(logic) {
     const andBtn = document.getElementById('fm-simple-and');
     const orBtn  = document.getElementById('fm-simple-or');
     const desc   = document.getElementById('fm-simple-logic-desc');
-    andBtn.style.background = logic === 'AND' ? 'var(--steam-focus)' : 'transparent';
+    andBtn.style.background = logic === 'AND' ? 'var(--accent)' : 'transparent';
     andBtn.style.color      = logic === 'AND' ? '#0e1923' : '#8f98a0';
     orBtn.style.background  = logic === 'OR'  ? '#c97c00' : 'transparent';
     orBtn.style.color       = logic === 'OR'  ? '#0e1923' : '#8f98a0';
@@ -465,10 +465,10 @@ function setFilterMode(mode) {
 
     const st = document.getElementById('fm-simple-tab');
     const at = document.getElementById('fm-advanced-tab');
-    st.style.background  = mode === 'simple'   ? 'var(--steam-focus)' : 'transparent';
+    st.style.background  = mode === 'simple'   ? 'var(--accent)' : 'transparent';
     st.style.color       = mode === 'simple'   ? '#0e1923' : '#8f98a0';
     st.style.fontWeight  = mode === 'simple'   ? 'bold' : 'normal';
-    at.style.background  = mode === 'advanced' ? 'var(--steam-focus)' : 'transparent';
+    at.style.background  = mode === 'advanced' ? 'var(--accent)' : 'transparent';
     at.style.color       = mode === 'advanced' ? '#0e1923' : '#8f98a0';
     at.style.fontWeight  = mode === 'advanced' ? 'bold' : 'normal';
 
@@ -487,8 +487,8 @@ function populateModalFromTree(tree) {
             _customSqlActive = true;
             document.getElementById('fm-custom-sql-input').value = tree.custom_sql;
             document.getElementById('fm-custom-sql-warning').style.display = 'block';
-            document.getElementById('fm-custom-sql-toggle').style.borderColor = 'var(--steam-focus)';
-            document.getElementById('fm-custom-sql-toggle').style.color = 'var(--steam-focus)';
+            document.getElementById('fm-custom-sql-toggle').style.borderColor = 'var(--accent)';
+            document.getElementById('fm-custom-sql-toggle').style.color = 'var(--accent)';
         } else {
             const hasGroups = tree.items.some(i => i.type === 'group');
             const hasExpr   = tree.items.some(i => i.type === 'custom_expr');
@@ -847,7 +847,7 @@ function updateValueField(cfg, opSel, valContainer, initVal, colName = '', initV
             } else {
                 toggleBtn.style.background = '#1b3a52';
                 toggleBtn.style.borderColor = '#2a5a7a';
-                toggleBtn.style.color = 'var(--steam-focus)';
+                toggleBtn.style.color = 'var(--accent)';
             }
         }
 
@@ -1045,7 +1045,7 @@ function addAdvancedExprRow(groupEl, data = null) {
 
     const badge = document.createElement('span');
     badge.textContent = 'EXPR';
-    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--steam-focus);border-radius:4px;padding:3px 7px;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;align-self:flex-start;margin-top:1px;';
+    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--accent);border-radius:4px;padding:3px 7px;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;align-self:flex-start;margin-top:1px;';
 
     const ta = document.createElement('textarea');
     ta.className = 'fm-expr-input';
@@ -1053,7 +1053,7 @@ function addAdvancedExprRow(groupEl, data = null) {
     ta.placeholder = 'e.g. unlocked_achievements < total_achievements';
     ta.value = (data && data.sql) || '';
     ta.addEventListener('input', updateSqlPreview);
-    ta.addEventListener('focus', () => ta.style.borderColor = 'var(--steam-focus)');
+    ta.addEventListener('focus', () => ta.style.borderColor = 'var(--accent)');
     ta.addEventListener('blur',  () => ta.style.borderColor = '#2a3f55');
 
     const removeBtn = document.createElement('button');
@@ -1088,8 +1088,8 @@ function toggleCustomSql() {
     _customSqlActive = panel.style.display === 'none';
     panel.style.display = _customSqlActive ? 'block' : 'none';
     if (_customSqlActive) {
-        btn.style.borderColor = 'var(--steam-focus)';
-        btn.style.color = 'var(--steam-focus)';
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.color = 'var(--accent)';
         const ta = document.getElementById('fm-custom-sql-input');
         sqlHighlightInit(ta);
         ta.focus();
@@ -1600,7 +1600,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <div id="importModal" class="modal-overlay" style="display: none;">
     <div class="modal-content" style="width: 480px;">
-        <h2 style="color: var(--steam-focus); margin-top: 0;">Import External Data</h2>
+        <h2 style="color: var(--accent); margin-top: 0;">Import External Data</h2>
         <p style="color: #8f98a0; font-size: 0.9rem; margin-bottom: 20px;">
             The full database importer has moved to the <strong style="color:white;">Tools</strong> page. It supports choosing tables, mapping any columns, date normalization, and type checking.
         </p>

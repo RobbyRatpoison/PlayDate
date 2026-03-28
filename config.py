@@ -6,7 +6,7 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.1.10"
+__version__ = "1.1.11"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -31,21 +31,29 @@ THEME_PATH  = os.path.join(BASE_DIR, 'theme.json')
 
 # ── Theme defaults — single source of truth for all CSS variables ─────────────
 DEFAULT_THEME = {
-    "--steam-blue":    "#1b2838",
-    "--steam-input":   "#101822",
-    "--panel-alt":     "#1a2332",
-    "--steam-text":    "#c7d5e0",
-    "--input-text":    "#ffffff",
-    "--muted-text":    "#8f98a0",
-    "--steam-focus":   "#66c0f4",
-    "--accent-text":   "#0e1621",
-    "--accent-green":  "#5c7e10",
-    "--nav-bg":        "#171a21",
-    "--nav-active":    "#ffffff",
-    "--border-color":  "#2a475e",
-    "--danger-color":  "#a32a2a",
-    "--danger-text":   "#ff8080",
-    "--warning-color": "#c97c00",
+    # Backgrounds
+    "--bg-page":          "#0e1419",
+    "--bg-surface":       "#1b2838",
+    "--bg-raised":        "#1a2332",
+    "--bg-input":         "#101822",
+    "--bg-card":          "#101822",
+    "--bg-nav":           "#171a21",
+    # Text
+    "--text-primary":     "#c7d5e0",
+    "--text-heading":     "#e2eaf0",
+    "--text-secondary":   "#8f98a0",
+    "--text-input":       "#ffffff",
+    "--text-bright":      "#ffffff",
+    # Accent
+    "--accent":           "#66c0f4",
+    "--on-accent":        "#0e1621",
+    "--accent-positive":  "#5c7e10",
+    # Borders
+    "--border":           "#2a475e",
+    # Status
+    "--color-danger":     "#a32a2a",
+    "--text-danger":      "#ff8080",
+    "--color-warning":    "#c97c00",
 }
 
 def load_theme():
@@ -63,10 +71,64 @@ def load_theme():
     return theme
 
 def save_theme(vars_dict):
-    """Persist a theme dict to theme.json. Unknown keys are silently dropped."""
+    """Persist a theme dict to theme.json. Unknown keys are silently dropped. Preserves saved themes."""
     clean = {k: v for k, v in vars_dict.items() if k in DEFAULT_THEME}
+    # Preserve any saved themes already in the file
+    saved = {}
+    if os.path.exists(THEME_PATH):
+        try:
+            with open(THEME_PATH, 'r') as f:
+                existing = json.load(f)
+            saved = existing.get('_saved', {})
+        except Exception:
+            pass
+    if saved:
+        clean['_saved'] = saved
     with open(THEME_PATH, 'w') as f:
         json.dump(clean, f, indent=4)
+
+def load_saved_themes():
+    """Returns the saved themes dict {name: {vars}}."""
+    if not os.path.exists(THEME_PATH):
+        return {}
+    try:
+        with open(THEME_PATH, 'r') as f:
+            data = json.load(f)
+        return data.get('_saved', {})
+    except Exception:
+        return {}
+
+def save_named_theme(name, vars_dict):
+    """Save a named theme to the _saved section of theme.json."""
+    clean = {k: v for k, v in vars_dict.items() if k in DEFAULT_THEME}
+    saved = load_saved_themes()
+    saved[name] = clean
+    # Re-save the whole file preserving active theme
+    active = load_theme()
+    active['_saved'] = saved
+    with open(THEME_PATH, 'w') as f:
+        json.dump(active, f, indent=4)
+
+def delete_named_theme(name):
+    """Remove a named theme from the _saved section."""
+    saved = load_saved_themes()
+    saved.pop(name, None)
+    active = load_theme()
+    active['_saved'] = saved
+    with open(THEME_PATH, 'w') as f:
+        json.dump(active, f, indent=4)
+
+def rename_named_theme(old_name, new_name):
+    """Rename a saved theme."""
+    saved = load_saved_themes()
+    if old_name not in saved:
+        return False
+    saved[new_name] = saved.pop(old_name)
+    active = load_theme()
+    active['_saved'] = saved
+    with open(THEME_PATH, 'w') as f:
+        json.dump(active, f, indent=4)
+    return True
 
 # ── Built-in filter presets — single source of truth for index + library ──────
 BUILTIN_FILTERS = {
@@ -228,6 +290,7 @@ def inject_config_status():
         config_exists=config_exists,
         needs_config=needs_config,
         existing_steam_id=existing.get('steam_id', ''),
+        existing_api_key=existing.get('api_key', ''),
         existing_sgdb_key=existing.get('sgdb_key', ''),
         initial_fullscreen=state.get('fullscreen', False),
     )
@@ -366,11 +429,48 @@ def get_theme():
 def post_theme():
     data = request.json or {}
     if data.get('reset'):
+        saved = load_saved_themes()
         if os.path.exists(THEME_PATH):
             os.remove(THEME_PATH)
+        # Re-write saved themes if any existed
+        if saved:
+            with open(THEME_PATH, 'w') as f:
+                json.dump({'_saved': saved}, f, indent=4)
         return jsonify({"status": "success", "theme": dict(DEFAULT_THEME)})
     vars_dict = data.get('theme', {})
     if not vars_dict:
         return jsonify({"status": "error", "message": "No theme data provided."}), 400
     save_theme(vars_dict)
     return jsonify({"status": "success", "theme": load_theme()})
+
+@config_bp.route('/api/theme/saved', methods=['GET'])
+def get_saved_themes():
+    return jsonify({"status": "success", "saved": load_saved_themes()})
+
+@config_bp.route('/api/theme/saved', methods=['POST'])
+def post_saved_theme():
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    vars_dict = data.get('theme', {})
+    if not name:
+        return jsonify({"status": "error", "message": "Name is required."}), 400
+    if not vars_dict:
+        return jsonify({"status": "error", "message": "No theme data provided."}), 400
+    save_named_theme(name, vars_dict)
+    return jsonify({"status": "success"})
+
+@config_bp.route('/api/theme/saved/<name>', methods=['DELETE'])
+def delete_saved_theme_route(name):
+    delete_named_theme(name)
+    return jsonify({"status": "success"})
+
+@config_bp.route('/api/theme/saved/<name>', methods=['PATCH'])
+def rename_saved_theme_route(name):
+    data = request.json or {}
+    new_name = (data.get('name') or '').strip()
+    if not new_name:
+        return jsonify({"status": "error", "message": "New name is required."}), 400
+    ok = rename_named_theme(name, new_name)
+    if not ok:
+        return jsonify({"status": "error", "message": "Theme not found."}), 404
+    return jsonify({"status": "success"})

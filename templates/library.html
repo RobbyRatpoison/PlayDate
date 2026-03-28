@@ -75,25 +75,25 @@
         #card-size-slider::-webkit-slider-runnable-track {
             height: 4px;
             border-radius: 2px;
-            background: linear-gradient(to right, var(--steam-focus) var(--slider-pct, 37%), var(--panel-alt, #555) var(--slider-pct, 37%));
+            background: linear-gradient(to right, var(--accent) var(--slider-pct, 37%), var(--bg-raised, #555) var(--slider-pct, 37%));
         }
         #card-size-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 14px; height: 14px;
             margin-top: -5px;
             border-radius: 50%;
-            background: var(--steam-focus);
+            background: var(--accent);
             cursor: pointer;
         }
 
         #art-orient-btn.horizontal {
-            background: var(--steam-focus);
+            background: var(--accent);
             color: #1b2838;
-            border-color: var(--steam-focus);
+            border-color: var(--accent);
         }
 
         .game-card.hovered {
-            outline-color: var(--steam-focus);
+            outline-color: var(--accent);
         }
         .game-overlay {
             position: absolute;
@@ -112,9 +112,9 @@
             text-transform: uppercase;
         }
         .status-tag:hover {
-            background: var(--steam-focus) !important;
+            background: var(--accent) !important;
             color: #1b2838 !important;
-            border-color: var(--steam-focus) !important;
+            border-color: var(--accent) !important;
         }
 
         .capsule-container {
@@ -173,7 +173,7 @@
         }
 
         #library-search:focus {
-            border-color: var(--steam-focus);
+            border-color: var(--accent);
             box-shadow: 0 0 8px rgba(102, 192, 232, 0.3);
         }
 
@@ -219,7 +219,7 @@
         .clear-btn:hover { background: #5a2020 !important; color: white !important; }
 
         .search-btn {
-            background: var(--steam-focus) !important; /* Make it stand out */
+            background: var(--accent) !important; /* Make it stand out */
             border-color: #66c0e8 !important;
         }
 
@@ -267,9 +267,9 @@
 
         /* ── Select mode ── */
         .select-mode-btn.active {
-            background: var(--steam-focus) !important;
+            background: var(--accent) !important;
             color: #1b2838 !important;
-            border-color: var(--steam-focus) !important;
+            border-color: var(--accent) !important;
         }
 
         body.select-mode .game-card {
@@ -281,7 +281,7 @@
         }
 
         .game-card.selected {
-            outline: 3px solid var(--steam-focus);
+            outline: 3px solid var(--accent);
             outline-offset: -2px;
         }
 
@@ -290,7 +290,7 @@
             position: absolute;
             top: 6px; left: 6px;
             width: 22px; height: 22px;
-            background: var(--steam-focus);
+            background: var(--accent);
             color: #1b2838;
             font-size: 0.8rem;
             font-weight: bold;
@@ -502,7 +502,7 @@
                     onerror="${onerror}">
                 <div class="game-overlay" onclick="event.stopPropagation()">
                     <button class="status-tag"
-                        style="background:var(--steam-input);color:var(--steam-text);border:1px solid var(--border-color);cursor:pointer;"
+                        style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;"
                         onclick="event.stopPropagation();openEditModalById(${game.appid})">✎</button>
                 </div>
             </div>`;
@@ -1171,8 +1171,8 @@ document.addEventListener('DOMContentLoaded', () => {
 <div id="bulk-rescrape-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkRescrapeModal();">
     <div class="modal-content" style="width:460px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h2 style="margin:0; color:var(--steam-focus);">Re-scrape Steam Data</h2>
-            <button onclick="closeBulkRescrapeModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--accent);">Re-scrape Steam Data</h2>
+            <button onclick="closeBulkRescrapeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
         <!-- Scope toggle -->
@@ -1201,7 +1201,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <!-- Progress bar -->
         <div id="br-progress" style="display:none; margin-bottom:12px;">
             <div style="background:#0e1923; border-radius:4px; height:8px; overflow:hidden; margin-bottom:4px;">
-                <div id="br-progress-bar" style="height:100%; background:var(--steam-focus); width:0%; transition:width 0.3s;"></div>
+                <div id="br-progress-bar" style="height:100%; background:var(--accent); width:0%; transition:width 0.3s;"></div>
             </div>
             <div id="br-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
         </div>
@@ -1210,12 +1210,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div style="display:flex; gap:12px;">
             <button id="br-apply-btn" data-modal-row="0" onclick="runBulkRescrape()"
-                style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--steam-focus); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
+                style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
                 Re-scrape
             </button>
             <button id="br-stop-btn" data-modal-row="0"
                 onclick="_rescrapeCancel = true; this.disabled = true; this.textContent = 'Stopping…';"
-                style="display:none; flex:1; height:auto; padding:12px; background:var(--danger-color); color:var(--nav-active); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+                style="display:none; flex:1; height:auto; padding:12px; background:var(--color-danger); color:var(--text-bright); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
                 Stop
             </button>
             <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkRescrapeModal()">Cancel</button>
@@ -1227,8 +1227,8 @@ document.addEventListener('DOMContentLoaded', () => {
 <div id="bulk-art-scrape-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkArtScrapeModal();">
     <div class="modal-content" style="width:480px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h2 style="margin:0; color:var(--steam-focus);">Bulk Scrape Artwork</h2>
-            <button onclick="closeBulkArtScrapeModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--accent);">Bulk Scrape Artwork</h2>
+            <button onclick="closeBulkArtScrapeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
         <!-- Scope toggle -->
@@ -1297,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <!-- Progress bar -->
         <div id="bas-progress" style="display:none; margin-bottom:12px;">
             <div style="background:#0e1923; border-radius:4px; height:8px; overflow:hidden; margin-bottom:4px;">
-                <div id="bas-progress-bar" style="height:100%; background:var(--steam-focus); width:0%; transition:width 0.3s;"></div>
+                <div id="bas-progress-bar" style="height:100%; background:var(--accent); width:0%; transition:width 0.3s;"></div>
             </div>
             <div id="bas-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
         </div>
@@ -1306,12 +1306,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div style="display:flex; gap:12px;">
             <button id="bas-apply-btn" data-modal-row="0" onclick="runBulkArtScrape()"
-                style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--steam-focus); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
+                style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
                 Scrape
             </button>
             <button id="bas-stop-btn" data-modal-row="0"
                 onclick="_artScrapeCancel = true; this.disabled = true; this.textContent = 'Stopping…';"
-                style="display:none; flex:1; height:auto; padding:12px; background:var(--danger-color); color:var(--nav-active); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+                style="display:none; flex:1; height:auto; padding:12px; background:var(--color-danger); color:var(--text-bright); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
                 Stop
             </button>
             <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkArtScrapeModal()">Cancel</button>
@@ -1324,7 +1324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="modal-content" style="width:460px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h2 style="margin:0; color:#ff8080;">Bulk Delete</h2>
-            <button onclick="closeBulkDeleteModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <button onclick="closeBulkDeleteModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
         <!-- Scope toggle -->
@@ -1367,7 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="modal-content" style="width:500px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h2 style="margin:0; color:#fff;">Bulk Edit</h2>
-            <button onclick="closeBulkEditModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <button onclick="closeBulkEditModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
         <!-- Scope toggle -->
@@ -1444,13 +1444,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:8px;">
             <button data-modal-row="1" onclick="openBulkRescrapeModal()"
-                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--steam-focus); border:1px solid var(--steam-focus); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
+                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
                 onmouseover="this.style.background='rgba(102,192,244,0.1)'"
                 onmouseout="this.style.background='transparent'">
                 RE-SCRAPE STEAM DATA
             </button>
             <button data-modal-row="2" onclick="openBulkArtScrapeModal()"
-                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--steam-focus); border:1px solid var(--steam-focus); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
+                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
                 onmouseover="this.style.background='rgba(102,192,244,0.1)'"
                 onmouseout="this.style.background='transparent'">
                 BULK SCRAPE ARTWORK
@@ -1468,7 +1468,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <style>
 .bulk-status-success { color: #5c7e10; }
 .bulk-status-error   { color: #ff4d4d; }
-input[name="bulk-scope"]:checked + span strong { color: var(--steam-focus) !important; }
+input[name="bulk-scope"]:checked + span strong { color: var(--accent) !important; }
 </style>
 
 {% endblock %}

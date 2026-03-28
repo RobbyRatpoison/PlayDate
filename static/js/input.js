@@ -1033,8 +1033,8 @@
 
         const box = document.createElement('div');
         box.style.cssText = [
-            'background:var(--steam-blue)',
-            'border:1px solid var(--steam-focus)',
+            'background:var(--bg-surface)',
+            'border:1px solid var(--accent)',
             'border-radius:8px',
             'padding:8px',
             'min-width:200px',
@@ -1045,7 +1045,7 @@
         ].join(';');
 
         const title = document.createElement('div');
-        title.style.cssText = 'color:var(--muted-text);font-size:0.75rem;padding:4px 8px 8px;border-bottom:1px solid var(--border-color);margin-bottom:6px;';
+        title.style.cssText = 'color:var(--text-secondary);font-size:0.75rem;padding:4px 8px 8px;border-bottom:1px solid var(--border);margin-bottom:6px;';
         title.textContent = selectEl.dataset.pickerTitle || 'Select an option';
         box.appendChild(title);
 
@@ -1056,8 +1056,8 @@
             btn.style.cssText = 'width:100%;text-align:left;margin-bottom:4px;justify-content:flex-start;height:auto;padding:8px 12px;';
             btn.textContent = opt.text;
             if (i === selectEl.selectedIndex) {
-                btn.style.background = 'var(--steam-focus)';
-                btn.style.color = 'var(--accent-text)';
+                btn.style.background = 'var(--accent)';
+                btn.style.color = 'var(--on-accent)';
             }
             btn.addEventListener('click', () => {
                 selectEl.selectedIndex = i;

@@ -32,9 +32,20 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.10 — 2026-03-28
+## v1.1.11 — 2026-03-28
 
-### Import Date Added from Playnite
-If you're migrating from Playnite, you can now import your "date added" history into PlayDate. Point it at a Playnite backup ZIP and it will match games by Steam AppID, filling in your library's date added field for any games it finds. Games not already in your PlayDate library are skipped.
+### Menu Overhaul
+The hamburger menu has been reorganized into two dedicated modals — **Settings** and **Tools** — making it easier to find what you're looking for.
+
+**Settings** brings together account configuration and appearance options in one place. You can now update your Steam ID, Steam API key, and SteamGridDB API key directly from the UI, with password-style fields and reveal toggles for the API keys.
+
+**Tools** groups all library utilities into logical sections: backup/restore and import tools, external sync features (PAGYWOSG and BLAEO), and blacklist management.
+
+### Theme Editor Improvements
+The theme editor has been overhauled with more granular control — 18 individual CSS variables across grouped categories (Backgrounds, Text, Accent, Borders, Status) replacing the previous coarser set. Each variable has a per-variable reset button to revert individual colors to default without resetting the whole theme.
+
+The live preview has been updated to better reflect the current state of the app, and is larger and easier to read. Closing the theme editor without clicking **Apply Theme** now discards any unapplied changes.
+
+Built-in presets and a saved themes system let you store, load, rename, and delete named themes.
 
 ---

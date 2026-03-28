@@ -1,14 +1,14 @@
 <style>
     .tool-status {
         font-size: 0.92rem;
-        color: var(--muted-text);
+        color: var(--text-secondary);
         margin-top: 10px;
         min-height: 1.2rem;
     }
 
-    .tool-status.success { color: var(--accent-green); }
-    .tool-status.error   { color: var(--danger-text); }
-    .tool-status.info    { color: var(--steam-focus); }
+    .tool-status.success { color: var(--accent-positive); }
+    .tool-status.error   { color: var(--text-danger); }
+    .tool-status.info    { color: var(--accent); }
 
     /* Import wizard */
     .import-step {
@@ -23,7 +23,7 @@
         gap: 8px;
         margin-bottom: 16px;
         font-size: 0.88rem;
-        color: var(--muted-text);
+        color: var(--text-secondary);
     }
 
     .step-indicator span {
@@ -33,15 +33,17 @@
     }
 
     .step-indicator span.active {
-        background: var(--steam-focus);
-        color: var(--accent-text);
+        background: var(--accent);
+        color: var(--on-accent);
         font-weight: bold;
     }
 
     .step-indicator span.done {
-        background: var(--accent-green);
-        color: var(--nav-active);
+        background: var(--accent-positive);
+        color: var(--text-bright);
     }
+
+    .theme-var-row { grid-template-columns: 32px 1fr 80px 24px !important; }
 
     .mapping-row {
         display: grid;
@@ -58,26 +60,26 @@
 
     .mapping-arrow {
         text-align: center;
-        color: var(--muted-text);
+        color: var(--text-secondary);
         font-size: 1rem;
     }
 
     .mapping-remove {
         background: none;
         border: none;
-        color: var(--danger-text);
+        color: var(--text-danger);
         font-size: 1.2rem;
         cursor: pointer;
         padding: 0;
         line-height: 1;
     }
 
-    .mapping-remove:hover { color: var(--danger-color); }
+    .mapping-remove:hover { color: var(--color-danger); }
 
     .add-mapping-btn {
         background: none;
-        border: 1px dashed var(--border-color);
-        color: var(--muted-text);
+        border: 1px dashed var(--border);
+        color: var(--text-secondary);
         padding: 7px 16px;
         border-radius: 4px;
         cursor: pointer;
@@ -87,12 +89,12 @@
     }
 
     .add-mapping-btn:hover {
-        border-color: var(--steam-focus);
-        color: var(--steam-focus);
+        border-color: var(--accent);
+        color: var(--accent);
     }
 
     .import-result {
-        background: var(--steam-input);
+        background: var(--bg-input);
         border-radius: 6px;
         padding: 16px;
         margin-top: 12px;
@@ -101,7 +103,7 @@
 
     .modal-content label {
         font-size: 0.92rem;
-        color: var(--steam-text);
+        color: var(--text-primary);
         display: block;
         margin-bottom: 5px;
     }
@@ -121,15 +123,15 @@
         border-radius: 20px;
         font-size: 0.75rem;
         cursor: pointer;
-        border: 1px solid var(--border-color);
-        background: var(--steam-input);
-        color: var(--muted-text);
+        border: 1px solid var(--border);
+        background: var(--bg-input);
+        color: var(--text-secondary);
         transition: all 0.15s;
         user-select: none;
         white-space: nowrap;
     }
-    .pag-tag-chip:hover { border-color: var(--steam-focus); color: var(--steam-focus); }
-    .pag-tag-chip.selected { background: var(--steam-focus); border-color: var(--steam-focus); color: var(--accent-text); font-weight: bold; }
+    .pag-tag-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .pag-tag-chip.selected { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: bold; }
     .pag-tag-chip.hidden { display: none; }
 
     /* ── PAGYWOSG completion buttons ── */
@@ -138,13 +140,13 @@
         border-radius: 20px;
         font-size: 0.78rem;
         cursor: pointer;
-        border: 1px solid var(--border-color);
-        background: var(--steam-input);
-        color: var(--muted-text);
+        border: 1px solid var(--border);
+        background: var(--bg-input);
+        color: var(--text-secondary);
         transition: all 0.15s;
     }
-    .pag-comp-btn.active { background: var(--steam-blue); border-color: var(--steam-focus); color: var(--steam-text); }
-    .pag-comp-btn:hover { border-color: var(--steam-focus); }
+    .pag-comp-btn.active { background: var(--bg-surface); border-color: var(--accent); color: var(--text-primary); }
+    .pag-comp-btn:hover { border-color: var(--accent); }
 
     /* ── Theme Editor ── */
     .theme-vars-panel {
@@ -165,7 +167,7 @@
         height: 32px;
         padding: 2px;
         border-radius: 6px;
-        border: 1px solid var(--border-color);
+        border: 1px solid var(--border);
         background: none;
         cursor: pointer;
         flex-shrink: 0;
@@ -179,18 +181,18 @@
 
     .theme-var-label strong {
         font-size: 0.82rem;
-        color: var(--steam-text);
+        color: var(--text-primary);
     }
 
     .theme-var-label span {
         font-size: 0.73rem;
-        color: var(--muted-text);
+        color: var(--text-secondary);
     }
 
     .theme-var-hex {
-        background: var(--steam-input);
-        border: 1px solid var(--border-color);
-        color: var(--steam-text);
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
         font-family: monospace;
         font-size: 0.78rem;
         padding: 5px 7px;
@@ -208,7 +210,7 @@
 
     .theme-preview-label {
         font-size: 0.72rem;
-        color: var(--muted-text);
+        color: var(--text-secondary);
         text-transform: uppercase;
         letter-spacing: 0.08em;
         margin-bottom: 6px;
@@ -217,33 +219,33 @@
     /* Tab strip */
     .tp-tabs {
         display: flex;
-        border: 1px solid var(--border-color);
+        border: 1px solid var(--border);
         border-bottom: none;
         border-radius: 5px 5px 0 0;
         overflow: hidden;
     }
     .tp-tab {
         flex: 1;
-        padding: 4px 0;
-        font-size: 8px;
+        padding: 5px 0;
+        font-size: 13px;
         font-weight: 600;
         text-align: center;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         cursor: pointer;
-        background: var(--steam-input);
-        color: var(--muted-text);
+        background: var(--bg-input);
+        color: var(--text-secondary);
         border: none;
-        border-right: 1px solid var(--border-color);
+        border-right: 1px solid var(--border);
         transition: background 0.15s, color 0.15s;
     }
     .tp-tab:last-child { border-right: none; }
-    .tp-tab.active { background: var(--steam-blue); color: var(--steam-focus); }
+    .tp-tab.active { background: var(--bg-surface); color: var(--accent); }
     .theme-preview-frame {
-        border: 1px solid var(--border-color);
+        border: 1px solid var(--border);
         border-radius: 0 0 5px 5px;
         overflow: hidden;
-        height: 340px;
+        height: 460px;
         position: relative;
     }
     .tp-pane {
@@ -251,10 +253,10 @@
         width: 100%;
         height: 100%;
         flex-direction: column;
-        background: var(--steam-blue);
+        background: var(--bg-surface);
         font-family: inherit;
-        font-size: 10px;
-        color: var(--steam-text);
+        font-size: 14px;
+        color: var(--text-primary);
     }
     .tp-pane.active { display: flex; }
 
@@ -263,60 +265,60 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        background: var(--nav-bg);
-        padding: 5px 8px;
-        gap: 4px;
+        background: var(--bg-nav);
+        padding: 7px 11px;
+        gap: 6px;
         flex-shrink: 0;
     }
-    .tp-nav-links { display: flex; gap: 5px; align-items: center; }
+    .tp-nav-links { display: flex; gap: 7px; align-items: center; }
     .tp-nav-link {
-        font-size: 7px; font-weight: 700; letter-spacing: 0.05em;
-        color: var(--muted-text); cursor: pointer;
+        font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+        color: var(--text-secondary); cursor: pointer;
     }
-    .tp-nav-link.active { color: var(--nav-active); }
+    .tp-nav-link.active { color: var(--text-bright); }
     .tp-nav-btn {
-        background: var(--steam-blue); color: var(--steam-focus);
-        border: 1px solid var(--steam-focus); border-radius: 3px;
-        padding: 2px 6px; font-size: 6px; font-weight: bold; letter-spacing: 0.04em; cursor: pointer;
+        background: var(--bg-surface); color: var(--accent);
+        border: 1px solid var(--accent); border-radius: 3px;
+        padding: 3px 8px; font-size: 9px; font-weight: bold; letter-spacing: 0.04em; cursor: pointer;
     }
     .tp-nav-exit {
-        background: var(--danger-color); color: var(--nav-active);
-        border-radius: 3px; padding: 2px 6px; font-size: 6px; font-weight: bold; cursor: pointer;
+        background: var(--color-danger); color: var(--text-bright);
+        border-radius: 3px; padding: 3px 8px; font-size: 9px; font-weight: bold; cursor: pointer;
     }
-    .tp-body { flex: 1; overflow: hidden; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
-    .tp-primary-text { font-size: 9px; color: var(--steam-text); }
-    .tp-section-label { font-size: 7px; color: var(--muted-text); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-    .tp-cards { display: flex; gap: 4px; }
+    .tp-body { flex: 1; overflow: hidden; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .tp-primary-text { font-size: 13px; color: var(--text-primary); }
+    .tp-section-label { font-size: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+    .tp-cards { display: flex; gap: 6px; }
     .tp-card {
-        width: 38px; height: 54px; border-radius: 3px;
-        background: var(--steam-input); border: 1px solid var(--border-color);
-        display: flex; align-items: flex-end; padding: 2px;
+        width: 54px; height: 76px; border-radius: 3px;
+        background: var(--bg-input); border: 1px solid var(--border);
+        display: flex; align-items: flex-end; padding: 3px;
     }
-    .tp-card-label { font-size: 5px; color: var(--muted-text); line-height: 1.2; word-break: break-word; }
+    .tp-card-label { font-size: 7px; color: var(--text-secondary); line-height: 1.2; word-break: break-word; }
 
     /* Library preview */
-    .tp-search-row { display: flex; gap: 3px; align-items: center; }
+    .tp-search-row { display: flex; gap: 5px; align-items: center; }
     .tp-search-input {
-        flex: 1; background: var(--steam-input); border: 1px solid var(--border-color);
-        border-radius: 3px; padding: 2px 5px; font-size: 6px; color: var(--muted-text);
+        flex: 1; background: var(--bg-input); border: 1px solid var(--border);
+        border-radius: 3px; padding: 3px 7px; font-size: 9px; color: var(--text-secondary);
     }
     .tp-search-btn, .tp-clear-btn {
-        background: var(--steam-blue); border: 1px solid var(--steam-focus);
-        border-radius: 3px; padding: 2px 5px; font-size: 6px;
-        color: var(--steam-focus); cursor: pointer; font-weight: bold;
+        background: var(--bg-surface); border: 1px solid var(--accent);
+        border-radius: 3px; padding: 3px 7px; font-size: 9px;
+        color: var(--accent); cursor: pointer; font-weight: bold;
     }
-    .tp-btn-row { display: flex; gap: 3px; }
+    .tp-btn-row { display: flex; gap: 5px; }
     .tp-btn {
-        background: var(--steam-blue); border: 1px solid var(--border-color);
-        border-radius: 3px; padding: 2px 6px; font-size: 6px; color: var(--steam-text); cursor: pointer;
+        background: var(--bg-surface); border: 1px solid var(--border);
+        border-radius: 3px; padding: 3px 8px; font-size: 9px; color: var(--text-primary); cursor: pointer;
     }
     .tp-btn-accent {
-        background: var(--steam-focus); border: 1px solid var(--steam-focus);
-        border-radius: 3px; padding: 2px 6px; font-size: 6px; color: var(--accent-text); cursor: pointer; font-weight: bold;
+        background: var(--accent); border: 1px solid var(--accent);
+        border-radius: 3px; padding: 3px 8px; font-size: 9px; color: var(--on-accent); cursor: pointer; font-weight: bold;
     }
     .tp-danger-notice {
-        background: rgba(163,42,42,0.15); border: 1px solid var(--danger-color);
-        border-radius: 3px; padding: 3px 6px; font-size: 6px; color: var(--danger-text);
+        background: rgba(163,42,42,0.15); border: 1px solid var(--color-danger);
+        border-radius: 3px; padding: 4px 8px; font-size: 9px; color: var(--text-danger);
     }
 
     /* Modal preview */
@@ -326,80 +328,212 @@
         display: flex; align-items: center; justify-content: center;
     }
     .tp-modal-box {
-        background: var(--panel-alt);
-        border: 1px solid var(--border-color);
-        border-radius: 5px; padding: 10px 12px;
-        width: 120px;
+        background: var(--bg-raised);
+        border: 1px solid var(--border);
+        border-radius: 5px; padding: 14px 16px;
+        width: 170px;
     }
-    .tp-modal-title { font-size: 8px; font-weight: bold; color: var(--steam-text); margin-bottom: 6px; }
+    .tp-modal-title { font-size: 11px; font-weight: bold; color: var(--text-primary); margin-bottom: 8px; }
     .tp-modal-field {
-        background: var(--steam-input); border: 1px solid var(--border-color);
-        border-radius: 3px; padding: 3px 5px; font-size: 6px; color: var(--muted-text);
-        margin-bottom: 5px;
+        background: var(--bg-input); border: 1px solid var(--border);
+        border-radius: 3px; padding: 4px 7px; font-size: 9px; color: var(--text-secondary);
+        margin-bottom: 7px;
     }
-    .tp-modal-btns { display: flex; gap: 4px; margin-top: 8px; }
+    .tp-modal-btns { display: flex; gap: 6px; margin-top: 11px; }
     .tp-modal-btn-save {
-        background: var(--accent-green); border: 1px solid var(--accent-green);
-        border-radius: 3px; padding: 2px 8px; font-size: 6px;
-        color: var(--nav-active); cursor: pointer; font-weight: bold;
+        background: var(--accent-positive); border: 1px solid var(--accent-positive);
+        border-radius: 3px; padding: 3px 11px; font-size: 9px;
+        color: var(--text-bright); cursor: pointer; font-weight: bold;
     }
     .tp-modal-btn-cancel {
-        background: transparent; border: 1px solid var(--border-color);
-        border-radius: 3px; padding: 2px 8px; font-size: 6px;
-        color: var(--muted-text); cursor: pointer;
+        background: transparent; border: 1px solid var(--border);
+        border-radius: 3px; padding: 3px 11px; font-size: 9px;
+        color: var(--text-secondary); cursor: pointer;
     }
 
     /* Completion badges */
     .tp-badge {
-        display: inline-block; border-radius: 2px; padding: 1px 4px;
-        font-size: 5px; font-weight: bold; letter-spacing: 0.03em;
+        display: inline-block; border-radius: 2px; padding: 1px 5px;
+        font-size: 7px; font-weight: bold; letter-spacing: 0.03em;
     }
     .tp-badge-beaten  { background: rgba(50,150,50,0.2); color: #5c9; border: 1px solid rgba(50,150,50,0.3); }
-    .tp-badge-np      { background: rgba(102,192,244,0.1); color: var(--steam-focus); border: 1px solid rgba(102,192,244,0.2); }
+    .tp-badge-np      { background: rgba(102,192,244,0.1); color: var(--accent); border: 1px solid rgba(102,192,244,0.2); }
 
     /* Filter chips */
     .tp-chip-or {
         display: inline-block; background: #3a2a0a; border: 1px solid #6a4a10;
-        color: #c08030; border-radius: 3px; padding: 1px 5px; font-size: 7px; font-weight: bold;
+        color: #c08030; border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: bold;
     }
     .tp-chip-and {
-        display: inline-block; background: var(--steam-input); border: 1px solid var(--border-color);
-        color: var(--steam-focus); border-radius: 3px; padding: 1px 5px; font-size: 7px; font-weight: bold;
+        display: inline-block; background: var(--bg-input); border: 1px solid var(--border);
+        color: var(--accent); border-radius: 3px; padding: 2px 7px; font-size: 10px; font-weight: bold;
     }
-    .tp-filter-row { display: flex; gap: 3px; align-items: center; margin-bottom: 3px; }
+    .tp-filter-row { display: flex; gap: 5px; align-items: center; margin-bottom: 5px; }
     .tp-filter-pill {
-        background: var(--steam-input); border: 1px solid var(--border-color);
-        border-radius: 10px; padding: 1px 6px; font-size: 7px; color: var(--steam-text);
+        background: var(--bg-input); border: 1px solid var(--border);
+        border-radius: 10px; padding: 2px 8px; font-size: 10px; color: var(--text-primary);
     }
     .tp-filter-pill.active {
-        background: var(--steam-focus); border-color: var(--steam-focus); color: var(--accent-text);
+        background: var(--accent); border-color: var(--accent); color: var(--on-accent);
     }
 
     .theme-actions {
         display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
         margin-top: 14px; padding-top: 14px;
-        border-top: 1px solid var(--border-color); grid-column: 1 / -1;
+        border-top: 1px solid var(--border);
     }
+
+    /* ── Settings / Tools hub modals ── */
+    .hub-section-label {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin: 0 0 8px;
+    }
+    .hub-section { margin-bottom: 16px; }
+    .hub-section:last-child { margin-bottom: 0; }
+    .hub-section + .hub-section { margin-top: 16px; }
+    .settings-item {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        text-align: left;
+        padding: 10px 14px;
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        color: var(--text-primary);
+        font-size: 0.88rem;
+        cursor: pointer;
+        transition: background 0.1s, border-color 0.1s;
+        font-family: inherit;
+        margin-bottom: 4px;
+    }
+    .settings-item:last-of-type { margin-bottom: 0; }
+    .settings-item:hover:not(:disabled) { background: var(--bg-surface); border-color: var(--accent); }
+    .settings-item:disabled { opacity: 0.5; cursor: default; }
 </style>
+
+<!-- ── SETTINGS MODAL ── -->
+<div id="settings-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeSettingsModal();">
+    <div class="modal-content" style="width:420px; max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Settings</h2>
+            <button onclick="closeSettingsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <div class="hub-section">
+            <div class="hub-section-label">Account</div>
+
+            <div style="margin-bottom:10px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Steam ID</label>
+                <div style="display:flex; gap:6px;">
+                    <input id="cfg-steam-id" type="text" value="{{ existing_steam_id }}"
+                        placeholder="SteamID64 or vanity name"
+                        style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                    <button class="nav-btn" style="white-space:nowrap; font-size:0.8rem;" onclick="detectSteamId()">Detect</button>
+                </div>
+            </div>
+
+            <div style="margin-bottom:10px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
+                    Steam API Key <span style="font-style:italic;">(optional)</span>
+                    — <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
+                </label>
+                <div style="display:flex; gap:6px;">
+                    <input id="cfg-api-key" type="password" value="{{ existing_api_key }}"
+                        placeholder="Leave blank to use local files only"
+                        style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                    <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
+                    SteamGridDB Key <span style="font-style:italic;">(optional)</span>
+                    — <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
+                </label>
+                <div style="display:flex; gap:6px;">
+                    <input id="cfg-sgdb-key" type="password" value="{{ existing_sgdb_key }}"
+                        placeholder="Enables SteamGridDB artwork"
+                        style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                    <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-sgdb-key', this)">👁</button>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button class="nav-btn" onclick="saveAccountSettings()">Save</button>
+                <div id="cfg-status" class="tool-status" style="margin:0;"></div>
+            </div>
+        </div>
+
+        <div class="hub-section">
+            <div class="hub-section-label">Appearance</div>
+            <button class="settings-item" data-modal-row="1" onclick="closeSettingsModal();openBgModal()">Background Image</button>
+            <button class="settings-item" data-modal-row="1" onclick="closeSettingsModal();openThemeModal()">Theme Editor</button>
+        </div>
+
+        <div class="hub-section">
+            <div class="hub-section-label">Updates</div>
+            <button id="update-check-btn" class="settings-item" data-modal-row="2" onclick="handleUpdateBtn()">
+                <span id="update-check-label">Check for Updates</span><span id="update-menu-dot"></span>
+            </button>
+            <button id="autoupdate-toggle-btn" class="settings-item" data-modal-row="2" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
+            <div id="update-menu-status" class="tool-status" style="margin-top:6px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── TOOLS MODAL ── -->
+<div id="tools-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeToolsModal();">
+    <div class="modal-content" style="width:360px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Tools</h2>
+            <button onclick="closeToolsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <div class="hub-section">
+            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openBackupModal()">Backup &amp; Restore</button>
+            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openImportModal()">Import from Database</button>
+            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openPlayniteModal()">Import Date Added from Playnite</button>
+            <button class="settings-item" data-modal-row="0" onclick="runCsvExport(false)">Export Library to CSV</button>
+            <div id="csv-export-status" class="tool-status" style="margin-top:2px;"></div>
+        </div>
+
+        <div class="hub-section">
+            <button class="settings-item" data-modal-row="1" onclick="closeToolsModal();openPagModal()">PAGYWOSG Filter Builder</button>
+            <button id="blaeo-btn" class="settings-item" data-modal-row="1" onclick="runBlaeo()">Sync BLAEO</button>
+            <div id="blaeo-status" class="tool-status" style="margin-top:2px;"></div>
+        </div>
+
+        <div class="hub-section">
+            <button class="settings-item" data-modal-row="2" onclick="closeToolsModal();openBlacklistModal()">Manage Blacklist</button>
+        </div>
+    </div>
+</div>
 
 <!-- ── BACKGROUND IMAGE MODAL ── -->
 <div id="bg-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBgModal();">
     <div class="modal-content" style="width:460px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Background Image</h2>
-            <button onclick="closeBgModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">Background Image</h2>
+            <button onclick="closeBgModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-        <p style="color:var(--muted-text); font-size:0.9rem; margin:0 0 16px;">Replace the app background with a custom image. JPG, PNG, and WebP are supported.</p>
+        <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 16px;">Replace the app background with a custom image. JPG, PNG, and WebP are supported.</p>
 
         <div id="bg-drop-zone"
-             style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
+             style="border:2px dashed var(--border); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
              onclick="document.getElementById('bg-file-input').click()"
              ondragover="bgDragOver(event)"
              ondragleave="bgDragLeave(event)"
              ondrop="bgDrop(event)">
             <div style="font-size:1.5rem; margin-bottom:6px;">🖼️</div>
-            <div style="color:var(--muted-text); font-size:0.88rem;">Drop an image here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
-            <div id="bg-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
+            <div style="color:var(--text-secondary); font-size:0.88rem;">Drop an image here, or <span style="color:var(--accent); text-decoration:underline;">click to choose a file</span></div>
+            <div id="bg-filename" style="color:var(--accent); font-size:0.82rem; margin-top:6px; display:none;"></div>
         </div>
         <input type="file" id="bg-file-input" accept=".jpg,.jpeg,.png,.webp" style="display:none" onchange="bgFileSelected(this)">
 
@@ -416,18 +550,18 @@
 <div id="backup-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBackupModal();">
     <div class="modal-content" style="width:520px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Backup &amp; Restore</h2>
-            <button onclick="closeBackupModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">Backup &amp; Restore</h2>
+            <button onclick="closeBackupModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
         <!-- Tab toggle -->
-        <div style="display:flex; border:1px solid var(--border-color); border-radius:6px; overflow:hidden; margin-bottom:20px;">
+        <div style="display:flex; border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:20px;">
             <button id="backup-tab-btn" data-modal-row="0" onclick="setBackupTab('backup')"
-                style="flex:1; padding:8px; border:none; cursor:pointer; background:var(--steam-focus); color:var(--accent-text); font-weight:bold; font-size:0.85rem; transition:all 0.15s;">
+                style="flex:1; padding:8px; border:none; cursor:pointer; background:var(--accent); color:var(--on-accent); font-weight:bold; font-size:0.85rem; transition:all 0.15s;">
                 Create Backup
             </button>
             <button id="restore-tab-btn" data-modal-row="0" onclick="setBackupTab('restore')"
-                style="flex:1; padding:8px; border:none; cursor:pointer; background:transparent; color:var(--muted-text); font-size:0.85rem; transition:all 0.15s;">
+                style="flex:1; padding:8px; border:none; cursor:pointer; background:transparent; color:var(--text-secondary); font-size:0.85rem; transition:all 0.15s;">
                 Restore from Backup
             </button>
         </div>
@@ -435,20 +569,20 @@
         <!-- Backup tab -->
         <div id="backup-tab">
             <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
-                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
-                    <div style="font-size:0.82rem; color:var(--muted-text); margin-bottom:6px;">Always included:</div>
+                <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:10px 14px;">
+                    <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:6px;">Always included:</div>
                     <div style="display:flex; gap:16px; flex-wrap:wrap;">
-                        <span style="font-size:0.82rem; color:var(--steam-text);">📦 games.db</span>
-                        <span style="font-size:0.82rem; color:var(--steam-text);">⚙️ config.json</span>
-                        <span style="font-size:0.82rem; color:var(--steam-text);">🗂️ state.json</span>
+                        <span style="font-size:0.82rem; color:var(--text-primary);">📦 games.db</span>
+                        <span style="font-size:0.82rem; color:var(--text-primary);">⚙️ config.json</span>
+                        <span style="font-size:0.82rem; color:var(--text-primary);">🗂️ state.json</span>
                     </div>
                 </div>
-                <div style="background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px;">
+                <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:10px 14px;">
                     <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin:0;">
                         <input type="checkbox" id="backup-include-art" style="width:auto; margin:2px 0 0; flex-shrink:0;">
                         <div>
-                            <span style="font-size:0.82rem; color:var(--steam-text); font-weight:bold;">🖼️ Include cover art</span>
-                            <div style="font-size:0.78rem; color:var(--muted-text); margin-top:2px;">Recommended if you've manually set any artwork. Can add hundreds of MB.</div>
+                            <span style="font-size:0.82rem; color:var(--text-primary); font-weight:bold;">🖼️ Include cover art</span>
+                            <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">Recommended if you've manually set any artwork. Can add hundreds of MB.</div>
                         </div>
                     </label>
                 </div>
@@ -459,18 +593,18 @@
 
         <!-- Restore tab -->
         <div id="restore-tab" style="display:none;">
-            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.82rem; color:var(--warning-color); line-height:1.6;">
+            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--color-warning); border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.82rem; color:var(--color-warning); line-height:1.6;">
                 ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, and state.json. This cannot be undone.
             </div>
             <div id="restore-drop-zone"
-                 style="border:2px dashed var(--border-color); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
+                 style="border:2px dashed var(--border); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
                  onclick="document.getElementById('restore-file-input').click()"
                  ondragover="restoreDragOver(event)"
                  ondragleave="restoreDragLeave(event)"
                  ondrop="restoreDrop(event)">
                 <div style="font-size:1.5rem; margin-bottom:6px;">📂</div>
-                <div style="color:var(--muted-text); font-size:0.88rem;">Drop a <strong style="color:var(--steam-text);">.zip</strong> backup here, or <span style="color:var(--steam-focus); text-decoration:underline;">click to choose a file</span></div>
-                <div id="restore-filename" style="color:var(--steam-focus); font-size:0.82rem; margin-top:6px; display:none;"></div>
+                <div style="color:var(--text-secondary); font-size:0.88rem;">Drop a <strong style="color:var(--text-primary);">.zip</strong> backup here, or <span style="color:var(--accent); text-decoration:underline;">click to choose a file</span></div>
+                <div id="restore-filename" style="color:var(--accent); font-size:0.82rem; margin-top:6px; display:none;"></div>
             </div>
             <input type="file" id="restore-file-input" accept=".zip" style="display:none" onchange="restoreFileSelected(this)">
             <button class="nav-btn" id="restore-btn" data-modal-row="1" onclick="runRestore()" disabled style="opacity:0.4; cursor:not-allowed;">Restore</button>
@@ -483,10 +617,10 @@
 <div id="import-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeImportModal();">
     <div class="modal-content" style="width:620px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Import Data from Another Database</h2>
-            <button onclick="closeImportModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">Import Data from Another Database</h2>
+            <button onclick="closeImportModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-        <p style="color:var(--muted-text); font-size:0.88rem; margin:0 0 16px;">Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
+        <p style="color:var(--text-secondary); font-size:0.88rem; margin:0 0 16px;">Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
 
         <div class="step-indicator">
             <span id="step-ind-1" class="active">1 · Upload File</span>
@@ -502,35 +636,35 @@
         </div>
 
         <div id="import-step-2" class="import-step">
-            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--border-color); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:var(--muted-text); line-height:1.6;">
-                <strong style="color:var(--steam-text);">How this works:</strong> Choose which table and columns to read from the uploaded file, then map each source column to the matching column in your library.
+            <div style="background:rgba(0,0,0,0.15); border:1px solid var(--border); border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:var(--text-secondary); line-height:1.6;">
+                <strong style="color:var(--text-primary);">How this works:</strong> Choose which table and columns to read from the uploaded file, then map each source column to the matching column in your library.
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
                 <div>
                     <label>Table in uploaded file</label>
                     <select id="source-table" onchange="onTableChange()" style="width:100%; padding:8px 32px 8px 8px;"></select>
-                    <small style="color:var(--muted-text); font-size:0.78rem;">Most PlayDate databases only have one table: <em>games</em>.</small>
+                    <small style="color:var(--text-secondary); font-size:0.78rem;">Most PlayDate databases only have one table: <em>games</em>.</small>
                 </div>
                 <div>
                     <label>AppID column (for matching)</label>
                     <select id="appid-col" style="width:100%; padding:8px 32px 8px 8px;"></select>
-                    <small style="color:var(--muted-text); font-size:0.78rem;">This column is used to match rows — it won't be imported as data.</small>
+                    <small style="color:var(--text-secondary); font-size:0.78rem;">This column is used to match rows — it won't be imported as data.</small>
                 </div>
             </div>
-            <label style="margin-bottom:10px;">Column mappings <span style="color:var(--muted-text); font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span></label>
+            <label style="margin-bottom:10px;">Column mappings <span style="color:var(--text-secondary); font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span></label>
             <div style="display:grid; grid-template-columns:1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:0 2px;">
-                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">From uploaded file</span>
+                <span style="font-size:0.78rem; color:var(--text-secondary); text-align:center;">From uploaded file</span>
                 <span></span>
-                <span style="font-size:0.78rem; color:var(--muted-text); text-align:center;">Into your library</span>
+                <span style="font-size:0.78rem; color:var(--text-secondary); text-align:center;">Into your library</span>
                 <span></span>
             </div>
             <div id="mapping-rows"></div>
             <button class="add-mapping-btn" onclick="addMappingRow()">+ Add Column</button>
-            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.88rem; color:var(--muted-text);">
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.88rem; color:var(--text-secondary);">
                 <input type="checkbox" id="normalize-dates" checked style="width:auto; margin:0;">
                 <label for="normalize-dates" style="display:inline; margin:0; cursor:pointer;">Auto-convert dates to YYYY-MM-DD format</label>
             </div>
-            <div id="import-type-warning" style="display:none; background:rgba(0,0,0,0.15); border:1px solid var(--warning-color); border-radius:5px; padding:9px 13px; margin-top:12px; font-size:0.85rem; color:var(--warning-color);"></div>
+            <div id="import-type-warning" style="display:none; background:rgba(0,0,0,0.15); border:1px solid var(--color-warning); border-radius:5px; padding:9px 13px; margin-top:12px; font-size:0.85rem; color:var(--color-warning);"></div>
             <div style="display:flex; gap:10px; margin-top:16px;">
                 <button class="nav-btn" data-modal-row="0" onclick="executeImport()">Run Import</button>
                 <button class="nav-btn" data-modal-row="0" onclick="resetImport()" style="opacity:0.6;">Start Over</button>
@@ -549,10 +683,10 @@
 <div id="playnite-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePlayniteModal();">
     <div class="modal-content" style="width:480px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Import from Playnite</h2>
-            <button onclick="closePlayniteModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">Import from Playnite</h2>
+            <button onclick="closePlayniteModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-        <p style="color:var(--muted-text); font-size:0.88rem; margin:0 0 16px;">Import <strong>date added</strong> values from a Playnite backup ZIP. Games are matched by Steam AppID — only games already in your PlayDate library will be updated.</p>
+        <p style="color:var(--text-secondary); font-size:0.88rem; margin:0 0 16px;">Import <strong>date added</strong> values from a Playnite backup ZIP. Games are matched by Steam AppID — only games already in your PlayDate library will be updated.</p>
         <button class="nav-btn" data-modal-row="0" onclick="runPlayniteImport()">Choose Playnite Backup (.zip)</button>
         <div id="playnite-status" class="tool-status" style="margin-top:12px;"></div>
     </div>
@@ -562,48 +696,48 @@
 <div id="pagywosg-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePagModal();">
     <div class="modal-content" style="width:min(760px,95vw); max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">PAGYWOSG Filter Builder</h2>
-            <button onclick="closePagModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">PAGYWOSG Filter Builder</h2>
+            <button onclick="closePagModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-        <div id="pagywosg-loading" style="color:var(--muted-text); font-size:0.88rem; margin-bottom:12px;">Loading tags…</div>
+        <div id="pagywosg-loading" style="color:var(--text-secondary); font-size:0.88rem; margin-bottom:12px;">Loading tags…</div>
         <div id="pagywosg-inner" style="display:none;">
 
             <div style="margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                    <span style="color:var(--steam-focus); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — Wins Only</span>
-                    <span style="color:var(--muted-text); font-size:0.75rem; font-style:italic;">only applies to games won on SteamGifts</span>
+                    <span style="color:var(--accent); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — Wins Only</span>
+                    <span style="color:var(--text-secondary); font-size:0.75rem; font-style:italic;">only applies to games won on SteamGifts</span>
                 </div>
                 <input type="text" id="pag-wins-search" placeholder="Search tags…"
-                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--steam-input); border:1px solid var(--border-color); border-radius:5px; color:var(--steam-text); font-size:0.82rem; outline:none;"
+                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('wins')"
-                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='var(--border-color)'">
-                <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:8px;"></div>
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-wins-conds" style="margin-top:10px;"></div>
-                <button onclick="pagAddCond('wins')" style="margin-top:6px; background:none; border:1px dashed var(--border-color); color:var(--muted-text); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
-                    onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
-                    onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--muted-text)'">+ Add Condition</button>
+                <button onclick="pagAddCond('wins')" style="margin-top:6px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                    onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+                    onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">+ Add Condition</button>
             </div>
 
-            <div style="border-top:1px solid var(--border-color); margin-bottom:20px;"></div>
+            <div style="border-top:1px solid var(--border); margin-bottom:20px;"></div>
 
             <div style="margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-                    <span style="color:var(--steam-text); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — All Games</span>
-                    <span style="color:var(--muted-text); font-size:0.75rem; font-style:italic;">applies to your whole library</span>
+                    <span style="color:var(--text-primary); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — All Games</span>
+                    <span style="color:var(--text-secondary); font-size:0.75rem; font-style:italic;">applies to your whole library</span>
                 </div>
                 <input type="text" id="pag-all-search" placeholder="Search tags…"
-                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--steam-input); border:1px solid var(--border-color); border-radius:5px; color:var(--steam-text); font-size:0.82rem; outline:none;"
+                    style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('all')"
-                    onfocus="this.style.borderColor='var(--steam-focus)'" onblur="this.style.borderColor='var(--border-color)'">
-                <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--steam-input); border:1px solid var(--border-color); border-radius:6px; padding:8px;"></div>
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-all-conds" style="margin-top:10px;"></div>
-                <button onclick="pagAddCond('all')" style="margin-top:6px; background:none; border:1px dashed var(--border-color); color:var(--muted-text); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
-                    onmouseover="this.style.borderColor='var(--steam-focus)';this.style.color='var(--steam-focus)'"
-                    onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--muted-text)'">+ Add Condition</button>
+                <button onclick="pagAddCond('all')" style="margin-top:6px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                    onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
+                    onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">+ Add Condition</button>
             </div>
 
             <div style="margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                <span style="color:var(--muted-text); font-size:0.8rem; white-space:nowrap;">Completion status</span>
+                <span style="color:var(--text-secondary); font-size:0.8rem; white-space:nowrap;">Completion status</span>
                 <div id="pag-completion-btns" style="display:flex; flex-wrap:wrap; gap:5px;">
                     <button class="pag-comp-btn active" data-val="Never Played" onclick="pagToggleComp(this)">Never Played</button>
                     <button class="pag-comp-btn active" data-val="Unfinished" onclick="pagToggleComp(this)">Unfinished</button>
@@ -614,11 +748,11 @@
             </div>
 
             <div style="margin-bottom:14px;">
-                <button onclick="pagToggleSql()" style="background:none;border:none;color:var(--muted-text);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
+                <button onclick="pagToggleSql()" style="background:none;border:none;color:var(--text-secondary);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
                     <span id="pag-sql-chevron">▶</span> Show SQL Preview
                 </button>
                 <div id="pag-sql-box" style="display:none; margin-top:8px;">
-                    <pre id="pag-sql-text" style="margin:0;padding:10px 14px;background:var(--steam-input);border:1px solid var(--border-color);border-radius:5px;color:var(--steam-focus);font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
+                    <pre id="pag-sql-text" style="margin:0;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--accent);font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
                 </div>
             </div>
 
@@ -636,18 +770,18 @@
 <div id="blacklist-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBlacklistModal();">
     <div class="modal-content" style="width:min(640px,95vw); max-height:85vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Blacklist Manager</h2>
-            <button onclick="closeBlacklistModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">Blacklist Manager</h2>
+            <button onclick="closeBlacklistModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-        <p style="color:var(--muted-text); font-size:0.9rem; margin:0 0 14px;">Blacklisted games are permanently skipped by "Populate PlayDate". To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
+        <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">Blacklisted games are permanently skipped by "Populate PlayDate". To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
         <div id="blacklist-status" class="tool-status"></div>
-        <div id="blacklist-empty" style="display:none; color:var(--muted-text); font-size:0.9rem; margin-bottom:12px;">No blacklisted games.</div>
+        <div id="blacklist-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No blacklisted games.</div>
         <table id="blacklist-table" style="width:100%; border-collapse:collapse; display:none;">
             <thead>
-                <tr style="border-bottom:1px solid var(--border-color);">
-                    <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Game</th>
-                    <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">App ID</th>
-                    <th style="text-align:left; padding:8px 10px; color:var(--muted-text); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Blacklisted</th>
+                <tr style="border-bottom:1px solid var(--border);">
+                    <th style="text-align:left; padding:8px 10px; color:var(--text-secondary); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Game</th>
+                    <th style="text-align:left; padding:8px 10px; color:var(--text-secondary); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">App ID</th>
+                    <th style="text-align:left; padding:8px 10px; color:var(--text-secondary); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Blacklisted</th>
                     <th style="padding:8px 10px;"></th>
                 </tr>
             </thead>
@@ -663,8 +797,8 @@
 <div id="theme-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeThemeModal();">
     <div class="modal-content" style="width:min(920px,96vw); max-height:92vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--steam-text);">Theme Editor</h2>
-            <button onclick="closeThemeModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">Theme Editor</h2>
+            <button onclick="closeThemeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;">
@@ -682,7 +816,7 @@
                 <div class="tp-tabs">
                     <button class="tp-tab active" onclick="tpSwitchTab(this,'tp-home')">Home</button>
                     <button class="tp-tab" onclick="tpSwitchTab(this,'tp-library')">Library</button>
-                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-tools')">Tools</button>
+                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-pick')">Pick 6</button>
                     <button class="tp-tab" onclick="tpSwitchTab(this,'tp-modals')">Modals</button>
                 </div>
 
@@ -757,24 +891,47 @@
                         </div>
                     </div>
 
-                    <!-- ── TAB 3: TOOLS (hamburger menu preview) ── -->
-                    <div id="tp-tools" class="tp-pane">
+                    <!-- ── TAB 3: PICK 6 ── -->
+                    <div id="tp-pick" class="tp-pane">
                         <div class="tp-nav">
                             <div class="tp-nav-links">
                                 <span class="tp-nav-link">Home</span>
-                                <span class="tp-nav-link active">Library</span>
-                                <span class="tp-nav-link">Pick</span>
+                                <span class="tp-nav-link">Library</span>
+                                <span class="tp-nav-link active">Pick</span>
                             </div>
                             <div class="tp-nav-btn">☰</div>
                         </div>
-                        <div class="tp-body" style="position:relative;">
-                            <div style="position:absolute;top:2px;left:2px;background:var(--panel-alt);border:1px solid var(--border-color);border-radius:4px;padding:4px 0;min-width:80px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
-                                <div style="padding:3px 8px;font-size:6px;color:var(--steam-focus);font-weight:bold;">Populate PlayDate</div>
-                                <div style="height:1px;background:var(--border-color);margin:2px 0;"></div>
-                                <div style="padding:2px 8px;font-size:6px;color:var(--steam-text);">Edit Home Layout</div>
-                                <div style="padding:2px 8px;font-size:6px;color:var(--steam-text);">Manage Blacklist</div>
-                                <div style="padding:2px 8px;font-size:6px;color:var(--steam-text);">Backup &amp; Restore</div>
-                                <div style="padding:2px 8px;font-size:6px;color:var(--steam-text);">Theme Editor</div>
+                        <div class="tp-body">
+                            <div class="tp-primary-text" style="color:var(--text-heading);">Pick 6</div>
+                            <div class="tp-section-label">Your picks for today</div>
+                            <div class="tp-cards" style="flex-wrap:wrap;gap:4px;">
+                                <div class="tp-card" style="background:var(--bg-card);border-color:var(--border);">
+                                    <div class="tp-card-label" style="color:var(--text-primary);">Game A</div>
+                                </div>
+                                <div class="tp-card" style="background:var(--bg-card);border:1px solid var(--accent);">
+                                    <div class="tp-card-label" style="color:var(--text-primary);">Game B</div>
+                                </div>
+                                <div class="tp-card" style="background:var(--bg-card);border-color:var(--border);">
+                                    <div class="tp-card-label" style="color:var(--text-primary);">Game C</div>
+                                </div>
+                                <div class="tp-card" style="background:var(--bg-card);border-color:var(--border);">
+                                    <div class="tp-card-label" style="color:var(--text-primary);">Game D</div>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;display:flex;gap:6px;align-items:center;">
+                                <div class="tp-btn-accent" style="font-size:9px;padding:3px 11px;">Pick Again</div>
+                                <div style="font-size:9px;color:var(--text-secondary);">or lock picks</div>
+                            </div>
+                            <div style="margin-top:8px;background:var(--bg-raised);border:1px solid var(--border);border-radius:3px;padding:6px 8px;">
+                                <div style="font-size:9px;color:var(--text-secondary);margin-bottom:4px;">Score breakdown</div>
+                                <div style="display:flex;gap:5px;align-items:center;margin-bottom:3px;">
+                                    <div style="width:50px;height:4px;background:var(--bg-input);border-radius:2px;overflow:hidden;"><div style="width:80%;height:100%;background:var(--accent);"></div></div>
+                                    <span style="font-size:8px;color:var(--text-secondary);">Taste match</span>
+                                </div>
+                                <div style="display:flex;gap:5px;align-items:center;">
+                                    <div style="width:50px;height:4px;background:var(--bg-input);border-radius:2px;overflow:hidden;"><div style="width:65%;height:100%;background:var(--accent-positive);"></div></div>
+                                    <span style="font-size:8px;color:var(--text-secondary);">Review score</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -791,37 +948,68 @@
                         </div>
                         <div class="tp-body" style="position:relative; overflow:hidden;">
                             <div class="tp-modal-overlay">
-                                <div class="tp-modal-box">
-                                    <div class="tp-modal-title">Edit Game</div>
-                                    <div class="tp-modal-field">Completion Status</div>
+                                <div class="tp-modal-box" style="background:var(--bg-raised);">
+                                    <div class="tp-modal-title" style="color:var(--text-heading);">Edit Game</div>
+                                    <div class="tp-modal-field" style="background:var(--bg-input);color:var(--text-input);">Completion Status</div>
                                     <div style="display:flex;gap:2px;flex-wrap:wrap;margin-bottom:4px;">
                                         <span class="tp-badge tp-badge-beaten">Beaten</span>
                                         <span class="tp-badge tp-badge-np">Never Played</span>
                                     </div>
-                                    <div class="tp-modal-field">Tags</div>
+                                    <div class="tp-modal-field" style="background:var(--bg-input);color:var(--text-secondary);">Tags</div>
                                     <div class="tp-modal-btns">
-                                        <div class="tp-modal-btn-save">Save</div>
-                                        <div class="tp-modal-btn-cancel">Cancel</div>
+                                        <div class="tp-modal-btn-save" style="background:var(--accent-positive);color:var(--text-bright);">Save</div>
+                                        <div class="tp-modal-btn-cancel" style="border-color:var(--border);color:var(--text-secondary);">Cancel</div>
                                     </div>
+                                    <div style="margin-top:7px;font-size:8px;color:var(--text-danger);">✘ Error example</div>
+                                    <div style="margin-top:3px;font-size:8px;color:var(--color-warning);">⚠ Warning example</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                 </div><!-- .theme-preview-frame -->
-            </div><!-- .theme-preview-panel -->
 
-            <!-- Actions row (spans both columns) -->
-            <div class="theme-actions">
-                <button class="nav-btn" data-modal-row="0" onclick="themeSave()">Save Theme</button>
-                <button class="nav-btn" data-modal-row="0" onclick="themeExport()">Export Theme</button>
-                <button class="nav-btn" data-modal-row="0" onclick="document.getElementById('theme-import-input').click()">Import Theme</button>
-                <input type="file" id="theme-import-input" accept=".json" style="display:none" onchange="themeImport(this)">
-                <button class="nav-btn" data-modal-row="0" onclick="themeReset()" style="border-color:var(--danger-color);color:var(--danger-text);"
-                    onmouseover="this.style.background='var(--danger-color)';this.style.color='var(--nav-active)'"
-                    onmouseout="this.style.background='';this.style.color='var(--danger-text)'">Reset to Default</button>
-                <div id="theme-status" class="tool-status"></div>
-            </div>
+                <!-- Actions / presets / saved themes -->
+                <div class="theme-actions" style="flex-direction:column; align-items:stretch; gap:14px;">
+
+                    <!-- Save / export / import / reset -->
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                        <button class="nav-btn" data-modal-row="0" onclick="themeSave()">Apply Theme</button>
+                        <button class="nav-btn" data-modal-row="0" onclick="themeExport()">Export</button>
+                        <button class="nav-btn" data-modal-row="0" onclick="document.getElementById('theme-import-input').click()">Import</button>
+                        <input type="file" id="theme-import-input" accept=".json" style="display:none" onchange="themeImport(this)">
+                        <button class="nav-btn" data-modal-row="0" onclick="themeReset()" style="border-color:var(--color-danger);color:var(--text-danger);"
+                            onmouseover="this.style.background='var(--color-danger)';this.style.color='var(--text-bright)'"
+                            onmouseout="this.style.background='';this.style.color='var(--text-danger)'">Reset to Default</button>
+                        <div id="theme-status" class="tool-status" style="margin:0;"></div>
+                    </div>
+
+                    <!-- Built-in presets -->
+                    <div>
+                        <div style="font-size:0.72rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Presets</div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;" id="theme-presets-row">
+                            <!-- rendered by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Saved themes -->
+                    <div>
+                        <div style="font-size:0.72rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Saved Themes</div>
+                        <div id="theme-saved-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+                            <!-- rendered by JS -->
+                        </div>
+                        <div style="display:flex; gap:6px; align-items:center;">
+                            <input type="text" id="theme-save-name" placeholder="Name this theme…"
+                                style="flex:1; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
+                                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+                                onkeydown="if(event.key==='Enter')themeSaveNamed()">
+                            <button class="nav-btn" onclick="themeSaveNamed()">Save as…</button>
+                        </div>
+                    </div>
+
+                </div><!-- .theme-actions -->
+
+            </div><!-- .theme-preview-panel -->
         </div>
     </div>
 </div>
@@ -856,10 +1044,10 @@ function setBackupTab(tab) {
     const isBackup = tab === 'backup';
     document.getElementById('backup-tab').style.display    = isBackup ? '' : 'none';
     document.getElementById('restore-tab').style.display   = isBackup ? 'none' : '';
-    document.getElementById('backup-tab-btn').style.background  = isBackup ? 'var(--steam-focus)' : 'transparent';
-    document.getElementById('backup-tab-btn').style.color        = isBackup ? 'var(--accent-text)' : 'var(--muted-text)';
-    document.getElementById('restore-tab-btn').style.background  = isBackup ? 'transparent' : 'var(--steam-focus)';
-    document.getElementById('restore-tab-btn').style.color       = isBackup ? 'var(--muted-text)' : 'var(--accent-text)';
+    document.getElementById('backup-tab-btn').style.background  = isBackup ? 'var(--accent)' : 'transparent';
+    document.getElementById('backup-tab-btn').style.color        = isBackup ? 'var(--on-accent)' : 'var(--text-secondary)';
+    document.getElementById('restore-tab-btn').style.background  = isBackup ? 'transparent' : 'var(--accent)';
+    document.getElementById('restore-tab-btn').style.color       = isBackup ? 'var(--text-secondary)' : 'var(--on-accent)';
 }
 
 function openImportModal() {
@@ -922,20 +1110,20 @@ async function runBlaeo() {
     const status = document.getElementById('blaeo-status');
     btn.textContent = 'Syncing...';
     btn.disabled = true;
-    status.className = 'hamburger-status info';
+    status.className = 'tool-status info';
     status.textContent = 'Connecting to BLAEO — this may take a minute...';
     try {
         const res = await fetch('/sync-blaeo');
         const data = await res.json();
         if (data.status === 'success') {
-            status.className = 'hamburger-status success';
+            status.className = 'tool-status success';
             status.textContent = `✔ Sync complete — updated ${data.updated} games.`;
         } else {
-            status.className = 'hamburger-status error';
+            status.className = 'tool-status error';
             status.textContent = '✘ ' + (data.message || 'Sync failed. Check the log.');
         }
     } catch (e) {
-        status.className = 'hamburger-status error';
+        status.className = 'tool-status error';
         status.textContent = '✘ Network error.';
     } finally {
         btn.textContent = 'Sync BLAEO';
@@ -1022,7 +1210,7 @@ function pagAddCond(pool) {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;';
 
-    const sharedSelStyle = 'padding:5px 24px 5px 8px; background-color:var(--steam-input); border:1px solid var(--border-color); border-radius:4px; color:var(--steam-text); font-size:0.82rem;';
+    const sharedSelStyle = 'padding:5px 24px 5px 8px; background-color:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem;';
 
     const colSel = document.createElement('select');
     colSel.style.cssText = sharedSelStyle;
@@ -1043,13 +1231,13 @@ function pagAddCond(pool) {
     const valInput = document.createElement('input');
     valInput.type = 'text';
     valInput.placeholder = 'value';
-    valInput.style.cssText = 'flex:1; min-width:100px; padding:5px 8px; background:var(--steam-input); border:1px solid var(--border-color); border-radius:4px; color:var(--steam-text); font-size:0.82rem; outline:none;';
-    valInput.onfocus = () => valInput.style.borderColor = 'var(--steam-focus)';
-    valInput.onblur  = () => valInput.style.borderColor = 'var(--border-color)';
+    valInput.style.cssText = 'flex:1; min-width:100px; padding:5px 8px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem; outline:none;';
+    valInput.onfocus = () => valInput.style.borderColor = 'var(--accent)';
+    valInput.onblur  = () => valInput.style.borderColor = 'var(--border)';
 
     const removeBtn = document.createElement('button');
     removeBtn.textContent = '✕';
-    removeBtn.style.cssText = 'background:none; border:none; color:var(--danger-text); font-size:1rem; cursor:pointer; padding:0 2px; line-height:1;';
+    removeBtn.style.cssText = 'background:none; border:none; color:var(--text-danger); font-size:1rem; cursor:pointer; padding:0 2px; line-height:1;';
     removeBtn.onclick = () => { row.remove(); pagUpdateSql(); };
 
     colSel.onchange = pagUpdateSql;
@@ -1263,11 +1451,11 @@ function addMappingRow() {
         if (sType && tType && isNumeric(sType) !== isNumeric(tType)) {
             arrow.textContent = '⚠';
             arrow.title = `Type mismatch: ${sType} → ${tType}`;
-            arrow.style.color = 'var(--warning-color)';
+            arrow.style.color = 'var(--color-warning)';
         } else {
             arrow.textContent = '→';
             arrow.title = sType && tType ? `${sType} → ${tType}` : '';
-            arrow.style.color = 'var(--muted-text)';
+            arrow.style.color = 'var(--text-secondary)';
         }
         refreshTypeWarnings();
     }
@@ -1354,10 +1542,10 @@ async function executeImport() {
         if (data.status === 'success') {
             const warnings = data.type_warnings || [];
             const warnHtml = warnings.length
-                ? `<div style="margin-top:10px; color:var(--warning-color); font-size:0.8rem;"><strong>⚠ Type warnings:</strong><br>${warnings.map(w => `• ${w}`).join('<br>')}</div>`
+                ? `<div style="margin-top:10px; color:var(--color-warning); font-size:0.8rem;"><strong>⚠ Type warnings:</strong><br>${warnings.map(w => `• ${w}`).join('<br>')}</div>`
                 : '';
             document.getElementById('import-result').innerHTML = `
-                <div style="color:var(--accent-green); font-size: 1rem; margin-bottom: 8px;">✔ Import complete</div>
+                <div style="color:var(--accent-positive); font-size: 1rem; margin-bottom: 8px;">✔ Import complete</div>
                 <div>Updated: <strong>${data.updated}</strong> games</div>
                 <div>Skipped (no match or empty): <strong>${data.skipped}</strong> games</div>
                 ${warnHtml}
@@ -1477,13 +1665,13 @@ let _restoreFile = null;
 function restoreDragOver(e) {
     e.preventDefault();
     const zone = document.getElementById('restore-drop-zone');
-    zone.style.borderColor = 'var(--steam-focus)';
+    zone.style.borderColor = 'var(--accent)';
     zone.style.background  = 'rgba(102,192,244,0.05)';
 }
 
 function restoreDragLeave(e) {
     const zone = document.getElementById('restore-drop-zone');
-    zone.style.borderColor = 'var(--border-color)';
+    zone.style.borderColor = 'var(--border)';
     zone.style.background  = '';
 }
 
@@ -1564,13 +1752,13 @@ let _bgFile = null;
 function bgDragOver(e) {
     e.preventDefault();
     const zone = document.getElementById('bg-drop-zone');
-    zone.style.borderColor = 'var(--steam-focus)';
+    zone.style.borderColor = 'var(--accent)';
     zone.style.background  = 'rgba(102,192,244,0.05)';
 }
 
 function bgDragLeave(e) {
     const zone = document.getElementById('bg-drop-zone');
-    zone.style.borderColor = 'var(--border-color)';
+    zone.style.borderColor = 'var(--border)';
     zone.style.background  = '';
 }
 
@@ -1699,13 +1887,13 @@ async function _loadBlacklist() {
         empty.style.display = 'none';
         table.style.display = 'table';
         tbody.innerHTML = entries.map(e => `
-            <tr id="bl-row-${e.appid}" style="border-bottom:1px solid var(--border-color);">
-                <td style="padding:9px 10px; color:var(--steam-text); font-size:0.88rem;">${_escHtml(e.name || '—')}</td>
-                <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
-                <td style="padding:9px 10px; color:var(--muted-text); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
+            <tr id="bl-row-${e.appid}" style="border-bottom:1px solid var(--border);">
+                <td style="padding:9px 10px; color:var(--text-primary); font-size:0.88rem;">${_escHtml(e.name || '—')}</td>
+                <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
+                <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
                 <td style="padding:9px 10px; text-align:right;">
                     <button onclick="removeFromBlacklist(${e.appid}, this)" class="bl-remove-btn" data-modal-row="0"
-                        style="background:none; border:1px solid var(--danger-color); color:var(--danger-text); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
+                        style="background:none; border:1px solid var(--color-danger); color:var(--text-danger); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
                         onmouseover="this.style.background='rgba(163,42,42,0.2)'"
                         onmouseout="this.style.background='none'">Remove</button>
                 </td>
@@ -1761,51 +1949,75 @@ function tpSwitchTab(btn, paneId) {
 // ── Theme Editor ─────────────────────────────────────────────────────────────
 
 const THEME_VAR_META = [
-    // Surfaces
-    { key: '--steam-blue',    label: 'Main Background',    desc: 'Primary surface: cards, modals, nav buttons' },
-    { key: '--steam-input',   label: 'Input Background',   desc: 'Text fields, game cards, deep inset areas' },
-    { key: '--panel-alt',     label: 'Panel Surface',      desc: 'Elevated panels, dialogs, context menu, tool cards' },
-    // Text
-    { key: '--steam-text',    label: 'Primary Text',       desc: 'Main body text' },
-    { key: '--input-text',    label: 'Input Text',         desc: 'Text typed inside fields and selects' },
-    { key: '--muted-text',    label: 'Secondary Text',     desc: 'Captions, labels, subdued text' },
-    // Accent
-    { key: '--steam-focus',   label: 'Accent Color',       desc: 'Links, borders, highlights, button hover' },
-    { key: '--accent-text',   label: 'Accent Text',        desc: 'Text on accent-colored surfaces (buttons, chips)' },
-    { key: '--accent-green',  label: 'Save / Positive',    desc: 'Save buttons and positive action elements' },
-    // Nav
-    { key: '--nav-bg',        label: 'Nav Bar Background', desc: 'Top navigation bar background' },
-    { key: '--nav-active',    label: 'Active Nav Link',    desc: 'Currently selected page in the nav bar' },
-    // Borders
-    { key: '--border-color',  label: 'Border Color',       desc: 'All panel and input borders' },
-    // Danger / Warning
-    { key: '--danger-color',  label: 'Danger Color',       desc: 'Exit button, Reset, Clear Filters, Delete actions' },
-    { key: '--danger-text',   label: 'Danger Text',        desc: 'Red text on danger elements and warnings' },
-    { key: '--warning-color', label: 'Warning Color',      desc: 'Amber warnings, type mismatches, caution notices' },
+    // ── Backgrounds ──
+    { key: '--bg-page',          group: 'Backgrounds', label: 'Page Background',    desc: 'Window body behind all surfaces' },
+    { key: '--bg-surface',       group: 'Backgrounds', label: 'Surface',            desc: 'Primary UI surface — toolbars, panels' },
+    { key: '--bg-raised',        group: 'Backgrounds', label: 'Raised Surface',     desc: 'Modals, dropdowns, context menus' },
+    { key: '--bg-input',         group: 'Backgrounds', label: 'Input Background',   desc: 'Text fields and inset areas' },
+    { key: '--bg-card',          group: 'Backgrounds', label: 'Card Background',    desc: 'Game cards in grids and shelves' },
+    { key: '--bg-nav',           group: 'Backgrounds', label: 'Nav Background',     desc: 'Top navigation bar' },
+    // ── Text ──
+    { key: '--text-primary',     group: 'Text',        label: 'Body Text',          desc: 'Main readable text throughout the app' },
+    { key: '--text-heading',     group: 'Text',        label: 'Heading Text',       desc: 'Page headings and shelf titles' },
+    { key: '--text-secondary',   group: 'Text',        label: 'Secondary Text',     desc: 'Captions, labels, subdued text' },
+    { key: '--text-input',       group: 'Text',        label: 'Input Text',         desc: 'Text typed inside fields and selects' },
+    { key: '--text-bright',      group: 'Text',        label: 'Bright Text',        desc: 'High-contrast text on colored surfaces' },
+    // ── Accent ──
+    { key: '--accent',           group: 'Accent',      label: 'Accent',             desc: 'Links, focus rings, active highlights' },
+    { key: '--on-accent',        group: 'Accent',      label: 'On Accent',          desc: 'Text on accent-colored surfaces' },
+    { key: '--accent-positive',  group: 'Accent',      label: 'Positive',           desc: 'Save buttons and success indicators' },
+    // ── Borders ──
+    { key: '--border',           group: 'Borders',     label: 'Border',             desc: 'All panel and input borders' },
+    // ── Status ──
+    { key: '--color-danger',     group: 'Status',      label: 'Danger',             desc: 'Exit, delete, and destructive action surfaces' },
+    { key: '--text-danger',      group: 'Status',      label: 'Danger Text',        desc: 'Red warning and error text' },
+    { key: '--color-warning',    group: 'Status',      label: 'Warning',            desc: 'Amber caution indicators' },
 ];
 
-let _themeVars = {};   // currently displayed values (may be unsaved)
-let _themeDefs = {};   // server-side defaults
+let _themeVars    = {};   // currently displayed values (may be unsaved)
+let _themeDefs    = {};   // server-side defaults
+let _themeApplied = {};   // last-saved snapshot — restored on modal close without Apply
 
 function openThemeModal() {
     document.getElementById('theme-modal').style.display = 'flex';
-    if (Object.keys(_themeVars).length === 0) _themeLoad();
+    _renderPresets();
+    if (Object.keys(_themeVars).length === 0) {
+        _themeLoad();
+    } else {
+        _loadSavedThemes();
+    }
 }
 function closeThemeModal() {
+    _themeRevert();
     document.getElementById('theme-modal').style.display = 'none';
+}
+
+function _themeRevert() {
+    // Restore every known CSS var to its last-applied value (or default), discarding unsaved edits
+    for (const meta of THEME_VAR_META) {
+        const val = _themeApplied[meta.key] || _themeDefs[meta.key];
+        if (val) {
+            _applyVarToDocument(meta.key, val);
+        } else {
+            document.documentElement.style.removeProperty(meta.key);
+        }
+    }
+    _themeVars = Object.assign({}, _themeApplied);
 }
 
 async function _themeLoad() {
     const panel = document.getElementById('theme-vars-panel');
-    panel.innerHTML = '<div style="color:var(--muted-text);font-size:0.88rem;">Loading…</div>';
+    panel.innerHTML = '<div style="color:var(--text-secondary);font-size:0.88rem;">Loading…</div>';
     try {
         const res  = await fetch('/api/theme');
         const data = await res.json();
-        _themeVars = Object.assign({}, data.theme);
-        _themeDefs = Object.assign({}, data.defaults);
+        _themeVars    = Object.assign({}, data.theme);
+        _themeDefs    = Object.assign({}, data.defaults);
+        _themeApplied = Object.assign({}, data.theme);
         _themeRenderPanel();
+        _loadSavedThemes();
     } catch (e) {
-        panel.innerHTML = '<div style="color:var(--danger-text);font-size:0.88rem;">Failed to load theme.</div>';
+        panel.innerHTML = '<div style="color:var(--text-danger);font-size:0.88rem;">Failed to load theme.</div>';
     }
 }
 
@@ -1813,14 +2025,26 @@ function _themeRenderPanel() {
     const panel = document.getElementById('theme-vars-panel');
     panel.innerHTML = '';
 
+    let currentGroup = null;
     for (const meta of THEME_VAR_META) {
+        if (meta.group !== currentGroup) {
+            currentGroup = meta.group;
+            const header = document.createElement('div');
+            header.style.cssText = 'font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin:10px 0 4px;padding-bottom:4px;border-bottom:1px solid var(--border);';
+            if (panel.children.length === 0) header.style.marginTop = '0';
+            header.textContent = currentGroup;
+            panel.appendChild(header);
+        }
+
         const rawVal = _themeVars[meta.key] || _themeDefs[meta.key] || '#000000';
         const hexVal = _cssValueToHex(rawVal);
+        const isDefault = !_themeVars[meta.key] || _cssValueToHex(_themeVars[meta.key]) === _cssValueToHex(_themeDefs[meta.key] || '#000000');
+        const safeKey = meta.key.replace('--', '');
 
         const row = document.createElement('div');
         row.className = 'theme-var-row';
         row.innerHTML = `
-            <input type="color" id="thpick-${meta.key.replace('--','')}"
+            <input type="color" id="thpick-${safeKey}"
                    value="${hexVal}"
                    oninput="themePickerChange('${meta.key}', this.value)">
             <div class="theme-var-label">
@@ -1828,10 +2052,13 @@ function _themeRenderPanel() {
                 <span>${meta.desc}</span>
             </div>
             <input type="text" class="theme-var-hex"
-                   id="thhex-${meta.key.replace('--','')}"
+                   id="thhex-${safeKey}"
                    value="${hexVal}" maxlength="9"
                    oninput="themeHexChange('${meta.key}', this.value)"
                    onblur="themeHexBlur('${meta.key}', this.value)">
+            <button title="Reset to default" onclick="themeResetVar('${meta.key}')"
+                    style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.9rem;padding:0 2px;opacity:${isDefault ? '0.25' : '1'};transition:opacity 0.15s;"
+                    id="threset-${safeKey}">↺</button>
         `;
         panel.appendChild(row);
     }
@@ -1850,12 +2077,22 @@ function _applyVarToDocument(key, val) {
     document.documentElement.style.setProperty(key, val);
 }
 
+function _updateResetBtn(key, hex) {
+    const safeKey = key.replace('--', '');
+    const resetBtn = document.getElementById(`threset-${safeKey}`);
+    if (resetBtn) {
+        const defVal = _cssValueToHex(_themeDefs[key] || '#000000');
+        resetBtn.style.opacity = (hex.toLowerCase() === defVal.toLowerCase()) ? '0.25' : '1';
+    }
+}
+
 function themePickerChange(key, hex) {
     _themeVars[key] = hex;
     const safeKey = key.replace('--', '');
     const hexInput = document.getElementById(`thhex-${safeKey}`);
     if (hexInput) hexInput.value = hex;
     _applyVarToDocument(key, hex);
+    _updateResetBtn(key, hex);
     _themeSetStatus('');
 }
 
@@ -1867,6 +2104,7 @@ function themeHexChange(key, raw) {
         const picker = document.getElementById(`thpick-${safeKey}`);
         if (picker) picker.value = clean;
         _applyVarToDocument(key, clean);
+        _updateResetBtn(key, clean);
         _themeSetStatus('');
     }
 }
@@ -1880,6 +2118,20 @@ function themeHexBlur(key, raw) {
     }
 }
 
+function themeResetVar(key) {
+    const defVal = _cssValueToHex(_themeDefs[key] || '#000000');
+    _themeVars[key] = defVal;
+    const safeKey = key.replace('--', '');
+    const picker = document.getElementById(`thpick-${safeKey}`);
+    const hexInput = document.getElementById(`thhex-${safeKey}`);
+    const resetBtn = document.getElementById(`threset-${safeKey}`);
+    if (picker) picker.value = defVal;
+    if (hexInput) hexInput.value = defVal;
+    if (resetBtn) resetBtn.style.opacity = '0.25';
+    _applyVarToDocument(key, defVal);
+    _themeSetStatus('');
+}
+
 async function themeSave() {
     _themeSetStatus('Saving…', 'info');
     try {
@@ -1890,7 +2142,8 @@ async function themeSave() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            _themeSetStatus('✔ Theme saved.', 'success');
+            _themeApplied = Object.assign({}, _themeVars);
+            _themeSetStatus('✔ Theme applied.', 'success');
         } else {
             _themeSetStatus('✘ ' + (data.message || 'Save failed.'), 'error');
         }
@@ -1909,7 +2162,8 @@ async function themeReset() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            _themeVars = Object.assign({}, data.theme);
+            _themeVars    = Object.assign({}, data.theme);
+            _themeApplied = Object.assign({}, data.theme);
             for (const [k, v] of Object.entries(_themeVars)) {
                 _applyVarToDocument(k, v);
             }
@@ -1978,21 +2232,10 @@ async function themeExport() {
 
 // ── CSV EXPORT ───────────────────────────────────────────────────────────────
 
-async function runCsvExport(useFilter) {
+async function runCsvExport() {
     const status = document.getElementById('csv-export-status');
-    status.className = 'hamburger-status info';
+    status.className = 'tool-status info';
     status.textContent = 'Preparing export…';
-
-    let filterTree = null;
-    if (useFilter) {
-        try {
-            const res  = await fetch('/api/current-filter');
-            const data = await res.json();
-            filterTree = data.filter_tree || null;
-        } catch (e) {
-            filterTree = null;
-        }
-    }
 
     const now = new Date();
     const ts  = now.getFullYear().toString()
@@ -2000,8 +2243,7 @@ async function runCsvExport(useFilter) {
         + String(now.getDate()).padStart(2,'0')
         + '_' + String(now.getHours()).padStart(2,'0')
         + String(now.getMinutes()).padStart(2,'0');
-    const scope         = useFilter ? 'filtered' : 'full';
-    const suggestedName = `playdate_library_${scope}_${ts}.csv`;
+    const suggestedName = `playdate_library_${ts}.csv`;
 
     // ── Path 1: pywebview native Save-As dialog ──────────────────────────────
     if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
@@ -2010,25 +2252,25 @@ async function runCsvExport(useFilter) {
         );
         if (!chosenPath) {
             status.textContent = 'Export cancelled.';
-            status.className   = 'hamburger-status';
+            status.className   = 'tool-status';
             return;
         }
         try {
             const res  = await fetch('/api/export-csv-to-path', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: chosenPath, filter_tree: filterTree })
+                body: JSON.stringify({ path: chosenPath, filter_tree: null })
             });
             const data = await res.json();
             if (data.status === 'success') {
                 const sizeKB = Math.round((data.size || 0) / 1024);
-                status.className   = 'hamburger-status success';
+                status.className   = 'tool-status success';
                 status.textContent = `✔ Exported ${data.count} games (${sizeKB} KB) → ${chosenPath}`;
             } else {
                 throw new Error(data.message || 'Export failed.');
             }
         } catch (e) {
-            status.className   = 'hamburger-status error';
+            status.className   = 'tool-status error';
             status.textContent = '✘ ' + e.message;
         }
         return;
@@ -2039,7 +2281,7 @@ async function runCsvExport(useFilter) {
         const res = await fetch('/api/export-csv', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filter_tree: filterTree })
+            body: JSON.stringify({ filter_tree: null })
         });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -2055,10 +2297,10 @@ async function runCsvExport(useFilter) {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         const sizeKB = Math.round(blob.size / 1024);
-        status.className   = 'hamburger-status success';
+        status.className   = 'tool-status success';
         status.textContent = `✔ Export downloaded (${sizeKB} KB)`;
     } catch (e) {
-        status.className   = 'hamburger-status error';
+        status.className   = 'tool-status error';
         status.textContent = '✘ ' + e.message;
     }
 }
@@ -2101,7 +2343,7 @@ function themeImport(input) {
                 _applyVarToDocument(k, v);
             }
             _themeRenderPanel();
-            _themeSetStatus(`✔ Theme imported — ${loaded} color${loaded !== 1 ? 's' : ''} loaded. Hit Save to apply permanently.`, 'success');
+            _themeSetStatus(`✔ Theme imported — ${loaded} color${loaded !== 1 ? 's' : ''} loaded. Hit Apply Theme to keep it.`, 'success');
 
         } catch (err) {
             _themeSetStatus('✘ Could not parse file. Make sure it is a valid JSON theme.', 'error');
@@ -2117,8 +2359,241 @@ function _themeSetStatus(msg, cls) {
     el.className = 'tool-status' + (cls ? ' ' + cls : '');
 }
 
+// ── PRESETS ───────────────────────────────────────────────────────────────────
+const THEME_PRESETS = [
+    {
+        name: 'Steam Dark',
+        vars: { '--bg-page':'#0e1419', '--bg-surface':'#1b2838', '--bg-raised':'#1a2332', '--bg-input':'#101822', '--bg-card':'#101822', '--bg-nav':'#171a21', '--text-primary':'#c7d5e0', '--text-heading':'#e2eaf0', '--text-secondary':'#8f98a0', '--text-input':'#ffffff', '--text-bright':'#ffffff', '--accent':'#66c0f4', '--on-accent':'#0e1621', '--accent-positive':'#5c7e10', '--border':'#2a475e', '--color-danger':'#a32a2a', '--text-danger':'#ff8080', '--color-warning':'#c97c00' }
+    },
+    {
+        name: 'OLED Black',
+        vars: { '--bg-page':'#000000', '--bg-surface':'#0d0d0d', '--bg-raised':'#141414', '--bg-input':'#050505', '--bg-card':'#111111', '--bg-nav':'#000000', '--text-primary':'#d0d8e0', '--text-heading':'#eef2f5', '--text-secondary':'#7a8590', '--text-input':'#ffffff', '--text-bright':'#ffffff', '--accent':'#58b4f0', '--on-accent':'#000000', '--accent-positive':'#4a7a08', '--border':'#222222', '--color-danger':'#8a1a1a', '--text-danger':'#ff6060', '--color-warning':'#a06000' }
+    },
+    {
+        name: 'Slate',
+        vars: { '--bg-page':'#0d1117', '--bg-surface':'#161b22', '--bg-raised':'#1c2128', '--bg-input':'#0d1117', '--bg-card':'#21262d', '--bg-nav':'#0d1117', '--text-primary':'#c9d1d9', '--text-heading':'#f0f6fc', '--text-secondary':'#8b949e', '--text-input':'#f0f6fc', '--text-bright':'#ffffff', '--accent':'#58a6ff', '--on-accent':'#0d1117', '--accent-positive':'#3fb950', '--border':'#30363d', '--color-danger':'#8b1a1a', '--text-danger':'#ff7b72', '--color-warning':'#d29922' }
+    },
+    {
+        name: 'Warm',
+        vars: { '--bg-page':'#120c08', '--bg-surface':'#1e1510', '--bg-raised':'#261a12', '--bg-input':'#120c08', '--bg-card':'#2a1e16', '--bg-nav':'#0e0a06', '--text-primary':'#e0cfc0', '--text-heading':'#f0e5d8', '--text-secondary':'#9a8070', '--text-input':'#f5ede0', '--text-bright':'#ffffff', '--accent':'#e8925a', '--on-accent':'#120c08', '--accent-positive':'#6a9a20', '--border':'#3e2a1a', '--color-danger':'#a03030', '--text-danger':'#ff8060', '--color-warning':'#c08020' }
+    },
+    {
+        name: 'Midnight',
+        vars: { '--bg-page':'#080810', '--bg-surface':'#0f0f1e', '--bg-raised':'#131322', '--bg-input':'#080812', '--bg-card':'#16162a', '--bg-nav':'#06060e', '--text-primary':'#c8cce8', '--text-heading':'#e8eaf8', '--text-secondary':'#8888aa', '--text-input':'#f0f0ff', '--text-bright':'#ffffff', '--accent':'#8888ff', '--on-accent':'#080810', '--accent-positive':'#44aa44', '--border':'#2a2a50', '--color-danger':'#882222', '--text-danger':'#ff8888', '--color-warning':'#cc8800' }
+    },
+];
+
+function _renderPresets() {
+    const row = document.getElementById('theme-presets-row');
+    if (!row) return;
+    row.innerHTML = '';
+    for (const preset of THEME_PRESETS) {
+        const btn = document.createElement('button');
+        btn.className = 'nav-btn';
+        btn.style.cssText = 'font-size:0.78rem; padding:5px 12px;';
+        btn.textContent = preset.name;
+        btn.onclick = () => _applyPreset(preset);
+        row.appendChild(btn);
+    }
+}
+
+function _applyPreset(preset) {
+    for (const [k, v] of Object.entries(preset.vars)) {
+        _themeVars[k] = v;
+        _applyVarToDocument(k, v);
+    }
+    _themeRenderPanel();
+    _themeSetStatus(`Preset "${preset.name}" applied — hit Apply Theme to keep it.`, 'info');
+}
+
+// ── SAVED THEMES ──────────────────────────────────────────────────────────────
+let _savedThemes = {};
+
+async function _loadSavedThemes() {
+    try {
+        const res = await fetch('/api/theme/saved');
+        const data = await res.json();
+        _savedThemes = data.saved || {};
+        _renderSavedThemes();
+    } catch (e) {}
+}
+
+function _renderSavedThemes() {
+    const list = document.getElementById('theme-saved-list');
+    if (!list) return;
+    list.innerHTML = '';
+    const names = Object.keys(_savedThemes);
+    if (names.length === 0) {
+        list.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);font-style:italic;">No saved themes yet.</div>';
+        return;
+    }
+    for (const name of names) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;';
+        row.innerHTML = `
+            <input type="text" value="${name.replace(/"/g,'&quot;')}" data-orig="${name.replace(/"/g,'&quot;')}"
+                style="flex:1;padding:5px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:0.82rem;outline:none;"
+                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+                onkeydown="if(event.key==='Enter')this.blur()"
+                onchange="themeRenameNamed(this.dataset.orig, this.value, this)">
+            <button class="nav-btn" style="font-size:0.78rem;padding:4px 10px;white-space:nowrap;" onclick="themeLoadNamed('${name.replace(/'/g,"\\'")}')">Load</button>
+            <button style="background:none;border:none;color:var(--text-danger);cursor:pointer;font-size:1rem;padding:0 4px;" title="Delete" onclick="themeDeleteNamed('${name.replace(/'/g,"\\'")}')">✕</button>
+        `;
+        list.appendChild(row);
+    }
+}
+
+async function themeSaveNamed() {
+    const input = document.getElementById('theme-save-name');
+    const name = input.value.trim();
+    if (!name) { _themeSetStatus('Enter a name first.', 'error'); return; }
+    try {
+        const res = await fetch('/api/theme/saved', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, theme: _themeVars })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            _savedThemes[name] = Object.assign({}, _themeVars);
+            _renderSavedThemes();
+            input.value = '';
+            _themeSetStatus(`✔ Saved as "${name}".`, 'success');
+        } else {
+            _themeSetStatus('✘ ' + (data.message || 'Save failed.'), 'error');
+        }
+    } catch (e) {
+        _themeSetStatus('✘ Network error.', 'error');
+    }
+}
+
+function themeLoadNamed(name) {
+    const vars = _savedThemes[name];
+    if (!vars) return;
+    for (const [k, v] of Object.entries(vars)) {
+        _themeVars[k] = v;
+        _applyVarToDocument(k, v);
+    }
+    _themeRenderPanel();
+    _themeSetStatus(`"${name}" loaded — hit Apply Theme to keep it.`, 'info');
+}
+
+async function themeDeleteNamed(name) {
+    if (!await confirm(`Delete saved theme "${name}"?`)) return;
+    try {
+        await fetch(`/api/theme/saved/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        delete _savedThemes[name];
+        _renderSavedThemes();
+        _themeSetStatus(`"${name}" deleted.`, 'info');
+    } catch (e) {
+        _themeSetStatus('✘ Delete failed.', 'error');
+    }
+}
+
+async function themeRenameNamed(oldName, newName, inputEl) {
+    newName = newName.trim();
+    if (!newName || newName === oldName) { inputEl.dataset.orig = oldName; return; }
+    try {
+        const res = await fetch(`/api/theme/saved/${encodeURIComponent(oldName)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            _savedThemes[newName] = _savedThemes[oldName];
+            delete _savedThemes[oldName];
+            inputEl.dataset.orig = newName;
+            _renderSavedThemes();
+        } else {
+            inputEl.value = oldName;
+        }
+    } catch (e) {
+        inputEl.value = oldName;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('source-table'));
     initCustomSelect(document.getElementById('appid-col'));
 });
+
+// ── ACCOUNT SETTINGS ─────────────────────────────────────────────────────────
+function toggleCfgKeyVisibility(inputId, btn) {
+    const input = document.getElementById(inputId);
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.style.opacity = show ? '1' : '0.5';
+}
+
+async function detectSteamId() {
+    const status = document.getElementById('cfg-status');
+    status.textContent = 'Detecting…';
+    status.className = 'tool-status info';
+    try {
+        const res = await fetch('/api/detect-steam-id');
+        const data = await res.json();
+        if (data.status === 'success') {
+            document.getElementById('cfg-steam-id').value = data.steam_id;
+            status.textContent = '✔ Steam ID detected.';
+            status.className = 'tool-status success';
+        } else {
+            status.textContent = '✘ Could not detect Steam ID automatically.';
+            status.className = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = '✘ Detection failed.';
+        status.className = 'tool-status error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 4000);
+}
+
+async function saveAccountSettings() {
+    const status = document.getElementById('cfg-status');
+    const steamId = document.getElementById('cfg-steam-id').value.trim();
+    const apiKey  = document.getElementById('cfg-api-key').value.trim();
+    const sgdbKey = document.getElementById('cfg-sgdb-key').value.trim();
+
+    if (!steamId) {
+        status.textContent = '✘ Steam ID is required.';
+        status.className = 'tool-status error';
+        return;
+    }
+
+    status.textContent = 'Saving…';
+    status.className = 'tool-status info';
+    try {
+        const res = await fetch('/save-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ steam_id: steamId, api_key: apiKey, sgdb_key: sgdbKey })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.textContent = '✔ Saved.';
+            status.className = 'tool-status success';
+        } else {
+            status.textContent = '✘ ' + (data.message || 'Save failed.');
+            status.className = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = '✘ Network error.';
+        status.className = 'tool-status error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 5000);
+}
+
+// ── SETTINGS / TOOLS HUB MODALS ──────────────────────────────────────────────
+function openSettingsModal() {
+    document.getElementById('settings-modal').style.display = 'flex';
+}
+function closeSettingsModal() {
+    document.getElementById('settings-modal').style.display = 'none';
+}
+function openToolsModal() {
+    document.getElementById('tools-modal').style.display = 'flex';
+}
+function closeToolsModal() {
+    document.getElementById('tools-modal').style.display = 'none';
+}
 </script>

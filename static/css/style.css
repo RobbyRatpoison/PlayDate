@@ -1,19 +1,22 @@
 :root {
-    --steam-blue:    #1b2838;
-    --steam-input:   #101822;
-    --panel-alt:     #1a2332;
-    --steam-text:    #c7d5e0;
-    --input-text:    #ffffff;
-    --muted-text:    #8f98a0;
-    --steam-focus:   #66c0f4;
-    --accent-text:   #0e1621;
-    --accent-green:  #5c7e10;
-    --nav-bg:        rgba(23, 26, 33, 0.85);
-    --nav-active:    #ffffff;
-    --border-color:  #2a475e;
-    --danger-color:  #a32a2a;
-    --danger-text:   #ff8080;
-    --warning-color: #c97c00;
+    --bg-surface:    #1b2838;
+    --bg-input:   #101822;
+    --bg-raised:     #1a2332;
+    --text-primary:    #c7d5e0;
+    --text-input:    #ffffff;
+    --text-secondary:    #8f98a0;
+    --accent:   #66c0f4;
+    --on-accent:   #0e1621;
+    --accent-positive:  #5c7e10;
+    --bg-nav:        rgba(23, 26, 33, 0.85);
+    --text-bright:    #ffffff;
+    --border:  #2a475e;
+    --color-danger:  #a32a2a;
+    --text-danger:   #ff8080;
+    --color-warning: #c97c00;
+    --bg-page: #0e1419;
+    --bg-card: #101822;
+    --text-heading: #e2eaf0;
 }
 
 html {
@@ -22,12 +25,12 @@ html {
 }
 
 body {
-    background-color: var(--steam-blue);
+    background-color: var(--bg-page);
     background-image: url('/static/img//backgrounds/background.jpg');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
-    color: var(--steam-text);
+    color: var(--text-primary);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
@@ -51,9 +54,9 @@ pre, code, kbd, blockquote,
 
 /* Standardization for all inputs (Modal & Maintenance) */
 input, textarea {
-    background: var(--steam-input);
-    border: 1px solid var(--border-color);
-    color: var(--input-text);
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    color: var(--text-input);
     padding: 10px;
     border-radius: 4px;
     width: 100%;
@@ -62,12 +65,12 @@ input, textarea {
 
 /* All selects get dark background + visible chevron */
 select {
-    background-color: var(--steam-input);
+    background-color: var(--bg-input);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238f98a0' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    border: 1px solid var(--border-color);
-    color: var(--steam-text);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
     padding: 10px 32px 10px 10px;
     border-radius: 4px;
     width: 100%;
@@ -88,12 +91,12 @@ select {
 .custom-select-btn {
     display: block;
     width: 100%;
-    background-color: var(--steam-input);
+    background-color: var(--bg-input);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238f98a0' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    border: 1px solid var(--border-color);
-    color: var(--steam-text);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
     padding: 10px 32px 10px 10px;
     border-radius: 4px;
     cursor: pointer;
@@ -109,15 +112,15 @@ select {
 
 .custom-select-btn:hover,
 .custom-select.open .custom-select-btn {
-    border-color: var(--steam-focus);
+    border-color: var(--accent);
 }
 
 .custom-select-panel {
     display: none;
     position: fixed;
     z-index: 9999;
-    background: var(--steam-blue);
-    border: 1px solid var(--steam-focus);
+    background: var(--bg-surface);
+    border: 1px solid var(--accent);
     border-radius: 4px;
     margin-top: 2px;
     max-height: 300px;
@@ -129,7 +132,7 @@ select {
 .custom-select-option {
     padding: 8px 12px;
     cursor: pointer;
-    color: var(--steam-text);
+    color: var(--text-primary);
     font-size: 0.9rem;
     white-space: nowrap;
 }
@@ -140,7 +143,7 @@ select {
 
 .custom-select-option.selected {
     background: rgba(102, 192, 244, 0.2);
-    color: var(--steam-focus);
+    color: var(--accent);
 }
 
 .custom-select-option.disabled {
@@ -152,11 +155,11 @@ select {
 .custom-select-optgroup {
     padding: 5px 12px 3px;
     font-size: 0.72rem;
-    color: var(--muted-text);
+    color: var(--text-secondary);
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--border);
     margin-top: 2px;
 }
 
@@ -175,12 +178,12 @@ select {
 
 /* Fallback for missing images */
 .img-placeholder {
-    background: linear-gradient(135deg, var(--border-color) 0%, var(--steam-blue) 100%);
+    background: linear-gradient(135deg, var(--border) 0%, var(--bg-surface) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px dashed var(--steam-focus);
-    color: var(--steam-focus);
+    border: 1px dashed var(--accent);
+    color: var(--accent);
 }
 
 /* Navigation Styles from original Library page */
@@ -190,8 +193,8 @@ select {
     align-items: center;
     height: 5vh;
     padding: 0 40px;
-    background: var(--nav-bg);
-    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-nav);
+    border-bottom: 1px solid var(--border);
     box-sizing: border-box;
     position: fixed;
     top: 0;
@@ -209,7 +212,7 @@ select {
 
 .nav-links a,
 #hamburger-btn {
-    color: var(--muted-text);
+    color: var(--text-secondary);
     text-decoration: none;
     font-weight: bold;
     margin-right: 30px;
@@ -228,12 +231,12 @@ select {
 
 .nav-links a:hover,
 #hamburger-btn:hover {
-    color: var(--steam-focus);
+    color: var(--accent);
 }
 
 .nav-links a.active {
-    color: var(--nav-active);
-    border-bottom-color: var(--steam-focus);
+    color: var(--text-bright);
+    border-bottom-color: var(--accent);
 }
 
 /* 2/3 Aspect Ratio Grid for Game Covers */
@@ -245,8 +248,8 @@ select {
 
 .game-card {
     aspect-ratio: 2 / 3;
-    background: var(--steam-input);
-    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     overflow: hidden;
     position: relative;
     border-radius: 4px;
@@ -263,9 +266,9 @@ select {
 }
 
 .modal-content {
-    background: var(--steam-blue);
+    background: var(--bg-surface);
     padding: 30px;
-    border: 1px solid var(--steam-focus);
+    border: 1px solid var(--accent);
     border-radius: 8px;
     width: 400px;
     box-shadow: 0 0 20px rgba(102, 192, 244, 0.2);
@@ -273,14 +276,14 @@ select {
 
 .hint-link {
     font-size: 0.8rem;
-    color: var(--steam-focus);
+    color: var(--accent);
     text-decoration: none;
     display: block;
     margin-bottom: 5px;
 }
 
 .nav-btn {
-    background: var(--steam-blue);
+    background: var(--bg-surface);
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
@@ -300,21 +303,21 @@ select {
 }
 
 .nav-btn:hover {
-    background: var(--steam-focus);
-    color: var(--steam-blue);
+    background: var(--accent);
+    color: var(--bg-surface);
     box-shadow: 0 0 10px rgba(102, 192, 244, 0.4);
 }
 
 .nav-btn:active {
-    background: var(--steam-focus);
+    background: var(--accent);
     filter: brightness(0.85);
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
     transform: translateY(1px);
 }
 
 .btn-save {
-    background: var(--accent-green);
-    color: var(--nav-active);
+    background: var(--accent-positive);
+    color: var(--text-bright);
     border: none;
     padding: 12px;
     width: 100%;
@@ -327,7 +330,7 @@ select {
 .nav-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
-    background: var(--panel-alt);
+    background: var(--bg-raised);
 }
 
 .btn-save:hover {
@@ -335,14 +338,14 @@ select {
 }
 
 .exit-btn {
-    border-color: var(--danger-color) !important;
-    color: var(--steam-text) !important;
+    border-color: var(--color-danger) !important;
+    color: var(--text-primary) !important;
     margin-left: auto;
-    background-color: var(--danger-color) !important;
+    background-color: var(--color-danger) !important;
 }
 
 .exit-btn:hover {
-    color: var(--nav-active) !important;
+    color: var(--text-bright) !important;
 }
 
 /* ── Gamepad / controller focus indicators ───────────────────────────────────
@@ -357,23 +360,23 @@ select {
 
 /* Library game cards — matches border-color hover + adds glow */
 .game-card.gamepad-focus {
-    border-color: var(--steam-focus) !important;
-    box-shadow: 0 0 0 2px var(--steam-focus), 0 0 12px rgba(102, 192, 244, 0.35);
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(102, 192, 244, 0.35);
     transform: scale(1.05);
 }
 
 /* Pick result cards — matches scale(1.0) hover */
 .result-card.gamepad-focus {
-    border-color: var(--steam-focus) !important;
+    border-color: var(--accent) !important;
     transform: scale(1.0);
-    box-shadow: 0 0 0 2px var(--steam-focus), 0 0 10px rgba(102, 192, 244, 0.3);
+    box-shadow: 0 0 0 2px var(--accent), 0 0 10px rgba(102, 192, 244, 0.3);
 }
 
 /* Nav page links and settings button */
 .nav-links a.gamepad-focus,
 #hamburger-btn.gamepad-focus {
-    color: var(--steam-focus);
-    outline: 2px solid var(--steam-focus);
+    color: var(--accent);
+    outline: 2px solid var(--accent);
     outline-offset: 4px;
     border-radius: 2px;
 }
@@ -382,34 +385,34 @@ select {
 .nav-links button.gamepad-focus,
 #fullscreen-button.gamepad-focus,
 #exit-button.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
 /* Generic .nav-btn anywhere (tools page, pick page, library toolbar etc.) */
 .nav-btn.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
 }
 
 /* Library toolbar — covers SEARCH, order toggle, clear filters (no .nav-btn class) */
 .search-nav-bar button.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
 }
 
 /* Any custom-select div when focused — highlights the visible button inside */
 .custom-select.gamepad-focus .custom-select-btn {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
 /* Library toolbar sort select */
 .search-nav-bar select.gamepad-focus,
 .search-nav-bar .custom-select.gamepad-focus .custom-select-btn {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
 }
@@ -423,14 +426,14 @@ select {
 
 /* Pick main button */
 .pick-btn.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     box-shadow: 0 0 10px rgba(102, 192, 244, 0.4);
 }
 
 /* Pick weighted sliders */
 input[type="range"].gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 4px;
 }
 
@@ -443,7 +446,7 @@ input[type="range"].gamepad-focus {
 
 /* Pick pool toggle */
 .toggle-switch.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 4px;
     border-radius: 4px;
 }
@@ -461,49 +464,49 @@ input[type="range"].gamepad-focus {
 /* pd-dialog buttons */
 #pd-btn-ok.gamepad-focus,
 #pd-btn-cancel.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
 /* Any button inside a modal overlay */
 .modal-overlay button.gamepad-focus {
-    outline: 2px solid var(--steam-focus) !important;
+    outline: 2px solid var(--accent) !important;
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.4);
 }
 
 /* Home page edit mode — shelf mini-buttons and add-shelf button */
 .shelf-edit-mini-btn.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
-    color: var(--steam-focus) !important;
-    border-color: var(--steam-focus) !important;
+    color: var(--accent) !important;
+    border-color: var(--accent) !important;
 }
 
 .add-shelf-btn.gamepad-focus {
-    border-color: var(--steam-focus) !important;
-    color: var(--steam-focus) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
 }
 
 /* Blacklist remove buttons */
 .bl-remove-btn.gamepad-focus {
-    outline: 2px solid var(--steam-focus);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
-    border-color: var(--steam-focus) !important;
-    color: var(--steam-focus) !important;
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
 }
 
 /* Hamburger menu items */
 .hamburger-item.gamepad-focus {
     background: #243447;
-    color: var(--steam-focus);
+    color: var(--accent);
 }
 
 /* Custom select dropdown options */
 .custom-select-option.gamepad-focus {
     background: #243447;
-    color: var(--steam-focus);
+    color: var(--accent);
 }

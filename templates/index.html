@@ -19,7 +19,7 @@
     }
     .shelf-label {
         font-size: 1.1vh; font-weight: bold; letter-spacing: 1px;
-        color: var(--steam-focus); text-align: center; margin-bottom: 4px; flex-shrink: 0;
+        color: var(--accent); text-align: center; margin-bottom: 4px; flex-shrink: 0;
     }
     .shelf-grid {
         display: flex; flex-direction: row; flex-wrap: nowrap;
@@ -37,7 +37,7 @@
     .shelf-capsule:hover { transform: scale(1.0); }
     .shuffle-link { text-decoration: none; flex-shrink: 0; cursor: pointer; }
     .shuffle-link .shelf-label { cursor: pointer; }
-    .shuffle-link .shelf-label:hover { color: var(--nav-active); }
+    .shuffle-link .shelf-label:hover { color: var(--text-bright); }
     .shuffle-link .shelf-label::after { content: ' ↻'; opacity: 0; transition: opacity 0.15s; font-size: 0.8em; }
     .shuffle-link .shelf-label:hover::after { opacity: 0.6; }
 
@@ -48,7 +48,7 @@
     }
     .clock-time {
         font-size: clamp(1rem,3.5vw,4.5rem); font-weight: bold;
-        line-height: 1; font-family: 'Courier New',Courier,monospace; color: var(--nav-active);
+        line-height: 1; font-family: 'Courier New',Courier,monospace; color: var(--text-bright);
     }
     .clock-date {
         font-size: clamp(0.5rem,1vw,1.2rem); opacity: 0.6; margin-top: 6px;
@@ -67,9 +67,9 @@
     .completion-pie-wrap canvas { width: 100% !important; height: 100% !important; cursor: default; }
     .pie-tooltip {
         position: fixed; pointer-events: none;
-        background: var(--panel-alt); border: 1px solid var(--border-color);
+        background: var(--bg-raised); border: 1px solid var(--border);
         border-radius: 4px; padding: 5px 10px;
-        font-size: 0.8rem; color: var(--steam-text); white-space: nowrap;
+        font-size: 0.8rem; color: var(--text-primary); white-space: nowrap;
         z-index: 300; display: none;
     }
     .pie-tooltip-swatch {
@@ -100,8 +100,8 @@
         display: none;
         position: fixed; top: 0; left: 0; right: 0;
         height: 5vh;
-        background: var(--nav-bg);
-        border-bottom: 1px solid var(--steam-focus);
+        background: var(--bg-nav);
+        border-bottom: 1px solid var(--accent);
         padding: 0 16px;
         z-index: 1001; /* above nav bar */
         align-items: center; gap: 10px;
@@ -109,84 +109,84 @@
     body.edit-mode .edit-toolbar { display: flex; }
     /* Hide the nav bar in edit mode */
     body.edit-mode .nav-header { display: none; }
-    .edit-toolbar-title { color: var(--steam-focus); font-weight: bold; font-size: 0.85rem; letter-spacing: 1px; text-transform: uppercase; margin-right: 8px; }
+    .edit-toolbar-title { color: var(--accent); font-weight: bold; font-size: 0.85rem; letter-spacing: 1px; text-transform: uppercase; margin-right: 8px; }
 
     .shelf-edit-bar {
         display: none; position: absolute; top: 0; left: 0; right: 0;
-        background: var(--nav-bg); border-bottom: 1px solid rgba(102,192,244,0.25);
+        background: var(--bg-nav); border-bottom: 1px solid rgba(102,192,244,0.25);
         padding: 3px 8px; z-index: 100; align-items: center; gap: 6px;
         border-radius: 4px 4px 0 0;
     }
     body.edit-mode .shelf-edit-bar { display: flex; }
-    .shelf-edit-bar label { color: var(--muted-text); font-size: 0.72rem; white-space: nowrap; }
+    .shelf-edit-bar label { color: var(--text-secondary); font-size: 0.72rem; white-space: nowrap; }
     .shelf-edit-bar input[type="number"] {
-        background: var(--steam-input); border: 1px solid var(--border-color); color: var(--input-text);
+        background: var(--bg-input); border: 1px solid var(--border); color: var(--text-input);
         padding: 3px 5px; border-radius: 4px; font-size: 0.78rem; width: 50px;
     }
     .shelf-edit-mini-btn {
-        background: none; border: 1px solid var(--border-color); color: var(--muted-text);
+        background: none; border: 1px solid var(--border); color: var(--text-secondary);
         border-radius: 3px; padding: 2px 7px; font-size: 0.72rem;
         cursor: pointer; white-space: nowrap; transition: all 0.15s;
     }
-    .shelf-edit-mini-btn:hover { border-color: var(--steam-focus); color: var(--steam-focus); }
-    .shelf-edit-mini-btn.danger { border-color: var(--danger-color); color: var(--danger-text); opacity: 0.7; }
-    .shelf-edit-mini-btn.danger:hover { border-color: var(--danger-color); color: var(--danger-text); opacity: 1; }
+    .shelf-edit-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .shelf-edit-mini-btn.danger { border-color: var(--color-danger); color: var(--text-danger); opacity: 0.7; }
+    .shelf-edit-mini-btn.danger:hover { border-color: var(--color-danger); color: var(--text-danger); opacity: 1; }
     .shelf-edit-mini-btn.drag-handle { cursor: grab; }
-    .edit-sep { width: 1px; height: 16px; background: var(--border-color); margin: 0 2px; flex-shrink: 0; }
+    .edit-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
 
     .shelf-sql-panel {
         display: none; position: absolute; top: auto; left: 0; right: 0;
-        background: var(--steam-input); border: 1px solid var(--border-color); border-top: none;
+        background: var(--bg-input); border: 1px solid var(--border); border-top: none;
         padding: 8px 10px; z-index: 99; border-radius: 0 0 4px 4px;
     }
     .shelf-sql-panel.open { display: block; }
     .shelf-sql-panel textarea {
-        width: 100%; box-sizing: border-box; background: var(--steam-blue); border: 1px solid var(--border-color);
-        color: var(--steam-text); font-family: monospace; font-size: 0.78rem;
+        width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border);
+        color: var(--text-primary); font-family: monospace; font-size: 0.78rem;
         padding: 6px 8px; border-radius: 4px; resize: vertical; min-height: 50px; outline: none;
     }
-    .shelf-sql-panel textarea:focus { border-color: var(--steam-focus); }
+    .shelf-sql-panel textarea:focus { border-color: var(--accent); }
 
     /* Split picker modal */
     #split-picker {
         display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-        background: var(--panel-alt); border: 1px solid var(--steam-focus);
+        background: var(--bg-raised); border: 1px solid var(--accent);
         border-radius: 8px; padding: 20px 24px; z-index: 600; width: 340px;
         box-shadow: 0 0 30px rgba(0,0,0,0.7);
     }
-    #split-picker h3 { color: var(--nav-active); margin: 0 0 6px; font-size: 1rem; }
-    #split-picker p  { color: var(--muted-text); font-size: 0.8rem; margin: 0 0 12px; }
+    #split-picker h3 { color: var(--text-bright); margin: 0 0 6px; font-size: 1rem; }
+    #split-picker p  { color: var(--text-secondary); font-size: 0.8rem; margin: 0 0 12px; }
     #split-picker-list { list-style: none; padding: 0; margin: 0 0 14px; max-height: 220px; overflow-y: auto; }
     #split-picker-list li,
     #split-picker-pos-list li {
-        padding: 8px 12px; background: var(--steam-input); border: 1px solid var(--border-color);
-        border-radius: 4px; margin-bottom: 6px; cursor: pointer; color: var(--steam-text); font-size: 0.85rem;
+        padding: 8px 12px; background: var(--bg-input); border: 1px solid var(--border);
+        border-radius: 4px; margin-bottom: 6px; cursor: pointer; color: var(--text-primary); font-size: 0.85rem;
         transition: border-color 0.15s;
     }
-    #split-picker-list li:hover { border-color: var(--steam-focus); color: var(--nav-active); }
+    #split-picker-list li:hover { border-color: var(--accent); color: var(--text-bright); }
 
     #dedup-panel {
         display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-        background: var(--panel-alt); border: 1px solid var(--steam-focus);
+        background: var(--bg-raised); border: 1px solid var(--accent);
         border-radius: 8px; padding: 20px 24px; z-index: 600; width: 360px;
         box-shadow: 0 0 30px rgba(0,0,0,0.7);
     }
-    #dedup-panel h3 { color: var(--nav-active); margin: 0 0 6px; font-size: 1rem; }
-    #dedup-panel p  { color: var(--muted-text); font-size: 0.8rem; margin: 0 0 14px; }
+    #dedup-panel h3 { color: var(--text-bright); margin: 0 0 6px; font-size: 1rem; }
+    #dedup-panel p  { color: var(--text-secondary); font-size: 0.8rem; margin: 0 0 14px; }
     #dedup-list { list-style: none; padding: 0; margin: 0 0 14px; }
     #dedup-list li {
         display: flex; align-items: center; gap: 8px; padding: 7px 10px;
-        background: var(--steam-input); border: 1px solid var(--border-color); border-radius: 4px;
-        margin-bottom: 6px; cursor: grab; color: var(--steam-text); font-size: 0.85rem; user-select: none;
+        background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
+        margin-bottom: 6px; cursor: grab; color: var(--text-primary); font-size: 0.85rem; user-select: none;
         transition: border-color 0.1s, background 0.1s;
     }
-    #dedup-list li.drag-over { border-color: var(--steam-focus); background: var(--steam-blue); }
+    #dedup-list li.drag-over { border-color: var(--accent); background: var(--bg-surface); }
     #dedup-list li.dragging  { opacity: 0.4; cursor: grabbing; }
     body.dedup-dragging, body.dedup-dragging * { cursor: grabbing !important; user-select: none !important; }
-    .dedup-no-dedup { color: var(--border-color); font-size: 0.75rem; margin-left: auto; }
+    .dedup-no-dedup { color: var(--border); font-size: 0.75rem; margin-left: auto; }
     #dedup-list li { justify-content: space-between; }
     #dedup-list .dedup-row-left { display:flex; align-items:center; gap:8px; pointer-events:none; }
-    #dedup-list .dedup-toggle { display:flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--muted-text); flex-shrink:0; cursor:pointer; user-select:none; }
+    #dedup-list .dedup-toggle { display:flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--text-secondary); flex-shrink:0; cursor:pointer; user-select:none; }
     #dedup-list .dedup-toggle input { width:auto; margin:0; cursor:pointer; }
 
     .add-shelf-btn {
@@ -196,11 +196,11 @@
         transition: all 0.2s; width: 100%; margin-top: 4px; display: none;
     }
     body.edit-mode .add-shelf-btn { display: block; }
-    .add-shelf-btn:hover { border-color: var(--steam-focus); color: var(--steam-focus); }
+    .add-shelf-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     .shelf.dragging, .shelf-split-row.dragging { opacity: 0.4; }
     .shelf.drag-over, .shelf-split-row.drag-over {
-        border: 2px solid var(--steam-focus) !important;
+        border: 2px solid var(--accent) !important;
         background: rgba(102,192,244,0.18) !important;
         box-shadow: none !important;
     }
@@ -215,22 +215,22 @@
     }
     #shelf-edit-modal.open { display: flex; }
     #shelf-edit-modal .sem-box {
-        background: var(--panel-alt); border: 1px solid var(--border-color);
+        background: var(--bg-raised); border: 1px solid var(--border);
         border-radius: 10px; padding: 24px 28px; width: 480px;
         max-width: 95vw; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
     }
-    #shelf-edit-modal h3 { margin: 0 0 18px; color: var(--nav-active); font-size: 1rem; letter-spacing: 0.03em; }
-    #shelf-edit-modal label { display: block; color: var(--muted-text); font-size: 0.78rem; margin-bottom: 4px; margin-top: 12px; }
+    #shelf-edit-modal h3 { margin: 0 0 18px; color: var(--text-bright); font-size: 1rem; letter-spacing: 0.03em; }
+    #shelf-edit-modal label { display: block; color: var(--text-secondary); font-size: 0.78rem; margin-bottom: 4px; margin-top: 12px; }
     #shelf-edit-modal label:first-of-type { margin-top: 0; }
     #shelf-edit-modal input[type="text"], #shelf-edit-modal select, #shelf-edit-modal textarea {
         width: 100%; box-sizing: border-box;
     }
     #shelf-edit-modal textarea {
-        background: var(--steam-input); border: 1px solid var(--border-color); color: var(--steam-text);
+        background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
         font-family: monospace; font-size: 0.82rem; padding: 6px 8px;
         border-radius: 4px; resize: vertical; min-height: 52px; outline: none;
     }
-    #shelf-edit-modal textarea:focus { border-color: var(--steam-focus); }
+    #shelf-edit-modal textarea:focus { border-color: var(--accent); }
 </style>
 {% endblock %}
 
@@ -247,12 +247,12 @@
 
 <div class="edit-toolbar">
     <span class="edit-toolbar-title">✏ EDITING</span>
-    <button class="nav-btn" onclick="saveLayout()" style="border-color:var(--accent-green);background:var(--steam-blue);color:var(--accent-green);">💾 SAVE LAYOUT</button>
+    <button class="nav-btn" onclick="saveLayout()" style="border-color:var(--accent-positive);background:var(--bg-surface);color:var(--accent-positive);">💾 SAVE LAYOUT</button>
     <button class="nav-btn" onclick="openDedupPanel()">⇅ SHELF PRIORITY</button>
     <button class="nav-btn" onclick="addNewShelf()">＋ ADD SHELF</button>
-    <button class="nav-btn" onclick="resetLayout()" style="border-color:var(--danger-color);color:var(--danger-text);"
-        onmouseover="this.style.background='var(--danger-color)';this.style.color='var(--nav-active)'"
-        onmouseout="this.style.background='';this.style.color='var(--danger-text)'">↺ RESET</button>
+    <button class="nav-btn" onclick="resetLayout()" style="border-color:var(--color-danger);color:var(--text-danger);"
+        onmouseover="this.style.background='var(--color-danger)';this.style.color='var(--text-bright)'"
+        onmouseout="this.style.background='';this.style.color='var(--text-danger)'">↺ RESET</button>
     <button class="nav-btn" onclick="exitEditMode()" style="margin-left:auto;">✕ CANCEL</button>
 </div>
 
@@ -282,7 +282,7 @@
             </select>
         </div>
 
-        <div style="display:flex; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border-color);">
+        <div style="display:flex; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
             <button class="btn-save" data-modal-row="0" style="flex:2; margin:0;" onclick="semSave()">Apply</button>
             <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:10px;" onclick="semClose()">Cancel</button>
         </div>
@@ -401,7 +401,7 @@
     </div>
     <!-- Step 2: pick position -->
     <div id="split-picker-pos-step" style="display:none;">
-        <p id="split-picker-pos-desc" style="color:var(--steam-text);font-size:0.85rem;margin:0 0 10px;"></p>
+        <p id="split-picker-pos-desc" style="color:var(--text-primary);font-size:0.85rem;margin:0 0 10px;"></p>
         <ul id="split-picker-pos-list"></ul>
         <button class="shelf-edit-mini-btn" style="margin-top:4px;" onclick="openSplitPicker(_splitPickerFor)">← Back</button>
     </div>
@@ -844,12 +844,12 @@ function openSplitPicker(sid) {
     list.innerHTML = '';
 
     if (!candidates.length) {
-        list.innerHTML = '<li style="cursor:default;color:var(--muted-text);">No other shelves available.</li>';
+        list.innerHTML = '<li style="cursor:default;color:var(--text-secondary);">No other shelves available.</li>';
     } else {
         candidates.forEach(c => {
             const li = document.createElement('li');
             const inOtherGroup = c.split_group && c.split_group !== selfGroup;
-            li.innerHTML = `<span>${c.label}</span>${inOtherGroup ? '<span style="color:var(--warning-color);font-size:0.72rem;margin-left:auto;">⚠ will leave current row</span>' : ''}`;
+            li.innerHTML = `<span>${c.label}</span>${inOtherGroup ? '<span style="color:var(--color-warning);font-size:0.72rem;margin-left:auto;">⚠ will leave current row</span>' : ''}`;
             li.style.display = 'flex'; li.style.alignItems = 'center';
             li.onclick = async () => {
                 if (inOtherGroup && !await confirm(`"${c.label}" is currently in another split row. Remove it from there and add it here?`)) return;
@@ -1061,7 +1061,7 @@ function addNewShelf() {
             </div>
         </div>
         <div class="shelf-label" id="label-${id}">NEW SHELF</div>
-        <div class="shelf-grid"><span style="color:var(--muted-text);font-size:0.8rem;margin:auto;">Set a query and save to populate</span></div>
+        <div class="shelf-grid"><span style="color:var(--text-secondary);font-size:0.8rem;margin:auto;">Set a query and save to populate</span></div>
     `;
     container.insertBefore(el, addBtn);
     buildAllEditBars(); initDragAndDrop();

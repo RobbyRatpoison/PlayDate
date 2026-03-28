@@ -106,7 +106,7 @@
     .hamburger-item:hover:not(:disabled) { background: #243447; }
     .hamburger-item:disabled { opacity: 0.5; cursor: default; }
     .hamburger-populate {
-        color: var(--steam-focus);
+        color: var(--accent);
         font-weight: bold;
         font-size: 0.82rem;
         letter-spacing: 0.04em;
@@ -119,13 +119,13 @@
     .hamburger-status {
         padding: 2px 16px 4px;
         font-size: 0.78rem;
-        color: var(--muted-text);
+        color: var(--text-secondary);
         display: none;
     }
     .hamburger-status:not(:empty) { display: block; }
-    .hamburger-status.success { color: var(--accent-green); }
-    .hamburger-status.error   { color: var(--danger-text); }
-    .hamburger-status.info    { color: var(--steam-focus); }
+    .hamburger-status.success { color: var(--accent-positive); }
+    .hamburger-status.error   { color: var(--text-danger); }
+    .hamburger-status.info    { color: var(--accent); }
     </style>
     {% block extra_css %}{% endblock %}
     <script>
@@ -155,23 +155,8 @@
                     <button id="add-button" class="hamburger-item hamburger-populate">POPULATE PLAYDATE</button>
                     <div class="hamburger-sep"></div>
                     <button class="hamburger-item" onclick="closeHamburger();window.location.href='/?edit=1'">Edit Home Layout</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openBlacklistModal()">Manage Blacklist</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openBackupModal()">Backup &amp; Restore</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openImportModal()">Import Database</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openPlayniteModal()">Import from Playnite</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openBgModal()">Background Image</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openPagModal()">PAGYWOSG Filter Builder</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openThemeModal()">Theme Editor</button>
-                    <div class="hamburger-sep"></div>
-                    <button id="blaeo-btn" class="hamburger-item" onclick="runBlaeo()">Sync BLAEO</button>
-                    <div id="blaeo-status" class="hamburger-status"></div>
-                    <button class="hamburger-item" onclick="runCsvExport(false)">Export Full Library to CSV</button>
-                    <button class="hamburger-item" onclick="runCsvExport(true)">Export Current Filter to CSV</button>
-                    <div id="csv-export-status" class="hamburger-status"></div>
-                    <div class="hamburger-sep"></div>
-                    <button id="update-check-btn" class="hamburger-item" onclick="handleUpdateBtn()"><span id="update-check-label">Check for Updates</span><span id="update-menu-dot"></span></button>
-                    <button id="autoupdate-toggle-btn" class="hamburger-item" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
-                    <div id="update-menu-status" class="hamburger-status"></div>
+                    <button class="hamburger-item" onclick="closeHamburger();openSettingsModal()">Settings</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openToolsModal()">Tools</button>
                 </div>
             </div>
             <a class="{{ 'active' if request.path == '/' }}" onclick="window.location.href='/'">HOME</a>
@@ -233,7 +218,7 @@
             transition: opacity 0.15s;
         }
         #pd-dialog-btns button:hover { opacity: 0.85; }
-        #pd-btn-ok    { background: var(--steam-focus); color: #0e1621; border-color: var(--steam-focus); }
+        #pd-btn-ok    { background: var(--accent); color: #0e1621; border-color: var(--accent); }
         #pd-btn-cancel { background: transparent; color: #c7d5e0; }
     </style>
 
@@ -384,7 +369,7 @@
         .ctx-item.has-sub:hover .ctx-sub { display: block; }
         .ctx-sub .ctx-item { padding: 7px 16px; font-size: 0.83rem; }
         .ctx-sub .ctx-item.current-status {
-            color: var(--steam-focus);
+            color: var(--accent);
         }
         .ctx-sub .ctx-item.current-status::before {
             content: '✓ ';
@@ -877,12 +862,12 @@
                             const btn = document.getElementById('add-button');
                             if (msg.status === 'success') {
                                 btn.innerText = `✔ Added ${msg.added} game${msg.added !== 1 ? 's' : ''}`;
-                                btn.style.borderColor = 'var(--accent-green)';
+                                btn.style.borderColor = 'var(--accent-positive)';
                             } else if (msg.status === 'cancelled') {
                                 btn.innerText = `Cancelled — ${msg.added} added`;
                             } else {
                                 btn.innerText = `✘ Failed`;
-                                btn.style.borderColor = 'var(--danger-color)';
+                                btn.style.borderColor = 'var(--color-danger)';
                             }
                             setTimeout(() => {
                                 _resetPopulateBtn();
@@ -1063,7 +1048,6 @@
 
         async function handleUpdateBtn() {
             if (_updateAvailable) {
-                closeHamburger();
                 if (!await confirm(`Install PlayDate v${_latestVersion}?\n\nThe app will close and the update will begin.`)) return;
                 document.getElementById('update-check-label').textContent = 'Updating\u2026';
                 await fetch('/api/perform-update', { method: 'POST' }).catch(() => {});
@@ -1082,8 +1066,8 @@
                     } else {
                         label.textContent = 'Check for Updates';
                         status.textContent = data.error ? 'Check failed.' : "You're up to date!";
-                        status.className = 'hamburger-status ' + (data.error ? 'error' : 'success');
-                        setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 4000);
+                        status.className = 'tool-status ' + (data.error ? 'error' : 'success');
+                        setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 4000);
                     }
                 } catch (e) {
                     label.textContent = 'Check for Updates';
