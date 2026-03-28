@@ -1,6 +1,7 @@
 import os
 import platform
 import re
+import struct
 import logging
 from database import get_db, update_game_data
 from datetime import datetime
@@ -112,6 +113,169 @@ def find_steam_path():
 
     return None
 
+
+def detect_steam_id():
+    """
+    Detects the SteamID64 from the userdata folder.
+    If multiple accounts exist, picks the one whose localconfig.vdf was most
+    recently modified (most likely the active account).
+    Returns a SteamID64 string, or None if not found.
+    """
+    steam_root = find_steam_root()
+    if not steam_root:
+        return None
+
+    userdata = os.path.join(steam_root, 'userdata')
+    if not os.path.isdir(userdata):
+        return None
+
+    candidates = []
+    for subdir in os.listdir(userdata):
+        if subdir.isdigit():
+            lc_path = os.path.join(userdata, subdir, 'config', 'localconfig.vdf')
+            if os.path.isfile(lc_path):
+                candidates.append((subdir, os.path.getmtime(lc_path)))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    steamid3 = candidates[0][0]
+    return str(int(steamid3) + 76561197960265728)
+
+
+def find_steam_root():
+    """Returns the Steam installation root directory (parent of steamapps), or None."""
+    steamapps = find_steam_path()
+    if steamapps:
+        return os.path.dirname(steamapps)
+    return None
+
+
+def find_localconfig_path(steam_id=None):
+    """
+    Locates localconfig.vdf for the given SteamID64.
+    If steam_id is not provided (or the derived folder doesn't exist), falls back
+    to auto-detecting the account by listing numeric subdirs of userdata/.
+    Returns the file path string, or None if not found.
+    """
+    steam_root = find_steam_root()
+    if not steam_root:
+        return None
+
+    userdata = os.path.join(steam_root, 'userdata')
+    if not os.path.isdir(userdata):
+        return None
+
+    # Try the configured account first (SteamID64 → SteamID3)
+    if steam_id:
+        try:
+            steamid3 = str(int(steam_id) - 76561197960265728)
+            candidate = os.path.join(userdata, steamid3, 'config', 'localconfig.vdf')
+            if os.path.isfile(candidate):
+                return candidate
+        except (ValueError, TypeError):
+            pass
+
+    # Auto-detect: try every numeric subdir and return the first localconfig found
+    for subdir in os.listdir(userdata):
+        if subdir.isdigit():
+            candidate = os.path.join(userdata, subdir, 'config', 'localconfig.vdf')
+            if os.path.isfile(candidate):
+                return candidate
+
+    return None
+
+
+def fetch_local_library(steam_id=None):
+    """
+    Parses localconfig.vdf and returns a list of dicts for every game that has
+    been launched at least once:
+        {'appid': int, 'playtime_forever': int (minutes), 'last_played': str 'YYYY-MM-DD'}
+    Returns an empty list if the file cannot be found or parsed.
+    """
+    try:
+        import vdf
+    except ImportError:
+        log.error("fetch_local_library: 'vdf' package not installed. Run: pip install vdf")
+        return []
+
+    path = find_localconfig_path(steam_id)
+    if not path:
+        log.warning("fetch_local_library: localconfig.vdf not found")
+        return []
+
+    try:
+        with open(path, encoding='utf-8', errors='ignore') as f:
+            data = vdf.load(f)
+    except Exception as e:
+        log.error(f"fetch_local_library: failed to parse {path} — {e}")
+        return []
+
+    try:
+        store  = data.get('UserLocalConfigStore', data.get('userlocalconfigstore', {}))
+        valve  = store.get('Software', store.get('software', {})).get('Valve', {})
+        steam  = valve.get('Steam', valve.get('steam', {}))
+        apps   = steam.get('apps', steam.get('Apps', {}))
+    except Exception as e:
+        log.error(f"fetch_local_library: unexpected VDF structure — {e}")
+        return []
+
+    games = []
+    for appid_str, info in apps.items():
+        if not appid_str.isdigit() or not isinstance(info, dict):
+            continue
+        try:
+            playtime = int(info.get('Playtime', info.get('playtime', 0)))
+        except (ValueError, TypeError):
+            playtime = 0
+        try:
+            ts = int(info.get('LastPlayed', info.get('lastplayed', 0)))
+            last_played = datetime.fromtimestamp(ts).strftime('%Y-%m-%d') if ts > 0 else '0'
+        except (ValueError, TypeError):
+            last_played = '0'
+
+        games.append({
+            'appid':            int(appid_str),
+            'playtime_forever': playtime,
+            'last_played':      last_played,
+        })
+
+    log.info(f"fetch_local_library: found {len(games)} entries in localconfig.vdf")
+    return games
+
+
+def get_acf_names():
+    """
+    Reads every appmanifest_*.acf file in the steamapps folder and returns a
+    dict mapping appid (int) → game name (str) for all installed real games.
+    """
+    names = {}
+    steam_path = find_steam_path()
+    if not steam_path or not os.path.isdir(steam_path):
+        return names
+
+    for filename in os.listdir(steam_path):
+        if not (filename.startswith('appmanifest_') and filename.endswith('.acf')):
+            continue
+        file_path = os.path.join(steam_path, filename)
+        if not is_real_game(file_path):
+            continue
+        match = re.search(r'appmanifest_(\d+)\.acf', filename)
+        if not match:
+            continue
+        appid = int(match.group(1))
+        try:
+            with open(file_path, encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            name_match = re.search(r'"name"\s+"([^"]+)"', content)
+            if name_match:
+                names[appid] = name_match.group(1)
+        except Exception:
+            pass
+
+    return names
+
 def get_locally_installed_appids():
     """
     Scans the Steam library for manifest files to find truly installed games.
@@ -148,7 +312,7 @@ def is_real_game(file_path):
         return False
 
     # Check for known non-game directory patterns
-    if any(term in content for term in ['Steamworks Shared', 'Proton', 'SteamLinuxRuntime']):
+    if any(term in content for term in ['Steamworks Shared', 'Proton', 'SteamLinuxRuntime', 'EasyAntiCheat', 'Redistributable']):
         return False
 
     return True
@@ -229,3 +393,180 @@ def get_all_unique_categories():
             parts = [c.strip() for c in row['categories'].split(',') if c.strip()]
             all_categories.update(parts)
     return sorted(list(all_categories))
+
+
+def parse_appinfo():
+    """
+    Parses Steam's binary appinfo.vdf (v29) and returns a dict mapping
+    appid (int) → {'name': str, 'type': str} for every app in the cache.
+
+    File layout (v29, magic 0x07564429):
+      bytes 0-3:  magic
+      bytes 4-7:  universe
+      bytes 8-11: key_table_offset  (offset of the string-pool key table)
+      bytes 12-15: unknown (always 0)
+      bytes 16+:  app records, each:
+        [4] appid
+        [4] size  (bytes following size field through end of record = 60 + VDF bytes)
+        [60] metadata (state, timestamps, checksums, change_number)
+        [?] VDF binary data keyed by 4-byte IDs into the key table
+
+    Returns {} on any error (file not found, wrong format, etc.).
+    """
+    steam_root = find_steam_root()
+    if not steam_root:
+        log.debug("parse_appinfo: Steam root not found")
+        return {}
+
+    path = os.path.join(steam_root, 'appcache', 'appinfo.vdf')
+    if not os.path.isfile(path):
+        log.debug(f"parse_appinfo: {path} not found")
+        return {}
+
+    try:
+        with open(path, 'rb') as f:
+            data = f.read()
+    except Exception as e:
+        log.error(f"parse_appinfo: read error — {e}")
+        return {}
+
+    if len(data) < 16:
+        return {}
+
+    magic = struct.unpack('<I', data[0:4])[0]
+    if magic != 0x07564429:
+        log.warning(f"parse_appinfo: unexpected magic 0x{magic:08x}")
+        return {}
+
+    # ── Build key table (string pool at end of file) ───────────────────────
+    kt_offset = struct.unpack('<I', data[8:12])[0]
+    if kt_offset >= len(data):
+        return {}
+
+    keys = {}
+    pos = kt_offset + 4  # skip 'BT\x00\x00' marker
+    idx = 0
+    while pos < len(data):
+        end = data.find(b'\x00', pos)
+        if end == -1:
+            break
+        keys[idx] = data[pos:end].decode('utf-8', errors='replace')
+        idx += 1
+        pos = end + 1
+
+    # Reverse map for the keys we care about
+    KEY_APPINFO = None
+    KEY_COMMON  = None
+    KEY_NAME    = None
+    KEY_TYPE    = None
+    for kid, kname in keys.items():
+        if kname == 'appinfo': KEY_APPINFO = kid
+        elif kname == 'common': KEY_COMMON = kid
+        elif kname == 'name':   KEY_NAME   = kid
+        elif kname == 'type':   KEY_TYPE   = kid
+
+    VALID_TYPES = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
+    max_key = len(keys)
+
+    def _read_vdf(buf, off, depth=0):
+        """Read key-value pairs until end-marker (0x08) or buffer end.
+        Returns (dict, new_offset). Nested dicts recurse up to depth 5."""
+        result = {}
+        while off < len(buf):
+            t = buf[off]; off += 1
+            if t == 0x08:
+                break
+            if off + 4 > len(buf):
+                break
+            kid = struct.unpack('<I', buf[off:off+4])[0]; off += 4
+            if kid >= max_key:
+                break
+            k = keys[kid]
+            if t == 0x00:  # nested dict
+                if depth < 5:
+                    val, off = _read_vdf(buf, off, depth + 1)
+                else:
+                    # skip past the nested block
+                    nest = 1
+                    while off < len(buf) and nest > 0:
+                        bt = buf[off]; off += 1
+                        if bt == 0x00:
+                            off += 4  # skip key id
+                            nest += 1
+                        elif bt == 0x08:
+                            nest -= 1
+                        elif bt == 0x01:
+                            end = buf.find(b'\x00', off)
+                            off = (end + 1) if end != -1 else len(buf)
+                        elif bt == 0x02:
+                            off += 4
+                        elif bt == 0x07:
+                            off += 8
+                        else:
+                            off = len(buf)
+                    val = {}
+            elif t == 0x01:  # inline string
+                end = buf.find(b'\x00', off)
+                if end == -1: break
+                val = buf[off:end].decode('utf-8', errors='replace')
+                off = end + 1
+            elif t == 0x02:  # int32
+                if off + 4 > len(buf): break
+                val = struct.unpack('<i', buf[off:off+4])[0]; off += 4
+            elif t == 0x07:  # uint64
+                if off + 8 > len(buf): break
+                val = struct.unpack('<Q', buf[off:off+8])[0]; off += 8
+            else:
+                break  # unknown type — stop parsing this block
+            result[k] = val
+        return result, off
+
+    # ── Iterate app records ────────────────────────────────────────────────
+    # Record layout: [4 appid][4 size][metadata bytes][VDF data]
+    # size = bytes from after size-field to end of record
+    # next record at: rec_pos + 4 + 4 + size
+    #
+    # VDF data always starts with type=0x00 (nested dict) + 4-byte key_id for
+    # 'appinfo' (key_id=0 → bytes \x00\x00\x00\x00). Scan for this marker
+    # within the first 128 bytes of each record so we don't hardcode the
+    # metadata size (which could differ across Steam versions).
+    # VDF always starts with type=0x00 (nested dict) + 4-byte key_id for 'appinfo'.
+    # Since 'appinfo' is key_id=0, the opener is five zero bytes.
+    # The record metadata contains 8 zero bytes for the access_token starting at
+    # rec_pos+16, so we begin the scan at rec_pos+48 (past access_token + SHA1_text)
+    # to avoid false matches in the metadata region.
+    APPINFO_OPENER  = b'\x00' + struct.pack('<I', KEY_APPINFO if KEY_APPINFO is not None else 0)
+    SCAN_START_OFF  = 48   # skip fixed metadata (access_token zeros + SHA1 text)
+    SCAN_END_OFF    = 128  # metadata is never this large
+
+    result = {}
+    rec_pos = 16  # first record
+
+    while rec_pos + 8 <= kt_offset:
+        appid = struct.unpack('<I', data[rec_pos:rec_pos+4])[0]
+        size  = struct.unpack('<I', data[rec_pos+4:rec_pos+8])[0]
+        if appid == 0 and size == 0:
+            break  # terminator
+
+        next_pos = rec_pos + 8 + size
+
+        # Locate VDF start by scanning for the 'appinfo' nested-dict opener
+        scan_from = rec_pos + SCAN_START_OFF
+        scan_to   = min(rec_pos + SCAN_END_OFF, next_pos)
+        vdf_start = data.find(APPINFO_OPENER, scan_from, scan_to)
+
+        if vdf_start != -1 and next_pos <= kt_offset:
+            try:
+                vdf, _ = _read_vdf(data, vdf_start)
+                common = vdf.get('appinfo', {}).get('common', {})
+                name   = common.get('name', '')
+                app_type = common.get('type', '')
+                if name or app_type:
+                    result[appid] = {'name': name, 'type': app_type}
+            except Exception:
+                pass
+
+        rec_pos = next_pos
+
+    log.info(f"parse_appinfo: parsed {len(result)} entries from appinfo.vdf")
+    return result

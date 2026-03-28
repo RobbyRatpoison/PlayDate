@@ -58,7 +58,7 @@ main.py → starts Flask (background thread) + pywebview window
 | `library.py` | Filter tree → SQL builder, grid rendering, bulk operations |
 | `index.py` | Home page shelves — queries, deduplication, widget presets |
 | `scrapers.py` | Steam API + HTML scraping for library/metadata import; BLAEO sync via Selenium (requires Chrome) |
-| `utils.py` | Steam path detection, install status sync, filesystem watcher |
+| `utils.py` | Steam path detection, install status sync, filesystem watcher, local Steam file parsing |
 | `images.py` | Cover art download: vertical capsule, horizontal header, and icon — each with Steam asset manifest → CDN → SteamGridDB fallback chain |
 | `imports.py` | Old-database migration tool |
 | `install.py` / `uninstall.py` | Cross-platform GUI installer/uninstaller (tkinter) |
@@ -72,7 +72,7 @@ All user data lives next to the executable (or project root when running from so
 | File | Contents |
 |------|----------|
 | `games.db` | SQLite — `games` and `blacklist` tables |
-| `config.json` | Steam API key + SteamID |
+| `config.json` | Steam API key (optional) + SteamID |
 | `state.json` | Active filters, shelf layout, sort order, saved filters, artwork orientation, card height |
 | `theme.json` | CSS variable overrides (only non-default keys stored) |
 | `playdate.log` | Application logs (RotatingFileHandler, 1MB cap) |
@@ -105,7 +105,15 @@ Filters are a recursive JSON tree of AND/OR groups with conditions. They get com
 Long-running operations (library import, BLAEO sync) run in daemon threads with `threading.Event` for cancellation (`_populate_cancel` in `app.py`). Progress is tracked in a shared dict (`_populate_state`) polled by the frontend via `/api/populate-status` every second.
 
 ### Scrapers
-`scrapers.py` pulls from multiple Steam endpoints per game: `GetOwnedGames` (playtime), Store API (metadata), `appreviews` (review stats), BeautifulSoup tag scraping (birthtime cookie bypasses age gate), and `GetPlayerAchievements`. The **1.2s delay** between API calls is mandatory — don't remove it.
+`scrapers.py` pulls from multiple Steam endpoints per game: `GetOwnedGames` (playtime), Store API (metadata), `appreviews` (review stats), BeautifulSoup tag scraping (birthtime cookie bypasses age gate), and `GetPlayerAchievements`. There is a **0.5s delay** between games in the populate loop.
+
+**Startup playtime sync:** `sync_recent_playtime()` runs in a background thread on launch. It reads `localconfig.vdf` directly (no API key needed) and updates `playtime_forever` and `last_played` in the DB for all games that exist in the library.
+
+**Rate limiting:** Each fetch function raises `RateLimitedError` on HTTP 429. The populate loop catches it, pauses 15 seconds, and retries the current game once. If the retry is also rate limited, populate aborts immediately and surfaces an error to the user. `RateLimitedError` is defined in `scrapers.py`.
+
+**API key is optional.** Without one, `add_new()` reads the game list from local Steam files instead of `GetOwnedGames`: `fetch_local_library()` parses `localconfig.vdf` for played games + playtime, `get_acf_names()` reads ACF manifests for installed game names, and `parse_appinfo()` reads the binary `appinfo.vdf` cache for names and types. Achievements (`GetPlayerAchievements`) are skipped without a key. The Store API, reviews API, and tag scraping work without a key.
+
+**`parse_appinfo()`** in `utils.py` parses Steam's binary `appcache/appinfo.vdf` (v29 format, magic `0x07564429`). It reads the string pool key table from the end of the file, then iterates app records to extract `name` and `type` from each app's `common` section. Returns `{appid: {'name': str, 'type': str}}`. Used for type pre-filtering (skipping non-games before any network calls) and name lookup. The `vdf` package (text VDF only) is used for `localconfig.vdf`; `appinfo.vdf` is parsed with custom binary struct code.
 
 **Review confidence weighting:** raw review percentage is scaled by total review count — <10 reviews gets 25% weight, 10-99 gets 50–100%, 100+ gets full weight. Stored as `weighted_percentage`.
 
@@ -119,7 +127,7 @@ Long-running operations (library import, BLAEO sync) run in daemon threads with 
 All saved as JPEG 95 quality; RGBA/PNG/WEBP converted to RGB first. Once cached locally, images are not re-fetched unless manually deleted.
 
 ### Graceful Degradation
-No API key → public profile HTML scraper. No SteamGridDB key → Steam covers. Missing watchdog → continues without filesystem watcher. All external calls have try/except returning None/empty on failure.
+No API key → reads library from local Steam files (`localconfig.vdf`, ACF manifests, `appinfo.vdf`). No SteamGridDB key → Steam covers; edit modal shows a "Browse SGDB ↗" link to the game's SGDB page so users can paste a direct image URL manually. Missing watchdog → continues without filesystem watcher. All external calls have try/except returning None/empty on failure.
 
 ### Filesystem Watcher
 `utils.py` watches the steamapps folder for `appmanifest_*.acf` changes. On trigger, `sync_local_install_status()` resets all `installed` flags to 0 then bulk-sets found appids to 1. Proton, SteamLinuxRuntime, and Steamworks Shared entries are filtered out by reading .acf content.

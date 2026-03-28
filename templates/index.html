@@ -253,7 +253,7 @@
     <button class="nav-btn" onclick="resetLayout()" style="border-color:var(--danger-color);color:var(--danger-text);"
         onmouseover="this.style.background='var(--danger-color)';this.style.color='var(--nav-active)'"
         onmouseout="this.style.background='';this.style.color='var(--danger-text)'">↺ RESET</button>
-    <button class="nav-btn" onclick="exitEditMode()" style="margin-left:auto;">✕ EXIT EDITOR</button>
+    <button class="nav-btn" onclick="exitEditMode()" style="margin-left:auto;">✕ CANCEL</button>
 </div>
 
 <!-- Shelf edit modal -->
@@ -603,8 +603,7 @@ function enterEditMode() {
     history.replaceState(null,'','/?edit=1');
 }
 function exitEditMode() {
-    document.body.classList.remove('edit-mode');
-    history.replaceState(null,'','/');
+    window.location.href = '/';
 }
 document.addEventListener('keydown', e => {
     if (e.key === 'e' || e.key === 'E') {

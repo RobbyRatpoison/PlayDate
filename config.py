@@ -6,7 +6,7 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.1.7"
+__version__ = "1.1.9"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -87,10 +87,10 @@ DEFAULT_SHELVES = [
     {
         "id": "recently_added",
         "label": "RECENTLY ADDED",
-        "preset": "never_played",
-        "filter_key": "never_played",
+        "preset": "not_beaten",
+        "filter_key": "not_beaten",
         "custom_sql": None,
-        "limit": 5,
+        "limit": 4,
         "row_height": 30,
         "col_width": 2,
         "split_group": "top_row",
@@ -117,10 +117,10 @@ DEFAULT_SHELVES = [
     {
         "id": "recently_released",
         "label": "RECENTLY RELEASED",
-        "preset": "never_played",
-        "filter_key": "never_played",
+        "preset": "not_beaten",
+        "filter_key": "not_beaten",
         "custom_sql": None,
-        "limit": 5,
+        "limit": 4,
         "row_height": 30,
         "col_width": 2,
         "split_group": "top_row",
@@ -222,7 +222,7 @@ def inject_config_status():
     """Injects config state into all templates."""
     config_exists = is_configured()
     existing = load_config() or {}
-    needs_config = not config_exists or not existing.get('api_key')
+    needs_config = not config_exists or not existing.get('steam_id')
     state = load_state()
     return dict(
         config_exists=config_exists,
@@ -242,6 +242,15 @@ def load_config():
 def is_configured():
     return os.path.exists(CONFIG_PATH)
 
+@config_bp.route('/api/detect-steam-id')
+def detect_steam_id_route():
+    from utils import detect_steam_id
+    steam_id = detect_steam_id()
+    if steam_id:
+        return jsonify({"status": "success", "steam_id": steam_id})
+    return jsonify({"status": "not_found"})
+
+
 @config_bp.route('/save-config', methods=['POST'])
 def save_config():
     data = request.json
@@ -250,15 +259,19 @@ def save_config():
     sgdb_key = data.get('sgdb_key')
 
     if not raw_id:
-        return jsonify({"status": "error", "message": "Steam ID or Vanity Name is required."}), 400
+        return jsonify({"status": "error", "message": "Steam ID is required."}), 400
 
-    if not api_key:
-        return jsonify({"status": "error", "message": "Steam API Key is required."}), 400
-
-    resolved_id = resolve_vanity_url(api_key, raw_id)
-    is_valid, message = validate_steam_creds(api_key, resolved_id)
-    if not is_valid:
-        return jsonify({"status": "error", "message": message}), 400
+    if api_key:
+        # Validate credentials and resolve vanity name against the Steam API
+        resolved_id = resolve_vanity_url(api_key, raw_id)
+        is_valid, message = validate_steam_creds(api_key, resolved_id)
+        if not is_valid:
+            return jsonify({"status": "error", "message": message}), 400
+    else:
+        # No API key — vanity resolution is unavailable, require a numeric SteamID64
+        if not raw_id.isdigit():
+            return jsonify({"status": "error", "message": "A numeric SteamID64 is required when no API key is provided. Vanity names can only be resolved with an API key."}), 400
+        resolved_id = raw_id
 
     config_data = {
         "api_key": api_key,
