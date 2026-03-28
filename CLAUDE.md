@@ -60,7 +60,7 @@ main.py → starts Flask (background thread) + pywebview window
 | `scrapers.py` | Steam API + HTML scraping for library/metadata import; BLAEO sync via Selenium (requires Chrome) |
 | `utils.py` | Steam path detection, install status sync, filesystem watcher, local Steam file parsing |
 | `images.py` | Cover art download: vertical capsule, horizontal header, and icon — each with Steam asset manifest → CDN → SteamGridDB fallback chain |
-| `imports.py` | Old-database migration tool |
+| `imports.py` | Data import tools: generic SQLite column mapping (`inspect_database`, `execute_import`) and Playnite backup import (`parse_playnite_dates`) |
 | `install.py` / `uninstall.py` | Cross-platform GUI installer/uninstaller (tkinter) |
 
 **Frontend:** Vanilla JS + CSS3 in `static/`, Jinja2 templates in `templates/`. No build step, no framework.
@@ -131,6 +131,11 @@ No API key → reads library from local Steam files (`localconfig.vdf`, ACF mani
 
 ### Filesystem Watcher
 `utils.py` watches the steamapps folder for `appmanifest_*.acf` changes. On trigger, `sync_local_install_status()` resets all `installed` flags to 0 then bulk-sets found appids to 1. Proton, SteamLinuxRuntime, and Steamworks Shared entries are filtered out by reading .acf content.
+
+### Playnite Import
+`imports.py` → `parse_playnite_dates(zip_path)` extracts `date_added` values from a Playnite backup ZIP. Playnite stores its library in a LiteDB binary file (`library/games.db` inside the ZIP) — not SQLite. The parser reads the raw binary and uses proximity matching (±8KB) between `GameId` (BSON string, `\x02GameId\x00`) and `Added` (BSON datetime, `\x09Added\x00`) fields to pair them. This is necessary because LiteDB documents span non-contiguous 8KB pages, so full document parsing isn't possible without a LiteDB reader. Returns `{appid_int: 'YYYY-MM-DD'}`.
+
+The import is triggered via the native file dialog (`pywebview.api.pick_open_path`) — not a file upload — because Playnite backups include all artwork and can be several GB. The route `/api/import/playnite-dates` receives the local file path and reads it directly. Currently only imports `date_added`; intended to be extended to other fields (completion status, playtime, etc.) in the future.
 
 ### Pick 6 Scoring
 Six weighted signals combined in `app.py`: tag cosine similarity (against a playtime-weighted taste profile built from beaten games), review score, staleness (days since last played, capped at 730), completion bias, playtime (capped at 3000 min), and release recency (capped at 10 years). If no beaten games, profile falls back to top 50 most-played. Selection uses weighted random sampling, not sorted top-N.

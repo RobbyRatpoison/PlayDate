@@ -133,6 +133,28 @@ class PyWebviewAPI:
         except Exception as e:
             log.warning(f"open_url failed for {url!r}: {e}")
 
+    def pick_open_path(self, file_types=None):
+        """
+        Open a native Open-File dialog and return the chosen path string,
+        or None if the user cancelled.
+        file_types: list of strings like ['ZIP Files (*.zip)'].
+        """
+        if _webview_window is None:
+            return None
+        if file_types is None:
+            file_types = ('All Files (*.*)',)
+        try:
+            paths = _webview_window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                file_types=tuple(file_types),
+            )
+            if paths:
+                path = paths[0] if isinstance(paths, (list, tuple)) else paths
+                return str(path)
+        except Exception as e:
+            log.warning(f"Open dialog failed: {e}")
+        return None
+
     def pick_save_path(self, suggested_name, file_types=None):
         """
         Open a native Save-As dialog and return the chosen path string,

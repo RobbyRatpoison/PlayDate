@@ -545,6 +545,19 @@
     </div>
 </div>
 
+<!-- ── PLAYNITE IMPORT MODAL ── -->
+<div id="playnite-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePlayniteModal();">
+    <div class="modal-content" style="width:480px; max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--steam-text);">Import from Playnite</h2>
+            <button onclick="closePlayniteModal()" style="background:none;border:none;color:var(--muted-text);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <p style="color:var(--muted-text); font-size:0.88rem; margin:0 0 16px;">Import <strong>date added</strong> values from a Playnite backup ZIP. Games are matched by Steam AppID — only games already in your PlayDate library will be updated.</p>
+        <button class="nav-btn" data-modal-row="0" onclick="runPlayniteImport()">Choose Playnite Backup (.zip)</button>
+        <div id="playnite-status" class="tool-status" style="margin-top:12px;"></div>
+    </div>
+</div>
+
 <!-- ── PAGYWOSG MODAL ── -->
 <div id="pagywosg-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePagModal();">
     <div class="modal-content" style="width:min(760px,95vw); max-height:90vh; overflow-y:auto;">
@@ -856,6 +869,51 @@ function openImportModal() {
 function closeImportModal() {
     document.getElementById('import-modal').style.display = 'none';
     resetImport();
+}
+
+function openPlayniteModal() {
+    document.getElementById('playnite-modal').style.display = 'flex';
+    document.getElementById('playnite-status').textContent = '';
+    document.getElementById('playnite-status').className = 'tool-status';
+}
+function closePlayniteModal() {
+    document.getElementById('playnite-modal').style.display = 'none';
+}
+async function runPlayniteImport() {
+    const status = document.getElementById('playnite-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Opening file dialog...';
+    let path = null;
+    try {
+        path = await window.pywebview.api.pick_open_path(['ZIP Files (*.zip)']);
+    } catch (e) {
+        status.textContent = `Error opening file dialog: ${e.message}`;
+        status.className = 'tool-status error';
+        return;
+    }
+    if (!path) {
+        status.textContent = '';
+        return;
+    }
+    status.textContent = 'Parsing backup...';
+    try {
+        const res = await fetch('/api/import/playnite-dates', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ path }),
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.textContent = `Done — updated ${data.updated} game${data.updated !== 1 ? 's' : ''} (${data.found} Steam games found in backup).`;
+            status.className = 'tool-status success';
+        } else {
+            status.textContent = `Error: ${data.message}`;
+            status.className = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = `Error: ${e.name}: ${e.message}`;
+        status.className = 'tool-status error';
+    }
 }
 
 // ── BLAEO ──

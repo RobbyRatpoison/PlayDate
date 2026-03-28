@@ -950,6 +950,37 @@ def create_app(template_folder=None, static_folder=None):
     def import_execute():
         return execute_import(request.json)
 
+    @app.route('/api/import/playnite-dates', methods=['POST'])
+    def import_playnite_dates():
+        from imports import parse_playnite_dates
+        data = request.json or {}
+        zip_path = data.get('path', '').strip()
+        app.logger.info(f"Playnite import: request received, path={zip_path!r}")
+        if not zip_path or not os.path.isfile(zip_path):
+            app.logger.warning(f"Playnite import: file not found at {zip_path!r}")
+            return jsonify({"status": "error", "message": "File not found."}), 400
+        try:
+            date_map = parse_playnite_dates(zip_path)
+            app.logger.info(f"Playnite import: parsed {len(date_map)} appid→date pairs")
+        except Exception as e:
+            app.logger.exception("Playnite import: parse failed")
+            return jsonify({"status": "error", "message": f"Failed to parse backup: {e}"}), 500
+        if not date_map:
+            app.logger.warning("Playnite import: no Steam games with dates found")
+            return jsonify({"status": "error", "message": "No Steam games with dates found in the backup."}), 400
+        db = get_db()
+        updated = 0
+        for appid, date_str in date_map.items():
+            cursor = db.execute(
+                "UPDATE games SET date_added = ? WHERE appid = ?",
+                (date_str, appid)
+            )
+            updated += cursor.rowcount
+        db.commit()
+        db.close()
+        app.logger.info(f"Playnite import: updated {updated} games")
+        return jsonify({"status": "success", "updated": updated, "found": len(date_map)})
+
     @app.route('/sync-blaeo')
     def sync_blaeo():
         try:
@@ -1043,16 +1074,16 @@ def create_app(template_folder=None, static_folder=None):
                 if os.path.exists(filepath):
                     zf.write(filepath, arcname)
 
-            # Optional: custom artwork
+            # Optional: custom artwork (recurse into vertical/, horizontal/, icons/)
             if include_art:
                 art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
                 if os.path.isdir(art_dir):
-                    for fname in os.listdir(art_dir):
-                        if fname.lower().endswith('.jpg'):
-                            zf.write(
-                                os.path.join(art_dir, fname),
-                                os.path.join('static', 'img', 'library', fname)
-                            )
+                    for dirpath, _, filenames in os.walk(art_dir):
+                        for fname in filenames:
+                            if fname.lower().endswith('.jpg'):
+                                full = os.path.join(dirpath, fname)
+                                arcname = os.path.relpath(full, BASE_DIR).replace(os.sep, '/')
+                                zf.write(full, arcname)
 
         buf.seek(0)
         return send_file(
@@ -1091,12 +1122,12 @@ def create_app(template_folder=None, static_folder=None):
                 if include_art:
                     art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
                     if os.path.isdir(art_dir):
-                        for fname in os.listdir(art_dir):
-                            if fname.lower().endswith('.jpg'):
-                                zf.write(
-                                    os.path.join(art_dir, fname),
-                                    os.path.join('static', 'img', 'library', fname)
-                                )
+                        for dirpath, _, filenames in os.walk(art_dir):
+                            for fname in filenames:
+                                if fname.lower().endswith('.jpg'):
+                                    full = os.path.join(dirpath, fname)
+                                    arcname = os.path.relpath(full, BASE_DIR).replace(os.sep, '/')
+                                    zf.write(full, arcname)
             size = os.path.getsize(save_path)
             return jsonify({"status": "success", "path": save_path, "size": size})
         except Exception as e:
@@ -1286,13 +1317,12 @@ def create_app(template_folder=None, static_folder=None):
                         app.logger.warning(f"Restore: {arcname!r} not found in zip — skipping")
                         skipped.append(arcname)
 
-                # Art files: restore to static/img/library/
+                # Art files: restore to static/img/library/ (including subdirs)
                 art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
                 if art_files:
-                    art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
-                    os.makedirs(art_dir, exist_ok=True)
                     for arcname in art_files:
                         dest = os.path.join(BASE_DIR, arcname.replace('/', os.sep))
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
                         with zf.open(arcname) as src, open(dest, 'wb') as dst:
                             dst.write(src.read())
                     app.logger.info(f"Restore: wrote {len(art_files)} cover image(s)")

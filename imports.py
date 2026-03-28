@@ -1,7 +1,11 @@
+import bisect
 import os
 import re
+import struct
 import sqlite3
-from datetime import datetime
+import tempfile
+import zipfile
+from datetime import datetime, timezone
 from flask import jsonify, request
 from database import get_db
 from config import BASE_DIR
@@ -224,3 +228,80 @@ def execute_import(data):
         if os.path.exists(TEMP_DB_PATH):
             os.remove(TEMP_DB_PATH)
         return jsonify({"status": "error", "message": f"Import error: {str(e)}"})
+
+
+def parse_playnite_dates(zip_path):
+    """
+    Extracts 'date added' values for Steam games from a Playnite backup ZIP.
+    Playnite stores its library in a LiteDB binary file (library/games.db inside the ZIP).
+    Uses proximity matching between GameId and Added BSON fields (±8KB window) to pair them.
+    Returns {appid_int: 'YYYY-MM-DD'} dict.
+    """
+    # Extract the LiteDB games.db from the ZIP to a temp file
+    with zipfile.ZipFile(zip_path, 'r') as zf:
+        names = zf.namelist()
+        games_db_entry = next(
+            (n for n in names if n.replace('\\', '/').lower().endswith('library/games.db')),
+            None
+        )
+        if not games_db_entry:
+            return {}
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.litedb') as tmp:
+            tmp_path = tmp.name
+            tmp.write(zf.read(games_db_entry))
+
+    try:
+        with open(tmp_path, 'rb') as f:
+            data = f.read()
+    finally:
+        os.unlink(tmp_path)
+
+    # Extract all GameId string field positions and values.
+    # BSON string: type=0x02, key="GameId\x00", then int32 length + bytes + null.
+    gameids = []
+    for m in re.finditer(b'\x02GameId\x00', data):
+        pos = m.end()
+        if pos + 4 > len(data):
+            continue
+        slen = struct.unpack_from('<i', data, pos)[0]
+        if slen < 1 or slen > 20:
+            continue
+        val = data[pos + 4:pos + 4 + slen - 1].decode('utf-8', errors='replace')
+        if val.isdigit():
+            gameids.append((m.start(), int(val)))
+
+    # Extract all Added datetime field positions and values.
+    # BSON datetime: type=0x09, key="Added\x00", then int64 ms since Unix epoch.
+    added_map = {}
+    for m in re.finditer(b'\x09Added\x00', data):
+        pos = m.end()
+        if pos + 8 > len(data):
+            continue
+        ms = struct.unpack_from('<q', data, pos)[0]
+        if 0 < ms < 4102444800000:  # sanity: between 1970 and 2100
+            dt = datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d')
+            added_map[m.start()] = dt
+
+    added_positions = sorted(added_map.keys())
+
+    # Pair each GameId with its nearest Added field within ±8KB.
+    # Documents span LiteDB 8KB pages, so large documents (with long descriptions) have their
+    # fields split across non-contiguous file regions. However, GameId and Added are both short
+    # metadata fields that typically land in the same page segment, keeping them within 8KB.
+    WINDOW = 8192
+    results = {}
+    for gpos, appid in gameids:
+        idx = bisect.bisect_left(added_positions, gpos)
+        best_pos = None
+        best_dist = WINDOW + 1
+        for i in (idx - 1, idx):
+            if 0 <= i < len(added_positions):
+                apos = added_positions[i]
+                dist = abs(apos - gpos)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_pos = apos
+        if best_pos is not None:
+            results[appid] = added_map[best_pos]
+
+    return results
