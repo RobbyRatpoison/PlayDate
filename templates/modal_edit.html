@@ -8,14 +8,18 @@
             <label>Steam ID or Vanity Name <span style="color:#ff4d4d;">*</span></label>
             <input type="text" id="conf-steam-id" name="steam_id" placeholder="e.g. 76561198... or your custom URL name" value="{{ existing_steam_id }}" required>
             <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
-                Your vanity name is the custom part of your Steam profile URL.
+                Your vanity name is the custom part of your Steam profile URL. A numeric SteamID64 is required if you skip the API key below.
             </small>
 
-            <label>Steam API Key <span style="color:#ff4d4d;">*</span></label>
-            <input type="password" id="conf-api-key" name="api_key" placeholder="Required to sync your library" required>
-            <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
+            <label>Steam API Key <span style="color: #8f98a0; font-weight: normal;">(Optional)</span></label>
+            <input type="password" id="conf-api-key" name="api_key" placeholder="Recommended — enables achievements and vanity name lookup">
+            <small style="display:block; color: #8f98a0; margin-bottom: 8px; font-size: 0.75rem;">
                 Get your free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color: var(--steam-focus);">steamcommunity.com/dev/apikey</a> — takes about 2 minutes.
             </small>
+            <div style="background: #1a2233; border: 1px solid #3a4a5c; border-radius: 6px; padding: 10px 14px; margin-bottom: 15px; font-size: 0.8rem; color: #8f98a0; line-height: 1.5;">
+                <strong style="color: #c8d0d8;">Without an API key:</strong> your library will be read from local Steam files.
+                Achievement data will not be available, and games you own but have never launched will not be imported.
+            </div>
 
             <label>SteamGridDB API Key <span style="color: #8f98a0; font-weight: normal;">(Optional)</span></label>
             <input type="password" id="conf-sgdb-key" name="sgdb_key" placeholder="Used for higher quality artwork when Steam's is missing" value="{{ existing_sgdb_key }}">
@@ -62,6 +66,20 @@
         input.value = '';
     }
 
+    // Auto-detect SteamID if field is empty
+    (async () => {
+        const field = document.getElementById('conf-steam-id');
+        if (field.value) return;
+        try {
+            const res  = await fetch('/api/detect-steam-id');
+            const data = await res.json();
+            if (data.status === 'success' && data.steam_id) {
+                field.value = data.steam_id;
+                field.style.borderColor = 'var(--steam-focus)';
+            }
+        } catch (_) {}
+    })();
+
     // Logic for saving and VALIDATING the initial configuration
     document.getElementById('config-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -71,7 +89,7 @@
         const sgdbKey = document.getElementById('conf-sgdb-key').value;
 
         btn.disabled = true;
-        btn.innerText = "VERIFYING CREDENTIALS...";
+        btn.innerText = apiKey ? "VERIFYING CREDENTIALS..." : "SAVING...";
         btn.style.backgroundColor = "#5c5c5c";
 
         try {
@@ -256,10 +274,11 @@
                             </div>
                         </div>
                         <div class="art-source-label">Source: <span id="art-source-vertical">—</span></div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                             <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('vertical')"       data-modal-row="1">Re-scrape</button>
                             <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('vertical')" data-modal-row="1">Custom URL</button>
                             {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('vertical')" data-modal-row="1">Browse SGDB</button>{% endif %}
+                            {% if not existing_sgdb_key %}<a id="sgdb-link-vertical" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--steam-focus);">Browse SGDB ↗</a>{% endif %}
                         </div>
                         <div id="art-url-row-vertical" style="display:none; flex-direction:column; gap:6px;">
                             <input type="text" id="art-url-vertical" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
@@ -277,10 +296,11 @@
                             </div>
                         </div>
                         <div class="art-source-label">Source: <span id="art-source-horizontal">—</span></div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                             <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('horizontal')"       data-modal-row="1">Re-scrape</button>
                             <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('horizontal')" data-modal-row="1">Custom URL</button>
                             {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('horizontal')" data-modal-row="1">Browse SGDB</button>{% endif %}
+                            {% if not existing_sgdb_key %}<a id="sgdb-link-horizontal" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--steam-focus);">Browse SGDB ↗</a>{% endif %}
                         </div>
                         <div id="art-url-row-horizontal" style="display:none; flex-direction:column; gap:6px;">
                             <input type="text" id="art-url-horizontal" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
@@ -298,10 +318,11 @@
                             </div>
                         </div>
                         <div class="art-source-label">Source: <span id="art-source-icon">—</span></div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                             <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('icon')"       data-modal-row="1">Re-scrape</button>
                             <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('icon')" data-modal-row="1">Custom URL</button>
                             {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('icon')" data-modal-row="1">Browse SGDB</button>{% endif %}
+                            {% if not existing_sgdb_key %}<a id="sgdb-link-icon" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--steam-focus);">Browse SGDB ↗</a>{% endif %}
                         </div>
                         <div id="art-url-row-icon" style="display:none; flex-direction:column; gap:6px;">
                             <input type="text" id="art-url-icon" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
@@ -548,8 +569,8 @@
 
     function safeSet(id, value, type = 'value') {
         const el = document.getElementById(id);
-        if (el) {
-            const finalValue = (value !== undefined && value !== null) ? value : '';
+        if (el && value !== undefined) {
+            const finalValue = value !== null ? value : '';
             if (type === 'textContent') el.textContent = finalValue;
             else el.value = finalValue;
         }
@@ -589,6 +610,14 @@
 
         const storeLink = document.getElementById('steam-store-link');
         if (storeLink) storeLink.href = `https://store.steampowered.com/app/${game.appid}/`;
+
+        // Set SGDB browse links for no-key users
+        const sgdbUrl = `https://www.steamgriddb.com/steam/${game.appid}`;
+        ['vertical', 'horizontal', 'icon'].forEach(t => {
+            const el = document.getElementById(`sgdb-link-${t}`);
+            if (el) el.href = sgdbUrl;
+        });
+
         document.getElementById('editModal').style.display = 'flex';
     }
 
@@ -649,7 +678,7 @@
             const data = await res.json();
             if (data.status === 'success') {
                 status.style.color = '#5c7e10'; status.textContent = '✔ Saved!';
-                _loadArtPanel(type, `/static/img/library/${type === 'icon' ? 'icons' : type}/${appid}.jpg?v=${Date.now()}`, 'custom');
+                _loadArtPanel(type, `/static/img/library/${type === 'icon' ? 'icons' : type}/${appid}.jpg?v=${Date.now()}`, data.source || 'custom');
                 document.getElementById(`art-url-row-${type}`).style.display = 'none';
             } else {
                 status.style.color = '#ff8080'; status.textContent = '✘ ' + data.message;

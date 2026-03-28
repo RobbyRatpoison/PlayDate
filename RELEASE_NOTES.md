@@ -32,9 +32,18 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.8 — 2026-03-25
+## v1.1.9 — 2026-03-28
 
-### Auto-Updates
-PlayDate can now check for new versions automatically on startup. When an update is available, a dot appears on the **☰** menu button. Click **Install Update** from the menu to apply it — on Windows the new installer runs automatically; on Linux/macOS the update is extracted in place and the app restarts. Automatic checking can be toggled off from the menu.
+### Steam API Key Now Optional
+PlayDate no longer requires a Steam Web API key to import your library. Without one, your library is read directly from local Steam files — played games and playtime from `localconfig.vdf`, names from installed game manifests and Steam's local metadata cache. Store metadata, reviews, and tags are still fetched from the web as before. Achievements require an API key.
+
+### Other Improvements
+- Startup playtime sync now reads from local Steam files instead of requiring an API key
+- Rate limiting detection: if Steam returns a rate limit response during import, PlayDate pauses and retries automatically. If the rate limit persists, the import stops and alerts you rather than silently skipping games
+- Home page "Recently Added" and "Recently Released" shelves now show unbeaten games instead of only never-played games, so they populate correctly for users with small libraries
+- Edit modal now shows a "Browse SGDB ↗" link when no SteamGridDB key is configured, making it easy to find and paste a custom image URL
+- Images pasted from SteamGridDB in the edit modal are now saved with the correct source label
+- Fixed single-game rescrape overwriting the game name, playtime, and last played date with empty values when no API key is present
+- Layout editor "Exit Editor" button renamed to "Cancel" and now correctly discards unsaved changes
 
 ---

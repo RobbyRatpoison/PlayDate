@@ -80,6 +80,9 @@ hiddenimports = [
     'bs4',
     'rapidfuzz',
 
+    # VDF parser — lazy-imported in utils.py for localconfig.vdf reading
+    'vdf',
+
     # Selenium — lazy-imported in scrape_blaeo_games(), so PyInstaller misses it
     'selenium',
     'selenium.webdriver',

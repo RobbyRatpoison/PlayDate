@@ -460,36 +460,56 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/scrape_single/<int:appid>', methods=['GET', 'POST'])
     def scrape_single(appid):
         from scrapers import fetch_store_data, fetch_tag_data, fetch_player_data, fetch_review_data, fetch_cheevo_data
+        from utils import fetch_local_library, get_acf_names, parse_appinfo
+        from config import load_config as _load_config
+        _cfg = _load_config() or {}
 
         player_data = fetch_player_data(appid) or {}
         store_data  = fetch_store_data(appid) or {}
         review_data = fetch_review_data(appid) or {}
-        cheevo_data = fetch_cheevo_data(appid) or {}
+        cheevo_data = fetch_cheevo_data(appid) or {} if _cfg.get('api_key') else {}
         tag_data    = fetch_tag_data(appid) or {}
 
-        combined_data = {
-            "status": "success",
-            "data": {
-                "name":                   player_data.get('name', ''),
-                "playtime_forever":       player_data.get('playtime_forever', ''),
-                "last_played":            player_data.get('last_played', ''),
-                "developers":             store_data.get('developers', ''),
-                "publishers":             store_data.get('publishers', ''),
-                "release_date":           store_data.get('release_date', ''),
-                "genres":                 store_data.get('genres', ''),
-                "categories":             store_data.get('categories', ''),
-                "is_free":                store_data.get('is_free', 0),
-                "review_score":           review_data.get('review_score', ''),
-                "review_percentage":      review_data.get('review_percentage', ''),
-                "weighted_percentage":    review_data.get('weighted_percentage', ''),
-                "total_reviews":          review_data.get('total_reviews', ''),
-                "positive_reviews":       review_data.get('positive_reviews', ''),
-                "total_achievements":     cheevo_data.get('total_achievements', 0),
-                "unlocked_achievements":  cheevo_data.get('unlocked_achievements', 0),
-                "tags":                   tag_data.get('tags', '')
-            }
+        data_out = {
+            "developers":             store_data.get('developers', ''),
+            "publishers":             store_data.get('publishers', ''),
+            "release_date":           store_data.get('release_date', ''),
+            "genres":                 store_data.get('genres', ''),
+            "categories":             store_data.get('categories', ''),
+            "is_free":                store_data.get('is_free', 0),
+            "review_score":           review_data.get('review_score', ''),
+            "review_percentage":      review_data.get('review_percentage', ''),
+            "weighted_percentage":    review_data.get('weighted_percentage', ''),
+            "total_reviews":          review_data.get('total_reviews', ''),
+            "positive_reviews":       review_data.get('positive_reviews', ''),
+            "total_achievements":     cheevo_data.get('total_achievements', 0),
+            "unlocked_achievements":  cheevo_data.get('unlocked_achievements', 0),
+            "tags":                   tag_data.get('tags', '')
         }
-        return jsonify(combined_data)
+
+        # Playtime, last_played, name: prefer API, fall back to local Steam files
+        local_entry = next((g for g in fetch_local_library(_cfg.get('steam_id')) if g['appid'] == appid), None)
+
+        playtime   = player_data.get('playtime_forever')
+        last_played = player_data.get('last_played') or None
+        name        = player_data.get('name') or None
+
+        if playtime is None and local_entry:
+            playtime = local_entry.get('playtime_forever')
+        if not last_played and local_entry:
+            lp = local_entry.get('last_played', '0')
+            last_played = lp if lp and lp != '0' else None
+        if not name:
+            name = get_acf_names().get(appid) or parse_appinfo().get(appid, {}).get('name') or None
+
+        if playtime is not None:
+            data_out['playtime_forever'] = playtime
+        if last_played:
+            data_out['last_played'] = last_played
+        if name:
+            data_out['name'] = name
+
+        return jsonify({"status": "success", "data": data_out})
 
     @app.route('/api/download-artwork/<int:appid>', methods=['POST'])
     def download_artwork(appid):
@@ -508,8 +528,14 @@ def create_app(template_folder=None, static_folder=None):
                 'horizontal': 'horizontal_art_source',
                 'icon':       'icon_source',
             }
-            update_game_data(appid, **{col_map[orientation]: 'custom'})
-            return jsonify({"status": "success"})
+            sgdb_source_map = {
+                'vertical':   'sgdb_grid',
+                'horizontal': 'sgdb_grid_wide',
+                'icon':       'sgdb_icon',
+            }
+            source = sgdb_source_map[orientation] if 'steamgriddb.com' in url else 'custom'
+            update_game_data(appid, **{col_map[orientation]: source})
+            return jsonify({"status": "success", "source": source})
         return jsonify({"status": "error", "message": "Failed to download image. Check the URL and try again."}), 500
 
     @app.route('/api/sgdb-options/<int:appid>/<artwork_type>')
@@ -651,6 +677,9 @@ def create_app(template_folder=None, static_folder=None):
         Called in chunks from the frontend to show progress.
         """
         from scrapers import fetch_store_data, fetch_tag_data, fetch_review_data, fetch_cheevo_data
+        from config import load_config as _load_config
+        _cfg = _load_config() or {}
+        _has_key = bool(_cfg.get('api_key'))
 
         data   = request.json or {}
         appids = data.get('appids', [])
@@ -662,9 +691,10 @@ def create_app(template_folder=None, static_folder=None):
         for appid in appids:
             try:
                 store_data  = fetch_store_data(appid)  or {}
+                store_data.pop('name', None)  # don't overwrite existing game names on rescrape
                 review_data = fetch_review_data(appid) or {}
                 tag_data    = fetch_tag_data(appid)    or {}
-                cheevo_data = fetch_cheevo_data(appid) or {}
+                cheevo_data = fetch_cheevo_data(appid) or {} if _has_key else {}
 
                 game_data = {}
                 game_data.update(store_data)
