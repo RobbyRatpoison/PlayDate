@@ -243,10 +243,11 @@
         let _resolve = null;
         let _hiddenModal = null; // track any modal hidden while dialog is open
 
-        function _show(message, isConfirm) {
+        function _show(message, isConfirm, okLabel, cancelLabel) {
             msgEl.textContent = message;
             btnCancel.style.display = isConfirm ? '' : 'none';
-            btnOk.textContent = 'OK';
+            btnOk.textContent     = okLabel     || 'OK';
+            btnCancel.textContent = cancelLabel || 'Cancel';
             // Hide any open modal so its scrollbars don't show through the overlay
             _hiddenModal = null;
             const editModal = document.getElementById('editModal');
@@ -283,8 +284,9 @@
         // them synchronously. We patch them to work with async/await callers.
         // Synchronous callers (rare) will receive a Promise object which is truthy
         // — acceptable since all our confirm() calls are already in async functions.
-        window.alert   = (msg) => _show(msg,   false);
-        window.confirm = (msg) => _show(msg,   true);
+        window.alert         = (msg) => _show(msg, false);
+        window.confirm       = (msg) => _show(msg, true);
+        window.confirmCustom = (msg, okLabel, cancelLabel) => _show(msg, true, okLabel, cancelLabel);
     })();
     </script>
 

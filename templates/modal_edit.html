@@ -234,7 +234,7 @@
                             <input type="text" name="last_played" id="edit-last-played" placeholder="YYYY-MM-DD">
                         </div>
                         <div>
-                            <label>Date Added</label>
+                            <label>Date Added <a id="steam-help-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
                             <input type="text" name="date_added" id="edit-date-added" placeholder="YYYY-MM-DD">
                         </div>
                     </div>
@@ -630,6 +630,9 @@
         const storeLink = document.getElementById('steam-store-link');
         if (storeLink) storeLink.href = `https://store.steampowered.com/app/${game.appid}/`;
 
+        const helpLink = document.getElementById('steam-help-link');
+        if (helpLink) helpLink.href = `https://help.steampowered.com/en/wizard/HelpWithGame/?appid=${game.appid}`;
+
         // Set SGDB browse links for no-key users
         const sgdbUrl = `https://www.steamgriddb.com/steam/${game.appid}`;
         ['vertical', 'horizontal', 'icon'].forEach(t => {
@@ -769,10 +772,11 @@
         if (!await confirm(`Remove "${name}" from your PlayDate library?\n\nThis deletes the game's database entry and cover image. It will not affect Steam or uninstall the game.`)) return;
 
         // Step 2 — offer blacklist
-        const blacklist = await confirm(
+        const blacklist = await confirmCustom(
             `Blacklist "${name}"?\n\n` +
-            `Blacklisted games are permanently skipped by "Populate PlayDate" so they won't be re-added to your library in the future.\n\n` +
-            `OK = Blacklist this game\nCancel = Just delete it`
+            `Blacklisted games are permanently skipped by "Populate PlayDate" so they won't be re-added to your library in the future.`,
+            'Blacklist and Delete',
+            'Delete'
         );
 
         const btn = document.getElementById('delete-btn');

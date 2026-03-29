@@ -1,13 +1,16 @@
 import json
+import logging
 import os
 import re
 import requests
 import time
+
+log = logging.getLogger(__name__)
 from bs4 import BeautifulSoup
 from images import download_vertical, download_horizontal, download_icon, _get_steam_assets
 from datetime import datetime
 from config import load_config, get_active_account
-from database import add_new_game, update_game_data, get_db
+from database import add_new_game, update_game_data, get_db, add_to_blacklist
 from utils import get_locally_installed_appids, sync_local_install_status, fetch_local_library, get_acf_names, parse_appinfo
 
 
@@ -28,7 +31,7 @@ def add_new(cancel_event=None, progress_cb=None):
 
     if api_key:
         # ── API key path: fetch full library from Steam ────────────────────────
-        print("Fetching games via Steam API.")
+        log.info("Fetching games via Steam API.")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&include_played_free_games=1&skip_unvetted_apps=false"
         try:
@@ -47,7 +50,7 @@ def add_new(cancel_event=None, progress_cb=None):
             return {"status": "error", "message": f"Connection Error: {str(e)}"}
     else:
         # ── No API key path: read library from local Steam files ───────────────
-        print("No API key — reading library from localconfig.vdf.")
+        log.info("No API key — reading library from localconfig.vdf.")
         local_games = fetch_local_library(steam_id)
         if not local_games:
             return {"status": "error", "message": "Could not read library from local Steam files. Make sure Steam is installed and has been launched at least once. If this is a fresh install, try re-running install.py to ensure all dependencies are up to date."}
@@ -63,10 +66,10 @@ def add_new(cancel_event=None, progress_cb=None):
         } for g in local_games]
 
     # No-key path: appinfo_db already loaded above.
-    # API key path: GetOwnedGames only returns owned games, so appinfo type
-    # pre-filtering isn't needed — skip the 13MB parse.
+    # API key path: GetOwnedGames can still return DLC/mods/advertising entries,
+    # so load appinfo for pre-filtering to keep the progress counter accurate.
     if api_key:
-        appinfo_db = {}
+        appinfo_db = parse_appinfo()
 
     # Process new games
     db = get_db()
@@ -75,14 +78,15 @@ def add_new(cancel_event=None, progress_cb=None):
     blacklisted_ids = {row['appid'] for row in db.execute("SELECT appid FROM blacklist").fetchall()}
     db.close()
 
-    new_games = [g for g in reversed(games) if g['appid'] not in existing_ids and g['appid'] not in blacklisted_ids]
+    new_games = [g for g in reversed(games) if g['appid'] not in existing_ids and g['appid'] not in blacklisted_ids
+                 and appinfo_db.get(g['appid'], {}).get('type', 'game').lower() == 'game']
     total_new = len(new_games)
 
     new_count = 0
     skip_count = 0
     for game in new_games:
         if cancel_event and cancel_event.is_set():
-            print(f"Populate cancelled after {new_count} games.")
+            log.info(f"Populate cancelled after {new_count} games.")
             return {"status": "cancelled", "added": new_count}
 
         appid = game['appid']
@@ -91,13 +95,36 @@ def add_new(cancel_event=None, progress_cb=None):
         while True:
             try:
                 name = game['name']
-                if progress_cb:
-                    progress_cb(new_count, total_new, name or f"AppID {appid}")
                 playtime = game['playtime_forever']
                 last_played = game['last_played']
                 played = "Unfinished" if playtime > 0 else "Never Played"
                 today = datetime.now().strftime('%Y-%m-%d')
                 icon_hash  = game.get('icon_hash', '')
+
+                # Types to auto-blacklist (add more once identified via logs)
+                AUTO_BLACKLIST_TYPES = set()
+
+                store_info = fetch_store_data(appid)
+                if store_info:
+                    app_type = store_info.pop('type', '')
+                    if app_type in AUTO_BLACKLIST_TYPES:
+                        log.info(f"Skipping AppID {appid} ({name!r}) — store type '{app_type}' is blacklisted. Auto-blacklisting.")
+                        add_to_blacklist(appid, name or f"AppID {appid}")
+                        skip_count += 1
+                        total_new -= 1
+                        break
+                    if app_type:
+                        log.info(f"Adding AppID {appid} ({name!r}) — store type '{app_type}'")
+                elif not name:
+                    # No store data and no local name — off-store runtime/tool, skip it
+                    log.info(f"Skipping AppID {appid} — not on Steam store and no local name found. Auto-blacklisting.")
+                    add_to_blacklist(appid, f"AppID {appid}")
+                    skip_count += 1
+                    total_new -= 1
+                    break
+
+                if progress_cb:
+                    progress_cb(new_count, total_new, name or f"AppID {appid}")
 
                 assets            = _get_steam_assets(appid)
                 vertical_source   = download_vertical(appid, assets=assets)
@@ -113,35 +140,18 @@ def add_new(cancel_event=None, progress_cb=None):
                     'horizontal_art_source': horizontal_source,
                     'icon_source':           icon_source,
                     'icon_hash':             icon_hash,
-                    'installed':             1 if appid in installed_ids else 0
+                    'installed':             1 if appid in installed_ids else 0,
+                    'unlocked_achievements': 0,
+                    'total_achievements':    0,
                 }
 
-                # ── Pre-filter using local appinfo.vdf cache (no network call) ──
-                cached = appinfo_db.get(appid, {})
-                cached_type = cached.get('type', '').lower()
-                if cached_type and cached_type != 'game':
-                    print(f"Skipping AppID {appid} — appinfo type '{cached_type}' is not a game.")
-                    skip_count += 1
-                    break
-
-                store_info = fetch_store_data(appid)
                 if store_info:
-                    app_type = store_info.pop('type', '')
-                    if app_type and app_type != 'game':
-                        print(f"Skipping AppID {appid} — store type '{app_type}' is not a game.")
-                        skip_count += 1
-                        break
                     # Use store name as fallback when local sources didn't have one
                     if not name:
                         name = store_info.pop('name', '') or f"AppID {appid}"
                     else:
                         store_info.pop('name', None)
                     game_data.update(store_info)
-                elif not name:
-                    # No store data and no local name — off-store runtime/tool, skip it
-                    print(f"Skipping AppID {appid} — not on Steam store and no local name found.")
-                    skip_count += 1
-                    break
 
                 review_info = fetch_review_data(appid)
                 if review_info:
@@ -160,21 +170,22 @@ def add_new(cancel_event=None, progress_cb=None):
                 update_game_data(appid, **game_data)
 
                 new_count += 1
+                log.info(f"Added game #{new_count}: {name} (AppID {appid})")
                 if progress_cb:
                     progress_cb(new_count, total_new, name)
-                print(f"Scraped data for game #{new_count}: {name}")
+                log.info(f"Added game #{new_count}: {name} (AppID {appid})")
                 break
 
             except RateLimitedError:
                 rate_limit_attempts += 1
                 if rate_limit_attempts == 1:
-                    print(f"Rate limited by Steam on AppID {appid}. Pausing 15s before retry...")
+                    log.warning(f"Rate limited by Steam on AppID {appid}. Pausing 15s before retry...")
                     if progress_cb:
                         progress_cb(new_count, total_new, "Rate limited — pausing 15s...")
                     time.sleep(15)
                     # loop back and retry this game
                 else:
-                    print("Rate limit persists after retry. Aborting populate.")
+                    log.warning("Rate limit persists after retry. Aborting populate.")
                     return {
                         "status": "error",
                         "message": "Steam is rate limiting requests. Try again in a few minutes.",
@@ -183,7 +194,7 @@ def add_new(cancel_event=None, progress_cb=None):
 
             except Exception as e:
                 skip_count += 1
-                print(f"Error processing {game.get('name', '') or appid} (AppID {appid}): {e} — skipping.")
+                log.error(f"Error processing {game.get('name', '') or appid} (AppID {appid}): {e} — skipping.")
                 break
 
         time.sleep(0.5)
@@ -192,7 +203,7 @@ def add_new(cancel_event=None, progress_cb=None):
             return {"status": "success", "added": new_count}
 
     if skip_count:
-        print(f"Populate complete. Added {new_count}, skipped {skip_count} due to errors.")
+        log.info(f"Populate complete. Added {new_count}, skipped {skip_count}.")
     return {"status": "success", "added": new_count}
 
 # Scrape Player API (Name, Playtime, Last Played)
@@ -227,7 +238,7 @@ def fetch_player_data(appid):
             'last_played': last_played_date
         }
     except Exception as e:
-        print(f"Error fetching player data for {appid}: {e}")
+        log.error(f"Error fetching player data for {appid}: {e}")
         return None
 
 # Scrape Storefront API (Devs, Pubs, Release Date)
@@ -247,7 +258,7 @@ def fetch_store_data(appid):
 
         # The API returns data keyed by the appid string
         if not json_data or not json_data.get(str(appid), {}).get('success'):
-            print(f"Could not find store data for {appid}")
+            log.info(f"Could not find store data for {appid}")
             return None
 
         data = json_data[str(appid)]['data']
@@ -274,14 +285,14 @@ def fetch_store_data(appid):
         return extracted
 
     except Exception as e:
-        print(f"Error fetching store data for {appid}")
+        log.error(f"Error fetching store data for {appid}")
         return None
 
 
 # Scrape Reviews API (Percentage, Description)
 def fetch_review_data(appid):
     # Re-adding the num_per_page=0 from your old working version
-    url = f"https://store.steampowered.com/appreviews/{appid}?json=1"
+    url = f"https://store.steampowered.com/appreviews/{appid}?json=1&language=all&num_per_page=0&purchase_type=all"
 
     try:
         # Adding a timeout like your old code had to prevent hanging
@@ -295,7 +306,12 @@ def fetch_review_data(appid):
             summary = data.get('query_summary', {})
             total = summary.get('total_reviews', 0)
             positive = summary.get('total_positive', 0)
-            score = summary.get('review_score_desc', 'No Reviews') if total >= 10 else 'Not Enough Reviews'
+            if total == 0:
+                score = 'No Reviews'
+            elif total < 10:
+                score = 'Not Enough Reviews'
+            else:
+                score = summary.get('review_score_desc', 'No Reviews')
 
             # Using your old working percentage calculation
             percent = int((positive / total) * 100) if total > 0 else 0
@@ -318,11 +334,11 @@ def fetch_review_data(appid):
                 'positive_reviews': positive #INT
             }
         else:
-            print(f"Steam Review API returned status: {response.status_code}")
+            log.warning(f"Steam Review API returned status: {response.status_code}")
             return None
 
     except Exception as e:
-        print(f"Error fetching review data for {appid}")
+        log.error(f"Error fetching review data for {appid}")
         return None
 
 
@@ -349,7 +365,7 @@ def fetch_cheevo_data(appid):
 
         playerstats = json_data.get('playerstats', {})
         if not playerstats.get('success'):
-            print(f"No achievement data found for {appid} (Game might not have them)")
+            log.info(f"No achievement data for {appid} (game may not have achievements)")
             return None
 
         achievements = playerstats.get('achievements', [])
@@ -370,7 +386,7 @@ def fetch_cheevo_data(appid):
         }
 
     except Exception as e:
-        print(f"Error fetching achievement data for AppID: {appid}")
+        log.error(f"Error fetching achievement data for AppID: {appid}")
         return None
 
 def fetch_tag_data(appid):
@@ -401,7 +417,7 @@ def fetch_tag_data(appid):
             if tags:
                 return {'tags': ",".join(tags)}
     except Exception as e:
-        print(f"Error scraping tags for {appid}: {e}")
+        log.error(f"Error scraping tags for {appid}: {e}")
 
     return None
 
@@ -441,7 +457,7 @@ def scrape_blaeo_games():
     }
 
     try:
-        print(f"Opening BLAEO: {blaeo_url}")
+        log.info(f"Opening BLAEO: {blaeo_url}")
         driver.get(blaeo_url)
 
         WebDriverWait(driver, 10).until(
@@ -464,7 +480,7 @@ def scrape_blaeo_games():
                 # If heights match, we've hit the absolute bottom
                 break
             last_height = new_height
-            print("Scrolling to load more games...")
+            log.info("Scrolling to load more BLAEO games...")
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         rows = soup.select("table.game-table tbody tr.game")
@@ -518,19 +534,19 @@ def scrape_blaeo_games():
                     updated_count += 1
                 else:
                     # This helps you see if the scraper found games you haven't added yet
-                    print(f"Game found on BLAEO but not in local DB: AppID {appid}")
+                    log.info(f"Game found on BLAEO but not in local DB: AppID {appid}")
 
             except Exception as e:
-                print(f"Skipping a row due to error: {e}")
+                log.error(f"Skipping a BLAEO row due to error: {e}")
                 continue
 
         db.commit()
         db.close()
-        print(f"Successfully synced {updated_count} games from BLAEO.")
+        log.info(f"Successfully synced {updated_count} games from BLAEO.")
         return {"status": "success", "updated": updated_count}
 
     except Exception as e:
-        print(f"General Scraper Error: {e}")
+        log.error(f"BLAEO scraper error: {e}")
         return {"status": "error", "message": str(e)}
 
     finally:

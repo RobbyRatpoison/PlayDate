@@ -85,7 +85,7 @@
                             style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
                             oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
                         <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
-                            Use standard SQLite syntax. Column names: name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, review_score, developers, publishers.
+                            Use standard SQLite syntax. Column names: name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers.
                         </div>
                         <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
                             <button type="button" onclick="parseSqlToTree()"
@@ -428,6 +428,8 @@ const FM_FILTER_CONFIG = {
                                options: ['steam','sgdb_icon','custom','missing'] },
     'unlocked_achievements': { label: 'Unlocked Achievements', type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'total_achievements':    { label: 'Total Achievements',    type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'total_reviews':         { label: 'Total Reviews',         type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'positive_reviews':      { label: 'Positive Reviews',      type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'genres':             { label: 'Genre',                 type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_genres | tojson if unique_genres is defined else '[]' }} },
     'categories':         { label: 'Category',              type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
@@ -721,7 +723,7 @@ function addSimpleRow(data = null) {
 
 // ── Column-vs-column comparison helpers ─────────────────────────
 const _COL_COMPARE_OPS = new Set(['=','!=','>','<','>=','<=']);
-const _COL_COMPARE_NUMERIC = ['playtime_forever','review_percentage','weighted_percentage','unlocked_achievements','total_achievements'];
+const _COL_COMPARE_NUMERIC = ['playtime_forever','review_percentage','weighted_percentage','unlocked_achievements','total_achievements','total_reviews','positive_reviews'];
 const _COL_COMPARE_DATE    = ['release_date','date_added','last_played'];
 
 function _compatibleCols(colName) {
@@ -1116,9 +1118,11 @@ function onCustomSqlInput() {
 }
 
 function stripSqlWrapper(sql) {
-    sql = sql.replace(/^\s*SELECT\s+\*\s+FROM\s+\w+\s+WHERE\s+/i, '');
-    sql = sql.replace(/\s+ORDER\s+BY\s+.+$/i, '');
-    return sql.trim();
+    const stripped = sql
+        .replace(/^\s*SELECT\s+\*\s+FROM\s+\w+\s+WHERE\s+/i, '')
+        .replace(/\s+ORDER\s+BY\s+.+$/i, '');
+    // Only trim if something was actually stripped, otherwise preserve trailing spaces
+    return stripped !== sql ? stripped.trim() : sql;
 }
 
 // ── SQL → Tree Parser ───────────────────────────────────────────

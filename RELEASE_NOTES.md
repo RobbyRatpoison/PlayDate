@@ -32,16 +32,28 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.12 — 2026-03-28
+## v1.1.13 — 2026-03-29
 
-### Multiple Steam Accounts
-PlayDate now supports multiple Steam accounts. Each account gets its own separate library database, so switching between them never mixes your data.
+### Bug Fixes
+- Re-scrape Steam Data in bulk edit modal now works (was silently failing every time due to a bad column reference and broken API key lookup)
+- Populate PlayDate progress counter no longer includes DLC, mods, advertising, and other non-game entries in the total
+- Non-game entries are now auto-blacklisted on first populate so they're permanently excluded from future runs
+- Fixed inability to type spaces in the custom SQL filter input
+- Review scores now correctly show for "Profile Features Limited" games
+- "No Reviews" now correctly distinguished from "Not Enough Reviews"
+- Update check no longer fires twice on startup
+- Newly added games now default to 0/0 achievements instead of NULL
 
-Account management lives in **Settings → Account**: edit your Steam ID, API key, and nickname label; add additional accounts; or remove ones you no longer need. The Detect button reads your local Steam installation and presents any accounts it finds by persona name — no API key required.
+### Improvements
+- Logging overhauled: third-party library noise suppressed; all PlayDate scraper output now goes to `playdate.log`; long lines truncated; log rotation keeps one backup
+- Store type is logged when a game is added, to help identify Proton/tool app types for future filtering
+- Art downloads are skipped for non-game entries (was fetching art before checking type)
+- Review API now uses `language=all` and `purchase_type=all` for accurate counts
 
-Backup and restore now includes all account databases, and the migration from single-account to multi-account happens automatically on first launch — your existing library is preserved.
-
-### Settings UI
-The Account section in Settings is now a dedicated sub-modal, consistent with how Background Image and Theme work. The SteamGridDB key is shared across all accounts and lives in the same modal.
+### UI
+- "Cancel" → "Close" on bulk edit, bulk re-scrape, bulk artwork, and bulk delete modals
+- Delete game dialog now shows "Delete" and "Blacklist and Delete" instead of "Cancel" and "OK"
+- Date Added label in edit modal has a "↗" link to the Steam support page for that game
+- Filter modal now includes Total Reviews and Positive Reviews as filterable fields
 
 ---

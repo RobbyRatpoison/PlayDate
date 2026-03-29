@@ -6,15 +6,30 @@ import sys
 
 # ── Logging Setup — must be first so import errors are captured ───────────────
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'playdate.log')
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=0, encoding='utf-8'),
-        logging.StreamHandler()
-    ],
-    force=True
-)
+
+_MAX_MSG_LEN = 500
+
+class _TruncatingFormatter(logging.Formatter):
+    def format(self, record):
+        msg = super().format(record)
+        if len(msg) > _MAX_MSG_LEN:
+            msg = msg[:_MAX_MSG_LEN] + f'… [{len(msg) - _MAX_MSG_LEN} chars truncated]'
+        return msg
+
+_handler_file   = RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=2, encoding='utf-8')
+_handler_stream = logging.StreamHandler()
+_fmt = _TruncatingFormatter('%(asctime)s [%(levelname)s] %(message)s')
+_handler_file.setFormatter(_fmt)
+_handler_stream.setFormatter(_fmt)
+
+# Root logger at WARNING — silences urllib3, PIL, werkzeug noise
+logging.basicConfig(level=logging.WARNING, handlers=[_handler_file, _handler_stream], force=True)
+
+# PlayDate modules at INFO
+for _name in ('__main__', 'app', 'config', 'database', 'library', 'index',
+              'scrapers', 'utils', 'images', 'imports'):
+    logging.getLogger(_name).setLevel(logging.INFO)
+
 log = logging.getLogger(__name__)
 
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -677,9 +692,9 @@ def create_app(template_folder=None, static_folder=None):
         Called in chunks from the frontend to show progress.
         """
         from scrapers import fetch_store_data, fetch_tag_data, fetch_review_data, fetch_cheevo_data
-        from config import load_config as _load_config
-        _cfg = _load_config() or {}
-        _has_key = bool(_cfg.get('api_key'))
+        from config import get_active_account
+        _account  = get_active_account() or {}
+        _has_key  = bool(_account.get('api_key'))
 
         data   = request.json or {}
         appids = data.get('appids', [])
@@ -692,6 +707,7 @@ def create_app(template_folder=None, static_folder=None):
             try:
                 store_data  = fetch_store_data(appid)  or {}
                 store_data.pop('name', None)  # don't overwrite existing game names on rescrape
+                store_data.pop('type', None)  # no type column in DB
                 review_data = fetch_review_data(appid) or {}
                 tag_data    = fetch_tag_data(appid)    or {}
                 cheevo_data = fetch_cheevo_data(appid) or {} if _has_key else {}
@@ -1470,8 +1486,10 @@ def create_app(template_folder=None, static_folder=None):
 
 
 # ── Backwards compatibility: module-level `app` for running directly ──────────
-# `python app.py` or `flask run` still works without needing main.py
-app = create_app()
+# Only create at module level when running as the entry point, not when imported
+# by main.py (which calls create_app() itself, avoiding a double startup).
+if __name__ == '__main__' or os.environ.get('FLASK_APP') == 'app':
+    app = create_app()
 
 if __name__ == '__main__':
     from config import migrate_to_multi_account
