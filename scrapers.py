@@ -6,7 +6,7 @@ import time
 from bs4 import BeautifulSoup
 from images import download_vertical, download_horizontal, download_icon, _get_steam_assets
 from datetime import datetime
-from config import load_config
+from config import load_config, get_active_account
 from database import add_new_game, update_game_data, get_db
 from utils import get_locally_installed_appids, sync_local_install_status, fetch_local_library, get_acf_names, parse_appinfo
 
@@ -19,12 +19,12 @@ class RateLimitedError(Exception):
 
 def add_new(cancel_event=None, progress_cb=None):
     limit = 0  # 0 = unlimited
-    config = load_config()
-    if not config:
-        return {"status": "error", "message": "No config found"}
+    account = get_active_account()
+    if not account:
+        return {"status": "error", "message": "No account configured"}
 
-    api_key = config.get('api_key')
-    steam_id = config.get('steam_id')
+    api_key = account.get('api_key')
+    steam_id = account.get('steam_id')
 
     if api_key:
         # ── API key path: fetch full library from Steam ────────────────────────
@@ -197,12 +197,12 @@ def add_new(cancel_event=None, progress_cb=None):
 
 # Scrape Player API (Name, Playtime, Last Played)
 def fetch_player_data(appid):
-    config = load_config()
-    if not config:
+    account = get_active_account()
+    if not account:
         return None
 
-    api_key = config.get('api_key')
-    steam_id = config.get('steam_id')
+    api_key = account.get('api_key')
+    steam_id = account.get('steam_id')
 
     if not api_key or not steam_id:
         return None
@@ -328,12 +328,12 @@ def fetch_review_data(appid):
 
 # Scrape Achievements API (Total, Unlocked)
 def fetch_cheevo_data(appid):
-    config = load_config()
-    if not config:
+    account = get_active_account()
+    if not account:
         return None
 
-    api_key = config.get('api_key', '').strip()
-    steam_id = config.get('steam_id', '').strip()
+    api_key = account.get('api_key', '').strip()
+    steam_id = account.get('steam_id', '').strip()
 
     if not api_key or not steam_id:
         return None
@@ -413,10 +413,11 @@ def scrape_blaeo_games():
     from selenium.webdriver.chrome.options import Options
     from selenium.common.exceptions import WebDriverException
     config = load_config()
+    account = get_active_account()
     # Ensure we use the URL from config, or build it if missing
     blaeo_url = config.get('blaeo_url')
     if not blaeo_url:
-        steam_id = config.get('steam_id')
+        steam_id = (account or {}).get('steam_id')
         blaeo_url = f"https://www.backlog-assassins.net/users/+{steam_id}/games"
 
     chrome_options = Options()
@@ -545,10 +546,10 @@ def sync_recent_playtime():
     log = logging.getLogger(__name__)
 
     try:
-        config = load_config()
-        if not config:
+        account = get_active_account()
+        if not account:
             return
-        steam_id = config.get('steam_id', '').strip()
+        steam_id = account.get('steam_id', '').strip()
         if not steam_id:
             return
 

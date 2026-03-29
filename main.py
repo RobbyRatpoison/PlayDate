@@ -52,7 +52,7 @@ os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
 import webview
 
 from app import create_app
-from config import BASE_DIR
+from config import BASE_DIR, migrate_to_multi_account
 from database import init_db, migrate_image_files
 from utils import find_steam_path, start_steamapps_watcher, stop_steamapps_watcher
 
@@ -254,6 +254,7 @@ if __name__ == '__main__':
 
     # 2. Initialise DB
     try:
+        migrate_to_multi_account()
         init_db()
         migrate_image_files()
     except Exception as e:

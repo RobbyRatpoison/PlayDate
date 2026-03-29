@@ -21,12 +21,18 @@ LAUNCHER_BAT = os.path.join(INSTALL_DIR, "playdate-launch.bat")
 SYSTEM       = platform.system()
 
 # User data files
+import glob as _glob
 USER_DATA = {
     "config.json":  ("Steam API credentials and settings",  os.path.join(INSTALL_DIR, "config.json")),
     "state.json":   ("Library filters, sort order, shelves", os.path.join(INSTALL_DIR, "state.json")),
-    "games.db":     ("Your entire game library database",    os.path.join(INSTALL_DIR, "games.db")),
     "playdate.log": ("Application log file",                 os.path.join(INSTALL_DIR, "playdate.log")),
 }
+# Add per-account databases (games_<steamid>.db) plus legacy games.db
+_db_files = _glob.glob(os.path.join(INSTALL_DIR, "games_*.db")) + \
+            ([os.path.join(INSTALL_DIR, "games.db")] if os.path.exists(os.path.join(INSTALL_DIR, "games.db")) else [])
+for _db in _db_files:
+    _name = os.path.basename(_db)
+    USER_DATA[_name] = ("Game library database", _db)
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 BG      = "#1b2838"

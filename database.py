@@ -2,10 +2,16 @@ from config import BASE_DIR
 import sqlite3
 import os
 
-DB_FILE = os.path.join(BASE_DIR, "games.db")
+
+def _db():
+    """Returns the active account's database file path."""
+    from config import get_active_db_path
+    return get_active_db_path()
+
 
 def get_db():
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    db_file = _db()
+    conn = sqlite3.connect(db_file, timeout=10)
     conn.row_factory = sqlite3.Row
     # Auto-init if the games table is missing (e.g. DB was deleted while running)
     try:
@@ -13,13 +19,14 @@ def get_db():
     except sqlite3.OperationalError:
         conn.close()
         init_db()
-        conn = sqlite3.connect(DB_FILE, timeout=10)
+        conn = sqlite3.connect(db_file, timeout=10)
         conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
     """Initializes the database and ensures all columns exist."""
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    db_file = _db()
+    conn = sqlite3.connect(db_file, timeout=10)
     cursor = conn.cursor()
 
     # Create table if it doesn't exist
@@ -81,12 +88,12 @@ def init_db():
 
     conn.commit()
     conn.close()
-    """Inserts a basic game record if it doesn't exist."""
 
 def add_new_game(appid, name):
-    if not os.path.exists(DB_FILE):
+    db_file = _db()
+    if not os.path.exists(db_file):
         init_db()
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(db_file, timeout=10)
     cursor = conn.cursor()
     cursor.execute("INSERT OR IGNORE INTO games (appid, name) VALUES (?, ?)", (str(appid), name))
     conn.commit()
@@ -100,13 +107,12 @@ def update_game_data(appid, **kwargs):
     if not kwargs:
         return
 
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(_db(), timeout=10)
     cursor = conn.cursor()
 
-    # Create the 'SET column1 = ?, column2 = ?' part of the query
     columns = ", ".join([f"{key} = ?" for key in kwargs.keys()])
     values = list(kwargs.values())
-    values.append(appid) # Append appid for the WHERE clause
+    values.append(appid)
 
     query = f"UPDATE games SET {columns} WHERE appid = ?"
 
@@ -126,23 +132,16 @@ def bulk_update_column(appids, column, value):
     if not appids:
         return
 
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(_db(), timeout=10)
     cursor = conn.cursor()
 
-    # 1. Create the (?, ?, ?) placeholders for the IN clause
     placeholders = ", ".join(["?"] * len(appids))
-
-    # 2. Build the query.
-    # Note: Column names must be injected directly as they can't be parameterized.
     query = f"UPDATE games SET {column} = ? WHERE appid IN ({placeholders})"
-
-    # 3. Combine the 'value' and the 'appids' into a single list of parameters
     params = [value] + list(appids)
 
     try:
         cursor.execute(query, params)
         conn.commit()
-        #print(f"Bulk updated {len(appids)} games: {column} set to {value}")
     except sqlite3.Error as e:
         print(f"Bulk update failed: {e}")
     finally:
@@ -152,7 +151,7 @@ def bulk_update_column(appids, column, value):
 
 def get_blacklist():
     """Return all blacklisted entries sorted by date_blacklisted DESC."""
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(_db(), timeout=10)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         "SELECT appid, name, date_blacklisted FROM blacklist ORDER BY date_blacklisted DESC"
@@ -163,7 +162,7 @@ def get_blacklist():
 def add_to_blacklist(appid, name):
     """Add an appid to the blacklist. Safe to call if already present."""
     from datetime import datetime
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(_db(), timeout=10)
     conn.execute(
         "INSERT OR REPLACE INTO blacklist (appid, name, date_blacklisted) VALUES (?, ?, ?)",
         (int(appid), name, datetime.now().strftime('%Y-%m-%d'))
@@ -173,14 +172,14 @@ def add_to_blacklist(appid, name):
 
 def remove_from_blacklist(appid):
     """Remove an appid from the blacklist."""
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(_db(), timeout=10)
     conn.execute("DELETE FROM blacklist WHERE appid = ?", (int(appid),))
     conn.commit()
     conn.close()
 
 def get_blacklisted_appids():
     """Return a set of blacklisted appids for fast membership testing."""
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(_db(), timeout=10)
     rows = conn.execute("SELECT appid FROM blacklist").fetchall()
     conn.close()
     return {row[0] for row in rows}
@@ -219,7 +218,7 @@ def migrate_image_files():
         log.info(f"[migrate_image_files] Created directory: {d}")
 
     # Find games whose "vertical" file is actually a horizontal header image
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(_db(), timeout=10)
     rows = conn.execute(
         "SELECT appid FROM games WHERE vertical_art_source = 'header'"
     ).fetchall()

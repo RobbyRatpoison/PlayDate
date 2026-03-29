@@ -417,7 +417,7 @@
 
 <!-- ── SETTINGS MODAL ── -->
 <div id="settings-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeSettingsModal();">
-    <div class="modal-content" style="width:420px; max-height:90vh; overflow-y:auto;">
+    <div class="modal-content" style="width:360px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <h2 style="margin:0; color:var(--text-primary);">Settings</h2>
             <button onclick="closeSettingsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
@@ -425,56 +425,13 @@
 
         <div class="hub-section">
             <div class="hub-section-label">Account</div>
-
-            <div style="margin-bottom:10px;">
-                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Steam ID</label>
-                <div style="display:flex; gap:6px;">
-                    <input id="cfg-steam-id" type="text" value="{{ existing_steam_id }}"
-                        placeholder="SteamID64 or vanity name"
-                        style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                    <button class="nav-btn" style="white-space:nowrap; font-size:0.8rem;" onclick="detectSteamId()">Detect</button>
-                </div>
-            </div>
-
-            <div style="margin-bottom:10px;">
-                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
-                    Steam API Key <span style="font-style:italic;">(optional)</span>
-                    — <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
-                </label>
-                <div style="display:flex; gap:6px;">
-                    <input id="cfg-api-key" type="password" value="{{ existing_api_key }}"
-                        placeholder="Leave blank to use local files only"
-                        style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                    <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
-                </div>
-            </div>
-
-            <div style="margin-bottom:14px;">
-                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
-                    SteamGridDB Key <span style="font-style:italic;">(optional)</span>
-                    — <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
-                </label>
-                <div style="display:flex; gap:6px;">
-                    <input id="cfg-sgdb-key" type="password" value="{{ existing_sgdb_key }}"
-                        placeholder="Enables SteamGridDB artwork"
-                        style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
-                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                    <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-sgdb-key', this)">👁</button>
-                </div>
-            </div>
-
-            <div style="display:flex; align-items:center; gap:10px;">
-                <button class="nav-btn" onclick="saveAccountSettings()">Save</button>
-                <div id="cfg-status" class="tool-status" style="margin:0;"></div>
-            </div>
+            <button class="settings-item" data-modal-row="0" onclick="openAccountModal()">Account</button>
         </div>
 
         <div class="hub-section">
             <div class="hub-section-label">Appearance</div>
             <button class="settings-item" data-modal-row="1" onclick="closeSettingsModal();openBgModal()">Background Image</button>
-            <button class="settings-item" data-modal-row="1" onclick="closeSettingsModal();openThemeModal()">Theme Editor</button>
+            <button class="settings-item" data-modal-row="1" onclick="openThemePickerModal()">Theme</button>
         </div>
 
         <div class="hub-section">
@@ -488,6 +445,105 @@
     </div>
 </div>
 
+<!-- ── ACCOUNT MODAL ── -->
+<div id="account-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAccountModal();">
+    <div class="modal-content" style="width:fit-content; min-width:400px; max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Account</h2>
+            <button onclick="closeAccountModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Account switcher — visible when more than one account exists -->
+        <div id="cfg-account-list" style="margin-bottom:14px;"></div>
+
+        <div style="margin-bottom:10px;">
+            <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Label <span style="font-style:italic;">(nickname)</span></label>
+            <input id="cfg-label" type="text" value=""
+                placeholder="e.g. Main, Alt, Work"
+                style="width:100%; box-sizing:border-box; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+
+        <div style="margin-bottom:10px;">
+            <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Steam ID</label>
+            <div style="display:flex; gap:6px;">
+                <input id="cfg-steam-id" type="text" value="{{ existing_steam_id }}"
+                    placeholder="SteamID64 or vanity name"
+                    style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                <button class="nav-btn" style="white-space:nowrap; font-size:0.8rem;" onclick="detectSteamId()">Detect</button>
+            </div>
+            <div id="cfg-account-picker" style="display:none; margin-top:8px; flex-direction:column; gap:4px;"></div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
+                Steam API Key <span style="font-style:italic;">(optional)</span>
+                — <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
+            </label>
+            <div style="display:flex; gap:6px;">
+                <input id="cfg-api-key" type="password" value="{{ existing_api_key }}"
+                    placeholder="Leave blank to use local files only"
+                    style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
+            </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+            <button class="nav-btn" onclick="saveAccountSettings()">Save</button>
+            <button id="cfg-remove-btn" class="nav-btn" style="color:var(--text-secondary);" onclick="removeAccount()">Remove Account</button>
+            <button class="nav-btn" style="margin-left:auto;" onclick="showAddAccountForm()">+ Add Account</button>
+        </div>
+        <div id="cfg-status" class="tool-status"></div>
+
+        <!-- Add account form (hidden by default) -->
+        <div id="cfg-add-form" style="display:none; margin-top:14px; padding:10px; background:rgba(255,255,255,0.04); border-radius:6px; border:1px solid var(--border);">
+            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:8px; font-weight:600;">New Account</div>
+            <div style="margin-bottom:8px;">
+                <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:3px;">Steam ID</label>
+                <div style="display:flex; gap:6px;">
+                    <input id="cfg-new-steam-id" type="text" placeholder="SteamID64"
+                        style="flex:1; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.83rem; outline:none;"
+                        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                    <button class="nav-btn" style="white-space:nowrap; font-size:0.78rem;" onclick="detectSteamIdNew()">Detect</button>
+                </div>
+                <div id="cfg-new-account-picker" style="display:none; margin-top:6px; flex-direction:column; gap:4px;"></div>
+            </div>
+            <div style="margin-bottom:8px;">
+                <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:3px;">Label <span style="font-style:italic;">(optional)</span></label>
+                <input id="cfg-new-label" type="text" placeholder="e.g. Alt, Work"
+                    style="width:100%; box-sizing:border-box; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.83rem; outline:none;"
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <button class="nav-btn" onclick="addAccount()">Add</button>
+                <button class="nav-btn" style="color:var(--text-secondary);" onclick="hideAddAccountForm()">Cancel</button>
+                <div id="cfg-add-status" class="tool-status" style="margin:0;"></div>
+            </div>
+        </div>
+
+        <!-- Global SteamGridDB key -->
+        <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+            <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
+                SteamGridDB Key <span style="font-style:italic;">(optional, shared across accounts)</span>
+                — <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
+            </label>
+            <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <input id="cfg-sgdb-key" type="password" value="{{ existing_sgdb_key }}"
+                    placeholder="Enables SteamGridDB artwork"
+                    style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-sgdb-key', this)">👁</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button class="nav-btn" onclick="saveSgdbKey()">Save SGDB Key</button>
+                <div id="cfg-sgdb-status" class="tool-status" style="margin:0;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ── TOOLS MODAL ── -->
 <div id="tools-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeToolsModal();">
     <div class="modal-content" style="width:360px;">
@@ -497,6 +553,7 @@
         </div>
 
         <div class="hub-section">
+            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openThemeModal()">Theme Editor</button>
             <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openBackupModal()">Backup &amp; Restore</button>
             <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openImportModal()">Import from Database</button>
             <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openPlayniteModal()">Import Date Added from Playnite</button>
@@ -969,35 +1026,18 @@
 
                 </div><!-- .theme-preview-frame -->
 
-                <!-- Actions / presets / saved themes -->
+                <!-- Export / import / reset / save as -->
                 <div class="theme-actions" style="flex-direction:column; align-items:stretch; gap:14px;">
 
-                    <!-- Save / export / import / reset -->
                     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                        <button class="nav-btn" data-modal-row="0" onclick="themeSave()">Apply Theme</button>
                         <button class="nav-btn" data-modal-row="0" onclick="themeExport()">Export</button>
                         <button class="nav-btn" data-modal-row="0" onclick="document.getElementById('theme-import-input').click()">Import</button>
                         <input type="file" id="theme-import-input" accept=".json" style="display:none" onchange="themeImport(this)">
-                        <button class="nav-btn" data-modal-row="0" onclick="themeReset()" style="border-color:var(--color-danger);color:var(--text-danger);"
-                            onmouseover="this.style.background='var(--color-danger)';this.style.color='var(--text-bright)'"
-                            onmouseout="this.style.background='';this.style.color='var(--text-danger)'">Reset to Default</button>
                         <div id="theme-status" class="tool-status" style="margin:0;"></div>
                     </div>
 
-                    <!-- Built-in presets -->
                     <div>
-                        <div style="font-size:0.72rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Presets</div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;" id="theme-presets-row">
-                            <!-- rendered by JS -->
-                        </div>
-                    </div>
-
-                    <!-- Saved themes -->
-                    <div>
-                        <div style="font-size:0.72rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Saved Themes</div>
-                        <div id="theme-saved-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
-                            <!-- rendered by JS -->
-                        </div>
+                        <div style="font-size:0.72rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">Save Theme</div>
                         <div style="display:flex; gap:6px; align-items:center;">
                             <input type="text" id="theme-save-name" placeholder="Name this theme…"
                                 style="flex:1; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
@@ -1011,6 +1051,17 @@
 
             </div><!-- .theme-preview-panel -->
         </div>
+    </div>
+</div>
+
+<!-- Theme picker modal -->
+<div id="theme-picker-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeThemePickerModal();">
+    <div class="modal-content" style="width:380px; max-height:80vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--text-primary);">Choose Theme</h2>
+            <button onclick="closeThemePickerModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <div id="theme-picker-modal-content"></div>
     </div>
 </div>
 
@@ -1980,11 +2031,8 @@ let _themeApplied = {};   // last-saved snapshot — restored on modal close wit
 
 function openThemeModal() {
     document.getElementById('theme-modal').style.display = 'flex';
-    _renderPresets();
     if (Object.keys(_themeVars).length === 0) {
         _themeLoad();
-    } else {
-        _loadSavedThemes();
     }
 }
 function closeThemeModal() {
@@ -2036,9 +2084,10 @@ function _themeRenderPanel() {
             panel.appendChild(header);
         }
 
-        const rawVal = _themeVars[meta.key] || _themeDefs[meta.key] || '#000000';
+        const rawVal = _themeVars[meta.key] || _themeApplied[meta.key] || _themeDefs[meta.key] || '#000000';
         const hexVal = _cssValueToHex(rawVal);
-        const isDefault = !_themeVars[meta.key] || _cssValueToHex(_themeVars[meta.key]) === _cssValueToHex(_themeDefs[meta.key] || '#000000');
+        const appliedVal = _cssValueToHex(_themeApplied[meta.key] || _themeDefs[meta.key] || '#000000');
+        const isDefault = _cssValueToHex(_themeVars[meta.key] || '#000000') === appliedVal;
         const safeKey = meta.key.replace('--', '');
 
         const row = document.createElement('div');
@@ -2056,7 +2105,7 @@ function _themeRenderPanel() {
                    value="${hexVal}" maxlength="9"
                    oninput="themeHexChange('${meta.key}', this.value)"
                    onblur="themeHexBlur('${meta.key}', this.value)">
-            <button title="Reset to default" onclick="themeResetVar('${meta.key}')"
+            <button title="Reset to active theme" onclick="themeResetVar('${meta.key}')"
                     style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.9rem;padding:0 2px;opacity:${isDefault ? '0.25' : '1'};transition:opacity 0.15s;"
                     id="threset-${safeKey}">↺</button>
         `;
@@ -2081,8 +2130,8 @@ function _updateResetBtn(key, hex) {
     const safeKey = key.replace('--', '');
     const resetBtn = document.getElementById(`threset-${safeKey}`);
     if (resetBtn) {
-        const defVal = _cssValueToHex(_themeDefs[key] || '#000000');
-        resetBtn.style.opacity = (hex.toLowerCase() === defVal.toLowerCase()) ? '0.25' : '1';
+        const appliedVal = _cssValueToHex(_themeApplied[key] || _themeDefs[key] || '#000000');
+        resetBtn.style.opacity = (hex.toLowerCase() === appliedVal.toLowerCase()) ? '0.25' : '1';
     }
 }
 
@@ -2119,7 +2168,7 @@ function themeHexBlur(key, raw) {
 }
 
 function themeResetVar(key) {
-    const defVal = _cssValueToHex(_themeDefs[key] || '#000000');
+    const defVal = _cssValueToHex(_themeApplied[key] || _themeDefs[key] || '#000000');
     _themeVars[key] = defVal;
     const safeKey = key.replace('--', '');
     const picker = document.getElementById(`thpick-${safeKey}`);
@@ -2132,50 +2181,6 @@ function themeResetVar(key) {
     _themeSetStatus('');
 }
 
-async function themeSave() {
-    _themeSetStatus('Saving…', 'info');
-    try {
-        const res  = await fetch('/api/theme', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ theme: _themeVars })
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            _themeApplied = Object.assign({}, _themeVars);
-            _themeSetStatus('✔ Theme applied.', 'success');
-        } else {
-            _themeSetStatus('✘ ' + (data.message || 'Save failed.'), 'error');
-        }
-    } catch (e) {
-        _themeSetStatus('✘ Network error.', 'error');
-    }
-}
-
-async function themeReset() {
-    _themeSetStatus('Resetting…', 'info');
-    try {
-        const res  = await fetch('/api/theme', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reset: true })
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            _themeVars    = Object.assign({}, data.theme);
-            _themeApplied = Object.assign({}, data.theme);
-            for (const [k, v] of Object.entries(_themeVars)) {
-                _applyVarToDocument(k, v);
-            }
-            _themeRenderPanel();
-            _themeSetStatus('✔ Reset to defaults.', 'success');
-        } else {
-            _themeSetStatus('✘ Reset failed.', 'error');
-        }
-    } catch (e) {
-        _themeSetStatus('✘ Network error.', 'error');
-    }
-}
 
 async function themeExport() {
     if (Object.keys(_themeVars).length === 0) {
@@ -2343,7 +2348,7 @@ function themeImport(input) {
                 _applyVarToDocument(k, v);
             }
             _themeRenderPanel();
-            _themeSetStatus(`✔ Theme imported — ${loaded} color${loaded !== 1 ? 's' : ''} loaded. Hit Apply Theme to keep it.`, 'success');
+            _themeSetStatus(`✔ Theme imported — ${loaded} color${loaded !== 1 ? 's' : ''} loaded. Name it and Save as… to keep it.`, 'success');
 
         } catch (err) {
             _themeSetStatus('✘ Could not parse file. Make sure it is a valid JSON theme.', 'error');
@@ -2383,28 +2388,6 @@ const THEME_PRESETS = [
     },
 ];
 
-function _renderPresets() {
-    const row = document.getElementById('theme-presets-row');
-    if (!row) return;
-    row.innerHTML = '';
-    for (const preset of THEME_PRESETS) {
-        const btn = document.createElement('button');
-        btn.className = 'nav-btn';
-        btn.style.cssText = 'font-size:0.78rem; padding:5px 12px;';
-        btn.textContent = preset.name;
-        btn.onclick = () => _applyPreset(preset);
-        row.appendChild(btn);
-    }
-}
-
-function _applyPreset(preset) {
-    for (const [k, v] of Object.entries(preset.vars)) {
-        _themeVars[k] = v;
-        _applyVarToDocument(k, v);
-    }
-    _themeRenderPanel();
-    _themeSetStatus(`Preset "${preset.name}" applied — hit Apply Theme to keep it.`, 'info');
-}
 
 // ── SAVED THEMES ──────────────────────────────────────────────────────────────
 let _savedThemes = {};
@@ -2414,33 +2397,108 @@ async function _loadSavedThemes() {
         const res = await fetch('/api/theme/saved');
         const data = await res.json();
         _savedThemes = data.saved || {};
-        _renderSavedThemes();
+        _renderSettingsThemes();
     } catch (e) {}
 }
 
-function _renderSavedThemes() {
-    const list = document.getElementById('theme-saved-list');
-    if (!list) return;
-    list.innerHTML = '';
-    const names = Object.keys(_savedThemes);
-    if (names.length === 0) {
-        list.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);font-style:italic;">No saved themes yet.</div>';
-        return;
+function _renderSettingsThemes() {
+    const content = document.getElementById('theme-picker-modal-content');
+    if (!content) return;
+    content.innerHTML = '';
+
+    const btnStyle = 'display:block;width:100%;text-align:left;padding:10px 14px;background:none;border:none;border-radius:5px;color:var(--text-primary);font-size:0.9rem;cursor:pointer;';
+    const labelStyle = 'font-size:0.72rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;';
+
+    // Presets
+    const presetsLabel = document.createElement('div');
+    presetsLabel.style.cssText = labelStyle;
+    presetsLabel.textContent = 'Presets';
+    content.appendChild(presetsLabel);
+
+    for (const preset of THEME_PRESETS) {
+        const btn = document.createElement('button');
+        btn.style.cssText = btnStyle;
+        btn.textContent = preset.name;
+        btn.onmouseover = () => btn.style.background = 'var(--bg-input)';
+        btn.onmouseout  = () => btn.style.background = 'none';
+        btn.onclick = () => { settingsApplyTheme(preset.vars); closeThemePickerModal(); };
+        content.appendChild(btn);
     }
-    for (const name of names) {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:6px;';
-        row.innerHTML = `
-            <input type="text" value="${name.replace(/"/g,'&quot;')}" data-orig="${name.replace(/"/g,'&quot;')}"
-                style="flex:1;padding:5px 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:0.82rem;outline:none;"
-                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
-                onkeydown="if(event.key==='Enter')this.blur()"
-                onchange="themeRenameNamed(this.dataset.orig, this.value, this)">
-            <button class="nav-btn" style="font-size:0.78rem;padding:4px 10px;white-space:nowrap;" onclick="themeLoadNamed('${name.replace(/'/g,"\\'")}')">Load</button>
-            <button style="background:none;border:none;color:var(--text-danger);cursor:pointer;font-size:1rem;padding:0 4px;" title="Delete" onclick="themeDeleteNamed('${name.replace(/'/g,"\\'")}')">✕</button>
-        `;
-        list.appendChild(row);
+
+    // Saved themes
+    const savedNames = Object.keys(_savedThemes);
+    if (savedNames.length) {
+        const sep = document.createElement('div');
+        sep.style.cssText = 'border-top:1px solid var(--border);margin:14px 0 12px;';
+        content.appendChild(sep);
+
+        const savedLabel = document.createElement('div');
+        savedLabel.style.cssText = labelStyle;
+        savedLabel.textContent = 'Saved Themes';
+        content.appendChild(savedLabel);
+
+        for (const name of savedNames) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;gap:4px;';
+
+            const btn = document.createElement('button');
+            btn.style.cssText = btnStyle + 'flex:1;';
+            btn.textContent = name;
+            btn.onmouseover = () => btn.style.background = 'var(--bg-input)';
+            btn.onmouseout  = () => btn.style.background = 'none';
+            btn.onclick = () => { settingsApplyTheme(_savedThemes[name]); closeThemePickerModal(); };
+
+            const del = document.createElement('button');
+            del.style.cssText = 'background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.85rem;padding:4px 8px;flex-shrink:0;transition:color 0.15s;';
+            del.title = 'Delete';
+            del.textContent = '✕';
+            let _delTimer = null;
+            del.onclick = () => {
+                if (del.dataset.confirm === '1') {
+                    clearTimeout(_delTimer);
+                    themeDeleteNamed(name);
+                } else {
+                    del.dataset.confirm = '1';
+                    del.textContent = 'Delete?';
+                    del.style.color = 'var(--text-danger)';
+                    _delTimer = setTimeout(() => {
+                        del.dataset.confirm = '';
+                        del.textContent = '✕';
+                        del.style.color = 'var(--text-secondary)';
+                    }, 3000);
+                }
+            };
+
+            row.appendChild(btn);
+            row.appendChild(del);
+            content.appendChild(row);
+        }
     }
+}
+
+function openThemePickerModal() {
+    _loadSavedThemes().then(_renderSettingsThemes);
+    document.getElementById('theme-picker-modal').style.display = 'flex';
+}
+function closeThemePickerModal() {
+    document.getElementById('theme-picker-modal').style.display = 'none';
+}
+
+async function settingsApplyTheme(vars) {
+    try {
+        await fetch('/api/theme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: vars })
+        });
+    } catch (e) {}
+    // Apply live regardless of network result
+    for (const meta of THEME_VAR_META) {
+        const val = vars[meta.key] || _themeDefs[meta.key];
+        if (val) _applyVarToDocument(meta.key, val);
+    }
+    _themeApplied = Object.assign({}, vars);
+    _themeVars    = {}; // force editor to reload from server next open
 }
 
 async function themeSaveNamed() {
@@ -2456,7 +2514,7 @@ async function themeSaveNamed() {
         const data = await res.json();
         if (data.status === 'success') {
             _savedThemes[name] = Object.assign({}, _themeVars);
-            _renderSavedThemes();
+            _renderSettingsThemes();
             input.value = '';
             _themeSetStatus(`✔ Saved as "${name}".`, 'success');
         } else {
@@ -2467,50 +2525,12 @@ async function themeSaveNamed() {
     }
 }
 
-function themeLoadNamed(name) {
-    const vars = _savedThemes[name];
-    if (!vars) return;
-    for (const [k, v] of Object.entries(vars)) {
-        _themeVars[k] = v;
-        _applyVarToDocument(k, v);
-    }
-    _themeRenderPanel();
-    _themeSetStatus(`"${name}" loaded — hit Apply Theme to keep it.`, 'info');
-}
-
 async function themeDeleteNamed(name) {
-    if (!await confirm(`Delete saved theme "${name}"?`)) return;
     try {
         await fetch(`/api/theme/saved/${encodeURIComponent(name)}`, { method: 'DELETE' });
         delete _savedThemes[name];
-        _renderSavedThemes();
-        _themeSetStatus(`"${name}" deleted.`, 'info');
-    } catch (e) {
-        _themeSetStatus('✘ Delete failed.', 'error');
-    }
-}
-
-async function themeRenameNamed(oldName, newName, inputEl) {
-    newName = newName.trim();
-    if (!newName || newName === oldName) { inputEl.dataset.orig = oldName; return; }
-    try {
-        const res = await fetch(`/api/theme/saved/${encodeURIComponent(oldName)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName })
-        });
-        const data = await res.json();
-        if (data.status === 'success') {
-            _savedThemes[newName] = _savedThemes[oldName];
-            delete _savedThemes[oldName];
-            inputEl.dataset.orig = newName;
-            _renderSavedThemes();
-        } else {
-            inputEl.value = oldName;
-        }
-    } catch (e) {
-        inputEl.value = oldName;
-    }
+        _renderSettingsThemes();
+    } catch (e) {}
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -2519,6 +2539,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── ACCOUNT SETTINGS ─────────────────────────────────────────────────────────
+let _cfgAccounts = {{ accounts_list | tojson }};
+let _cfgActiveId = '{{ active_steam_id }}';
+let _cfgRemoveStep = 0, _cfgRemoveTimer = null;
+
 function toggleCfgKeyVisibility(inputId, btn) {
     const input = document.getElementById(inputId);
     const show = input.type === 'password';
@@ -2526,33 +2550,106 @@ function toggleCfgKeyVisibility(inputId, btn) {
     btn.style.opacity = show ? '1' : '0.5';
 }
 
-async function detectSteamId() {
-    const status = document.getElementById('cfg-status');
-    status.textContent = 'Detecting…';
-    status.className = 'tool-status info';
+function _renderAccountList() {
+    const container = document.getElementById('cfg-account-list');
+    if (_cfgAccounts.length <= 1) { container.innerHTML = ''; return; }
+    const frag = document.createDocumentFragment();
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;';
+    label.textContent = 'Switch account:';
+    frag.appendChild(label);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; gap:6px; flex-wrap:wrap;';
+    for (const acct of _cfgAccounts) {
+        const btn = document.createElement('button');
+        btn.className = 'nav-btn';
+        btn.textContent = acct.label || acct.steam_id;
+        if (acct.active) btn.style.cssText = 'background:var(--accent); color:var(--on-accent);';
+        btn.disabled = acct.active;
+        btn.onclick = () => switchAccount(acct.steam_id);
+        row.appendChild(btn);
+    }
+    frag.appendChild(row);
+    container.innerHTML = '';
+    container.appendChild(frag);
+}
+
+async function switchAccount(steamId) {
+    try {
+        const res = await fetch('/api/account/switch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ steam_id: steamId })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            window.location.reload();
+        }
+    } catch (e) {}
+}
+
+async function _runDetect(steamIdInputId, pickerDivId, statusEl, labelInputId) {
+    const picker = document.getElementById(pickerDivId);
+    picker.style.display = 'none';
+    picker.innerHTML = '';
+    statusEl.textContent = 'Detecting…';
+    statusEl.className = 'tool-status info';
     try {
         const res = await fetch('/api/detect-steam-id');
         const data = await res.json();
         if (data.status === 'success') {
-            document.getElementById('cfg-steam-id').value = data.steam_id;
-            status.textContent = '✔ Steam ID detected.';
-            status.className = 'tool-status success';
+            document.getElementById(steamIdInputId).value = data.steam_id;
+            if (labelInputId) {
+                const lbl = document.getElementById(labelInputId);
+                if (lbl && !lbl.value) lbl.value = data.name;
+            }
+            statusEl.textContent = `✔ Detected: ${data.name}`;
+            statusEl.className = 'tool-status success';
+        } else if (data.status === 'multiple') {
+            statusEl.textContent = 'Multiple accounts found — choose one:';
+            statusEl.className = 'tool-status info';
+            picker.style.display = 'flex';
+            for (const acct of data.accounts) {
+                const btn = document.createElement('button');
+                btn.className = 'nav-btn';
+                btn.style.cssText = 'text-align:left; font-size:0.82rem;';
+                btn.textContent = acct.name;
+                btn.onclick = () => {
+                    document.getElementById(steamIdInputId).value = acct.steam_id;
+                    if (labelInputId) {
+                        const lbl = document.getElementById(labelInputId);
+                        if (lbl && !lbl.value) lbl.value = acct.name;
+                    }
+                    statusEl.textContent = `✔ Selected: ${acct.name}`;
+                    statusEl.className = 'tool-status success';
+                    picker.style.display = 'none';
+                    picker.innerHTML = '';
+                };
+                picker.appendChild(btn);
+            }
         } else {
-            status.textContent = '✘ Could not detect Steam ID automatically.';
-            status.className = 'tool-status error';
+            statusEl.textContent = '✘ Could not detect Steam ID automatically.';
+            statusEl.className = 'tool-status error';
         }
     } catch (e) {
-        status.textContent = '✘ Detection failed.';
-        status.className = 'tool-status error';
+        statusEl.textContent = '✘ Detection failed.';
+        statusEl.className = 'tool-status error';
     }
-    setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 4000);
+    setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'tool-status'; }, 4000);
+}
+
+function detectSteamId() {
+    _runDetect('cfg-steam-id', 'cfg-account-picker', document.getElementById('cfg-status'), 'cfg-label');
+}
+function detectSteamIdNew() {
+    _runDetect('cfg-new-steam-id', 'cfg-new-account-picker', document.getElementById('cfg-add-status'), 'cfg-new-label');
 }
 
 async function saveAccountSettings() {
     const status = document.getElementById('cfg-status');
     const steamId = document.getElementById('cfg-steam-id').value.trim();
     const apiKey  = document.getElementById('cfg-api-key').value.trim();
-    const sgdbKey = document.getElementById('cfg-sgdb-key').value.trim();
+    const label   = document.getElementById('cfg-label').value.trim();
 
     if (!steamId) {
         status.textContent = '✘ Steam ID is required.';
@@ -2566,7 +2663,36 @@ async function saveAccountSettings() {
         const res = await fetch('/save-config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ steam_id: steamId, api_key: apiKey, sgdb_key: sgdbKey })
+            body: JSON.stringify({ steam_id: steamId, api_key: apiKey, label })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.textContent = '✔ Saved.';
+            status.className = 'tool-status success';
+            // Update local cache label
+            const acct = _cfgAccounts.find(a => a.active);
+            if (acct) { acct.label = label || acct.steam_id; acct.steam_id = steamId; _renderAccountList(); }
+        } else {
+            status.textContent = '✘ ' + (data.message || 'Save failed.');
+            status.className = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = '✘ Network error.';
+        status.className = 'tool-status error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 5000);
+}
+
+async function saveSgdbKey() {
+    const status = document.getElementById('cfg-sgdb-status');
+    const sgdbKey = document.getElementById('cfg-sgdb-key').value.trim();
+    status.textContent = 'Saving…';
+    status.className = 'tool-status info';
+    try {
+        const res = await fetch('/save-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sgdb_key: sgdbKey })
         });
         const data = await res.json();
         if (data.status === 'success') {
@@ -2583,7 +2709,112 @@ async function saveAccountSettings() {
     setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 5000);
 }
 
+function removeAccount() {
+    const btn = document.getElementById('cfg-remove-btn');
+    if (_cfgAccounts.length <= 1) {
+        const status = document.getElementById('cfg-status');
+        status.textContent = '✘ Cannot remove the only account.';
+        status.className = 'tool-status error';
+        setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 3000);
+        return;
+    }
+    if (_cfgRemoveStep === 0) {
+        _cfgRemoveStep = 1;
+        btn.textContent = 'Remove?';
+        btn.style.color = 'var(--text-danger)';
+        _cfgRemoveTimer = setTimeout(() => {
+            _cfgRemoveStep = 0;
+            btn.textContent = 'Remove Account';
+            btn.style.color = 'var(--text-secondary)';
+        }, 3000);
+    } else {
+        clearTimeout(_cfgRemoveTimer);
+        _cfgRemoveStep = 0;
+        btn.textContent = 'Remove Account';
+        btn.style.color = 'var(--text-secondary)';
+        _doRemoveAccount();
+    }
+}
+
+async function _doRemoveAccount() {
+    const status = document.getElementById('cfg-status');
+    status.textContent = 'Removing…';
+    status.className = 'tool-status info';
+    try {
+        const res = await fetch('/api/account/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ steam_id: _cfgActiveId })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            status.textContent = '✘ ' + (data.message || 'Remove failed.');
+            status.className = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = '✘ Network error.';
+        status.className = 'tool-status error';
+    }
+}
+
+function showAddAccountForm() {
+    document.getElementById('cfg-add-form').style.display = 'block';
+    document.getElementById('cfg-new-steam-id').value = '';
+    document.getElementById('cfg-new-label').value = '';
+    document.getElementById('cfg-add-status').textContent = '';
+}
+function hideAddAccountForm() {
+    document.getElementById('cfg-add-form').style.display = 'none';
+}
+
+async function addAccount() {
+    const status = document.getElementById('cfg-add-status');
+    const steamId = document.getElementById('cfg-new-steam-id').value.trim();
+    const label   = document.getElementById('cfg-new-label').value.trim();
+    if (!steamId) {
+        status.textContent = '✘ Steam ID is required.';
+        status.className = 'tool-status error';
+        return;
+    }
+    status.textContent = 'Adding…';
+    status.className = 'tool-status info';
+    try {
+        const res = await fetch('/save-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ steam_id: steamId, label, _set_active: true })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            status.textContent = '✘ ' + (data.message || 'Failed.');
+            status.className = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = '✘ Network error.';
+        status.className = 'tool-status error';
+    }
+}
+
+// Init account list on load
+document.addEventListener('DOMContentLoaded', () => {
+    _renderAccountList();
+    // Populate label field with active account's label
+    const active = _cfgAccounts.find(a => a.active);
+    if (active) document.getElementById('cfg-label').value = active.label || '';
+});
+
 // ── SETTINGS / TOOLS HUB MODALS ──────────────────────────────────────────────
+function openAccountModal() {
+    closeSettingsModal();
+    document.getElementById('account-modal').style.display = 'flex';
+}
+function closeAccountModal() {
+    document.getElementById('account-modal').style.display = 'none';
+}
 function openSettingsModal() {
     document.getElementById('settings-modal').style.display = 'flex';
 }

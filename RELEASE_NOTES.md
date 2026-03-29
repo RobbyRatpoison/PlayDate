@@ -32,20 +32,16 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.11 — 2026-03-28
+## v1.1.12 — 2026-03-28
 
-### Menu Overhaul
-The hamburger menu has been reorganized into two dedicated modals — **Settings** and **Tools** — making it easier to find what you're looking for.
+### Multiple Steam Accounts
+PlayDate now supports multiple Steam accounts. Each account gets its own separate library database, so switching between them never mixes your data.
 
-**Settings** brings together account configuration and appearance options in one place. You can now update your Steam ID, Steam API key, and SteamGridDB API key directly from the UI, with password-style fields and reveal toggles for the API keys.
+Account management lives in **Settings → Account**: edit your Steam ID, API key, and nickname label; add additional accounts; or remove ones you no longer need. The Detect button reads your local Steam installation and presents any accounts it finds by persona name — no API key required.
 
-**Tools** groups all library utilities into logical sections: backup/restore and import tools, external sync features (PAGYWOSG and BLAEO), and blacklist management.
+Backup and restore now includes all account databases, and the migration from single-account to multi-account happens automatically on first launch — your existing library is preserved.
 
-### Theme Editor Improvements
-The theme editor has been overhauled with more granular control — 18 individual CSS variables across grouped categories (Backgrounds, Text, Accent, Borders, Status) replacing the previous coarser set. Each variable has a per-variable reset button to revert individual colors to default without resetting the whole theme.
-
-The live preview has been updated to better reflect the current state of the app, and is larger and easier to read. Closing the theme editor without clicking **Apply Theme** now discards any unapplied changes.
-
-Built-in presets and a saved themes system let you store, load, rename, and delete named themes.
+### Settings UI
+The Account section in Settings is now a dedicated sub-modal, consistent with how Background Image and Theme work. The SteamGridDB key is shared across all accounts and lives in the same modal.
 
 ---

@@ -1066,13 +1066,16 @@ def create_app(template_folder=None, static_folder=None):
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
             # Core data files — always included
             core_files = {
-                'games.db':    os.path.join(BASE_DIR, 'games.db'),
                 'config.json': os.path.join(BASE_DIR, 'config.json'),
                 'state.json':  os.path.join(BASE_DIR, 'state.json'),
             }
             for arcname, filepath in core_files.items():
                 if os.path.exists(filepath):
                     zf.write(filepath, arcname)
+            # All per-account databases
+            import glob as _glob
+            for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
+                zf.write(db_path, os.path.basename(db_path))
 
             # Optional: custom artwork (recurse into vertical/, horizontal/, icons/)
             if include_art:
@@ -1111,13 +1114,15 @@ def create_app(template_folder=None, static_folder=None):
         try:
             with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 core_files = {
-                    'games.db':    os.path.join(BASE_DIR, 'games.db'),
                     'config.json': os.path.join(BASE_DIR, 'config.json'),
                     'state.json':  os.path.join(BASE_DIR, 'state.json'),
                 }
                 for arcname, filepath in core_files.items():
                     if os.path.exists(filepath):
                         zf.write(filepath, arcname)
+                import glob as _glob
+                for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
+                    zf.write(db_path, os.path.basename(db_path))
 
                 if include_art:
                     art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
@@ -1304,7 +1309,7 @@ def create_app(template_folder=None, static_folder=None):
                 skipped  = []
 
                 # Core files: restore to BASE_DIR
-                for arcname in ('games.db', 'config.json', 'state.json'):
+                for arcname in ('config.json', 'state.json'):
                     if arcname in names:
                         dest = os.path.join(BASE_DIR, arcname)
                         with zf.open(arcname) as src:
@@ -1316,6 +1321,17 @@ def create_app(template_folder=None, static_folder=None):
                     else:
                         app.logger.warning(f"Restore: {arcname!r} not found in zip — skipping")
                         skipped.append(arcname)
+
+                # Per-account databases: games_*.db
+                db_entries = [n for n in names if n.startswith('games_') and n.endswith('.db')]
+                for arcname in db_entries:
+                    dest = os.path.join(BASE_DIR, arcname)
+                    with zf.open(arcname) as src:
+                        data = src.read()
+                    with open(dest, 'wb') as dst:
+                        dst.write(data)
+                    app.logger.info(f"Restore: wrote {len(data)} bytes → {dest}")
+                    restored.append(arcname)
 
                 # Art files: restore to static/img/library/ (including subdirs)
                 art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
@@ -1458,6 +1474,8 @@ def create_app(template_folder=None, static_folder=None):
 app = create_app()
 
 if __name__ == '__main__':
+    from config import migrate_to_multi_account
+    migrate_to_multi_account()
     init_db()
     migrate_image_files()
     app.run(debug=True, port=5000)

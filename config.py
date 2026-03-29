@@ -6,7 +6,7 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.1.11"
+__version__ = "1.1.12"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -282,16 +282,24 @@ def resolve_vanity_url(api_key, steam_id):
 @config_bp.app_context_processor
 def inject_config_status():
     """Injects config state into all templates."""
-    config_exists = is_configured()
-    existing = load_config() or {}
-    needs_config = not config_exists or not existing.get('steam_id')
+    config = load_config() or {}
+    active_id = config.get('active_account')
+    accounts  = config.get('accounts', {})
+    active    = accounts.get(active_id, {})
+    needs_config = not is_configured() or not active_id or active_id not in accounts
     state = load_state()
+    accounts_list = [
+        {**v, 'active': k == active_id}
+        for k, v in accounts.items()
+    ]
     return dict(
-        config_exists=config_exists,
+        config_exists=is_configured(),
         needs_config=needs_config,
-        existing_steam_id=existing.get('steam_id', ''),
-        existing_api_key=existing.get('api_key', ''),
-        existing_sgdb_key=existing.get('sgdb_key', ''),
+        existing_steam_id=active.get('steam_id', ''),
+        existing_api_key=active.get('api_key', ''),
+        existing_sgdb_key=config.get('sgdb_key', ''),
+        accounts_list=accounts_list,
+        active_steam_id=active_id or '',
         initial_fullscreen=state.get('fullscreen', False),
     )
 
@@ -305,42 +313,132 @@ def load_config():
 def is_configured():
     return os.path.exists(CONFIG_PATH)
 
+def get_active_account():
+    """Returns the active account dict {steam_id, api_key, label}, or None."""
+    config = load_config()
+    if not config:
+        return None
+    active_id = config.get('active_account', '')
+    return config.get('accounts', {}).get(active_id)
+
+def get_active_db_path():
+    """Returns the path to the active account's database file."""
+    config = load_config()
+    if config:
+        active_id = config.get('active_account', '')
+        if active_id:
+            return os.path.join(BASE_DIR, f'games_{active_id}.db')
+    return os.path.join(BASE_DIR, 'games_default.db')
+
+def migrate_to_multi_account():
+    """
+    One-time migration from flat {steam_id, api_key, sgdb_key} config to the
+    multi-account structure {active_account, sgdb_key, accounts: {...}}.
+    Renames games.db → games_<steamid>.db.  Idempotent — safe to call on every launch.
+    """
+    if not os.path.exists(CONFIG_PATH):
+        return  # Fresh install — nothing to migrate
+
+    with open(CONFIG_PATH, 'r') as f:
+        data = json.load(f)
+
+    if 'accounts' in data:
+        return  # Already migrated
+
+    steam_id = data.get('steam_id', '').strip()
+    api_key  = data.get('api_key', '').strip()
+    sgdb_key = data.get('sgdb_key', '').strip()
+
+    if not steam_id:
+        # Partial legacy config with no steam_id
+        new_config = {'active_account': None, 'sgdb_key': sgdb_key, 'accounts': {}}
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(new_config, f, indent=4)
+        return
+
+    # Rename games.db → games_<steamid>.db if the old file still exists
+    old_db = os.path.join(BASE_DIR, 'games.db')
+    new_db = os.path.join(BASE_DIR, f'games_{steam_id}.db')
+    if os.path.exists(old_db) and not os.path.exists(new_db):
+        os.rename(old_db, new_db)
+
+    new_config = {
+        'active_account': steam_id,
+        'sgdb_key': sgdb_key,
+        'accounts': {
+            steam_id: {
+                'steam_id': steam_id,
+                'api_key': api_key,
+                'label': steam_id,
+            }
+        }
+    }
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(new_config, f, indent=4)
+
 @config_bp.route('/api/detect-steam-id')
 def detect_steam_id_route():
     from utils import detect_steam_id
-    steam_id = detect_steam_id()
-    if steam_id:
-        return jsonify({"status": "success", "steam_id": steam_id})
-    return jsonify({"status": "not_found"})
+    accounts = detect_steam_id()
+    if not accounts:
+        return jsonify({"status": "not_found"})
+    if len(accounts) == 1:
+        return jsonify({"status": "success", "steam_id": accounts[0]['steam_id'], "name": accounts[0]['name']})
+    return jsonify({"status": "multiple", "accounts": accounts})
 
 
 @config_bp.route('/save-config', methods=['POST'])
 def save_config():
-    data = request.json
-    api_key = (data.get('api_key') or '').strip()
-    raw_id = (data.get('steam_id') or '').strip()
-    sgdb_key = data.get('sgdb_key')
+    data       = request.json
+    api_key    = (data.get('api_key')  or '').strip()
+    raw_id     = (data.get('steam_id') or '').strip()
+    sgdb_key   = data.get('sgdb_key')   # None means "don't touch"
+    label      = (data.get('label')    or '').strip()
+    set_active = bool(data.get('_set_active', False))
+
+    # Load existing multi-account config or start fresh
+    if is_configured():
+        with open(CONFIG_PATH, 'r') as f:
+            config_data = json.load(f)
+        if 'accounts' not in config_data:
+            config_data = {'active_account': None, 'sgdb_key': config_data.get('sgdb_key', ''), 'accounts': {}}
+    else:
+        config_data = {'active_account': None, 'sgdb_key': '', 'accounts': {}}
+
+    # sgdb_key-only update (no steam_id required)
+    if sgdb_key is not None and not raw_id:
+        config_data['sgdb_key'] = sgdb_key.strip()
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(config_data, f, indent=4)
+        return jsonify({"status": "success"})
 
     if not raw_id:
         return jsonify({"status": "error", "message": "Steam ID is required."}), 400
 
     if api_key:
-        # Validate credentials and resolve vanity name against the Steam API
         resolved_id = resolve_vanity_url(api_key, raw_id)
         is_valid, message = validate_steam_creds(api_key, resolved_id)
         if not is_valid:
             return jsonify({"status": "error", "message": message}), 400
     else:
-        # No API key — vanity resolution is unavailable, require a numeric SteamID64
         if not raw_id.isdigit():
             return jsonify({"status": "error", "message": "A numeric SteamID64 is required when no API key is provided. Vanity names can only be resolved with an API key."}), 400
         resolved_id = raw_id
 
-    config_data = {
-        "api_key": api_key,
-        "steam_id": resolved_id,
-        "sgdb_key": sgdb_key,
+    if sgdb_key is not None:
+        config_data['sgdb_key'] = sgdb_key.strip()
+
+    is_new = resolved_id not in config_data['accounts']
+    existing_account = config_data['accounts'].get(resolved_id, {})
+    config_data['accounts'][resolved_id] = {
+        'steam_id': resolved_id,
+        'api_key':  api_key,
+        'label':    label or existing_account.get('label', resolved_id),
     }
+
+    # Switch to this account when: it's new, explicitly requested, updating current active, or no active set
+    if is_new or set_active or config_data.get('active_account') == resolved_id or not config_data.get('active_account'):
+        config_data['active_account'] = resolved_id
 
     with open(CONFIG_PATH, 'w') as f:
         json.dump(config_data, f, indent=4)
@@ -474,3 +572,50 @@ def rename_saved_theme_route(name):
     if not ok:
         return jsonify({"status": "error", "message": "Theme not found."}), 404
     return jsonify({"status": "success"})
+
+# ── Account management routes ─────────────────────────────────────────────────
+
+@config_bp.route('/api/accounts', methods=['GET'])
+def get_accounts():
+    config    = load_config() or {}
+    active_id = config.get('active_account')
+    accounts  = config.get('accounts', {})
+    return jsonify({
+        'status':         'success',
+        'accounts':       [{**v, 'active': k == active_id} for k, v in accounts.items()],
+        'active_account': active_id,
+        'sgdb_key':       config.get('sgdb_key', ''),
+    })
+
+@config_bp.route('/api/account/switch', methods=['POST'])
+def switch_account():
+    steam_id = ((request.json or {}).get('steam_id') or '').strip()
+    if not steam_id:
+        return jsonify({'status': 'error', 'message': 'steam_id required'}), 400
+    if not is_configured():
+        return jsonify({'status': 'error', 'message': 'Not configured'}), 400
+    with open(CONFIG_PATH, 'r') as f:
+        config_data = json.load(f)
+    if steam_id not in config_data.get('accounts', {}):
+        return jsonify({'status': 'error', 'message': 'Account not found'}), 404
+    config_data['active_account'] = steam_id
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config_data, f, indent=4)
+    return jsonify({'status': 'success'})
+
+@config_bp.route('/api/account/remove', methods=['POST'])
+def remove_account():
+    steam_id = ((request.json or {}).get('steam_id') or '').strip()
+    if not steam_id:
+        return jsonify({'status': 'error', 'message': 'steam_id required'}), 400
+    if not is_configured():
+        return jsonify({'status': 'error', 'message': 'Not configured'}), 400
+    with open(CONFIG_PATH, 'r') as f:
+        config_data = json.load(f)
+    config_data.get('accounts', {}).pop(steam_id, None)
+    if config_data.get('active_account') == steam_id:
+        remaining = list(config_data.get('accounts', {}).keys())
+        config_data['active_account'] = remaining[0] if remaining else None
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config_data, f, indent=4)
+    return jsonify({'status': 'success', 'new_active': config_data.get('active_account')})

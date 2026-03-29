@@ -116,32 +116,50 @@ def find_steam_path():
 
 def detect_steam_id():
     """
-    Detects the SteamID64 from the userdata folder.
-    If multiple accounts exist, picks the one whose localconfig.vdf was most
-    recently modified (most likely the active account).
-    Returns a SteamID64 string, or None if not found.
+    Detects Steam accounts from the userdata folder.
+    Returns a list of {'steam_id': str, 'name': str} sorted by most recently
+    used (localconfig.vdf mtime). Names are pulled from loginusers.vdf.
+    Returns an empty list if nothing is found.
     """
+    import vdf as vdf_lib
     steam_root = find_steam_root()
     if not steam_root:
-        return None
+        return []
+
+    # Build name map from loginusers.vdf (no API key needed)
+    names = {}
+    loginusers_path = os.path.join(steam_root, 'config', 'loginusers.vdf')
+    if os.path.isfile(loginusers_path):
+        try:
+            with open(loginusers_path, encoding='utf-8', errors='ignore') as f:
+                data = vdf_lib.load(f)
+            users = data.get('users', data.get('Users', {}))
+            for sid64, info in users.items():
+                names[sid64] = info.get('PersonaName') or info.get('AccountName') or sid64
+        except Exception:
+            pass
 
     userdata = os.path.join(steam_root, 'userdata')
     if not os.path.isdir(userdata):
-        return None
+        return []
 
     candidates = []
     for subdir in os.listdir(userdata):
-        if subdir.isdigit():
-            lc_path = os.path.join(userdata, subdir, 'config', 'localconfig.vdf')
-            if os.path.isfile(lc_path):
-                candidates.append((subdir, os.path.getmtime(lc_path)))
+        if not subdir.isdigit():
+            continue
+        lc_path = os.path.join(userdata, subdir, 'config', 'localconfig.vdf')
+        if os.path.isfile(lc_path):
+            sid64 = str(int(subdir) + 76561197960265728)
+            candidates.append({
+                'steam_id': sid64,
+                'name': names.get(sid64, sid64),
+                '_mtime': os.path.getmtime(lc_path),
+            })
 
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: x[1], reverse=True)
-    steamid3 = candidates[0][0]
-    return str(int(steamid3) + 76561197960265728)
+    candidates.sort(key=lambda x: x['_mtime'], reverse=True)
+    for c in candidates:
+        del c['_mtime']
+    return candidates
 
 
 def find_steam_root():

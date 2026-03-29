@@ -7,6 +7,7 @@
         <form id="config-form">
             <label>Steam ID or Vanity Name <span style="color:#ff4d4d;">*</span></label>
             <input type="text" id="conf-steam-id" name="steam_id" placeholder="e.g. 76561198... or your custom URL name" value="{{ existing_steam_id }}" required>
+            <div id="conf-account-picker" style="display:none; flex-direction:column; gap:4px; margin-top:6px;"></div>
             <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
                 Your vanity name is the custom part of your Steam profile URL. A numeric SteamID64 is required if you skip the API key below.
             </small>
@@ -68,14 +69,32 @@
 
     // Auto-detect SteamID if field is empty
     (async () => {
-        const field = document.getElementById('conf-steam-id');
+        const field  = document.getElementById('conf-steam-id');
+        const picker = document.getElementById('conf-account-picker');
         if (field.value) return;
         try {
             const res  = await fetch('/api/detect-steam-id');
             const data = await res.json();
-            if (data.status === 'success' && data.steam_id) {
+            if (data.status === 'success') {
                 field.value = data.steam_id;
                 field.style.borderColor = 'var(--accent)';
+            } else if (data.status === 'multiple') {
+                picker.style.display = 'flex';
+                for (const acct of data.accounts) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.textContent = acct.name;
+                    btn.style.cssText = 'text-align:left; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; cursor:pointer;';
+                    btn.onmouseover = () => btn.style.borderColor = 'var(--accent)';
+                    btn.onmouseout  = () => btn.style.borderColor = 'var(--border)';
+                    btn.onclick = () => {
+                        field.value = acct.steam_id;
+                        field.style.borderColor = 'var(--accent)';
+                        picker.style.display = 'none';
+                        picker.innerHTML = '';
+                    };
+                    picker.appendChild(btn);
+                }
             }
         } catch (_) {}
     })();
