@@ -62,6 +62,7 @@ main.py → starts Flask (background thread) + pywebview window
 | `images.py` | Cover art download: vertical capsule, horizontal header, and icon — each with Steam asset manifest → CDN → SteamGridDB fallback chain |
 | `imports.py` | Data import tools: generic SQLite column mapping (`inspect_database`, `execute_import`) and Playnite backup import (`parse_playnite_dates`) |
 | `install.py` / `uninstall.py` | Cross-platform GUI installer/uninstaller (tkinter) |
+| `playdate_date_import.user.js` | Tampermonkey userscript — scrapes activation dates from Steam help pages and sends them to PlayDate |
 
 **Frontend:** Vanilla JS + CSS3 in `static/`, Jinja2 templates in `templates/`. No build step, no framework.
 
@@ -131,6 +132,16 @@ No API key → reads library from local Steam files (`localconfig.vdf`, ACF mani
 
 ### Filesystem Watcher
 `utils.py` watches the steamapps folder for `appmanifest_*.acf` changes. On trigger, `sync_local_install_status()` resets all `installed` flags to 0 then bulk-sets found appids to 1. Proton, SteamLinuxRuntime, and Steamworks Shared entries are filtered out by reading .acf content.
+
+### Steam Help Page Date Import
+
+`playdate_date_import.user.js` is a Tampermonkey MV2 userscript that runs on `help.steampowered.com/*/HelpWithGame` pages. It only activates when the URL contains `?ref=playdate` (set by PlayDate's ↗ link in the edit modal). It scrapes the earliest activation date from `.LineItemRow` spans (or `.account_details` fallback), then POSTs it to PlayDate via `GM_xmlhttpRequest`.
+
+**Single-game mode** (edit modal ↗ link): POSTs to `POST /api/pending-date` → stored in `_pending_dates` dict → edit modal polls `GET /api/pending-date/<appid>` every 250ms for up to 3 seconds after the link is clicked → on receipt, populates the Date Added field with an accent highlight. After sending, userscript polls `GET /api/pending-date/<appid>/peek` (non-destructive) until the modal consumes the date, then closes the tab.
+
+**Bulk mode** (`?bulk=1`, triggered from the bulk edit modal): POSTs to `POST /api/bulk-date-import/submit` (or `/skip` if no date found after 20 attempts) → backend saves directly to DB and returns `next_appid` → userscript navigates the same tab to the next game's URL (500ms delay between games). Frontend polls `GET /api/bulk-date-import/status` every second to update the progress bar. `_bulk_date_state` is a module-level dict tracking the queue, current game, done/failed counts, and active flag.
+
+**pywebview `window.open()` does not open the system browser.** Use a programmatic `<a target="_blank">` click instead: create an `<a>` element, set `href` and `target='_blank'`, append to body, `.click()`, then remove. This matches how pywebview handles real link clicks.
 
 ### Playnite Import
 `imports.py` → `parse_playnite_dates(zip_path)` extracts `date_added` values from a Playnite backup ZIP. Playnite stores its library in a LiteDB binary file (`library/games.db` inside the ZIP) — not SQLite. The parser reads the raw binary and uses proximity matching (±8KB) between `GameId` (BSON string, `\x02GameId\x00`) and `Added` (BSON datetime, `\x09Added\x00`) fields to pair them. This is necessary because LiteDB documents span non-contiguous 8KB pages, so full document parsing isn't possible without a LiteDB reader. Returns `{appid_int: 'YYYY-MM-DD'}`.

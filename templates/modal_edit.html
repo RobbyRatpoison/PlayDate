@@ -631,7 +631,10 @@
         if (storeLink) storeLink.href = `https://store.steampowered.com/app/${game.appid}/`;
 
         const helpLink = document.getElementById('steam-help-link');
-        if (helpLink) helpLink.href = `https://help.steampowered.com/en/wizard/HelpWithGame/?appid=${game.appid}`;
+        if (helpLink) {
+            helpLink.href = `https://help.steampowered.com/en/wizard/HelpWithGame/?appid=${game.appid}&ref=playdate`;
+            helpLink.onclick = function () { _startPendingDatePoll(game.appid); };
+        }
 
         // Set SGDB browse links for no-key users
         const sgdbUrl = `https://www.steamgriddb.com/steam/${game.appid}`;
@@ -641,6 +644,38 @@
         });
 
         document.getElementById('editModal').style.display = 'flex';
+    }
+
+    let _pendingDatePoll = null;
+
+    function _startPendingDatePoll(appid) {
+        _stopPendingDatePoll();
+        let elapsed = 0;
+        function check() {
+            fetch(`/api/pending-date/${appid}`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.status === 'success') {
+                        _stopPendingDatePoll();
+                        const field = document.getElementById('edit-date-added');
+                        if (!field) return;
+                        field.value = d.date;
+                        field.style.borderColor = 'var(--accent)';
+                        field.title = 'Date imported from Steam help page — save to confirm';
+                        setTimeout(() => { field.style.borderColor = ''; field.title = ''; }, 8000);
+                        return;
+                    }
+                    elapsed += 250;
+                    if (elapsed >= 3000) _stopPendingDatePoll();
+                })
+                .catch(() => { elapsed += 250; if (elapsed >= 3000) _stopPendingDatePoll(); });
+        }
+        check();
+        _pendingDatePoll = setInterval(check, 250);
+    }
+
+    function _stopPendingDatePoll() {
+        if (_pendingDatePoll) { clearInterval(_pendingDatePoll); _pendingDatePoll = null; }
     }
 
     let _artCurrentTab = 'vertical';
@@ -761,6 +796,7 @@
             const status = document.getElementById(`art-status-${type}`);
             if (status) status.textContent = '';
         });
+        _stopPendingDatePoll();
         document.getElementById('editModal').style.display = 'none';
     }
 

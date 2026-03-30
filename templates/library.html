@@ -1165,6 +1165,142 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('bulk-column'));
     initCustomSelect(document.getElementById('bulk-mode'));
 });
+
+// ── BULK DATE IMPORT ────────────────────────────────────────────
+function openBulkDateImportModal() {
+    closeBulkEditModal();
+    const hasSelection = _selectedIds.size > 0;
+    document.getElementById('bdi-scope-' + (hasSelection ? 'selected' : 'filtered')).checked = true;
+    onBulkDateImportScopeChange();
+    document.getElementById('bulk-date-import-modal').style.display = 'flex';
+    document.getElementById('bdi-status').textContent = '';
+    document.getElementById('bdi-status').className = '';
+    document.getElementById('bdi-progress').style.display = 'none';
+    document.getElementById('bdi-stop-btn').style.display = 'none';
+    document.getElementById('bdi-start-btn').disabled = false;
+}
+
+function closeBulkDateImportModal() {
+    document.getElementById('bulk-date-import-modal').style.display = 'none';
+    if (_bdiPollInterval) { clearInterval(_bdiPollInterval); _bdiPollInterval = null; }
+}
+
+function onBulkDateImportScopeChange() {
+    const scope    = document.querySelector('input[name="bdi-scope"]:checked').value;
+    const selInfo  = document.getElementById('bdi-selected-info');
+    const filtInfo = document.getElementById('bdi-filtered-info');
+    if (scope === 'selected') {
+        filtInfo.style.display = 'none';
+        selInfo.style.display  = 'block';
+        selInfo.textContent    = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
+    } else {
+        selInfo.style.display  = 'none';
+        filtInfo.style.display = 'block';
+        filtInfo.textContent   = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
+        _selectedIds.clear();
+        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+        const btn = document.getElementById('select-mode-btn');
+        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    }
+}
+
+let _bdiPollInterval = null;
+
+async function startBulkDateImport() {
+    const scope    = document.querySelector('input[name="bdi-scope"]:checked').value;
+    const status   = document.getElementById('bdi-status');
+    const startBtn = document.getElementById('bdi-start-btn');
+    const stopBtn  = document.getElementById('bdi-stop-btn');
+
+    if (scope === 'selected' && _selectedIds.size === 0) {
+        status.className = 'bulk-status-error';
+        status.textContent = 'No games selected.';
+        return;
+    }
+
+    const appids = scope === 'selected'
+        ? Array.from(_selectedIds)
+        : Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+
+    startBtn.disabled = true;
+    status.className = '';
+    status.textContent = 'Starting…';
+
+    let data;
+    try {
+        const res = await fetch('/api/bulk-date-import/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids })
+        });
+        data = await res.json();
+    } catch (e) {
+        status.className = 'bulk-status-error';
+        status.textContent = 'Failed to start: ' + e.message;
+        startBtn.disabled = false;
+        return;
+    }
+
+    if (data.status !== 'ok') {
+        status.className = 'bulk-status-error';
+        status.textContent = data.message || 'Failed to start.';
+        startBtn.disabled = false;
+        return;
+    }
+
+    if (data.total === 0) {
+        status.className = 'bulk-status-success';
+        status.textContent = 'No games to process.';
+        startBtn.disabled = false;
+        return;
+    }
+
+    const _a = document.createElement('a');
+    _a.href = `https://help.steampowered.com/en/wizard/HelpWithGame/?appid=${data.first_appid}&ref=playdate&bulk=1`;
+    _a.target = '_blank';
+    _a.rel = 'noopener';
+    document.body.appendChild(_a);
+    _a.click();
+    document.body.removeChild(_a);
+
+    status.textContent = '';
+    document.getElementById('bdi-progress').style.display = 'block';
+    document.getElementById('bdi-progress-bar').style.width = '0%';
+    document.getElementById('bdi-progress-label').textContent = `0 / ${data.total}`;
+    document.getElementById('bdi-current-game').textContent = data.first_name;
+    stopBtn.style.display = '';
+    stopBtn.disabled = false;
+
+    _bdiPollInterval = setInterval(async () => {
+        try {
+            const r = await fetch('/api/bulk-date-import/status');
+            const d = await r.json();
+            const done = d.done + d.failed;
+            const pct  = d.total > 0 ? Math.round((done / d.total) * 100) : 0;
+            document.getElementById('bdi-progress-bar').style.width = pct + '%';
+            document.getElementById('bdi-progress-label').textContent =
+                `${done} / ${d.total} — ${d.done} imported, ${d.failed} not found`;
+            document.getElementById('bdi-current-game').textContent =
+                d.current ? d.current.name : (d.active ? '…' : 'Done');
+            if (!d.active) {
+                clearInterval(_bdiPollInterval); _bdiPollInterval = null;
+                startBtn.disabled = false;
+                stopBtn.style.display = 'none';
+                status.className = 'bulk-status-success';
+                status.textContent = `✔ Done — ${d.done} date${d.done !== 1 ? 's' : ''} imported, ${d.failed} not found.`;
+            }
+        } catch (e) { /* ignore poll errors */ }
+    }, 1000);
+}
+
+async function stopBulkDateImport() {
+    await fetch('/api/bulk-date-import/cancel', { method: 'POST' }).catch(() => {});
+    clearInterval(_bdiPollInterval); _bdiPollInterval = null;
+    document.getElementById('bdi-stop-btn').style.display = 'none';
+    document.getElementById('bdi-start-btn').disabled = false;
+    document.getElementById('bdi-status').className = '';
+    document.getElementById('bdi-status').textContent = 'Cancelled.';
+}
 </script>
 
 <!-- Bulk Rescrape Modal -->
@@ -1455,7 +1591,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 onmouseout="this.style.background='transparent'">
                 BULK SCRAPE ARTWORK
             </button>
-            <button data-modal-row="3" onclick="openBulkDeleteModal()"
+            <button data-modal-row="3" onclick="openBulkDateImportModal()"
+                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
+                onmouseover="this.style.background='rgba(102,192,244,0.1)'"
+                onmouseout="this.style.background='transparent'">
+                IMPORT DATES FROM STEAM
+            </button>
+            <button data-modal-row="4" onclick="openBulkDeleteModal()"
                 style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:#ff8080; border:1px solid #a32a2a; border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
                 onmouseover="this.style.background='rgba(163,42,42,0.15)'"
                 onmouseout="this.style.background='transparent'">
@@ -1465,10 +1607,64 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
 </div>
 
+<!-- Bulk Date Import Modal -->
+<div id="bulk-date-import-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkDateImportModal();">
+    <div class="modal-content" style="width:460px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h2 style="margin:0; color:var(--accent);">Import Dates from Steam</h2>
+            <button onclick="closeBulkDateImportModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <input type="radio" name="bdi-scope" id="bdi-scope-filtered" value="filtered"
+                       onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white; font-size:0.85rem;">All filtered games</strong><br>
+                    <small id="bdi-filtered-info" style="color:#8f98a0; font-size:0.75rem;"></small>
+                </span>
+            </label>
+            <div style="width:1px; background:#2a475e;"></div>
+            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <input type="radio" name="bdi-scope" id="bdi-scope-selected" value="selected"
+                       onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
+                <span>
+                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
+                    <small id="bdi-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
+                </span>
+            </label>
+        </div>
+
+        <p style="color:#8f98a0; font-size:0.78rem; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
+            Requires the <strong style="color:#c2c8cc;">PlayDate Date Importer</strong> Tampermonkey script.
+            A Steam help page will open in your browser and automatically navigate through each game.
+        </p>
+
+        <div id="bdi-progress" style="display:none; margin-bottom:12px;">
+            <div style="font-size:0.82rem; color:#c2c8cc; margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                <span id="bdi-current-game">—</span>
+            </div>
+            <div style="background:#1a2332; border-radius:4px; height:8px; overflow:hidden; margin-bottom:6px;">
+                <div id="bdi-progress-bar" style="background:var(--accent); height:100%; width:0%; transition:width 0.4s;"></div>
+            </div>
+            <div id="bdi-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
+        </div>
+
+        <div id="bdi-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
+
+        <div style="display:flex; gap:12px;">
+            <button id="bdi-start-btn" class="btn-save" style="flex:2; margin:0;" onclick="startBulkDateImport()">Start</button>
+            <button id="bdi-stop-btn" class="nav-btn" style="display:none; flex:1; height:auto; padding:12px;" onclick="stopBulkDateImport()">Stop</button>
+            <button class="nav-btn" style="flex:1; height:auto; padding:12px;" onclick="closeBulkDateImportModal()">Close</button>
+        </div>
+    </div>
+</div>
+
 <style>
 .bulk-status-success { color: #5c7e10; }
 .bulk-status-error   { color: #ff4d4d; }
 input[name="bulk-scope"]:checked + span strong { color: var(--accent) !important; }
+input[name="bdi-scope"]:checked + span strong { color: var(--accent) !important; }
 </style>
 
 {% endblock %}

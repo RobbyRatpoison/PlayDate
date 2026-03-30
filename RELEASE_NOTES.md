@@ -32,28 +32,11 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.13 — 2026-03-29
+## v1.1.14 — 2026-03-30
 
-### Bug Fixes
-- Re-scrape Steam Data in bulk edit modal now works (was silently failing every time due to a bad column reference and broken API key lookup)
-- Populate PlayDate progress counter no longer includes DLC, mods, advertising, and other non-game entries in the total
-- Non-game entries are now auto-blacklisted on first populate so they're permanently excluded from future runs
-- Fixed inability to type spaces in the custom SQL filter input
-- Review scores now correctly show for "Profile Features Limited" games
-- "No Reviews" now correctly distinguished from "Not Enough Reviews"
-- Update check no longer fires twice on startup
-- Newly added games now default to 0/0 achievements instead of NULL
-
-### Improvements
-- Logging overhauled: third-party library noise suppressed; all PlayDate scraper output now goes to `playdate.log`; long lines truncated; log rotation keeps one backup
-- Store type is logged when a game is added, to help identify Proton/tool app types for future filtering
-- Art downloads are skipped for non-game entries (was fetching art before checking type)
-- Review API now uses `language=all` and `purchase_type=all` for accurate counts
-
-### UI
-- "Cancel" → "Close" on bulk edit, bulk re-scrape, bulk artwork, and bulk delete modals
-- Delete game dialog now shows "Delete" and "Blacklist and Delete" instead of "Cancel" and "OK"
-- Date Added label in edit modal has a "↗" link to the Steam support page for that game
-- Filter modal now includes Total Reviews and Positive Reviews as filterable fields
+### New Features
+- **Steam date importer userscript** (`playdate_date_import.user.js`) — a Tampermonkey script that automatically scrapes the earliest activation date from a Steam help page and sends it to PlayDate. Requires Tampermonkey in MV2 mode.
+- **Single-game mode:** clicking the ↗ link next to Date Added in the edit modal opens the Steam help page; the script sends the date back and the field populates automatically. The tab closes once PlayDate has received it.
+- **Bulk date import:** new "Import Dates from Steam" button in the bulk edit modal. Opens a single browser tab that automatically navigates through each selected or filtered game, scrapes its date, saves it to the database, and closes when done. Progress is shown in real time.
 
 ---
