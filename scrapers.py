@@ -516,6 +516,18 @@ def scrape_blaeo_games():
                 tag_elements = row.select("a.list-tag")
                 blaeo_groups = [tag.get_text(strip=True) for tag in tag_elements]
 
+                # Extract achievement counts from "(X of Y)" span; skip if no achievements
+                unlocked_ach = None
+                total_ach = None
+                ach_td = row.select_one("td.achievements")
+                if ach_td and ach_td.get('data-value', '-2') != '-2':
+                    spans = ach_td.select('span')
+                    if len(spans) >= 2:
+                        ach_match = re.search(r'\((\d+) of (\d+)\)', spans[1].get_text())
+                        if ach_match:
+                            unlocked_ach = int(ach_match.group(1))
+                            total_ach    = int(ach_match.group(2))
+
                 # Match against the DB
                 cursor.execute("SELECT groups FROM games WHERE appid = ?", (appid,))
                 db_row = cursor.fetchone()
@@ -527,10 +539,16 @@ def scrape_blaeo_games():
                     updated_groups_set = existing_groups_set.union(set(blaeo_groups))
                     new_groups_str = ",".join(sorted(updated_groups_set))
 
-                    cursor.execute(
-                        "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
-                        (clean_status, new_groups_str, appid)
-                    )
+                    if unlocked_ach is not None:
+                        cursor.execute(
+                            "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ? WHERE appid = ?",
+                            (clean_status, new_groups_str, unlocked_ach, total_ach, appid)
+                        )
+                    else:
+                        cursor.execute(
+                            "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
+                            (clean_status, new_groups_str, appid)
+                        )
                     updated_count += 1
                 else:
                     # This helps you see if the scraper found games you haven't added yet
@@ -557,6 +575,13 @@ def sync_recent_playtime():
     On startup: update playtime_forever + last_played for all played games by
     reading localconfig.vdf directly. No API key required. Runs in a background
     thread — safe to call without blocking startup.
+
+    For games where playtime_forever increased, also fetches achievements (if an
+    API key is configured) and updates completion_status:
+      - Never Played + playtime > 0  → Unfinished
+      - 100% achievements unlocked   → Completed (any status)
+      - Won't Play                   → only changed if 100% achievements
+      - Beaten                       → never downgraded; upgraded to Completed if 100%
     """
     import logging
     log = logging.getLogger(__name__)
@@ -584,24 +609,63 @@ def sync_recent_playtime():
             return
 
         db = get_db()
-        existing = {row[0] for row in db.execute("SELECT appid FROM games").fetchall()}
+        existing = {
+            row[0]: {'playtime_forever': row[1], 'completion_status': row[2]}
+            for row in db.execute("SELECT appid, playtime_forever, completion_status FROM games").fetchall()
+        }
 
         updated = 0
         for g in recent:
             appid = g['appid']
             if appid not in existing:
                 continue
+
+            old_playtime = existing[appid]['playtime_forever'] or 0
+            new_playtime = g['playtime_forever']
+            current_status = existing[appid]['completion_status']
+            playtime_changed = new_playtime != old_playtime
+
             if g['last_played']:
                 db.execute(
                     "UPDATE games SET playtime_forever = ?, last_played = ? WHERE appid = ?",
-                    (g['playtime_forever'], g['last_played'], appid)
+                    (new_playtime, g['last_played'], appid)
                 )
             else:
                 db.execute(
                     "UPDATE games SET playtime_forever = ? WHERE appid = ?",
-                    (g['playtime_forever'], appid)
+                    (new_playtime, appid)
                 )
             updated += 1
+
+            if not playtime_changed:
+                continue
+
+            # Fetch achievements for games with new playtime (requires API key)
+            cheevo = fetch_cheevo_data(appid)
+            if cheevo:
+                db.execute(
+                    "UPDATE games SET unlocked_achievements = ?, total_achievements = ? WHERE appid = ?",
+                    (cheevo.get('unlocked_achievements', 0), cheevo.get('total_achievements', 0), appid)
+                )
+
+            hundred_pct = (
+                cheevo
+                and cheevo.get('total_achievements', 0) > 0
+                and cheevo.get('unlocked_achievements', 0) == cheevo.get('total_achievements', 0)
+            )
+
+            if hundred_pct:
+                new_status = 'Completed'
+            elif current_status == 'Never Played' and new_playtime > 0:
+                new_status = 'Unfinished'
+            else:
+                new_status = None  # Beaten / Won't Play (without 100%) / Unfinished left alone
+
+            if new_status and new_status != current_status:
+                db.execute(
+                    "UPDATE games SET completion_status = ? WHERE appid = ?",
+                    (new_status, appid)
+                )
 
         db.commit()
         db.close()

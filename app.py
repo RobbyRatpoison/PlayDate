@@ -489,13 +489,14 @@ def create_app(template_folder=None, static_folder=None):
     def scrape_single(appid):
         from scrapers import fetch_store_data, fetch_tag_data, fetch_player_data, fetch_review_data, fetch_cheevo_data
         from utils import fetch_local_library, get_acf_names, parse_appinfo
-        from config import load_config as _load_config
-        _cfg = _load_config() or {}
+        from config import load_config as _load_config, get_active_account as _get_active_account
+        _cfg     = _load_config() or {}
+        _account = _get_active_account() or {}
 
         player_data = fetch_player_data(appid) or {}
         store_data  = fetch_store_data(appid) or {}
         review_data = fetch_review_data(appid) or {}
-        cheevo_data = fetch_cheevo_data(appid) or {} if _cfg.get('api_key') else {}
+        cheevo_data = fetch_cheevo_data(appid) or {} if _account.get('api_key') else {}
         tag_data    = fetch_tag_data(appid) or {}
 
         data_out = {

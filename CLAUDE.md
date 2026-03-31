@@ -73,7 +73,7 @@ All user data lives next to the executable (or project root when running from so
 | File | Contents |
 |------|----------|
 | `games.db` | SQLite — `games` and `blacklist` tables |
-| `config.json` | Steam API key (optional) + SteamID |
+| `config.json` | Multi-account config: `active_account` (steam_id key), `sgdb_key`, `accounts` dict (`steam_id → {steam_id, api_key, label}`). Use `get_active_account()` from `config.py` to get the active account's API key. |
 | `state.json` | Active filters, shelf layout, sort order, saved filters, artwork orientation, card height |
 | `theme.json` | CSS variable overrides (only non-default keys stored) |
 | `playdate.log` | Application logs (RotatingFileHandler, 1MB cap) |
@@ -108,13 +108,15 @@ Long-running operations (library import, BLAEO sync) run in daemon threads with 
 ### Scrapers
 `scrapers.py` pulls from multiple Steam endpoints per game: `GetOwnedGames` (playtime), Store API (metadata), `appreviews` (review stats), BeautifulSoup tag scraping (birthtime cookie bypasses age gate), and `GetPlayerAchievements`. There is a **0.5s delay** between games in the populate loop.
 
-**Startup playtime sync:** `sync_recent_playtime()` runs in a background thread on launch. It reads `localconfig.vdf` directly (no API key needed) and updates `playtime_forever` and `last_played` in the DB for all games that exist in the library.
+**Startup playtime sync:** `sync_recent_playtime()` runs in a background thread on launch. It reads `localconfig.vdf` directly (no API key needed) and updates `playtime_forever` and `last_played` in the DB for all games that exist in the library. For games where `playtime_forever` changed, it also fetches achievements via `fetch_cheevo_data()` (skipped if no API key) and updates `completion_status`: `'Never Played'` → `'Unfinished'` if playtime > 0; any status → `'Completed'` if 100% achievements unlocked. `'Beaten'` is never downgraded; `"Won't Play"` is only changed if 100% achievements.
 
 **Rate limiting:** Each fetch function raises `RateLimitedError` on HTTP 429. The populate loop catches it, pauses 15 seconds, and retries the current game once. If the retry is also rate limited, populate aborts immediately and surfaces an error to the user. `RateLimitedError` is defined in `scrapers.py`.
 
 **API key is optional.** Without one, `add_new()` reads the game list from local Steam files instead of `GetOwnedGames`: `fetch_local_library()` parses `localconfig.vdf` for played games + playtime, `get_acf_names()` reads ACF manifests for installed game names, and `parse_appinfo()` reads the binary `appinfo.vdf` cache for names and types. Achievements (`GetPlayerAchievements`) are skipped without a key. The Store API, reviews API, and tag scraping work without a key.
 
 **`parse_appinfo()`** in `utils.py` parses Steam's binary `appcache/appinfo.vdf` (v29 format, magic `0x07564429`). It reads the string pool key table from the end of the file, then iterates app records to extract `name` and `type` from each app's `common` section. Returns `{appid: {'name': str, 'type': str}}`. Used for type pre-filtering (skipping non-games before any network calls) and name lookup. The `vdf` package (text VDF only) is used for `localconfig.vdf`; `appinfo.vdf` is parsed with custom binary struct code.
+
+**BLAEO sync:** `scrape_blaeo_games()` uses Selenium (headless Chrome) to load the user's BLAEO games page, scroll to load all entries, then parse with BeautifulSoup. Per row it extracts: completion status (from `tr` class e.g. `game-never-played`), group tags (`a.list-tag`), and achievement counts (`td.achievements` → second `<span>` text `(X of Y)`). `data-value='-2'` on the achievements cell means the game has no Steam achievements — those are skipped. Updates `completion_status`, `groups`, `unlocked_achievements`, and `total_achievements` in the DB; games not in the local DB are logged and skipped.
 
 **Review confidence weighting:** raw review percentage is scaled by total review count — <10 reviews gets 25% weight, 10-99 gets 50–100%, 100+ gets full weight. Stored as `weighted_percentage`.
 

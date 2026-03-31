@@ -32,11 +32,16 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.14 — 2026-03-30
+## v1.1.15 — 2026-03-31
 
 ### New Features
-- **Steam date importer userscript** (`playdate_date_import.user.js`) — a Tampermonkey script that automatically scrapes the earliest activation date from a Steam help page and sends it to PlayDate. Requires Tampermonkey in MV2 mode.
-- **Single-game mode:** clicking the ↗ link next to Date Added in the edit modal opens the Steam help page; the script sends the date back and the field populates automatically. The tab closes once PlayDate has received it.
-- **Bulk date import:** new "Import Dates from Steam" button in the bulk edit modal. Opens a single browser tab that automatically navigates through each selected or filtered game, scrapes its date, saves it to the database, and closes when done. Progress is shown in real time.
+- **Startup playtime sync now updates achievements and completion status** — when playtime has changed since the last launch, PlayDate fetches fresh achievement data (requires API key) and automatically promotes games from `Never Played` → `Unfinished` or any status → `Completed` on 100% unlock. `Beaten` is never downgraded.
+- **BLAEO sync now imports achievement data** — syncing with BLAEO now also saves unlocked and total achievement counts from the BLAEO games page, no API key required.
+
+### Bug Fixes
+- Fixed single-game refresh (edit modal) not fetching achievements for users with multiple Steam accounts configured — it was reading the API key from the wrong place.
+
+### Improvements
+- Saving a filter in the PAGYWOSG Filter Builder now immediately adds it to the saved filters dropdown without requiring a page reload.
 
 ---

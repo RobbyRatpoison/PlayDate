@@ -1397,6 +1397,10 @@ async function pagSaveFilter() {
         if (data.status === 'success') {
             status.className = 'tool-status success';
             status.textContent = `✔ Saved as "${name.trim()}". Load it from the Library filter menu.`;
+            // Update the saved filters dropdown and cache immediately
+            _savedFilters[name.trim()] = tree;
+            const selectEl = document.getElementById('saved-filters-select');
+            if (selectEl && selectEl._addOption) selectEl._addOption(name.trim(), name.trim());
         } else {
             alert('Could not save: ' + data.message);
         }
