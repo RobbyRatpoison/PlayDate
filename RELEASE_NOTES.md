@@ -32,10 +32,9 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.17 — 2026-04-01
+## v1.1.18 — 2026-04-01
 
 ### Improvements
-- **BLAEO sync no longer requires Chrome** — the scraper now uses cursor-based HTTP pagination instead of Selenium, removing the Google Chrome dependency entirely. Sync is also significantly faster.
-- **BLAEO error handling** — syncing without a BLAEO account now surfaces a clear error message instead of silently reporting 0 games updated.
+- **Edit modal reorganized** — fields are now arranged in three columns (game info, stats/metadata, artwork) for a more compact, balanced layout. Tags, Groups, Categories, and Genres scroll independently within fixed height limits so the modal stays a consistent size regardless of how many pills are present.
 
 ---

@@ -175,8 +175,8 @@
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; column-gap: 20px; row-gap: 0; align-items: start;">
 
-                <!-- LEFT COLUMN: Title, Dev, Pub, Release Date + Free to Play, Groups, Tags -->
-                <div>
+                <!-- LEFT COLUMN: Title, Dev, Pub, Release Date + Free to Play, Groups, Tags, Genres -->
+                <div style="display: flex; flex-direction: column;">
                     <label>Game Title</label>
                     <input type="text" name="name" id="edit-name">
 
@@ -200,33 +200,38 @@
                         </div>
                     </div>
 
-                    <label style="margin-top: 8px;">Groups</label>
-                    <div class="pill-input-box" id="edit-groups-box" style="min-height: 38px;"></div>
-                    <input type="hidden" name="groups" id="edit-groups">
+                    <label style="margin-top: 8px;">Tags</label>
+                    <div class="pill-input-box" id="edit-tags-box" style="min-height: 38px; max-height: 198px; overflow-y: auto;"></div>
+                    <input type="hidden" name="tags" id="edit-tags">
                     <small class="pill-hint">Type a value and press Enter to add</small>
 
-                    <label style="margin-top: 8px;">Tags</label>
-                    <div class="pill-input-box" id="edit-tags-box" style="min-height: 120px;"></div>
-                    <input type="hidden" name="tags" id="edit-tags">
+                    <label style="margin-top: 8px;">Groups</label>
+                    <div class="pill-input-box" id="edit-groups-box" style="min-height: 38px; max-height: 100px; overflow-y: auto;"></div>
+                    <input type="hidden" name="groups" id="edit-groups">
                     <small class="pill-hint">Type a value and press Enter to add</small>
                 </div>
 
-                <!-- MIDDLE COLUMN: Status, Installed, dates, playtime, achievements, reviews -->
-                <div>
-                    <label>Completion Status</label>
-                    <select name="completion_status" id="edit-status">
-                        <option value="Never Played">Never Played</option>
-                        <option value="Unfinished">Unfinished</option>
-                        <option value="Beaten">Beaten</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Won't Play">Won't Play</option>
-                    </select>
-
-                    <label>Installed</label>
-                    <select name="installed" id="edit-installed">
-                        <option value="0">No</option>
-                        <option value="1">Yes</option>
-                    </select>
+                <!-- MIDDLE COLUMN: Status, Installed, dates, playtime, achievements, reviews, categories -->
+                <div style="display: flex; flex-direction: column;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label>Completion Status</label>
+                            <select name="completion_status" id="edit-status">
+                                <option value="Never Played">Never Played</option>
+                                <option value="Unfinished">Unfinished</option>
+                                <option value="Beaten">Beaten</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Won't Play">Won't Play</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Installed</label>
+                            <select name="installed" id="edit-installed">
+                                <option value="0">No</option>
+                                <option value="1">Yes</option>
+                            </select>
+                        </div>
+                    </div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                         <div>
@@ -239,8 +244,16 @@
                         </div>
                     </div>
 
-                    <label>Playtime (Mins)</label>
-                    <input type="number" name="playtime_forever" id="edit-playtime">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label>Playtime (Mins)</label>
+                            <input type="number" name="playtime_forever" id="edit-playtime">
+                        </div>
+                        <div>
+                            <label>Review Score</label>
+                            <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive">
+                        </div>
+                    </div>
 
                     <label>Achievements</label>
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -248,9 +261,6 @@
                         <span>/</span>
                         <div style="flex: 1;"><input type="number" name="total_achievements" id="edit-total-ach" placeholder="Total"></div>
                     </div>
-
-                    <label style="margin-top: 8px;">Review Score</label>
-                    <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive">
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
                         <div>
@@ -273,10 +283,20 @@
                             <input type="number" name="positive_reviews" id="edit-positive-reviews">
                         </div>
                     </div>
+
+                    <label style="margin-top: 8px;">Categories</label>
+                    <div class="pill-input-box" id="edit-categories-box" style="min-height: 38px; overflow-y: auto;"></div>
+                    <input type="hidden" name="categories" id="edit-categories">
+                    <small class="pill-hint">Type a value and press Enter to add</small>
+
+                    <label style="margin-top: 8px;">Genres</label>
+                    <div class="pill-input-box" id="edit-genres-box" style="min-height: 38px; max-height: 68px; overflow-y: auto;"></div>
+                    <input type="hidden" name="genres" id="edit-genres">
+                    <small class="pill-hint">Type a value and press Enter to add</small>
                 </div>
 
-                <!-- RIGHT COLUMN (spans both grid rows): artwork panels -->
-                <div style="border-left: 1px solid #2a475e; padding-left: 20px; grid-row: span 2; display:flex; flex-direction:column; gap:10px;">
+                <!-- RIGHT COLUMN: artwork panels -->
+                <div style="border-left: 1px solid #2a475e; padding-left: 20px; display:flex; flex-direction:column; gap:10px;">
                     <!-- Tabs -->
                     <div style="display:flex; gap:6px;">
                         <button type="button" class="art-tab-btn active" onclick="openArtTab('vertical')"   id="art-tab-vertical">Vertical</button>
@@ -351,23 +371,6 @@
                     </div>
                 </div>
 
-                <!-- SPAN ROW (cols 1–2): Genres + Categories -->
-                <div style="grid-column: span 2; display: flex; flex-direction: column; gap: 0; padding-top: 4px;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                        <div>
-                            <label>Genres</label>
-                            <div class="pill-input-box" id="edit-genres-box" style="min-height: 60px;"></div>
-                            <input type="hidden" name="genres" id="edit-genres">
-                            <small class="pill-hint">Type a value and press Enter to add</small>
-                        </div>
-                        <div>
-                            <label>Categories</label>
-                            <div class="pill-input-box" id="edit-categories-box" style="min-height: 60px;"></div>
-                            <input type="hidden" name="categories" id="edit-categories">
-                            <small class="pill-hint">Type a value and press Enter to add</small>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div style="display: flex; gap: 15px; margin-top: 20px; border-top: 1px solid #2a475e; padding-top: 15px;">
@@ -396,6 +399,8 @@
     }
     .art-source-label { font-size: 0.72rem; color: var(--text-secondary); }
     .art-action-btn   { padding: 5px 9px !important; font-size: 0.72rem !important; }
+    #edit-genres-box .pill-text-input,
+    #edit-categories-box .pill-text-input { min-width: 0; }
     .art-status       { font-size: 0.72rem; min-height: 1rem; }
 
     .pill-input-box {
@@ -586,6 +591,25 @@
 
     // ── End pill input widget ────────────────────────────────────────────────
 
+    let _catResizeObserver = null;
+
+    function _syncCategoriesHeight() {
+        const catBox  = document.getElementById('edit-categories-box');
+        const leftCol = document.getElementById('edit-tags-box').parentElement;
+        const midCol  = catBox.parentElement;
+        if (!catBox || !leftCol || !midCol) return;
+        const delta = leftCol.getBoundingClientRect().bottom - midCol.getBoundingClientRect().bottom;
+        const newH  = Math.max(38, Math.round(catBox.getBoundingClientRect().height + delta));
+        if (parseInt(catBox.style.height) !== newH) catBox.style.height = newH + 'px';
+    }
+
+    document.querySelectorAll('.pill-input-box[style*="overflow-y"]').forEach(el => {
+        el.addEventListener('wheel', e => {
+            e.preventDefault();
+            el.scrollTop += e.deltaY > 0 ? 40 : -40;
+        }, { passive: false });
+    });
+
     function safeSet(id, value, type = 'value') {
         const el = document.getElementById(id);
         if (el && value !== undefined) {
@@ -643,7 +667,13 @@
             if (el) el.href = sgdbUrl;
         });
 
-        document.getElementById('editModal').style.display = 'flex';
+        const modal = document.getElementById('editModal');
+        modal.style.display = 'flex';
+        void modal.offsetHeight;
+        _syncCategoriesHeight();
+        if (_catResizeObserver) _catResizeObserver.disconnect();
+        _catResizeObserver = new ResizeObserver(_syncCategoriesHeight);
+        _catResizeObserver.observe(document.getElementById('edit-tags-box').parentElement);
     }
 
     let _pendingDatePoll = null;
@@ -775,6 +805,7 @@
     }
 
     function closeModal() {
+        if (_catResizeObserver) { _catResizeObserver.disconnect(); _catResizeObserver = null; }
         _dismissSuggestions();
         const form = document.getElementById('edit-game-form');
         if (form) {
