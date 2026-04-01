@@ -1,5 +1,5 @@
 <div id="filterModal" class="modal-overlay" style="display:none;">
-<div class="modal-content" style="width:780px; max-height:92vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+<div class="modal-content" style="width:780px; max-height:82vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
 
     <!-- Header -->
     <div style="padding:20px 24px 14px; border-bottom:1px solid #2a3f55; flex-shrink:0;">
@@ -19,7 +19,7 @@
     </div>
 
     <!-- Body (scrollable) -->
-    <div style="flex:1; overflow-y:auto; padding:18px 24px;">
+    <div style="flex:1; min-height:0; overflow-y:auto; padding:18px 24px;">
 
         <!-- ── SIMPLE MODE ── -->
         <div id="fm-simple-body">
@@ -85,7 +85,7 @@
                             style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
                             oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
                         <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
-                            Use standard SQLite syntax. Column names: name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers.
+                            Use standard SQLite syntax. Column names: appid, name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers.
                         </div>
                         <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
                             <button type="button" onclick="parseSqlToTree()"
@@ -160,6 +160,18 @@
             <button onclick="applyFilters()" class="btn-save" data-modal-row="4" style="flex:2;margin:0;">APPLY FILTERS</button>
             <button onclick="clearAllFilters()" class="nav-btn" data-modal-row="4" style="flex:1;">CLEAR ALL</button>
             <button onclick="closeFilterModal()" class="nav-btn" data-modal-row="4" style="flex:1;">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- Save / Rename / Delete sub-dialog -->
+    <div id="fm-subdialog" style="display:none; position:fixed; inset:0; z-index:1001; background:rgba(0,0,0,0.55); align-items:center; justify-content:center;">
+        <div style="background:var(--bg-modal,#1a2535); border:1px solid var(--border,#2a3f55); border-radius:10px; padding:24px 28px; width:340px; max-width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+            <h3 id="fm-sd-title" style="margin:0 0 14px; color:#fff; font-size:1rem;"></h3>
+            <div id="fm-sd-body"></div>
+            <div style="display:flex; gap:10px; margin-top:18px;">
+                <button id="fm-sd-confirm" onclick="confirmFmDialog()" class="btn-save" style="flex:2; margin:0; height:38px;"></button>
+                <button onclick="closeFmDialog()" class="nav-btn" style="flex:1; height:38px;">Cancel</button>
+            </div>
         </div>
     </div>
 </div>
@@ -405,14 +417,15 @@ const FM_FILTER_CONFIG = {
     'installed':          { label: 'Installed',            type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {'1':'Yes','0':'No'} },
     'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'appid':              { label: 'AppID',                type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
     'groups':             { label: 'Group',                type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_groups | tojson if unique_groups is defined else '[]' }} },
     'release_date':       { label: 'Release Date',         type: 'date_text',
-                            comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
     'date_added':         { label: 'Date Added',           type: 'date_text',
-                            comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
     'last_played':        { label: 'Last Played',          type: 'date_text',
-                            comparisons: {'=':'on (exact)','>':'after','<':'before','LIKE':'matches pattern','IS NULL':'never played','IS NOT NULL':'has been played'} },
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','LIKE':'matches pattern','IS NULL':'never played','IS NOT NULL':'has been played'} },
     'playtime_forever':   { label: 'Playtime (mins)',      type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'review_percentage':  { label: 'Review %',             type: 'number', comparisons: {'>':'over','<':'under','=':'is','IS NULL':'not set','IS NOT NULL':'is set'} },
     'weighted_percentage':{ label: 'Weighted Review %',    type: 'number', comparisons: {'>':'over','<':'under','=':'is','IS NULL':'not set','IS NOT NULL':'is set'} },
@@ -492,6 +505,14 @@ function populateModalFromTree(tree) {
             document.getElementById('fm-custom-sql-toggle').style.borderColor = 'var(--accent)';
             document.getElementById('fm-custom-sql-toggle').style.color = 'var(--accent)';
         } else {
+            // No custom_sql — clear any leftover SQL from the textbox
+            document.getElementById('fm-custom-sql-input').value = '';
+            document.getElementById('fm-custom-sql-panel').style.display = 'none';
+            document.getElementById('fm-custom-sql-warning').style.display = 'none';
+            document.getElementById('fm-custom-sql-toggle').style.borderColor = '#3a5570';
+            document.getElementById('fm-custom-sql-toggle').style.color = '#8f98a0';
+            _customSqlActive = false;
+
             const hasGroups = tree.items.some(i => i.type === 'group');
             const hasExpr   = tree.items.some(i => i.type === 'custom_expr');
             const hasValCol = tree.items.some(i => i.type === 'condition' && i.value_col);
@@ -524,15 +545,9 @@ function openFilterModal() {
     modal.style.display = 'flex';
 
     const tree = {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
-    const legacy = {{ (state.active_filters | tojson) if (state is defined and state.active_filters) else '[]' }};
 
     if (tree) {
         populateModalFromTree(tree);
-    } else if (legacy && legacy.length > 0) {
-        setFilterMode('simple');
-        buildSimpleFromLegacy(legacy);
-        updateActivePills(legacyToTree(legacy));
-        updateSqlPreview();
     } else {
         // No active filters — start clean, wait for user to add
         setFilterMode('simple');
@@ -551,6 +566,7 @@ function openFilterModal() {
 
 function closeFilterModal() {
     document.getElementById('filterModal').style.display = 'none';
+    closeFmDialog();
 }
 
 // ── SQL Preview ─────────────────────────────────────────────────
@@ -610,6 +626,9 @@ function treeToSql(node) {
         }
         const DATE_COLS = new Set(['release_date','date_added','last_played']);
         if (DATE_COLS.has(col) && op === 'LIKE') return `${col} LIKE '${val}'`;
+        if (DATE_COLS.has(col) && op === 'STRFTIME_MONTH') return `strftime('%m', ${col}) = '${String(val).padStart(2,'0')}'`;
+        if (DATE_COLS.has(col) && op === 'STRFTIME_DAY')   return `strftime('%d', ${col}) = '${String(val).padStart(2,'0')}'`;
+        if (DATE_COLS.has(col) && op === 'STRFTIME_YEAR')  return `strftime('%Y', ${col}) = '${val}'`;
         if (op === 'LIKE')     return `${col} LIKE '%${val}%'`;
         if (op === 'NOT LIKE') return `${col} NOT LIKE '%${val}%'`;
         if (op === '=')        return `${col} = '${val}'`;
@@ -645,19 +664,6 @@ function clearSimpleRows() {
     document.getElementById('fm-simple-rows').innerHTML = '';
 }
 
-function buildSimpleFromLegacy(legacy) {
-    clearSimpleRows();
-    let added = 0;
-    legacy.forEach(f => {
-        if (Array.isArray(f.value)) {
-            f.value.forEach(v => addSimpleRow({column:f.column, operator:f.operator, value:v}));
-        } else {
-            addSimpleRow(f);
-        }
-        added++;
-    });
-    if (!added) addSimpleRow();
-}
 
 function buildSimpleFromTree(tree) {
     clearSimpleRows();
@@ -671,16 +677,6 @@ function buildSimpleFromTree(tree) {
     conds.forEach(c => addSimpleRow(c));
 }
 
-function legacyToTree(legacy) {
-    if (!legacy || !legacy.length) return null;
-    const items = legacy.flatMap(f => {
-        if (Array.isArray(f.value)) {
-            return f.value.map(v => ({type:'condition', column:f.column, operator:f.operator, value:v}));
-        }
-        return [{type:'condition', column:f.column, operator:f.operator, value:f.value}];
-    });
-    return { type:'group', logic:'AND', items };
-}
 
 function addSimpleRow(data = null) {
     const container = document.getElementById('fm-simple-rows');
@@ -771,9 +767,17 @@ function _buildLiteralInput(container, cfg, op, initVal) {
         el.addEventListener('change', updateSqlPreview);
     } else if (cfg.type === 'date_text') {
         el = document.createElement('input');
-        el.type = 'text';
+        if (op === 'STRFTIME_MONTH') {
+            el.type = 'number'; el.min = 1; el.max = 12; el.placeholder = '1–12';
+        } else if (op === 'STRFTIME_DAY') {
+            el.type = 'number'; el.min = 1; el.max = 31; el.placeholder = '1–31';
+        } else if (op === 'STRFTIME_YEAR') {
+            el.type = 'number'; el.min = 1900; el.max = 2100; el.placeholder = 'YYYY';
+        } else {
+            el.type = 'text';
+            el.placeholder = op === 'LIKE' ? 'e.g. %-03-% (March) or 2023-%' : 'YYYY-MM-DD';
+        }
         el.value = initVal || '';
-        el.placeholder = op === 'LIKE' ? 'e.g. %-03-% (March) or 2023-%' : 'YYYY-MM-DD';
         el.className = 'fm-val-input';
         el.addEventListener('input', updateSqlPreview);
         el.addEventListener('change', updateSqlPreview);
@@ -1004,11 +1008,7 @@ function addAdvancedGroup(parentGroupEl, existingTree = null) {
     groupEl.innerHTML = `
         <div class="fmg-header">
             <button class="fmg-collapse-btn" onclick="toggleGroupCollapse(this.closest('.fmg-container'))">▼</button>
-            <button class="fmg-remove-group" onclick="
-                const prev = this.closest('.fmg-container').previousElementSibling;
-                if (prev && prev.classList.contains('fmg-connector')) prev.remove();
-                this.closest('.fmg-container').remove();
-                updateSqlPreview();">✕ Remove</button>
+            <button class="fmg-remove-group" onclick="removeGroupPromoteChildren(this.closest('.fmg-container'))">✕ Ungroup</button>
         </div>
         <div class="fmg-rows"></div>
         <div class="fmg-actions">
@@ -1033,6 +1033,38 @@ function addAdvancedGroup(parentGroupEl, existingTree = null) {
     updateSqlPreview();
     return groupEl;
 }
+function removeGroupPromoteChildren(groupEl) {
+    const parentRowsEl  = groupEl.parentElement;
+    const parentGroupEl = parentRowsEl.closest('.fmg-container');
+    const parentLogic   = parentGroupEl ? (parentGroupEl.dataset.logic || 'AND') : 'AND';
+
+    const childRowsEl = groupEl.querySelector(':scope > .fmg-rows');
+    const children    = Array.from(childRowsEl.children).filter(el => !el.classList.contains('fmg-connector'));
+
+    // Where to re-insert the promoted children (before the connector/item after the group)
+    const insertRef = groupEl.nextElementSibling;
+
+    // Remove the connector that was immediately before this group
+    const connBefore = groupEl.previousElementSibling;
+    if (connBefore?.classList.contains('fmg-connector')) connBefore.remove();
+
+    groupEl.remove();
+
+    // Insert each child at the original group's position, adding connectors as needed
+    for (const child of children) {
+        const existingItems = Array.from(parentRowsEl.children).filter(c => !c.classList.contains('fmg-connector'));
+        if (existingItems.length > 0) {
+            const conn = document.createElement('div');
+            conn.className = 'fmg-connector ' + (parentLogic === 'AND' ? 'and-conn' : 'or-conn');
+            conn.textContent = parentLogic;
+            parentRowsEl.insertBefore(conn, insertRef || null);
+        }
+        parentRowsEl.insertBefore(child, insertRef || null);
+    }
+
+    updateSqlPreview();
+}
+
 // ── Custom Expression Row ───────────────────────────────────────
 
 const _EXPR_STYLE = 'width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:6px 10px;border-radius:5px;resize:vertical;min-height:42px;outline:none;';
@@ -1484,11 +1516,7 @@ async function clearAllFilters() {
     // Clear the search bar input visually
     const searchInput = document.getElementById('library-search');
     if (searchInput) searchInput.value = '';
-    await sendStateUpdate({
-        filter_tree: { type: 'group', logic: 'AND', items: [] },
-        active_filters: [],
-        filter_update: { column: 'name', value: '' }
-    });
+    await sendStateUpdate({ filter_tree: { type: 'group', logic: 'AND', items: [] } });
 }
 
 // _savedFilters may already be declared by the host page (e.g. index.html)
@@ -1522,35 +1550,39 @@ function loadSavedFilterFromModal(selectEl) {
 async function renameSavedFilterFromModal() {
     const selectEl = document.getElementById('saved-filters-select');
     const oldName = selectEl.value;
-    if (!oldName) { alert('Select a saved filter to rename.'); return; }
-    const newName = prompt(`Rename "${oldName}" to:`, oldName);
-    if (!newName || !newName.trim() || newName.trim() === oldName) return;
+    if (!oldName) return;
+    openFmDialog('rename', oldName);
+}
+
+async function _doRename(oldName, newName) {
+    const selectEl = document.getElementById('saved-filters-select');
     try {
         const res = await fetch('/api/rename-filter', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ old_name: oldName, new_name: newName.trim() })
+            body: JSON.stringify({ old_name: oldName, new_name: newName })
         });
         const data = await res.json();
         if (data.status === 'success') {
-            // Update dropdown and local cache without reloading
             const tree = _savedFilters[oldName];
             delete _savedFilters[oldName];
-            _savedFilters[newName.trim()] = tree;
+            _savedFilters[newName] = tree;
             const opt = selectEl._getOption(oldName);
-            if (opt) { opt.value = newName.trim(); opt.textContent = newName.trim(); }
-            selectEl.value = newName.trim();
-        } else {
-            alert('Could not rename: ' + data.message);
+            if (opt) { opt.value = newName; opt.textContent = newName; }
+            selectEl.value = newName;
         }
-    } catch (e) { alert('Network error.'); }
+    } catch (e) {}
 }
 
 async function deleteSavedFilterFromModal() {
     const selectEl = document.getElementById('saved-filters-select');
     const name = selectEl.value;
-    if (!name) { alert('Select a saved filter first.'); return; }
-    if (!await confirm(`Delete saved filter "${name}"?`)) return;
+    if (!name) return;
+    openFmDialog('delete', name);
+}
+
+async function _doDelete(name) {
+    const selectEl = document.getElementById('saved-filters-select');
     try {
         const res = await fetch('/api/delete-filter', {
             method: 'POST',
@@ -1559,42 +1591,110 @@ async function deleteSavedFilterFromModal() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            // Remove from dropdown and local cache without reloading
             delete _savedFilters[name];
             const opt = selectEl._getOption(name);
             if (opt) opt.remove();
             selectEl.value = '';
-        } else {
-            alert('Could not delete: ' + data.message);
         }
-    } catch (e) { alert('Network error.'); }
+    } catch (e) {}
 }
 
-async function saveCurrentFilter() {
-    const name = prompt('Name this filter:');
-    if (!name || !name.trim()) return;
-    // Use the live filter tree if modal is open, else fall back to server state
-    let tree;
+function saveCurrentFilter() {
     const modal = document.getElementById('filterModal');
-    if (modal && modal.style.display !== 'none') {
-        tree = collectTree();
-    } else {
-        tree = typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null;
-    }
-    if (!tree || !tree.items || !tree.items.length) {
-        alert('No active filter to save.');
-        return;
-    }
+    let tree;
+    if (modal && modal.style.display !== 'none') tree = collectTree();
+    else tree = typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null;
+    if (!tree || !tree.items || !tree.items.length) return;
+    openFmDialog('save');
+}
+
+async function _doSave(name) {
+    const modal = document.getElementById('filterModal');
+    let tree;
+    if (modal && modal.style.display !== 'none') tree = collectTree();
+    else tree = typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null;
+    if (!tree || !tree.items || !tree.items.length) return;
     try {
         const res = await fetch('/api/save-filter', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name.trim(), filter_tree: tree })
+            body: JSON.stringify({ name, filter_tree: tree })
         });
         const data = await res.json();
-        if (data.status === 'success') window.location.reload();
-        else alert('Could not save: ' + data.message);
-    } catch (e) { alert('Network error saving filter.'); }
+        if (data.status === 'success') {
+            _savedFilters[name] = tree;
+            const selectEl = document.getElementById('saved-filters-select');
+            if (selectEl?._addOption) selectEl._addOption(name, name);
+            selectEl.value = name;
+        }
+    } catch (e) {}
+}
+
+// ── Sub-dialog (save / rename / delete) ─────────────────────────
+let _fmDialogMode = null, _fmDialogOldName = null;
+
+function openFmDialog(mode, oldName) {
+    _fmDialogMode = mode;
+    _fmDialogOldName = oldName || null;
+
+    const title = document.getElementById('fm-sd-title');
+    const body  = document.getElementById('fm-sd-body');
+    const btn   = document.getElementById('fm-sd-confirm');
+    body.innerHTML = '';
+    btn.className  = 'btn-save';
+    btn.style.cssText = 'flex:2; margin:0; height:38px;';
+
+    if (mode === 'save' || mode === 'rename') {
+        title.textContent = mode === 'save' ? 'Save Filter' : 'Rename Filter';
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.id   = 'fm-sd-input';
+        inp.placeholder = mode === 'save' ? 'Filter name…' : 'New name…';
+        inp.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;background:var(--bg-input,#0e1923);border:1px solid var(--border,#2a3f55);border-radius:5px;color:#fff;font-size:0.9rem;outline:none;';
+        if (mode === 'rename') inp.value = oldName;
+        inp.addEventListener('focus', () => inp.style.borderColor = 'var(--accent)');
+        inp.addEventListener('blur',  () => inp.style.borderColor = 'var(--border,#2a3f55)');
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmFmDialog(); if (e.key === 'Escape') closeFmDialog(); });
+        body.appendChild(inp);
+        btn.textContent = mode === 'save' ? 'Save' : 'Rename';
+    } else {
+        title.textContent = 'Delete Filter';
+        const p = document.createElement('p');
+        p.style.cssText = 'margin:0; color:var(--text-secondary,#8f98a0);';
+        const strong = document.createElement('strong');
+        strong.style.color = '#fff';
+        strong.textContent = `"${oldName}"`;
+        p.append('Delete ', strong, '? This cannot be undone.');
+        body.appendChild(p);
+        btn.textContent = 'Delete';
+        btn.style.background = 'var(--color-danger,#c0392b)';
+        btn.style.borderColor = 'var(--color-danger,#c0392b)';
+    }
+
+    document.getElementById('fm-subdialog').style.display = 'flex';
+    if (mode !== 'delete') setTimeout(() => document.getElementById('fm-sd-input')?.focus(), 50);
+}
+
+function closeFmDialog() {
+    const dlg = document.getElementById('fm-subdialog');
+    if (dlg) dlg.style.display = 'none';
+    _fmDialogMode = null;
+    _fmDialogOldName = null;
+}
+
+async function confirmFmDialog() {
+    const mode    = _fmDialogMode;
+    const oldName = _fmDialogOldName;
+    const inp     = document.getElementById('fm-sd-input');
+    const val     = inp ? inp.value.trim() : null;
+
+    if ((mode === 'save' || mode === 'rename') && !val) { inp?.focus(); return; }
+
+    closeFmDialog();
+
+    if (mode === 'save')   await _doSave(val);
+    if (mode === 'rename') await _doRename(oldName, val);
+    if (mode === 'delete') await _doDelete(oldName);
 }
 
 document.addEventListener('DOMContentLoaded', () => {

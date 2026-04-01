@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import re
 import requests
@@ -318,13 +319,9 @@ def fetch_review_data(appid):
 
             if total == 0:
                 weighted = 0
-            elif total < 10:
-                weighted = int(percent * 0.25)
-            elif total < 100:
-                factor = 0.5 + 0.5 * (total - 10) / 90
-                weighted = int(percent * factor)
             else:
-                weighted = percent
+                p = percent / 100.0
+                weighted = round((p - (p - 0.5) * (2 ** (-math.log10(total + 1)))) * 100)
 
             return {
                 'review_score': score, #TEXT
@@ -641,6 +638,7 @@ def sync_recent_playtime():
                 continue
 
             # Fetch achievements for games with new playtime (requires API key)
+            time.sleep(0.5)
             cheevo = fetch_cheevo_data(appid)
             if cheevo:
                 db.execute(

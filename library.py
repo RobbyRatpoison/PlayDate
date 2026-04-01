@@ -8,7 +8,7 @@ library_bp = Blueprint('library', __name__)
 # ── SQL builder ─────────────────────────────────────────────────────────────
 
 SAFE_COLUMNS = {
-    'name', 'completion_status', 'installed', 'release_date', 'date_added',
+    'appid', 'name', 'completion_status', 'installed', 'release_date', 'date_added',
     'last_played', 'playtime_forever', 'review_percentage', 'weighted_percentage',
     'review_score', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
     'groups', 'tags', 'developers', 'publishers',
@@ -25,10 +25,12 @@ _SQL_ALLOWED_KEYWORDS = {
     'and', 'or', 'not', 'in', 'like', 'ilike', 'between', 'is', 'null',
     'true', 'false', 'exists', 'case', 'when', 'then', 'else', 'end',
     'order', 'by', 'asc', 'desc', 'limit', 'where',
+    'as', 'text', 'integer', 'real', 'blob', 'numeric',
 }
 _SQL_ALLOWED_FUNCTIONS = {
     'lower', 'upper', 'trim', 'length', 'substr', 'replace',
     'coalesce', 'ifnull', 'nullif', 'abs', 'round', 'date', 'strftime',
+    'cast',
 }
 
 def is_safe_sql(sql: str) -> bool:
@@ -120,6 +122,15 @@ def build_condition_sql(cond, params):
     elif op in ('>', '<', '>=', '<='):
         params.append(val)
         return f"{col} {op} ?"
+    elif op == 'STRFTIME_MONTH':
+        params.append(val.zfill(2))
+        return f"strftime('%m', {col}) = ?"
+    elif op == 'STRFTIME_DAY':
+        params.append(val.zfill(2))
+        return f"strftime('%d', {col}) = ?"
+    elif op == 'STRFTIME_YEAR':
+        params.append(val)
+        return f"strftime('%Y', {col}) = ?"
     elif op == 'IS NULL':
         return f"({col} IS NULL OR {col} = '')"
     elif op == 'IS NOT NULL':
@@ -192,27 +203,6 @@ def library():
             tree_sql = build_tree_sql(filter_tree, params)
             if tree_sql and tree_sql != '1=1':
                 where = tree_sql
-    else:
-        # Legacy flat active_filters fallback
-        parts = []
-        for f in state.get('active_filters', []):
-            col = f.get('column', '')
-            op  = f.get('operator', '=')
-            val = f.get('value', '')
-            if isinstance(val, list):
-                sub = []
-                for v in val:
-                    cond = {'type': 'condition', 'column': col, 'operator': op, 'value': v}
-                    sub.append(build_condition_sql(cond, params))
-                if sub:
-                    parts.append('(' + ' OR '.join(sub) + ')')
-            else:
-                cond = {'type': 'condition', 'column': col, 'operator': op, 'value': val}
-                sql = build_condition_sql(cond, params)
-                if sql != '1=1':
-                    parts.append(sql)
-        if parts:
-            where = ' AND '.join(parts)
 
     query = f"SELECT * FROM games WHERE {where} ORDER BY {sort_col} {sort_ord}"
 

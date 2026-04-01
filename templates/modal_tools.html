@@ -814,8 +814,16 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <button class="nav-btn" data-modal-row="0" onclick="pagSaveFilter()">Save as Filter</button>
+                <button class="nav-btn" data-modal-row="0" onclick="pagShowSaveRow()">Save as Filter</button>
                 <button class="nav-btn" data-modal-row="0" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
+            </div>
+            <div id="pag-save-row" style="display:none; margin-top:10px; display:none; gap:8px; align-items:center; flex-wrap:wrap;">
+                <input type="text" id="pag-filter-name" placeholder="Filter name…"
+                    style="flex:1; min-width:180px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+                    onkeydown="if(event.key==='Enter')pagConfirmSave();if(event.key==='Escape')pagCancelSave();">
+                <button class="btn-save" style="height:auto;padding:7px 16px;" onclick="pagConfirmSave()">Save</button>
+                <button class="nav-btn" style="height:auto;padding:7px 16px;" onclick="pagCancelSave()">Cancel</button>
             </div>
             <div id="pag-status" class="tool-status"></div>
 
@@ -1209,6 +1217,15 @@ const PAG_OPS = [
     { value: 'gt',           label: '>' },
     { value: 'lt',           label: '<' },
 ];
+const PAG_DATE_OPS = [
+    { value: 'month_is', label: 'month is (1–12)' },
+    { value: 'day_is',   label: 'day is (1–31)' },
+    { value: 'year_is',  label: 'year is (YYYY)' },
+    { value: 'gt',       label: 'after' },
+    { value: 'lt',       label: 'before' },
+    { value: 'equals',   label: 'on (exact)' },
+];
+const PAG_DATE_COLUMNS = new Set(['release_date', 'date_added', 'last_played']);
 
 function openPagModal() {
     document.getElementById('pagywosg-modal').style.display = 'flex';
@@ -1216,6 +1233,7 @@ function openPagModal() {
 }
 function closePagModal() {
     document.getElementById('pagywosg-modal').style.display = 'none';
+    document.getElementById('pag-save-row').style.display = 'none';
 }
 
 async function pagInit() {
@@ -1291,8 +1309,28 @@ function pagAddCond(pool) {
     removeBtn.style.cssText = 'background:none; border:none; color:var(--text-danger); font-size:1rem; cursor:pointer; padding:0 2px; line-height:1;';
     removeBtn.onclick = () => { row.remove(); pagUpdateSql(); };
 
-    colSel.onchange = pagUpdateSql;
-    opSel.onchange = pagUpdateSql;
+    function pagRefreshOps() {
+        const isDate = PAG_DATE_COLUMNS.has(colSel.value);
+        const ops = isDate ? PAG_DATE_OPS : PAG_OPS;
+        opSel.innerHTML = '';
+        ops.forEach(o => {
+            const opt = document.createElement('option');
+            opt.value = o.value; opt.textContent = o.label;
+            opSel.appendChild(opt);
+        });
+        pagRefreshPlaceholder();
+    }
+
+    function pagRefreshPlaceholder() {
+        const op = opSel.value;
+        if (op === 'month_is')    { valInput.type = 'number'; valInput.placeholder = '1–12'; }
+        else if (op === 'day_is') { valInput.type = 'number'; valInput.placeholder = '1–31'; }
+        else if (op === 'year_is'){ valInput.type = 'number'; valInput.placeholder = 'YYYY'; }
+        else                      { valInput.type = 'text';   valInput.placeholder = 'value'; }
+    }
+
+    colSel.onchange = () => { pagRefreshOps(); pagUpdateSql(); };
+    opSel.onchange  = () => { pagRefreshPlaceholder(); pagUpdateSql(); };
     valInput.oninput = pagUpdateSql;
 
     row.appendChild(colSel);
@@ -1307,17 +1345,85 @@ function pagCondToSql(row) {
     const op  = row.children[1].value;
     const val = row.children[2].value.trim().replace(/'/g, "''");
     if (!val) return null;
-    const colExpr = col === 'appid' ? 'CAST(appid AS TEXT)' : col;
     switch (op) {
-        case 'contains':     return `${colExpr} LIKE '%${val}%'`;
-        case 'not_contains': return `${colExpr} NOT LIKE '%${val}%'`;
-        case 'equals':       return `${colExpr} = '${val}'`;
-        case 'starts_with':  return `${colExpr} LIKE '${val}%'`;
-        case 'ends_with':    return `${colExpr} LIKE '%${val}'`;
-        case 'gt':           return `${colExpr} > '${val}'`;
-        case 'lt':           return `${colExpr} < '${val}'`;
+        case 'contains':     return `${col} LIKE '%${val}%'`;
+        case 'not_contains': return `${col} NOT LIKE '%${val}%'`;
+        case 'equals':       return `${col} = '${val}'`;
+        case 'starts_with':  return `${col} LIKE '${val}%'`;
+        case 'ends_with':    return `${col} LIKE '%${val}'`;
+        case 'gt':           return `${col} > '${val}'`;
+        case 'lt':           return `${col} < '${val}'`;
+        case 'month_is':     return `strftime('%m', ${col}) = '${String(val).padStart(2,'0')}'`;
+        case 'day_is':       return `strftime('%d', ${col}) = '${String(val).padStart(2,'0')}'`;
+        case 'year_is':      return `strftime('%Y', ${col}) = '${val}'`;
         default:             return null;
     }
+}
+
+function pagCondToTree(row) {
+    const col = row.children[0].value;
+    const op  = row.children[1].value;
+    const val = row.children[2].value.trim();
+    if (!val) return null;
+    const esc = val.replace(/'/g, "''");
+    if (op === 'starts_with') return { type: 'custom_expr', sql: `${col} LIKE '${esc}%'` };
+    if (op === 'ends_with')   return { type: 'custom_expr', sql: `${col} LIKE '%${esc}'` };
+    const opMap = {
+        'contains':     'LIKE',
+        'not_contains': 'NOT LIKE',
+        'equals':       '=',
+        'gt':           '>',
+        'lt':           '<',
+        'month_is':     'STRFTIME_MONTH',
+        'day_is':       'STRFTIME_DAY',
+        'year_is':      'STRFTIME_YEAR',
+    };
+    return { type: 'condition', column: col, operator: opMap[op] || '=', value: val };
+}
+
+function pagBuildTree() {
+    const allTags  = [..._pagSelectedAll];
+    const winsTags = [..._pagSelectedWins];
+
+    const allExtraItems  = Array.from(document.querySelectorAll('#pag-all-conds > div')).map(pagCondToTree).filter(Boolean);
+    const winsExtraItems = Array.from(document.querySelectorAll('#pag-wins-conds > div')).map(pagCondToTree).filter(Boolean);
+
+    const allTagItems  = allTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
+    const winsTagItems = winsTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
+
+    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active')).map(b => b.dataset.val);
+
+    const mainParts = [];
+
+    // SG wins block: (groups = steamgifts) AND (tags OR extra_conds)
+    const winsConds = [...winsTagItems, ...winsExtraItems];
+    if (winsConds.length) {
+        const winsInner = winsConds.length === 1 ? winsConds[0] : { type: 'group', logic: 'OR', items: winsConds };
+        mainParts.push({
+            type: 'group', logic: 'AND',
+            items: [
+                { type: 'condition', column: 'groups', operator: 'LIKE', value: 'won on steamgifts' },
+                winsInner
+            ]
+        });
+    }
+
+    // All games block: tags OR extra_conds
+    const allConds = [...allTagItems, ...allExtraItems];
+    if (allConds.length) {
+        mainParts.push(allConds.length === 1 ? allConds[0] : { type: 'group', logic: 'OR', items: allConds });
+    }
+
+    const rootItems = [];
+    if (mainParts.length === 1)      rootItems.push(mainParts[0]);
+    else if (mainParts.length > 1)   rootItems.push({ type: 'group', logic: 'OR', items: mainParts });
+
+    if (compVals.length > 0 && compVals.length < 5) {
+        const compItems = compVals.map(v => ({ type: 'condition', column: 'completion_status', operator: '=', value: v }));
+        rootItems.push(compItems.length === 1 ? compItems[0] : { type: 'group', logic: 'OR', items: compItems });
+    }
+
+    return { type: 'group', logic: 'AND', items: rootItems };
 }
 
 function pagToggleComp(btn) {
@@ -1380,31 +1486,56 @@ function pagToggleSql() {
     if (open) sqlHighlightPre(document.getElementById('pag-sql-text'), `SELECT * FROM games WHERE\n${pagBuildWhere()}`);
 }
 
-async function pagSaveFilter() {
+function pagShowSaveRow() {
     const where = pagBuildWhere();
-    if (where === '1=1') { alert('No criteria selected — please pick at least one tag or add a condition.'); return; }
-    const name = prompt('Name this filter:');
-    if (!name || !name.trim()) return;
-    const tree = { type: 'group', logic: 'AND', custom_sql: where, items: [{ column: 'name', operator: 'contains', value: '__pagywosg__' }] };
+    if (where === '1=1') {
+        const status = document.getElementById('pag-status');
+        status.className = 'tool-status error';
+        status.textContent = 'No criteria selected — please pick at least one tag or add a condition.';
+        return;
+    }
+    document.getElementById('pag-status').textContent = '';
+    document.getElementById('pag-status').className = '';
+    const row = document.getElementById('pag-save-row');
+    row.style.display = 'flex';
+    document.getElementById('pag-filter-name').value = '';
+    document.getElementById('pag-filter-name').focus();
+}
+
+function pagCancelSave() {
+    document.getElementById('pag-save-row').style.display = 'none';
+}
+
+async function pagConfirmSave() {
+    const name = document.getElementById('pag-filter-name').value.trim();
+    if (!name) { document.getElementById('pag-filter-name').focus(); return; }
+    const tree = pagBuildTree();
     try {
         const res = await fetch('/api/save-filter', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name.trim(), filter_tree: tree })
+            body: JSON.stringify({ name, filter_tree: tree })
         });
         const data = await res.json();
         const status = document.getElementById('pag-status');
         if (data.status === 'success') {
+            document.getElementById('pag-save-row').style.display = 'none';
             status.className = 'tool-status success';
-            status.textContent = `✔ Saved as "${name.trim()}". Load it from the Library filter menu.`;
+            status.textContent = `✔ Saved as "${name}". Load it from the Library filter menu.`;
             // Update the saved filters dropdown and cache immediately
-            _savedFilters[name.trim()] = tree;
+            _savedFilters[name] = tree;
             const selectEl = document.getElementById('saved-filters-select');
-            if (selectEl && selectEl._addOption) selectEl._addOption(name.trim(), name.trim());
+            if (selectEl && selectEl._addOption) selectEl._addOption(name, name);
         } else {
-            alert('Could not save: ' + data.message);
+            const status = document.getElementById('pag-status');
+            status.className = 'tool-status error';
+            status.textContent = '✘ Could not save: ' + data.message;
         }
-    } catch (e) { alert('Network error.'); }
+    } catch (e) {
+        const status = document.getElementById('pag-status');
+        status.className = 'tool-status error';
+        status.textContent = '✘ Network error.';
+    }
 }
 
 function pagClearAll() {
@@ -1418,6 +1549,8 @@ function pagClearAll() {
         b.classList.toggle('active', b.dataset.val === 'Never Played' || b.dataset.val === 'Unfinished');
     });
     document.getElementById('pag-status').textContent = '';
+    document.getElementById('pag-status').className = '';
+    document.getElementById('pag-save-row').style.display = 'none';
     pagUpdateSql();
 }
 

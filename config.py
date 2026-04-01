@@ -6,7 +6,7 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.1.15"
+__version__ = "1.1.16"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -228,7 +228,6 @@ DEFAULT_SHELVES = [
 DEFAULT_STATE = {
     "sort": "name",
     "order": "ASC",
-    "active_filters": [],
     "saved_filters": {},
     "shelves": DEFAULT_SHELVES,
     "artwork_orientation": "vertical",
@@ -486,17 +485,6 @@ def save_state(updates):
 
     if "filter_tree" in updates:
         state["filter_tree"] = updates["filter_tree"]
-        state["active_filters"] = []
-
-    if "filter_update" in updates:
-        new_filter = updates["filter_update"]
-        state["active_filters"] = [f for f in state["active_filters"] if f["column"] != new_filter["column"]]
-        if new_filter.get("value", "").strip():
-            state["active_filters"].append(new_filter)
-
-    if "active_filters" in updates and "filter_tree" not in updates:
-        state["active_filters"] = updates["active_filters"]
-        state["filter_tree"] = None
 
     if "sort" in updates: state["sort"] = updates["sort"]
     if "order" in updates: state["order"] = updates["order"]

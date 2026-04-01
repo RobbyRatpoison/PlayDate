@@ -97,8 +97,10 @@ User data intentionally lives *next to* the .exe (not inside the bundle) so it s
 Filters are a recursive JSON tree of AND/OR groups with conditions. They get compiled to SQL `WHERE` clauses by `library.build_tree_sql()`.
 
 - **Node types**: `'condition'` (column op value), `'group'` (AND/OR container), `'custom_expr'` (raw SQL)
-- **Comma-separated fields** (tags, groups, developers): use `',' || column || ',' LIKE ?` wrapping to prevent partial matches
-- **SQL safety:** All user-supplied SQL passes through `is_safe_sql()` in `library.py`, which uses column/keyword/function whitelists and rejects all DML/DDL. Parameterized queries are used everywhere else.
+- **Comma-separated fields** (tags, groups, genres, categories): use `',' || column || ',' LIKE ?` wrapping to prevent partial matches
+- **Date operators**: `STRFTIME_MONTH`, `STRFTIME_DAY`, `STRFTIME_YEAR` compile to `strftime('%m'/'%d'/'%Y', col) = ?`; value is zero-padded for month/day
+- **SQL safety:** All user-supplied SQL passes through `is_safe_sql()` in `library.py`, which uses column/keyword/function whitelists and rejects all DML/DDL. Whitelisted columns include `appid`; whitelisted functions include `strftime`, `cast`; whitelisted keywords include `as`, `text`, `integer`, `real`, `blob`, `numeric`. Parameterized queries are used everywhere else.
+- **PAGYWOSG filters** are saved as proper tree structures (not raw `custom_sql`) via `pagBuildTree()` in `modal_tools.html`, so they are editable in the filter builder. When `populateModalFromTree` loads a tree without `custom_sql`, it explicitly clears the custom SQL textbox to prevent stale SQL from bleeding into the applied filter.
 
 ## Key Patterns
 
@@ -118,7 +120,7 @@ Long-running operations (library import, BLAEO sync) run in daemon threads with 
 
 **BLAEO sync:** `scrape_blaeo_games()` uses Selenium (headless Chrome) to load the user's BLAEO games page, scroll to load all entries, then parse with BeautifulSoup. Per row it extracts: completion status (from `tr` class e.g. `game-never-played`), group tags (`a.list-tag`), and achievement counts (`td.achievements` → second `<span>` text `(X of Y)`). `data-value='-2'` on the achievements cell means the game has no Steam achievements — those are skipped. Updates `completion_status`, `groups`, `unlocked_achievements`, and `total_achievements` in the DB; games not in the local DB are logged and skipped.
 
-**Review confidence weighting:** raw review percentage is scaled by total review count — <10 reviews gets 25% weight, 10-99 gets 50–100%, 100+ gets full weight. Stored as `weighted_percentage`.
+**Review confidence weighting:** continuous confidence-interval formula: `weighted = round((p - (p - 0.5) × 2^(-log₁₀(total + 1))) × 100)` where `p = percent / 100`. Low review counts are pulled toward 50 (neutral); at ~10 reviews roughly half the gap is closed; at ~1000 reviews the score is nearly raw. Stored as `weighted_percentage`.
 
 ### Cover Art Pipeline
 `images.py` handles three image types separately — vertical capsule, horizontal header, and icon. For each, `_get_steam_assets(appid)` fetches the full asset manifest from `IStoreBrowseService/GetItems`, which returns content-hash URLs for newer games. During populate, assets are fetched once and passed to all three download functions to avoid redundant API calls.
@@ -160,6 +162,16 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - `sort_col`: can be `'RANDOM()'` for shuffle shelves
 - `dedup` + `dedup_priority`: shelves with lower priority numbers are processed first; their appids are excluded from later shelves
 - `split_group`: shelves sharing the same group key render side-by-side in a flex row
+
+### Library Virtual Grid
+`library.html` uses an IntersectionObserver to lazy-load card content. Key details:
+- Cards start as empty placeholders with a shimmer animation (`data-populated` absent)
+- `CARD_HTML_CACHE` (Map keyed by appid) stores rendered card HTML to avoid re-generating on scroll-back
+- Images use `data-src` (not `src`) and `decoding="async"`; loaded via `scheduleImgLoad()` with a 200ms delay after scroll (0ms on initial page load) to keep scrolling smooth
+- `rootMargin: '1200px'` pre-loads cards well before they enter the viewport
+- `_initialLoad` flag is true until first scroll event; on initial load images are applied immediately
+- When `_patchGameCard` updates a card after an edit, it evicts the card from `CARD_HTML_CACHE` so the next repopulation picks up fresh data
+- `.game-grid` has `contain: layout style paint` for paint performance
 
 ## Frontend JS
 

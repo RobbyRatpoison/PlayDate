@@ -48,7 +48,7 @@
             grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width, 180px), 1fr));
             gap: 25px;
             padding: 20px 0;
-            contain: layout style;
+            contain: layout style paint;
         }
 
         .game-card {
@@ -56,6 +56,18 @@
             overflow: hidden;
             outline: 1px solid #333;
             aspect-ratio: 2/3;
+            background: var(--bg-raised, #1e2a35);
+        }
+
+        /* Shimmer animation on unpopulated placeholder cards */
+        .game-card:not([data-populated]) {
+            background: linear-gradient(90deg, var(--bg-raised, #1e2a35) 25%, var(--bg-input, #2a3a47) 50%, var(--bg-raised, #1e2a35) 75%);
+            background-size: 200% 100%;
+            animation: card-shimmer 1.4s infinite linear;
+        }
+        @keyframes card-shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
 
         .game-grid.horizontal .game-card {
@@ -310,7 +322,7 @@
                 id="library-search"
                 placeholder="Search games..."
                 onkeyup="handleSearch(event, this.value)"
-                value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% else %}{{ state.get('active_filters', [])|selectattr('column', 'equalto', 'name')|map(attribute='value')|first or '' }}{% endif %}">
+                value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% endif %}">
         </div>
         <button onclick="triggerSearch()">SEARCH</button>
         <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' data-picker-title="Sort by" style="min-width:160px;">
@@ -325,7 +337,7 @@
         <button class="order-btn" onclick="toggleOrder()" title='Toggle Ascending or Descending'>
             {{ '▲' if state.order == 'ASC' else '▼' }}
         </button>
-        {% set has_filters = (state.filter_tree and (state.filter_tree.get('items') or state.filter_tree.get('custom_sql'))) or state.get('active_filters', [])|length > 0 %}
+        {% set has_filters = state.filter_tree and (state.filter_tree.get('items') or state.filter_tree.get('custom_sql')) %}
         {% if has_filters %}
         <button onclick="clearAllFilters()" class="clear-btn">✕ CLEAR FILTERS</button>
         {% endif %}
@@ -482,7 +494,7 @@
 
     function cardInnerHTML(game) {
         if (CARD_HTML_CACHE.has(game.appid)) return CARD_HTML_CACHE.get(game.appid);
-        const escaped = (game.name || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const escaped  = (game.name || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const isHoriz  = _artOrientation === 'horizontal';
         const src      = isHoriz
             ? `/static/img/library/horizontal/${game.appid}.jpg?v=${_imgV}`
@@ -490,16 +502,15 @@
         const fallback = isHoriz
             ? `/static/img/library/vertical/${game.appid}.jpg?v=${_imgV}`
             : '';
-        const onerror  = fallback
-            ? `this.onerror=null;this.src='${fallback}';`
-            : 'this.onerror=null;';
+        // src is intentionally omitted here — set after a scroll-idle delay
+        // by scheduleImgLoad() so fast-scrolling cards never trigger a fetch.
         const html = `
             <div class="capsule-container" onclick="launchGame(${game.appid})" style="cursor:pointer;">
-                <img src="${src}"
+                <img data-src="${src}"
+                    data-fallback="${fallback}"
                     alt="${escaped}"
                     class="game-capsule"
-                    loading="lazy"
-                    onerror="${onerror}">
+                    decoding="async">
                 <div class="game-overlay" onclick="event.stopPropagation()">
                     <button class="status-tag"
                         style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;"
@@ -508,6 +519,23 @@
             </div>`;
         CARD_HTML_CACHE.set(game.appid, html);
         return html;
+    }
+
+    // On initial page load images are loaded immediately; once the user scrolls,
+    // a 100ms delay is applied so cards that pass through during fast scroll
+    // never trigger a network fetch or decode.
+    let _initialLoad = true;
+    window.addEventListener('scroll', () => { _initialLoad = false; }, { once: true, passive: true });
+
+    function scheduleImgLoad(card) {
+        card._imgTimer = setTimeout(() => {
+            const img = card.querySelector('img[data-src]');
+            if (!img) return;
+            const fallback = img.dataset.fallback;
+            if (fallback) img.onerror = () => { img.onerror = null; img.src = fallback; };
+            else          img.onerror = () => { img.onerror = null; };
+            img.src = img.dataset.src;
+        }, _initialLoad ? 0 : 200);
     }
 
     function openEditModalById(appid) {
@@ -535,49 +563,56 @@
     function observeCards() {
         if (_observer) _observer.disconnect();
         _observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                const card  = entry.target;
-                const appid = parseInt(card.dataset.appid);
+            // Batch all DOM mutations into a single rAF to avoid a burst of
+            // layout recalculations when many cards enter/exit during fast scroll.
+            requestAnimationFrame(() => {
+                entries.forEach(entry => {
+                    const card  = entry.target;
+                    const appid = parseInt(card.dataset.appid);
 
-                if (entry.isIntersecting) {
-                    // ── Load ──────────────────────────────────────────────
-                    if (!card.dataset.populated) {
-                        const game = _GAME_MAP.get(appid);
-                        if (game) {
-                            card.innerHTML = cardInnerHTML(game);
-                            card.dataset.populated = '1';
-                            if (_selectMode) card.addEventListener('click', onCardClick);
-                            if (_selectedIds.has(appid)) card.classList.add('selected');
-                            // Gamepad: re-apply focus class after virtual scroll repopulates card
-                            if (window._inputMgr?.onCardPopulated) {
-                                window._inputMgr.onCardPopulated(card, appid);
+                    if (entry.isIntersecting) {
+                        // ── Load ──────────────────────────────────────────────
+                        if (!card.dataset.populated) {
+                            const game = _GAME_MAP.get(appid);
+                            if (game) {
+                                card.innerHTML = cardInnerHTML(game);
+                                card.dataset.populated = '1';
+                                scheduleImgLoad(card);
+                                if (_selectMode) card.addEventListener('click', onCardClick);
+                                if (_selectedIds.has(appid)) card.classList.add('selected');
+                                // Gamepad: re-apply focus class after virtual scroll repopulates card
+                                if (window._inputMgr?.onCardPopulated) {
+                                    window._inputMgr.onCardPopulated(card, appid);
+                                }
                             }
                         }
-                    }
-                } else {
-                    // ── Unload ────────────────────────────────────────────
-                    if (card.dataset.populated) {
-                        // Null the img src before clearing so Chromium can
-                        // release the decoded image buffer sooner rather than
-                        // holding it in the image cache indefinitely.
-                        const img = card.querySelector('img');
-                        if (img) img.src = '';
-                        // Remove select-mode listener to prevent accumulation:
-                        // without this, each populate/unload cycle adds another
-                        // copy of the listener to the same card div.
-                        card.removeEventListener('click', onCardClick);
-                        if (card === _hoveredCard) {
-                            _hoveredCard = null;
+                    } else {
+                        // ── Unload ────────────────────────────────────────────
+                        if (card.dataset.populated) {
+                            // Cancel any pending image load for this card.
+                            clearTimeout(card._imgTimer);
+                            // Null the img src before clearing so Chromium can
+                            // release the decoded image buffer sooner rather than
+                            // holding it in the image cache indefinitely.
+                            const img = card.querySelector('img');
+                            if (img) img.src = '';
+                            // Remove select-mode listener to prevent accumulation:
+                            // without this, each populate/unload cycle adds another
+                            // copy of the listener to the same card div.
+                            card.removeEventListener('click', onCardClick);
+                            if (card === _hoveredCard) {
+                                _hoveredCard = null;
+                            }
+                            card.innerHTML = '';
+                            delete card.dataset.populated;
+                            // Do NOT touch _selectedIds — selection state is preserved
+                            // in memory and re-applied when the card re-enters view.
                         }
-                        card.innerHTML = '';
-                        delete card.dataset.populated;
-                        // Do NOT touch _selectedIds — selection state is preserved
-                        // in memory and re-applied when the card re-enters view.
                     }
-                }
+                });
             });
         }, {
-            rootMargin: '300px',  // load 300px ahead, unload 300px behind
+            rootMargin: '1200px',  // load 1200px ahead, unload 1200px behind
             threshold: 0
         });
         document.querySelectorAll('.game-card').forEach(c => _observer.observe(c));

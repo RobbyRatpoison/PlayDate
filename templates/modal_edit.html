@@ -258,7 +258,7 @@
                             <input type="number" name="review_percentage" id="edit-review-percentage" min="0" max="100">
                         </div>
                         <div>
-                            <label title="Penalises games with under 100 reviews. 10 or fewer reviews scores as 0.">Weighted %</label>
+                            <label title="Review score adjusted for confidence. Low review counts are pulled toward 50 (neutral) rather than the raw score. Formula: score - (score - 0.5) × 2^(-log₁₀(reviews+1))">Weighted %</label>
                             <input type="number" name="weighted_percentage" id="edit-weighted-pct">
                         </div>
                     </div>
@@ -940,6 +940,10 @@
             const orient = (typeof _artOrientation !== 'undefined' && _artOrientation === 'horizontal') ? 'horizontal' : 'vertical';
             img.src = `/static/img/library/${orient}/${appid}.jpg?v=` + Date.now();
         }
+
+        // Evict from the HTML cache so the next virtual-scroll repopulation
+        // uses a fresh src rather than the stale pre-save version.
+        if (typeof CARD_HTML_CACHE !== 'undefined') CARD_HTML_CACHE.delete(parseInt(appid));
     }
 
     window.onclick = function(event) {

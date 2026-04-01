@@ -32,16 +32,22 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.1.15 — 2026-03-31
+## v1.1.16 — 2026-03-31
 
 ### New Features
-- **Startup playtime sync now updates achievements and completion status** — when playtime has changed since the last launch, PlayDate fetches fresh achievement data (requires API key) and automatically promotes games from `Never Played` → `Unfinished` or any status → `Completed` on 100% unlock. `Beaten` is never downgraded.
-- **BLAEO sync now imports achievement data** — syncing with BLAEO now also saves unlocked and total achievement counts from the BLAEO games page, no API key required.
-
-### Bug Fixes
-- Fixed single-game refresh (edit modal) not fetching achievements for users with multiple Steam accounts configured — it was reading the API key from the wrong place.
+- **Date part filtering** — filter conditions on release date, date added, and last played now support "month is", "day is", and "year is" operators, making it easy to find games released in a specific month or on a particular day without needing a custom SQL expression.
+- **AppID filter condition** — AppID is now available as a filterable column in both the filter builder and the PAGYWOSG filter builder.
+- **PAGYWOSG filters save as editable trees** — filters saved from the PAGYWOSG builder are now stored as proper filter trees instead of raw SQL, so they can be opened and edited in the advanced filter builder like any other saved filter.
 
 ### Improvements
-- Saving a filter in the PAGYWOSG Filter Builder now immediately adds it to the saved filters dropdown without requiring a page reload.
+- **Filter modal save/rename/delete** now use an inline dialog instead of browser popups (`prompt`/`confirm`/`alert`), which could hang or misbehave in the desktop window.
+- **Ungroup in advanced filter builder** — removing a parent group now promotes its children to the parent level instead of deleting them.
+- **Weighted review percentage formula** updated to a continuous confidence-interval approach: scores are pulled toward 50% (neutral) based on review count, with a smooth curve rather than hard thresholds.
+- **Library scroll performance** — cards now use a virtual grid with HTML caching, deferred image loading (200ms after scroll, immediate on page load), and paint containment, reducing choppiness when scrolling large libraries.
+- **Filter modal height** capped at 82vh with a flexbox fix (`min-height: 0`) so the saved filters row and action buttons are always visible regardless of how many conditions are in the builder.
+
+### Bug Fixes
+- Fixed loading a tree-based saved filter in the filter builder not clearing a previously active custom SQL expression, causing the old SQL to silently override the new filter.
+- Fixed PAGYWOSG filters with an AppID condition returning 0 results — `appid` was missing from the SQL safety whitelist, causing the entire WHERE clause to be rejected.
 
 ---
