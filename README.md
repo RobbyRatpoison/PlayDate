@@ -39,7 +39,7 @@ PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, ach
 - **Startup sync** — on every launch, PlayDate reads your local Steam files to update playtime and last-played dates; if playtime changed, it fetches fresh achievement data and automatically promotes completion status (`Never Played` → `Unfinished`, 100% achievements → `Completed`)
 - **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB
 - **SteamGridDB browser** — search and apply custom artwork for any game from directly within PlayDate
-- **BLAEO sync** — imports completion statuses, list tags, and achievement counts from your BLAEO backlog profile (requires Chrome)
+- **BLAEO sync** — imports completion statuses, list tags, and achievement counts from your BLAEO backlog profile
 
 ### Import Tools
 - **Steam date importer** — a Tampermonkey userscript (`playdate_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (batch-imports dates for an entire filtered selection)
@@ -168,8 +168,7 @@ Data files survive upgrades — they are never overwritten by the installer.
 | SQLite | Local game database |
 | Jinja2 | Server-side HTML templating |
 | Vanilla JS / CSS3 | All frontend logic — no frameworks, no build step |
-| requests + BeautifulSoup | Steam metadata and tag scraping |
-| Selenium | BLAEO scraper (requires Chrome) |
+| requests + BeautifulSoup | Steam metadata, tag scraping, and BLAEO sync |
 
 ---
 

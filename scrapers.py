@@ -419,32 +419,16 @@ def fetch_tag_data(appid):
     return None
 
 def scrape_blaeo_games():
-    from selenium import webdriver
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.chrome.options import Options
-    from selenium.common.exceptions import WebDriverException
+    import requests as req
     config = load_config()
     account = get_active_account()
-    # Ensure we use the URL from config, or build it if missing
     blaeo_url = config.get('blaeo_url')
     if not blaeo_url:
         steam_id = (account or {}).get('steam_id')
         blaeo_url = f"https://www.backlog-assassins.net/users/+{steam_id}/games"
 
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    try:
-        driver = webdriver.Chrome(options=chrome_options)
-    except WebDriverException:
-        raise RuntimeError(
-            "BLAEO sync requires Google Chrome to be installed. "
-            "Please install Chrome from https://www.google.com/chrome and try again."
-        )
+    base_url = blaeo_url.rstrip('/')
 
-    # BLAEO classes are lowercase. 'game-never-played' becomes 'Never-played'
-    # after your .replace().capitalize() logic.
     status_map = {
         "Never-played": "Never Played",
         "Wont-play": "Won't Play",
@@ -454,39 +438,46 @@ def scrape_blaeo_games():
     }
 
     try:
-        log.info(f"Opening BLAEO: {blaeo_url}")
-        driver.get(blaeo_url)
+        session = req.Session()
+        session.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
 
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "game-table"))
-        )
+        all_rows = []
+        url = base_url
+        page = 1
 
-        # We scroll down, wait, and check if the page height increased.
-        last_height = driver.execute_script("return document.body.scrollHeight")
+        while url:
+            log.info(f"Fetching BLAEO page {page}: {url}")
+            r = session.get(url, timeout=15)
+            if r.status_code == 404:
+                raise RuntimeError("BLAEO profile not found. You may not have a BLAEO account.")
+            if r.status_code != 200:
+                raise RuntimeError(f"BLAEO may be down (HTTP {r.status_code}).")
 
-        while True:
-            # Scroll to the bottom
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            soup = BeautifulSoup(r.text, 'html.parser')
 
-            # Wait for new games to trigger and load
-            time.sleep(2)
+            if page == 1 and not soup.select_one("table.game-table"):
+                raise RuntimeError("No BLAEO game list found. You may not have a BLAEO account.")
 
-            # Calculate new scroll height and compare with last scroll height
-            new_height = driver.execute_script("return document.body.scrollHeight")
-            if new_height == last_height:
-                # If heights match, we've hit the absolute bottom
+            rows = soup.select("table.game-table tbody tr.game")
+            if not rows:
                 break
-            last_height = new_height
-            log.info("Scrolling to load more BLAEO games...")
 
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        rows = soup.select("table.game-table tbody tr.game")
+            all_rows.extend(rows)
+            last_cursor = rows[-1].get('data-item')
+            if not last_cursor:
+                break
+
+            url = f"{base_url}?start_at={last_cursor}"
+            page += 1
+            time.sleep(0.5)
+
+        log.info(f"Fetched {len(all_rows)} games from BLAEO across {page} page(s)")
 
         db = get_db()
         cursor = db.cursor()
         updated_count = 0
 
-        for row in rows:
+        for row in all_rows:
             try:
                 steam_link = row.select_one("a.steam")
                 if not steam_link:
@@ -496,15 +487,13 @@ def scrape_blaeo_games():
                 appid_match = re.search(r'/app/(\d+)', href)
                 if not appid_match:
                     continue
-                appid = int(appid_match.group(1)) # Convert to int to match DB type
+                appid = int(appid_match.group(1))
 
                 # Extract status from class (e.g., class="game game-never-played")
                 classes = row.get('class', [])
                 raw_status = "Unknown"
                 for c in classes:
                     if c.startswith("game-") and c != "game":
-                        # c.replace("game-", "") -> "never-played"
-                        # .capitalize() -> "Never-played"
                         raw_status = c.replace("game-", "").capitalize()
 
                 clean_status = status_map.get(raw_status, raw_status)
@@ -548,7 +537,6 @@ def scrape_blaeo_games():
                         )
                     updated_count += 1
                 else:
-                    # This helps you see if the scraper found games you haven't added yet
                     log.info(f"Game found on BLAEO but not in local DB: AppID {appid}")
 
             except Exception as e:
@@ -563,9 +551,6 @@ def scrape_blaeo_games():
     except Exception as e:
         log.error(f"BLAEO scraper error: {e}")
         return {"status": "error", "message": str(e)}
-
-    finally:
-        driver.quit()
 
 def sync_recent_playtime():
     """

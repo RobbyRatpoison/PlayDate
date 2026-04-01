@@ -83,16 +83,6 @@ hiddenimports = [
     # VDF parser — lazy-imported in utils.py for localconfig.vdf reading
     'vdf',
 
-    # Selenium — lazy-imported in scrape_blaeo_games(), so PyInstaller misses it
-    'selenium',
-    'selenium.webdriver',
-    'selenium.webdriver.chrome',
-    'selenium.webdriver.chrome.options',
-    'selenium.webdriver.common.by',
-    'selenium.webdriver.support.ui',
-    'selenium.webdriver.support.expected_conditions',
-    'webdriver_manager',
-    'webdriver_manager.chrome',
 ]
 
 hiddenimports += collect_submodules('webview')
