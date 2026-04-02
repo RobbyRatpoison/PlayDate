@@ -18,7 +18,7 @@ AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
 
-DefaultDirName={userprofile}\{#AppName}
+DefaultDirName={%USERPROFILE}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 
