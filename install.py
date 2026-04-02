@@ -282,15 +282,27 @@ class InstallerApp(tk.Tk):
                     "See README.md for full prerequisites and troubleshooting."
                 )
 
-            # Check WebKit2GTK specifically — gi can be present without it
-            try:
-                subprocess.check_call(
-                    [sys.executable, "-c",
-                     "import gi; gi.require_version('WebKit2', '4.0'); from gi.repository import WebKit2"],
-                    stderr=subprocess.DEVNULL
-                )
+            # Check WebKit2GTK specifically — gi can be present without it.
+            # Try all known version strings; distros ship 4.0, 4.1, or 6.0.
+            _webkit_check = (
+                "import gi\n"
+                "ok = False\n"
+                "for v in ('4.1', '4.0', '6.0'):\n"
+                "    try:\n"
+                "        gi.require_version('WebKit2', v)\n"
+                "        from gi.repository import WebKit2\n"
+                "        ok = True; break\n"
+                "    except Exception:\n"
+                "        pass\n"
+                "raise SystemExit(0 if ok else 1)\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", _webkit_check],
+                stderr=subprocess.DEVNULL
+            )
+            if result.returncode == 0:
                 self._log_line("✔  WebKit2GTK found", "ok")
-            except subprocess.CalledProcessError:
+            else:
                 raise RuntimeError(
                     "WebKit2GTK is not installed. This is the browser engine PlayDate\n"
                     "uses to render its interface and cannot be installed via pip.\n\n"
