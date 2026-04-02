@@ -11,6 +11,33 @@ https://docs.google.com/document/d/e/2PACX-1vTm6EH_WXQZZGLV8DXIVmegFL1LovMeDpNsb
 
 PlayDate is a local Steam library manager. It runs as a Flask web server wrapped in a native OS window via pywebview (no Electron). Users browse their Steam library, apply filters, track completion, and use a "Pick 6" feature to discover what to play next.
 
+## Planned: Project Rename + Install Folder Migration
+
+The project name "PlayDate" conflicts with other projects (notably Panic's handheld console). A rename is planned once a new name is decided.
+
+**When the new name is chosen, things to update:**
+- `playdate.iss` and `playdate.spec` — filenames and internal references
+- `config.py` — app name strings, log filename (`playdate.log`)
+- `playdate_date_import.user.js` — script name and internal references
+- `install.py` / `uninstall.py` — hardcoded "PlayDate" strings in the GUI
+- `templates/` — page titles and branding text
+- `static/` — any branding in CSS/JS
+- GitHub repo name
+- `DefaultDirName` in `playdate.iss` (keep `AppId` GUID unchanged — it ties installers together for upgrades)
+
+**Install folder migration strategy (for the rename update):**
+
+The installer should copy the old install folder to the new location, then delete the old one only after the copy succeeds. This applies to all users regardless of where they installed:
+
+1. In the Inno Setup `[Code]` Pascal script, read the previous install path from the registry (stored under `AppId`)
+2. Pre-fill the directory page with the new default path (`{userprofile}\<NewName>`)
+3. The user can accept the new default or choose any path they prefer
+4. Before installing, if the old path differs from the chosen new path: copy everything (app files + user data) from old → new, install to new path, then delete the old folder after success
+5. If the copy fails, abort and leave the old install untouched
+6. If the delete fails after a successful copy, show a message telling the user they can safely delete the old folder manually — the new install is fully working
+
+User data (`config.json`, `games.db`, `state.json`, `theme.json`, `playdate.log`, cover art) all live next to the exe and must be included in the copy. `CloseApplications=yes` should be set in `[Setup]` so the app is not running during migration.
+
 ## Running & Building
 
 **Run in development:**

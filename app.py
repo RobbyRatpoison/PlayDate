@@ -5,7 +5,13 @@ import os
 import sys
 
 # ── Logging Setup — must be first so import errors are captured ───────────────
-LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'playdate.log')
+# Use sys.executable dir when frozen so the log lands next to the .exe, not
+# inside the PyInstaller temp bundle (_MEIPASS) where it would be invisible.
+if getattr(sys, 'frozen', False):
+    _LOG_DIR = os.path.dirname(sys.executable)
+else:
+    _LOG_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_PATH = os.path.join(_LOG_DIR, 'playdate.log')
 
 _MAX_MSG_LEN = 500
 

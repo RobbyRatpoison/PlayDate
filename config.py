@@ -6,7 +6,7 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -198,7 +198,7 @@ DEFAULT_SHELVES = [
         "preset": "installed",
         "filter_key": "installed",
         "custom_sql": None,
-        "limit": 10,
+        "limit": 7,
         "row_height": 38,
         "col_width": None,
         "split_group": None,

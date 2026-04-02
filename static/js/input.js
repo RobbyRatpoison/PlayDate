@@ -1657,6 +1657,24 @@
     });
     if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
 
+    // ── Pause polling when window loses focus (e.g. a game launched) ─────────
+    window.addEventListener('blur', () => {
+        if (_rafId) {
+            cancelAnimationFrame(_rafId);
+            _rafId = null;
+        }
+        // Clear held state so no phantom inputs fire when focus returns
+        _gp.prev        = {};
+        _gp.heldSince   = {};
+        _gp.lastRepeat  = {};
+        _gp.stickDir    = null;
+        _gp.stickHeld   = 0;
+        _gp.stickRepeat = 0;
+    });
+    window.addEventListener('focus', () => {
+        if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
+    });
+
     // ── Library re-focus hook ─────────────────────────────────────────────────
     // Called by library.html's observeCards after populating a card.
     // Checks if this card is the one the input manager has focused.
