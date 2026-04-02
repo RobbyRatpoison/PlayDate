@@ -102,7 +102,7 @@ Use **Add or Remove Programs** — PlayDate registers a standard uninstaller. Yo
 ./uninstall.sh
 ```
 
-Removes the launcher, virtual environment, and app launcher entry. Your data files are left in place by default — the uninstaller asks before removing them.
+Removes the launcher, virtual environment, app launcher entry, and by default the entire PlayDate folder. Individual data files (`config.json`, `state.json`, `theme.json`, `games.db`, `playdate.log`) can be unchecked if you want to keep them, and the full folder deletion can be unchecked to do a partial uninstall.
 
 ---
 

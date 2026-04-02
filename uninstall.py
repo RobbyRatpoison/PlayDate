@@ -25,6 +25,7 @@ import glob as _glob
 USER_DATA = {
     "config.json":  ("Steam API credentials and settings",  os.path.join(INSTALL_DIR, "config.json")),
     "state.json":   ("Library filters, sort order, shelves", os.path.join(INSTALL_DIR, "state.json")),
+    "theme.json":   ("Custom theme colours",                 os.path.join(INSTALL_DIR, "theme.json")),
     "playdate.log": ("Application log file",                 os.path.join(INSTALL_DIR, "playdate.log")),
 }
 # Add per-account databases (games_<steamid>.db) plus legacy games.db
@@ -56,6 +57,8 @@ class UninstallerApp(tk.Tk):
         self._center(540, 520)
         self._set_icon()
         self._phase = "confirm"   # "confirm" → "uninstalling" → "done"
+        self._do_delete_folder = False
+        self._uninstall_ok = False
         self._build_confirm_ui()
 
     def _set_icon(self):
@@ -161,9 +164,34 @@ class UninstallerApp(tk.Tk):
                          font=("Segoe UI", 9, "italic"),
                          bg=CHK_BG, fg="#555", anchor="w").pack(side="left")
 
+        # ── Delete entire folder ──────────────────────────────────────────────
+        tk.Label(body,
+                 text="Install folder:",
+                 font=("Segoe UI", 10, "bold"),
+                 bg=BG, fg=FG, anchor="w").pack(fill="x", pady=(4, 2))
+
+        folder_frame = tk.Frame(body, bg=CHK_BG, padx=12, pady=10)
+        folder_frame.pack(fill="x", pady=(0, 10))
+
+        self._delete_folder_var = tk.BooleanVar(value=True)
+        folder_row = tk.Frame(folder_frame, bg=CHK_BG)
+        folder_row.pack(fill="x")
+        tk.Checkbutton(
+            folder_row, variable=self._delete_folder_var,
+            bg=CHK_BG, fg=FG,
+            activebackground=CHK_BG, activeforeground=FG,
+            selectcolor=BTN_BG, cursor="hand2"
+        ).pack(side="left")
+        tk.Label(folder_row, text="Delete entire PlayDate folder",
+                 font=("Segoe UI", 9, "bold"),
+                 bg=CHK_BG, fg=ERROR, anchor="w").pack(side="left")
+        tk.Label(folder_frame, text=f"  {INSTALL_DIR}",
+                 font=("Consolas", 8),
+                 bg=CHK_BG, fg=FG, anchor="w").pack(fill="x")
+
         # Safe note
         tk.Label(body,
-                 text="⚠  Deleted files cannot be recovered. Your PlayDate folder will remain.",
+                 text="⚠  Deleted files cannot be recovered.",
                  font=("Segoe UI", 8, "italic"),
                  bg=BG, fg=WARN, wraplength=480, justify="left").pack(fill="x")
 
@@ -186,10 +214,13 @@ class UninstallerApp(tk.Tk):
                   command=self._confirm_and_proceed).pack(side="left", padx=8)
 
     def _confirm_and_proceed(self):
+        self._do_delete_folder = self._delete_folder_var.get()
         selected = [f for f, (v, _) in self._data_vars.items() if v.get()]
         msg = "This will remove PlayDate's launcher, virtual environment, and system registration."
         if selected:
             msg += f"\n\nThe following user data will also be permanently deleted:\n  • " + "\n  • ".join(selected)
+        if self._do_delete_folder:
+            msg += f"\n\nThe entire PlayDate folder will be deleted:\n  {INSTALL_DIR}"
         msg += "\n\nContinue?"
 
         if not messagebox.askyesno("Confirm Uninstall", msg, icon="warning"):
@@ -362,7 +393,11 @@ class UninstallerApp(tk.Tk):
                 advance(f"Removed {filename}")
 
             self._log_line("\n✔  PlayDate has been uninstalled.", "ok")
-            self._log_line(f"   Your PlayDate folder is untouched: {INSTALL_DIR}", "info")
+            if self._do_delete_folder:
+                self._log_line(f"   The PlayDate folder will be deleted when you close this window.", "warn")
+            else:
+                self._log_line(f"   Your PlayDate folder is untouched: {INSTALL_DIR}", "info")
+            self._uninstall_ok = True
             self._finish_ok()
 
         except Exception as e:
@@ -378,3 +413,11 @@ if __name__ == "__main__":
 
     app = UninstallerApp()
     app.mainloop()
+
+    # Deferred folder deletion — runs after the window closes so the script
+    # can finish normally before its own directory is removed.
+    if app._uninstall_ok and app._do_delete_folder:
+        try:
+            shutil.rmtree(INSTALL_DIR)
+        except Exception as e:
+            print(f"Could not delete folder: {e}")

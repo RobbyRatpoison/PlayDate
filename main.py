@@ -42,6 +42,48 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
+# ── Linux WebKit check — friendly error before pywebview blows up ─────────────
+if sys.platform == "linux" and not getattr(sys, 'frozen', False):
+    try:
+        import gi
+        gi.require_version('WebKit2', '4.0')
+        from gi.repository import WebKit2  # noqa
+    except Exception:
+        import subprocess, shutil
+        distro_id = ""
+        try:
+            with open("/etc/os-release") as _f:
+                for _line in _f:
+                    if _line.startswith("ID_LIKE=") or _line.startswith("ID="):
+                        distro_id = _line.split("=", 1)[1].strip().strip('"').lower()
+                        break
+        except Exception:
+            pass
+        if any(d in distro_id for d in ("debian", "ubuntu")):
+            cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
+        elif any(d in distro_id for d in ("fedora", "rhel", "centos")):
+            cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
+        elif "arch" in distro_id:
+            cmd = "sudo pacman -S python-gobject webkit2gtk"
+        else:
+            cmd = "See README.md for your distribution's install command."
+        msg = (
+            "PlayDate requires WebKit2GTK to display its interface.\n\n"
+            f"Install it with:\n\n    {cmd}\n\n"
+            "Then re-run PlayDate."
+        )
+        log.critical(msg)
+        # Show a plain tkinter dialog if possible, otherwise just print
+        try:
+            import tkinter as _tk
+            from tkinter import messagebox as _mb
+            _r = _tk.Tk(); _r.withdraw()
+            _mb.showerror("Missing dependency — WebKit2GTK", msg)
+            _r.destroy()
+        except Exception:
+            print(msg)
+        sys.exit(1)
+
 # ── Linux/Wayland fixes — must be set before importing webview ────────────────
 os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
 os.environ.setdefault("GDK_BACKEND", "x11")

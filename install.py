@@ -246,6 +246,26 @@ class InstallerApp(tk.Tk):
             raise RuntimeError(msg)
 
         if SYSTEM == "Linux":
+            # Detect distro once — used in both error messages below
+            distro_id = ""
+            try:
+                with open("/etc/os-release") as f:
+                    for line in f:
+                        if line.startswith("ID_LIKE=") or line.startswith("ID="):
+                            distro_id = line.split("=", 1)[1].strip().strip('"').lower()
+                            break
+            except Exception:
+                pass
+
+            if any(d in distro_id for d in ("debian", "ubuntu")):
+                webkit_cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
+            elif any(d in distro_id for d in ("fedora", "rhel", "centos")):
+                webkit_cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
+            elif "arch" in distro_id:
+                webkit_cmd = "sudo pacman -S python-gobject webkit2gtk"
+            else:
+                webkit_cmd = "See README.md for instructions for your distribution."
+
             # Check python3-gi
             try:
                 subprocess.check_call(
@@ -254,31 +274,28 @@ class InstallerApp(tk.Tk):
                 )
                 self._log_line("✔  python3-gi found", "ok")
             except subprocess.CalledProcessError:
-                # Detect distro to show the right install command
-                distro_id = ""
-                try:
-                    with open("/etc/os-release") as f:
-                        for line in f:
-                            if line.startswith("ID_LIKE=") or line.startswith("ID="):
-                                distro_id = line.split("=", 1)[1].strip().strip('"').lower()
-                                break
-                except Exception:
-                    pass
-
-                if any(d in distro_id for d in ("debian", "ubuntu")):
-                    cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
-                elif any(d in distro_id for d in ("fedora", "rhel", "centos")):
-                    cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
-                elif "arch" in distro_id:
-                    cmd = "sudo pacman -S python-gobject webkit2gtk"
-                else:
-                    cmd = "See README.md for instructions for your distribution."
-
                 raise RuntimeError(
                     "python3-gi is not installed. PlayDate requires system-level\n"
                     "GTK/WebKit libraries that cannot be installed via pip.\n\n"
                     f"Run this command, then re-run the installer:\n\n"
-                    f"    {cmd}\n\n"
+                    f"    {webkit_cmd}\n\n"
+                    "See README.md for full prerequisites and troubleshooting."
+                )
+
+            # Check WebKit2GTK specifically — gi can be present without it
+            try:
+                subprocess.check_call(
+                    [sys.executable, "-c",
+                     "import gi; gi.require_version('WebKit2', '4.0'); from gi.repository import WebKit2"],
+                    stderr=subprocess.DEVNULL
+                )
+                self._log_line("✔  WebKit2GTK found", "ok")
+            except subprocess.CalledProcessError:
+                raise RuntimeError(
+                    "WebKit2GTK is not installed. This is the browser engine PlayDate\n"
+                    "uses to render its interface and cannot be installed via pip.\n\n"
+                    f"Run this command, then re-run the installer:\n\n"
+                    f"    {webkit_cmd}\n\n"
                     "See README.md for full prerequisites and troubleshooting."
                 )
         self._advance("Step 2 — Python OK")

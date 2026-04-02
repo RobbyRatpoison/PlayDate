@@ -157,11 +157,14 @@
                     <button class="hamburger-item" onclick="closeHamburger();window.location.href='/?edit=1'">Edit Home Layout</button>
                     <button class="hamburger-item" onclick="closeHamburger();openSettingsModal()">Settings</button>
                     <button class="hamburger-item" onclick="closeHamburger();openToolsModal()">Tools</button>
+                    <div class="hamburger-sep"></div>
+                    <button id="update-check-btn" class="hamburger-item" onclick="handleUpdateBtn()"><span id="update-check-label">Check for Updates</span><span id="update-menu-dot"></span></button>
+                    <div id="update-menu-status" class="hamburger-status"></div>
                 </div>
             </div>
             <a class="{{ 'active' if request.path == '/' }}" onclick="window.location.href='/'">HOME</a>
             <a class="{{ 'active' if request.path == '/library' }}" onclick="window.location.href='/library'">LIBRARY</a>
-            <a class="{{ 'active' if request.path == '/pick' }}" onclick="window.location.href='/pick'">PICK</a>
+            <a class="{{ 'active' if request.path == '/pick' }}" onclick="window.location.href='/pick'">PICK 6</a>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
             <button id="fullscreen-button" class="nav-btn" title="Toggle fullscreen (F11)" style="min-width:36px;padding:0 10px;font-size:1rem;">⛶</button>
@@ -933,6 +936,7 @@
         // ── Hamburger menu ────────────────────────────────────────────────────
         function toggleHamburger() {
             document.getElementById('hamburger-menu').classList.toggle('open');
+            document.getElementById('update-dot').classList.remove('visible');
         }
         function closeHamburger() {
             document.getElementById('hamburger-menu').classList.remove('open');
@@ -1068,8 +1072,8 @@
                     } else {
                         label.textContent = 'Check for Updates';
                         status.textContent = data.error ? 'Check failed.' : "You're up to date!";
-                        status.className = 'tool-status ' + (data.error ? 'error' : 'success');
-                        setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 4000);
+                        status.className = 'hamburger-status ' + (data.error ? 'error' : 'success');
+                        setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 4000);
                     }
                 } catch (e) {
                     label.textContent = 'Check for Updates';
