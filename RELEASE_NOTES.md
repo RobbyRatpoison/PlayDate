@@ -32,6 +32,13 @@ chmod +x install.sh && ./install.sh
 
 ---
 
+## v1.2.1 — 2026-04-01
+
+### Bug fixes
+- **Linux: fixed false "WebKit2GTK missing" error on Fedora/Nobara** — the startup check introduced in v1.2.0 used a hardcoded version string (`4.0`) that doesn't match what Fedora ships (`4.1`), causing PlayDate to refuse to launch on a working system. The check now tests by importing pywebview directly, which is the actual requirement.
+
+---
+
 ## v1.2.0 — 2026-04-01
 
 ### Improvements
