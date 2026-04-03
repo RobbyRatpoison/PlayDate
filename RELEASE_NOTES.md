@@ -32,11 +32,11 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.2.2 — 2026-04-02
+## v1.2.3 — 2026-04-03
+
+### New
+- **Filter Import / Export** — save any filter to a `.json` file and import it on another machine or share it with others. Available under Tools → Filter Import / Export.
 
 ### Bug fixes
-- **Fixed: application log not being written on Windows** — `playdate.log` was being written into the PyInstaller temporary extraction folder instead of next to the `.exe`, making it invisible. Errors during populate and other operations were silently disappearing as a result. The log now correctly appears in the install folder.
-- **Fixed: gamepad inputs leaking out of launched games into PlayDate** — PlayDate continued polling the gamepad while a game was running, causing buttons pressed in-game to register as PlayDate inputs (launching additional games in the background). The gamepad poller now pauses when the PlayDate window loses focus and resumes cleanly when you return to it.
-
-### Improvements
-- **Windows installer now defaults to `C:\Users\<you>\PlayDate`** — previously defaulted to a folder inside AppData which caused errors for some users. You can still choose any location during install.
+- **Fixed: populate failing on Windows for some users** — ACF manifest files containing game names with non-ASCII characters (e.g. Japanese, Chinese) caused a `UnicodeDecodeError` that crashed the entire populate operation.
+- **Fixed: fullscreen state not saving on exit** — toggling fullscreen and then closing the app would revert to fullscreen on next launch. The state is now saved reliably on close.
