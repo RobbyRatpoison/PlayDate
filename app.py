@@ -989,6 +989,38 @@ def create_app(template_folder=None, static_folder=None):
             json.dump(state, f, indent=4)
         return jsonify({"status": "success"})
 
+    @app.route('/api/export-filter', methods=['POST'])
+    def export_filter_file():
+        data = request.json
+        path = (data.get('path') or '').strip()
+        name = (data.get('name') or '').strip()
+        tree = data.get('tree')
+        if not path or not name or not tree:
+            return jsonify({'status': 'error', 'message': 'Missing fields.'}), 400
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump({'playdate_filter': {'name': name, 'tree': tree}}, f, indent=2)
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/read-filter-file', methods=['POST'])
+    def read_filter_file():
+        path = (request.json.get('path') or '').strip()
+        if not path or not os.path.exists(path):
+            return jsonify({'status': 'error', 'message': 'File not found.'}), 400
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            pf   = data.get('playdate_filter', {})
+            name = (pf.get('name') or '').strip()
+            tree = pf.get('tree')
+            if not name or not tree:
+                return jsonify({'status': 'error', 'message': 'Invalid filter file.'}), 400
+            return jsonify({'status': 'success', 'name': name, 'tree': tree})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': f'Could not read file: {e}'}), 500
+
     @app.route('/api/delete-game/<int:appid>', methods=['DELETE'])
     def delete_game(appid):
         data      = request.json or {}
