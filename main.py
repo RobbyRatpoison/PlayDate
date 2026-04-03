@@ -145,6 +145,7 @@ def _destroy_window():
 # ── Main ──────────────────────────────────────────────────────────────────────
 # Module-level window reference so Flask routes can call pywebview APIs
 _webview_window = None
+_fullscreen      = False  # tracked here so _on_closing can persist it reliably
 
 
 class PyWebviewAPI:
@@ -152,10 +153,12 @@ class PyWebviewAPI:
 
     def toggle_fullscreen(self):
         """Toggle native fullscreen on the pywebview window."""
+        global _fullscreen
         if _webview_window is None:
             return
         try:
             _webview_window.toggle_fullscreen()
+            _fullscreen = not _fullscreen
         except Exception as e:
             log.warning(f"Fullscreen toggle failed: {e}")
 
@@ -185,7 +188,7 @@ class PyWebviewAPI:
             file_types = ('All Files (*.*)',)
         try:
             paths = _webview_window.create_file_dialog(
-                webview.OPEN_DIALOG,
+                webview.FileDialog.OPEN,
                 file_types=tuple(file_types),
             )
             if paths:
@@ -207,7 +210,7 @@ class PyWebviewAPI:
             file_types = ('ZIP Files (*.zip)',)
         try:
             paths = _webview_window.create_file_dialog(
-                webview.SAVE_DIALOG,
+                webview.FileDialog.SAVE,
                 save_filename=suggested_name,
                 file_types=tuple(file_types),
             )
@@ -266,12 +269,12 @@ def _load_window_state():
 
 
 def _save_window_state(tracked):
-    """Persist the already-tracked window state dict to state.json.
+    """Persist window state and fullscreen flag to state.json.
     No window property reads here — safe to call from the closing event."""
     from config import save_state
     try:
-        save_state({'window_state': dict(tracked)})
-        log.info(f"Window state saved: {tracked}")
+        save_state({'window_state': dict(tracked), 'fullscreen': _fullscreen})
+        log.info(f"Window state saved: {tracked}, fullscreen={_fullscreen}")
     except Exception as e:
         log.warning(f"Failed to save window state: {e}")
 
@@ -334,6 +337,7 @@ if __name__ == '__main__':
     # 5. Create pywebview window
     _api = PyWebviewAPI()
     _ws = _load_window_state()
+    _fullscreen = _ws.get('fullscreen', False)
     _window_maximized = _ws['maximized']
 
     window = webview.create_window(
