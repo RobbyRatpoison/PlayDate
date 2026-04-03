@@ -322,7 +322,7 @@ def get_locally_installed_appids():
     return installed_ids
 
 def is_real_game(file_path):
-    with open(file_path, 'r') as f:
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
         content = f.read()
 
     # Check for UserConfig - most tools don't have this
