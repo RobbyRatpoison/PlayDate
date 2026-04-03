@@ -550,6 +550,7 @@
 
         <div class="hub-section">
             <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openThemeModal()">Theme Editor</button>
+            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openFilterIoModal()">Filter Import / Export</button>
             <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openBackupModal()">Backup &amp; Restore</button>
             <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openImportModal()">Import from Database</button>
             <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openPlayniteModal()">Import Date Added from Playnite</button>
@@ -850,6 +851,47 @@
         </table>
         <div style="margin-top:16px; display:flex; justify-content:flex-end;">
             <button class="nav-btn" data-modal-row="1" onclick="closeBlacklistModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── FILTER IMPORT / EXPORT MODAL ── -->
+<div id="filter-io-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeFilterIoModal();">
+    <div class="modal-content" style="width:400px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Filter Import / Export</h2>
+            <button onclick="closeFilterIoModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <div style="margin-bottom:18px;">
+            <div class="hub-section-label" style="margin-bottom:8px;">Export</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <select id="tools-filter-select" data-modal-row="0" style="flex:1; height:34px; font-size:0.85rem;">
+                    <option value="">Select a filter…</option>
+                </select>
+                <button class="nav-btn" data-modal-row="0" style="height:34px; padding:0 14px; font-size:0.82rem; white-space:nowrap;" onclick="exportSelectedFilter()">Export</button>
+            </div>
+            <div id="filter-export-status" class="tool-status" style="margin-top:6px;"></div>
+        </div>
+
+        <div style="border-top:1px solid var(--border); padding-top:18px; margin-bottom:6px;">
+            <div class="hub-section-label" style="margin-bottom:8px;">Import</div>
+            <button class="settings-item" data-modal-row="1" onclick="importFilter()">Choose File…</button>
+            <div id="filter-import-rename" style="display:none; margin-top:10px; padding:10px; background:var(--bg-input); border-radius:6px; border:1px solid var(--border);">
+                <div id="filter-import-rename-msg" style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px;"></div>
+                <div style="display:flex; gap:6px;">
+                    <input id="filter-import-new-name" type="text" placeholder="New name…"
+                        style="flex:1; padding:5px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem; outline:none;"
+                        onkeydown="if(event.key==='Enter')confirmFilterImport();if(event.key==='Escape')cancelFilterImport();">
+                    <button class="nav-btn" style="padding:0 10px; font-size:0.8rem;" onclick="confirmFilterImport()">Save</button>
+                    <button class="nav-btn" style="padding:0 10px; font-size:0.8rem;" onclick="cancelFilterImport()">Cancel</button>
+                </div>
+            </div>
+            <div id="filter-import-status" class="tool-status" style="margin-top:6px;"></div>
+        </div>
+
+        <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+            <button class="nav-btn" data-modal-row="2" onclick="closeFilterIoModal()">Close</button>
         </div>
     </div>
 </div>
@@ -2669,6 +2711,7 @@ async function themeDeleteNamed(name) {
 document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('source-table'));
     initCustomSelect(document.getElementById('appid-col'));
+    initCustomSelect(document.getElementById('tools-filter-select'));
 });
 
 // ── ACCOUNT SETTINGS ─────────────────────────────────────────────────────────
@@ -2959,5 +3002,212 @@ function openToolsModal() {
 }
 function closeToolsModal() {
     document.getElementById('tools-modal').style.display = 'none';
+}
+function openFilterIoModal() {
+    document.getElementById('filter-io-modal').style.display = 'flex';
+    document.getElementById('filter-export-status').textContent = '';
+    document.getElementById('filter-import-status').textContent = '';
+    document.getElementById('filter-import-rename').style.display = 'none';
+    _filterImportPending = null;
+    _populateFilterExportSelect();
+}
+function closeFilterIoModal() {
+    document.getElementById('filter-io-modal').style.display = 'none';
+}
+
+// ── Filter Import / Export ────────────────────────────────────────────────────
+let _filterImportPending = null; // { name, tree } awaiting a rename
+
+function _populateFilterExportSelect() {
+    const sel = document.getElementById('tools-filter-select');
+    if (!sel || !sel._setOptions) return;
+    const names = Object.keys(typeof _savedFilters !== 'undefined' ? _savedFilters : {});
+    const opts  = names.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join('');
+    sel._setOptions('<option value="">Select a filter…</option>' + opts);
+}
+
+async function exportSelectedFilter() {
+    const sel    = document.getElementById('tools-filter-select');
+    const status = document.getElementById('filter-export-status');
+    const name   = sel ? sel.value : '';
+    if (!name) {
+        status.textContent = 'Select a filter to export.';
+        status.className   = 'tool-status error';
+        return;
+    }
+    const tree = (typeof _savedFilters !== 'undefined' ? _savedFilters : {})[name];
+    if (!tree) {
+        status.textContent = 'Filter not found.';
+        status.className   = 'tool-status error';
+        return;
+    }
+    const payload       = JSON.stringify({ playdate_filter: { name, tree } }, null, 2);
+    const suggestedName = `playdate-filter-${name.replace(/[^a-z0-9_-]/gi, '_')}.json`;
+
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
+        const path = await window.pywebview.api.pick_save_path(suggestedName, ['JSON Files (*.json)']);
+        if (!path) return;
+        status.textContent = 'Saving…';
+        status.className   = 'tool-status info';
+        try {
+            const res  = await fetch('/api/export-filter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path, name, tree })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                status.textContent = `✔ Exported "${name}".`;
+                status.className   = 'tool-status success';
+            } else {
+                status.textContent = data.message || 'Export failed.';
+                status.className   = 'tool-status error';
+            }
+        } catch (e) {
+            status.textContent = `Error: ${e.message}`;
+            status.className   = 'tool-status error';
+        }
+        return;
+    }
+    // Fallback: blob download
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url; a.download = suggestedName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    status.textContent = `✔ Exported "${name}".`;
+    status.className   = 'tool-status success';
+}
+
+async function importFilter() {
+    const status = document.getElementById('filter-import-status');
+    document.getElementById('filter-import-rename').style.display = 'none';
+    _filterImportPending = null;
+
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+        let path;
+        try {
+            path = await window.pywebview.api.pick_open_path(['JSON Files (*.json)']);
+        } catch (e) {
+            status.textContent = `Error opening file dialog: ${e.message}`;
+            status.className   = 'tool-status error';
+            return;
+        }
+        if (!path) return;
+        status.textContent = 'Reading…';
+        status.className   = 'tool-status info';
+        try {
+            const res  = await fetch('/api/read-filter-file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            const data = await res.json();
+            if (data.status !== 'success') {
+                status.textContent = data.message || 'Failed to read file.';
+                status.className   = 'tool-status error';
+                return;
+            }
+            _doFilterImport(data.name, data.tree);
+        } catch (e) {
+            status.textContent = `Error: ${e.message}`;
+            status.className   = 'tool-status error';
+        }
+        return;
+    }
+    // Fallback: file input
+    const input  = document.createElement('input');
+    input.type   = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const data = JSON.parse(e.target.result);
+                const pf   = data.playdate_filter || {};
+                const name = (pf.name || '').trim();
+                const tree = pf.tree;
+                if (!name || !tree) {
+                    status.textContent = 'Invalid filter file.';
+                    status.className   = 'tool-status error';
+                    return;
+                }
+                _doFilterImport(name, tree);
+            } catch {
+                status.textContent = 'Could not parse file.';
+                status.className   = 'tool-status error';
+            }
+        };
+        reader.readAsText(file);
+    };
+    document.body.appendChild(input); input.click(); document.body.removeChild(input);
+}
+
+function _doFilterImport(name, tree) {
+    const status = document.getElementById('filter-import-status');
+    if ((typeof _savedFilters !== 'undefined' ? _savedFilters : {})[name]) {
+        _filterImportPending = { name, tree };
+        document.getElementById('filter-import-rename-msg').textContent =
+            `A filter named "${name}" already exists. Enter a new name:`;
+        const inp = document.getElementById('filter-import-new-name');
+        inp.value = '';
+        document.getElementById('filter-import-rename').style.display = '';
+        status.textContent = ''; status.className = 'tool-status';
+        setTimeout(() => inp.focus(), 50);
+    } else {
+        _saveImportedFilter(name, tree);
+    }
+}
+
+async function confirmFilterImport() {
+    if (!_filterImportPending) return;
+    const newName = document.getElementById('filter-import-new-name').value.trim();
+    if (!newName) { document.getElementById('filter-import-new-name').focus(); return; }
+    if ((typeof _savedFilters !== 'undefined' ? _savedFilters : {})[newName]) {
+        document.getElementById('filter-import-rename-msg').textContent =
+            `"${newName}" also already exists. Try another name:`;
+        return;
+    }
+    const { tree } = _filterImportPending;
+    document.getElementById('filter-import-rename').style.display = 'none';
+    _filterImportPending = null;
+    _saveImportedFilter(newName, tree);
+}
+
+function cancelFilterImport() {
+    document.getElementById('filter-import-rename').style.display = 'none';
+    _filterImportPending = null;
+    const status = document.getElementById('filter-import-status');
+    status.textContent = 'Import cancelled.'; status.className = 'tool-status';
+}
+
+async function _saveImportedFilter(name, tree) {
+    const status = document.getElementById('filter-import-status');
+    status.textContent = 'Saving…'; status.className = 'tool-status info';
+    try {
+        const res  = await fetch('/api/save-filter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, filter_tree: tree })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            if (typeof _savedFilters !== 'undefined') _savedFilters[name] = tree;
+            _populateFilterExportSelect();
+            const filterSel = document.getElementById('saved-filters-select');
+            if (filterSel && filterSel._addOption) filterSel._addOption(name, name);
+            status.textContent = `✔ Imported "${name}".`;
+            status.className   = 'tool-status success';
+        } else {
+            status.textContent = data.message || 'Save failed.';
+            status.className   = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className   = 'tool-status error';
+    }
 }
 </script>
