@@ -923,6 +923,19 @@ def sync_recent_playtime():
                     (new_status, appid)
                 )
 
+        # Sweep: any game whose stored achievement counts already show 100%
+        # should be Completed, regardless of how the counts got there (e.g.
+        # BLAEO sync set cheevos_fetched and skipped the cheevo worker, or
+        # the cheevo worker ran but the status wasn't updated).
+        result = db.execute(
+            "UPDATE games SET completion_status = 'Completed'"
+            " WHERE total_achievements > 0"
+            "   AND unlocked_achievements = total_achievements"
+            "   AND completion_status != 'Completed'"
+        )
+        if result.rowcount:
+            log.info(f"sync_recent_playtime: promoted {result.rowcount} game(s) to Completed via achievement sweep.")
+
         db.commit()
         db.close()
         log.info(f"sync_recent_playtime: updated {updated} games.")

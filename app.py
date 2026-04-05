@@ -73,6 +73,7 @@ _bulk_date_state = {
     'total':            0,
     'active':           False,
     'script_connected': False, # True once userscript pings back
+    'results':          [],    # [{name, appid, date}, …] newest first; date=None means not found
 }
 
 # ── Update checking ───────────────────────────────────────────────────────────
@@ -143,6 +144,20 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(config_bp)
     app.register_blueprint(index_bp)
     app.register_blueprint(library_bp)
+
+    # ── CORS for Tampermonkey userscript (runs on help.steampowered.com) ─────
+    # Adds CORS + Private Network Access headers to every response when the
+    # request originates from the Steam help domain.  Covers both simple GETs
+    # and preflight OPTIONS requests without needing per-route handling.
+    @app.after_request
+    def _userscript_cors(response):
+        origin = request.headers.get('Origin', '')
+        if origin.startswith('https://help.steampowered.com'):
+            response.headers['Access-Control-Allow-Origin']          = origin
+            response.headers['Access-Control-Allow-Headers']         = 'Content-Type'
+            response.headers['Access-Control-Allow-Methods']         = 'GET, POST, OPTIONS'
+            response.headers['Access-Control-Allow-Private-Network'] = 'true'
+        return response
 
     # ── User-data static files ────────────────────────────────────────────────
     # When frozen by PyInstaller, Flask's static_folder points into the bundle
@@ -782,25 +797,19 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/pending-date', methods=['POST', 'OPTIONS'])
     def pending_date_set():
-        # Allow requests from the Steam help page (browser userscript)
-        origin = request.headers.get('Origin', '')
-        allowed = origin.startswith('https://help.steampowered.com') or origin == ''
-        resp_headers = {'Access-Control-Allow-Origin': origin if allowed else '',
-                        'Access-Control-Allow-Headers': 'Content-Type',
-                        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                        'Access-Control-Allow-Private-Network': 'true'}
         if request.method == 'OPTIONS':
-            return ('', 204, resp_headers)
-        if not allowed:
+            return ('', 204)
+        origin = request.headers.get('Origin', '')
+        if origin and not origin.startswith('https://help.steampowered.com'):
             return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
-        data   = request.json or {}
-        appid  = data.get('appid')
-        date   = data.get('date', '').strip()
+        data  = request.json or {}
+        appid = data.get('appid')
+        date  = data.get('date', '').strip()
         if not appid or not date:
             return jsonify({'status': 'error', 'message': 'Missing appid or date'}), 400
         _pending_dates[int(appid)] = date
         log.info(f"Pending date set for AppID {appid}: {date}")
-        return jsonify({'status': 'success'}), 200, resp_headers
+        return jsonify({'status': 'success'})
 
     @app.route('/api/pending-date/<int:appid>')
     def pending_date_get(appid):
@@ -838,7 +847,8 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'status': 'ok', 'total': 0, 'first_appid': None})
         _bulk_date_state.update({'queue': queue[1:], 'current': queue[0],
                                  'done': 0, 'failed': 0, 'total': len(queue),
-                                 'active': True, 'script_connected': False})
+                                 'active': True, 'script_connected': False,
+                                 'results': []})
         log.info(f"Bulk date import started: {len(queue)} games queued")
         return jsonify({'status': 'ok', 'first_appid': queue[0]['appid'],
                         'first_name': queue[0]['name'], 'total': len(queue)})
@@ -852,34 +862,50 @@ def create_app(template_folder=None, static_folder=None):
         log.info(f"Bulk date import finished: {_bulk_date_state['done']} updated, {_bulk_date_state['failed']} not found")
         return jsonify({'status': 'ok', 'next_appid': None})
 
-    @app.route('/api/bulk-date-import/submit', methods=['POST'])
+    @app.route('/api/bulk-date-import/submit', methods=['POST', 'OPTIONS'])
     def bulk_date_import_submit():
+        if request.method == 'OPTIONS':
+            return ('', 204)
         data  = request.json or {}
         appid = int(data.get('appid', 0))
         date  = data.get('date', '').strip()
         if not appid or not date:
             return jsonify({'status': 'error', 'message': 'Missing appid or date'}), 400
+        current = _bulk_date_state.get('current') or {}
         update_game_data(appid, date_added=date)
         log.info(f"Bulk date import: saved {date} for AppID {appid}")
         _bulk_date_state['done'] += 1
+        _bulk_date_state['results'].insert(0, {'appid': appid, 'name': current.get('name', ''), 'date': date})
         return _bulk_date_advance()
 
-    @app.route('/api/bulk-date-import/skip', methods=['POST'])
+    @app.route('/api/bulk-date-import/skip', methods=['POST', 'OPTIONS'])
     def bulk_date_import_skip():
+        if request.method == 'OPTIONS':
+            return ('', 204)
         data  = request.json or {}
         appid = int(data.get('appid', 0))
+        current = _bulk_date_state.get('current') or {}
         log.info(f"Bulk date import: no date found for AppID {appid}")
         _bulk_date_state['failed'] += 1
+        _bulk_date_state['results'].insert(0, {'appid': appid, 'name': current.get('name', ''), 'date': None})
         return _bulk_date_advance()
 
-    @app.route('/api/bulk-date-import/ping', methods=['POST'])
+    @app.route('/api/bulk-date-import/ping', methods=['POST', 'OPTIONS'])
     def bulk_date_import_ping():
+        if request.method == 'OPTIONS':
+            return ('', 204)
         _bulk_date_state['script_connected'] = True
         return jsonify({'status': 'ok'})
 
     @app.route('/api/bulk-date-import/status')
     def bulk_date_import_status():
-        return jsonify({k: _bulk_date_state[k] for k in ('active', 'done', 'failed', 'total', 'current', 'script_connected')})
+        s = _bulk_date_state
+        return jsonify({
+            'active': s['active'], 'done': s['done'], 'failed': s['failed'],
+            'total': s['total'], 'current': s['current'],
+            'script_connected': s['script_connected'],
+            'results': s['results'][:50],
+        })
 
     @app.route('/api/bulk-date-import/cancel', methods=['POST'])
     def bulk_date_import_cancel():

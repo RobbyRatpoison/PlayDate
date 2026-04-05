@@ -36,13 +36,13 @@ PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, ach
 
 ### Metadata & Artwork
 - **Steam scraper** — imports playtime, tags, review scores, achievement counts, release dates, developers, publishers, and genres from Steam's API and store pages; runs concurrent worker pools for art, metadata, and achievements so cards populate live as each phase completes
-- **Startup sync** — on every launch, PlayDate reads your local Steam files to update playtime and last-played dates; if playtime changed, it fetches fresh achievement data and automatically promotes completion status (`Never Played` → `Unfinished`, 100% achievements → `Completed`)
+- **Startup sync** — on every launch, PlayDate reads your local Steam files to update playtime and last-played dates; if playtime changed, it fetches fresh achievement data and promotes completion status (`Never Played` → `Unfinished`, 100% achievements → `Completed`); also sweeps the library for any games already at 100% that weren't marked Completed
 - **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB
 - **SteamGridDB browser** — search and apply custom artwork for any game from directly within PlayDate
 - **BLAEO sync** — imports completion statuses, list tags, and achievement counts from your BLAEO backlog profile
 
 ### Import Tools
-- **Steam date importer** — a Tampermonkey userscript (`steam_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (batch-imports dates for an entire filtered selection). Requires **Tampermonkey with Manifest V2 enabled** — MV3 blocks the cross-origin requests the script depends on
+- **Steam date importer** — a Tampermonkey userscript (`steam_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (fetches each game's date in the background without tab switching, with a live per-game log). Compatible with current Tampermonkey versions
 - **Playnite import** — import `date added` values from a Playnite backup ZIP
 - **Database import** — migrate columns from an older PlayDate database into your current one, with column mapping and type-mismatch warnings
 

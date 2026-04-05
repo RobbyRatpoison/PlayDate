@@ -13,10 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Pending (Next Release — Not Yet Committed)
 
-- **Renamed `playdate_date_import.user.js` → `steam_date_import.user.js`** — updated README.md and CLAUDE.md references; script version bumped to 1.9
-- **Steam account mismatch check in userscript** — reads `HelpWizard.m_steamid` from the Steam help page, fetches new `GET /api/active-steam-id` endpoint, aborts with a banner if the logged-in Steam account doesn't match the active PlayDate account
-- **Tampermonkey script detection for bulk date import** — userscript POSTs to new `POST /api/bulk-date-import/ping` on load; frontend auto-cancels with an error message after 5 seconds if no ping received; `script_connected` flag added to `_bulk_date_state` and exposed in `/api/bulk-date-import/status`
-- **Bulk edit modal UI** — completion status column now shows a custom dropdown (5 status options) instead of a plain text input; tag/group/genre/category columns now show a pill input with suggestions; `LIST_COLUMNS` extended to include `genres` and `categories`
+_(none)_
 
 ## To-Do
 
@@ -197,11 +194,11 @@ No API key → reads library from local Steam files (`localconfig.vdf`, ACF mani
 
 ### Steam Help Page Date Import
 
-`steam_date_import.user.js` is a Tampermonkey MV2 userscript that runs on `help.steampowered.com/*/HelpWithGame` pages. It only activates when the URL contains `?ref=playdate` (set by PlayDate's ↗ link in the edit modal). It scrapes the earliest activation date from `.LineItemRow` spans (or `.account_details` fallback), then POSTs it to PlayDate via `GM_xmlhttpRequest`.
+`steam_date_import.user.js` is a Tampermonkey userscript that runs on `help.steampowered.com/*` pages. It only activates when the URL contains `?ref=playdate`. It scrapes the earliest activation date from `.LineItemRow` spans (or `.account_details` fallback) using `DOMParser` on fetched HTML. All PlayDate API calls use `GM_xmlhttpRequest` (bypasses Steam's CSP, which blocks `fetch()` to localhost); same-origin Steam Help page fetches use regular `fetch()`.
 
-**Single-game mode** (edit modal ↗ link): POSTs to `POST /api/pending-date` → stored in `_pending_dates` dict → edit modal polls `GET /api/pending-date/<appid>` every 250ms for up to 3 seconds after the link is clicked → on receipt, populates the Date Added field with an accent highlight. After sending, userscript polls `GET /api/pending-date/<appid>/peek` (non-destructive) until the modal consumes the date, then closes the tab.
+**Single-game mode** (edit modal ↗ link): parses date from the current page DOM → POSTs to `POST /api/pending-date` → stored in `_pending_dates` dict → edit modal polls `GET /api/pending-date/<appid>` every 250ms for up to 3 seconds after the link is clicked → on receipt, populates the Date Added field with an accent highlight. After sending, userscript polls `GET /api/pending-date/<appid>/peek` (non-destructive) until the modal consumes the date, then closes the tab.
 
-**Bulk mode** (`?bulk=1`, triggered from the bulk edit modal): POSTs to `POST /api/bulk-date-import/submit` (or `/skip` if no date found after 20 attempts) → backend saves directly to DB and returns `next_appid` → userscript navigates the same tab to the next game's URL (500ms delay between games). Frontend polls `GET /api/bulk-date-import/status` every second to update the progress bar. `_bulk_date_state` is a module-level dict tracking the queue, current game, done/failed counts, and active flag.
+**Bulk mode** (`?bulk=1`, triggered from the bulk edit modal): stays on the trigger page and shows a full-screen progress overlay. Pings `POST /api/bulk-date-import/ping`, reads the queue from `GET /api/bulk-date-import/status`, then loops: `fetch()`es each game's HelpWithGame page, parses the date, POSTs to `POST /api/bulk-date-import/submit` (or `/skip`), gets `next_appid` from response, 600ms delay between games. Frontend polls `/api/bulk-date-import/status` every second to update the progress bar and per-game results log. `_bulk_date_state` tracks queue, current game, done/failed counts, active flag, and a `results` list (newest first, capped at 50) exposed by the status endpoint.
 
 **pywebview `window.open()` does not open the system browser.** Use a programmatic `<a target="_blank">` click instead: create an `<a>` element, set `href` and `target='_blank'`, append to body, `.click()`, then remove. This matches how pywebview handles real link clicks.
 

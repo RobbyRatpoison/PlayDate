@@ -47,7 +47,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width, 180px), 1fr));
             gap: 25px;
-            padding: 20px 0;
+            padding: 20px;
             contain: layout style paint;
         }
 
@@ -1366,6 +1366,7 @@ function onBulkDateImportScopeChange() {
 
 let _bdiPollInterval = null;
 let _bdiScriptCheckTimeout = null;
+let _bdiLastResultCount = 0;
 
 async function startBulkDateImport() {
     const scope    = document.querySelector('input[name="bdi-scope"]:checked').value;
@@ -1425,6 +1426,8 @@ async function startBulkDateImport() {
     document.body.removeChild(_a);
 
     status.textContent = '';
+    const logEl = document.getElementById('bdi-log');
+    logEl.innerHTML = '';
     document.getElementById('bdi-progress').style.display = 'block';
     document.getElementById('bdi-progress-bar').style.width = '0%';
     document.getElementById('bdi-progress-label').textContent = `0 / ${data.total}`;
@@ -1432,7 +1435,7 @@ async function startBulkDateImport() {
     stopBtn.style.display = '';
     stopBtn.disabled = false;
 
-    // Auto-cancel if the Tampermonkey script hasn't pinged back within 5 seconds
+    // Auto-cancel if the Tampermonkey script hasn't pinged back within 15 seconds
     _bdiScriptCheckTimeout = setTimeout(async () => {
         try {
             const r = await fetch('/api/bulk-date-import/status');
@@ -1443,12 +1446,13 @@ async function startBulkDateImport() {
                 stopBtn.style.display = 'none';
                 startBtn.disabled = false;
                 status.className = 'bulk-status-error';
-                status.textContent = 'Tampermonkey script not detected. Install steam_date_import.user.js and make sure Tampermonkey has Manifest V2 enabled.';
+                status.textContent = 'Tampermonkey script not detected. Install steam_date_import.user.js and ensure Tampermonkey is enabled.';
                 document.getElementById('bdi-progress').style.display = 'none';
             }
         } catch (e) { /* ignore */ }
-    }, 5000);
+    }, 15000);
 
+    _bdiLastResultCount = 0;
     _bdiPollInterval = setInterval(async () => {
         try {
             const r = await fetch('/api/bulk-date-import/status');
@@ -1460,13 +1464,29 @@ async function startBulkDateImport() {
                 `${done} / ${d.total} — ${d.done} imported, ${d.failed} not found`;
             document.getElementById('bdi-current-game').textContent =
                 d.current ? d.current.name : (d.active ? '…' : 'Done');
+
+            // Append any new log entries (results are newest-first)
+            const results = d.results || [];
+            if (results.length > _bdiLastResultCount) {
+                const newEntries = results.slice(0, results.length - _bdiLastResultCount);
+                newEntries.reverse().forEach(entry => {
+                    const row = document.createElement('div');
+                    row.style.cssText = `padding:2px 0; border-bottom:1px solid #1a2e3e; color:${entry.date ? '#c2c8cc' : '#4a5a6a'};`;
+                    row.textContent = entry.date
+                        ? `${entry.name} — ${entry.date}`
+                        : `${entry.name} — not found`;
+                    logEl.insertBefore(row, logEl.firstChild);
+                });
+                _bdiLastResultCount = results.length;
+            }
+
             if (!d.active) {
                 clearTimeout(_bdiScriptCheckTimeout); _bdiScriptCheckTimeout = null;
                 clearInterval(_bdiPollInterval); _bdiPollInterval = null;
                 startBtn.disabled = false;
                 stopBtn.style.display = 'none';
                 status.className = 'bulk-status-success';
-                status.textContent = `✔ Done — ${d.done} date${d.done !== 1 ? 's' : ''} imported, ${d.failed} not found.`;
+                status.textContent = `Done — ${d.done} date${d.done !== 1 ? 's' : ''} imported, ${d.failed} not found.`;
             }
         } catch (e) { /* ignore poll errors */ }
     }, 1000);
@@ -1476,6 +1496,7 @@ async function stopBulkDateImport() {
     await fetch('/api/bulk-date-import/cancel', { method: 'POST' }).catch(() => {});
     clearTimeout(_bdiScriptCheckTimeout); _bdiScriptCheckTimeout = null;
     clearInterval(_bdiPollInterval); _bdiPollInterval = null;
+    _bdiLastResultCount = 0;
     document.getElementById('bdi-stop-btn').style.display = 'none';
     document.getElementById('bdi-start-btn').disabled = false;
     document.getElementById('bdi-status').className = '';
@@ -1833,8 +1854,8 @@ async function stopBulkDateImport() {
         </div>
 
         <p style="color:#8f98a0; font-size:0.78rem; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
-            Requires the <strong style="color:#c2c8cc;">PlayDate Date Importer</strong> Tampermonkey script.
-            A Steam help page will open in your browser and automatically navigate through each game.
+            Requires the <a href="https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js" target="_blank" style="color:#c2c8cc;">PlayDate Date Importer</a> Tampermonkey script.
+            A Steam help page will open in your browser and fetch dates in the background.
         </p>
 
         <div id="bdi-progress" style="display:none; margin-bottom:12px;">
@@ -1844,7 +1865,8 @@ async function stopBulkDateImport() {
             <div style="background:#1a2332; border-radius:4px; height:8px; overflow:hidden; margin-bottom:6px;">
                 <div id="bdi-progress-bar" style="background:var(--accent); height:100%; width:0%; transition:width 0.4s;"></div>
             </div>
-            <div id="bdi-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
+            <div id="bdi-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right; margin-bottom:10px;"></div>
+            <div id="bdi-log" style="max-height:180px; overflow-y:auto; border:1px solid #2a475e; border-radius:4px; padding:6px 8px; background:#0e1923; font-size:0.75rem; font-family:monospace;"></div>
         </div>
 
         <div id="bdi-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>

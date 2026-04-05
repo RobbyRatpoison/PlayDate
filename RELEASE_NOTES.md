@@ -32,14 +32,13 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.2.5 — 2026-04-05
+## v1.2.6 — 2026-04-05
 
 ### New
-- **Steam account mismatch check** — the date import userscript now reads the logged-in Steam account from the help page and compares it against the active PlayDate account. If they don't match, the import is aborted with a clear error banner.
-- **Tampermonkey script detection** — when starting a bulk date import, PlayDate now waits up to 5 seconds for the userscript to ping back. If no ping is received, the import is automatically cancelled with an error message telling you to install the script or enable Manifest V2.
+- **Date import overhaul** — the bulk date import no longer switches tabs for every game. It now stays on a single Steam Help page and fetches each game's date in the background, showing a live per-game log as results come in. The userscript no longer requires Tampermonkey Manifest V2.
+- **Auto-complete fix** — games with 100% achievements are now correctly marked Completed on startup, even if the achievement data was imported via BLAEO rather than the Steam API
 
 ### Changes
-- **Userscript renamed** — `playdate_date_import.user.js` is now `steam_date_import.user.js`
-- **Bulk edit modal** — the completion status field now shows a dropdown with all five valid statuses instead of a plain text input; tag, group, genre, and category fields now show a pill input with autocomplete suggestions
-- **Filter fix** — custom SQL expressions that divide integer columns (e.g. `unlocked_achievements / total_achievements`) now automatically cast to real arithmetic so the result is a decimal instead of always 0
+- **Library grid** — edge cards are no longer clipped by the grid's paint boundary
+- **Filter modal** — the field selector and value input are now equal width
 
