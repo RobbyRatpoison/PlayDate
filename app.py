@@ -66,12 +66,13 @@ _pending_dates = {}  # appid (int) → 'YYYY-MM-DD'
 
 # ── Bulk date import state ────────────────────────────────────────────────────
 _bulk_date_state = {
-    'queue':   [],    # [{appid, name}, …] remaining
-    'current': None,  # {appid, name} being processed
-    'done':    0,
-    'failed':  0,
-    'total':   0,
-    'active':  False,
+    'queue':            [],    # [{appid, name}, …] remaining
+    'current':          None,  # {appid, name} being processed
+    'done':             0,
+    'failed':           0,
+    'total':            0,
+    'active':           False,
+    'script_connected': False, # True once userscript pings back
 }
 
 # ── Update checking ───────────────────────────────────────────────────────────
@@ -814,6 +815,12 @@ def create_app(template_folder=None, static_folder=None):
     def pending_date_peek(appid):
         return jsonify({'pending': appid in _pending_dates})
 
+    @app.route('/api/active-steam-id')
+    def active_steam_id():
+        from config import get_active_account
+        account = get_active_account() or {}
+        return jsonify({'steam_id': account.get('steam_id', '')})
+
     # ── Bulk date import ──────────────────────────────────────────────────────
 
     @app.route('/api/bulk-date-import/start', methods=['POST'])
@@ -830,7 +837,8 @@ def create_app(template_folder=None, static_folder=None):
         if not queue:
             return jsonify({'status': 'ok', 'total': 0, 'first_appid': None})
         _bulk_date_state.update({'queue': queue[1:], 'current': queue[0],
-                                 'done': 0, 'failed': 0, 'total': len(queue), 'active': True})
+                                 'done': 0, 'failed': 0, 'total': len(queue),
+                                 'active': True, 'script_connected': False})
         log.info(f"Bulk date import started: {len(queue)} games queued")
         return jsonify({'status': 'ok', 'first_appid': queue[0]['appid'],
                         'first_name': queue[0]['name'], 'total': len(queue)})
@@ -864,13 +872,18 @@ def create_app(template_folder=None, static_folder=None):
         _bulk_date_state['failed'] += 1
         return _bulk_date_advance()
 
+    @app.route('/api/bulk-date-import/ping', methods=['POST'])
+    def bulk_date_import_ping():
+        _bulk_date_state['script_connected'] = True
+        return jsonify({'status': 'ok'})
+
     @app.route('/api/bulk-date-import/status')
     def bulk_date_import_status():
-        return jsonify({k: _bulk_date_state[k] for k in ('active', 'done', 'failed', 'total', 'current')})
+        return jsonify({k: _bulk_date_state[k] for k in ('active', 'done', 'failed', 'total', 'current', 'script_connected')})
 
     @app.route('/api/bulk-date-import/cancel', methods=['POST'])
     def bulk_date_import_cancel():
-        _bulk_date_state.update({'queue': [], 'active': False, 'current': None})
+        _bulk_date_state.update({'queue': [], 'active': False, 'current': None, 'script_connected': False})
         log.info("Bulk date import cancelled")
         return jsonify({'status': 'ok'})
 

@@ -42,7 +42,7 @@ PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, ach
 - **BLAEO sync** — imports completion statuses, list tags, and achievement counts from your BLAEO backlog profile
 
 ### Import Tools
-- **Steam date importer** — a Tampermonkey userscript (`playdate_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (batch-imports dates for an entire filtered selection). Requires **Tampermonkey with Manifest V2 enabled** — MV3 blocks the cross-origin requests the script depends on
+- **Steam date importer** — a Tampermonkey userscript (`steam_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (batch-imports dates for an entire filtered selection). Requires **Tampermonkey with Manifest V2 enabled** — MV3 blocks the cross-origin requests the script depends on
 - **Playnite import** — import `date added` values from a Playnite backup ZIP
 - **Database import** — migrate columns from an older PlayDate database into your current one, with column mapping and type-mismatch warnings
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PlayDate Date Importer
 // @namespace    playdate
-// @version      1.8
+// @version      1.9
 // @description  Sends the earliest game activation date from a Steam help page to PlayDate's edit modal
 // @match        https://help.steampowered.com/*
 // @include      https://help.steampowered.com/*
@@ -179,6 +179,53 @@
             }
         }
     }
-    tryRun();
+
+    // ── Announce script is alive (bulk mode) ─────────────────────────────────
+    if (isBulk) {
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url:    'http://localhost:5000/api/bulk-date-import/ping',
+            headers: { 'Content-Type': 'application/json' },
+            data:   '{}',
+        });
+    }
+
+    // ── Verify the logged-in Steam account matches the active PlayDate account ─
+    function checkAccountThenRun() {
+        let pageSteamId = null;
+        try {
+            if (window.HelpWizard && window.HelpWizard.m_steamid) {
+                pageSteamId = String(window.HelpWizard.m_steamid);
+            }
+        } catch (e) {}
+
+        if (!pageSteamId) {
+            tryRun();
+            return;
+        }
+
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: 'http://localhost:5000/api/active-steam-id',
+            onload: function (res) {
+                let data;
+                try { data = JSON.parse(res.responseText); } catch (e) { data = {}; }
+                const playdateId = data.steam_id ? String(data.steam_id) : null;
+                if (playdateId && playdateId !== pageSteamId) {
+                    showBanner(
+                        `Account mismatch — Steam is logged in as ${pageSteamId} but PlayDate is configured for ${playdateId}. Import aborted.`,
+                        '#c97c00'
+                    );
+                    return;
+                }
+                tryRun();
+            },
+            onerror: function () {
+                // PlayDate unreachable — proceed and let sendDate handle it
+                tryRun();
+            }
+        });
+    }
+    checkAccountThenRun();
 
 })();

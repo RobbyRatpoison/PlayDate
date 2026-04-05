@@ -11,6 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - BLAEO pre-scrape runs concurrently with art/meta after placeholder insert; cheevo workers start after it finishes
 - `RateLimitedError` is re-raised in all fetch functions so `_PoolBackoff` triggers correctly
 
+## Pending (Next Release — Not Yet Committed)
+
+- **Renamed `playdate_date_import.user.js` → `steam_date_import.user.js`** — updated README.md and CLAUDE.md references; script version bumped to 1.9
+- **Steam account mismatch check in userscript** — reads `HelpWizard.m_steamid` from the Steam help page, fetches new `GET /api/active-steam-id` endpoint, aborts with a banner if the logged-in Steam account doesn't match the active PlayDate account
+- **Tampermonkey script detection for bulk date import** — userscript POSTs to new `POST /api/bulk-date-import/ping` on load; frontend auto-cancels with an error message after 5 seconds if no ping received; `script_connected` flag added to `_bulk_date_state` and exposed in `/api/bulk-date-import/status`
+- **Bulk edit modal UI** — completion status column now shows a custom dropdown (5 status options) instead of a plain text input; tag/group/genre/category columns now show a pill input with suggestions; `LIST_COLUMNS` extended to include `genres` and `categories`
+
 ## To-Do
 
 ### Known Bugs
@@ -18,6 +25,8 @@ _(none)_
 
 ### Short Term
 - Library UI polish — bulk edit improvements (an "all games" option, UI lockout during scraping), group-by functionality, reorder dropdown lists
+- Bulk rescrape optimization — port populate's concurrent worker pools, `RateLimitedError` handling/backoff, and cancellation support to the bulk rescrape route (currently sequential, blocking, no rate limit recovery)
+- Initial config UX — label the Steam API key as "recommended" instead of "optional", and add a brief note explaining what it enables (achievement tracking, more accurate library import via `GetOwnedGames`)
 
 ### Long Term
 - Non-Steam library support (Epic, GOG, Ubisoft Connect, EA App, emulation)
@@ -40,7 +49,7 @@ The project name "PlayDate" conflicts with other projects (notably Panic's handh
 **When the new name is chosen, things to update:**
 - `playdate.iss` and `playdate.spec` — filenames and internal references
 - `config.py` — app name strings, log filename (`playdate.log`)
-- `playdate_date_import.user.js` — script name and internal references
+- `steam_date_import.user.js` — script name and internal references
 - `install.py` / `uninstall.py` — hardcoded "PlayDate" strings in the GUI
 - `templates/` — page titles and branding text
 - `static/` — any branding in CSS/JS
@@ -111,7 +120,7 @@ main.py → starts Flask (background thread) + pywebview window
 | `images.py` | Cover art download: vertical capsule, horizontal header, and icon — each with Steam asset manifest → CDN → SteamGridDB fallback chain |
 | `imports.py` | Data import tools: generic SQLite column mapping (`inspect_database`, `execute_import`) and Playnite backup import (`parse_playnite_dates`) |
 | `install.py` / `uninstall.py` | Cross-platform GUI installer/uninstaller (tkinter) |
-| `playdate_date_import.user.js` | Tampermonkey userscript — scrapes activation dates from Steam help pages and sends them to PlayDate |
+| `steam_date_import.user.js` | Tampermonkey userscript — scrapes activation dates from Steam help pages and sends them to PlayDate |
 
 **Frontend:** Vanilla JS + CSS3 in `static/`, Jinja2 templates in `templates/`. No build step, no framework.
 
@@ -188,7 +197,7 @@ No API key → reads library from local Steam files (`localconfig.vdf`, ACF mani
 
 ### Steam Help Page Date Import
 
-`playdate_date_import.user.js` is a Tampermonkey MV2 userscript that runs on `help.steampowered.com/*/HelpWithGame` pages. It only activates when the URL contains `?ref=playdate` (set by PlayDate's ↗ link in the edit modal). It scrapes the earliest activation date from `.LineItemRow` spans (or `.account_details` fallback), then POSTs it to PlayDate via `GM_xmlhttpRequest`.
+`steam_date_import.user.js` is a Tampermonkey MV2 userscript that runs on `help.steampowered.com/*/HelpWithGame` pages. It only activates when the URL contains `?ref=playdate` (set by PlayDate's ↗ link in the edit modal). It scrapes the earliest activation date from `.LineItemRow` spans (or `.account_details` fallback), then POSTs it to PlayDate via `GM_xmlhttpRequest`.
 
 **Single-game mode** (edit modal ↗ link): POSTs to `POST /api/pending-date` → stored in `_pending_dates` dict → edit modal polls `GET /api/pending-date/<appid>` every 250ms for up to 3 seconds after the link is clicked → on receipt, populates the Date Added field with an accent highlight. After sending, userscript polls `GET /api/pending-date/<appid>/peek` (non-destructive) until the modal consumes the date, then closes the tab.
 
