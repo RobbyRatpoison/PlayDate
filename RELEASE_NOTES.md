@@ -32,12 +32,14 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.2.4 — 2026-04-04
+## v1.2.5 — 2026-04-05
 
 ### New
-- **Populate overhaul** — art, metadata, and achievement scraping now run as concurrent worker pools. Game cards appear immediately as placeholders and fill in live as each phase completes. Cards visible in the viewport are prioritized.
-- **BLAEO pre-scrape** — when populating, PlayDate now runs a BLAEO sync concurrently with the art/metadata workers. Achievement workers start after it finishes and skip any games BLAEO already covered.
+- **Steam account mismatch check** — the date import userscript now reads the logged-in Steam account from the help page and compares it against the active PlayDate account. If they don't match, the import is aborted with a clear error banner.
+- **Tampermonkey script detection** — when starting a bulk date import, PlayDate now waits up to 5 seconds for the userscript to ping back. If no ping is received, the import is automatically cancelled with an error message telling you to install the script or enable Manifest V2.
 
 ### Changes
-- Art worker now skips re-downloading images that already exist on disk
+- **Userscript renamed** — `playdate_date_import.user.js` is now `steam_date_import.user.js`
+- **Bulk edit modal** — the completion status field now shows a dropdown with all five valid statuses instead of a plain text input; tag, group, genre, and category fields now show a pill input with autocomplete suggestions
+- **Filter fix** — custom SQL expressions that divide integer columns (e.g. `unlocked_achievements / total_achievements`) now automatically cast to real arithmetic so the result is a decimal instead of always 0
 
