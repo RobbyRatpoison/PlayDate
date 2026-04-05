@@ -790,7 +790,14 @@ function onCardClick(e) {
 }
 
 // ── BULK EDIT ──────────────────────────────────────────────────
-const LIST_COLUMNS = new Set(['tags', 'groups']);
+const LIST_COLUMNS    = new Set(['tags', 'groups', 'genres', 'categories']);
+const STATUS_OPTIONS  = ['Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"];
+const BULK_PILL_SUGGESTIONS = {
+    tags:       {{ unique_tags       | tojson }},
+    groups:     {{ unique_groups     | tojson }},
+    genres:     {{ unique_genres     | tojson }},
+    categories: {{ unique_categories | tojson }},
+};
 const BULK_GAME_COUNT = {{ games|length }};
 
 function openBulkEditModal() {
@@ -809,6 +816,7 @@ function openBulkEditModal() {
     document.getElementById('bulk-edit-modal').style.display = 'flex';
     document.getElementById('bulk-status').textContent = '';
     document.getElementById('bulk-status').className = '';
+    document.getElementById('bulk-value-text').value = '';
     onBulkColumnChange();
 }
 
@@ -841,11 +849,13 @@ function onBulkScopeChange() {
 }
 
 function onBulkColumnChange() {
-    const col = document.getElementById('bulk-column').value;
+    const col       = document.getElementById('bulk-column').value;
     const modeSelect = document.getElementById('bulk-mode');
-    const appendOpt = modeSelect._getOption('append');
-    const removeOpt = modeSelect._getOption('remove');
-    const isList = LIST_COLUMNS.has(col);
+    const appendOpt  = modeSelect._getOption('append');
+    const removeOpt  = modeSelect._getOption('remove');
+    const isList     = LIST_COLUMNS.has(col);
+    const isStatus   = col === 'completion_status';
+    const isPills    = isList;
 
     appendOpt.disabled = !isList;
     removeOpt.disabled = !isList;
@@ -853,6 +863,19 @@ function onBulkColumnChange() {
     if (!isList && (modeSelect.value === 'append' || modeSelect.value === 'remove')) {
         modeSelect.value = 'replace';
     }
+
+    // Swap the value input widget
+    document.getElementById('bulk-value-text-wrap').style.display   = (!isStatus && !isPills) ? '' : 'none';
+    document.getElementById('bulk-value-status-wrap').style.display  = isStatus  ? '' : 'none';
+    document.getElementById('bulk-value-pills-wrap').style.display   = isPills   ? '' : 'none';
+
+    if (isPills) {
+        // Point the shared pill suggestion lookup at this column's values
+        PILL_SUGGESTIONS['bulk-pills-hidden'] = BULK_PILL_SUGGESTIONS[col] || [];
+        _pillSync('bulk-pills-hidden', []);
+        _pillRender('bulk-pills-hidden', 'bulk-pills-box');
+    }
+
     onBulkModeChange();
 }
 
@@ -893,14 +916,25 @@ function onBulkModeChange() {
     }
 }
 
+function getBulkValue() {
+    const col = document.getElementById('bulk-column').value;
+    if (col === 'completion_status') {
+        return document.getElementById('bulk-status-select').value;
+    }
+    if (LIST_COLUMNS.has(col)) {
+        return document.getElementById('bulk-pills-hidden').value.trim();
+    }
+    return document.getElementById('bulk-value-text').value.trim();
+}
+
 async function runBulkEdit() {
     const column = document.getElementById('bulk-column').value;
     const mode   = document.getElementById('bulk-mode').value;
-    const value  = document.getElementById('bulk-value').value.trim();
+    const value  = getBulkValue();
     const scope  = document.querySelector('input[name="bulk-scope"]:checked').value;
     const status = document.getElementById('bulk-status');
 
-    if (!value && mode !== 'remove') {
+    if (!value && column !== 'completion_status' && mode !== 'remove') {
         status.className = 'bulk-status-error';
         status.textContent = 'Please enter a value.';
         return;
@@ -1289,6 +1323,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('sort-dropdown'));
     initCustomSelect(document.getElementById('bulk-column'));
     initCustomSelect(document.getElementById('bulk-mode'));
+    initCustomSelect(document.getElementById('bulk-status-select'));
 });
 
 // ── BULK DATE IMPORT ────────────────────────────────────────────
@@ -1330,6 +1365,7 @@ function onBulkDateImportScopeChange() {
 }
 
 let _bdiPollInterval = null;
+let _bdiScriptCheckTimeout = null;
 
 async function startBulkDateImport() {
     const scope    = document.querySelector('input[name="bdi-scope"]:checked').value;
@@ -1396,6 +1432,23 @@ async function startBulkDateImport() {
     stopBtn.style.display = '';
     stopBtn.disabled = false;
 
+    // Auto-cancel if the Tampermonkey script hasn't pinged back within 5 seconds
+    _bdiScriptCheckTimeout = setTimeout(async () => {
+        try {
+            const r = await fetch('/api/bulk-date-import/status');
+            const d = await r.json();
+            if (!d.script_connected) {
+                await fetch('/api/bulk-date-import/cancel', { method: 'POST' }).catch(() => {});
+                clearInterval(_bdiPollInterval); _bdiPollInterval = null;
+                stopBtn.style.display = 'none';
+                startBtn.disabled = false;
+                status.className = 'bulk-status-error';
+                status.textContent = 'Tampermonkey script not detected. Install steam_date_import.user.js and make sure Tampermonkey has Manifest V2 enabled.';
+                document.getElementById('bdi-progress').style.display = 'none';
+            }
+        } catch (e) { /* ignore */ }
+    }, 5000);
+
     _bdiPollInterval = setInterval(async () => {
         try {
             const r = await fetch('/api/bulk-date-import/status');
@@ -1408,6 +1461,7 @@ async function startBulkDateImport() {
             document.getElementById('bdi-current-game').textContent =
                 d.current ? d.current.name : (d.active ? '…' : 'Done');
             if (!d.active) {
+                clearTimeout(_bdiScriptCheckTimeout); _bdiScriptCheckTimeout = null;
                 clearInterval(_bdiPollInterval); _bdiPollInterval = null;
                 startBtn.disabled = false;
                 stopBtn.style.display = 'none';
@@ -1420,6 +1474,7 @@ async function startBulkDateImport() {
 
 async function stopBulkDateImport() {
     await fetch('/api/bulk-date-import/cancel', { method: 'POST' }).catch(() => {});
+    clearTimeout(_bdiScriptCheckTimeout); _bdiScriptCheckTimeout = null;
     clearInterval(_bdiPollInterval); _bdiPollInterval = null;
     document.getElementById('bdi-stop-btn').style.display = 'none';
     document.getElementById('bdi-start-btn').disabled = false;
@@ -1692,7 +1747,24 @@ async function stopBulkDateImport() {
         <small id="bulk-mode-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:12px;"></small>
 
         <label>Value</label>
-        <input type="text" id="bulk-value" placeholder="Enter value…" style="margin-bottom:4px;">
+        <div id="bulk-value-container" style="margin-bottom:4px;">
+            <div id="bulk-value-text-wrap">
+                <input type="text" id="bulk-value-text" placeholder="Enter value…" style="width:100%; box-sizing:border-box;">
+            </div>
+            <div id="bulk-value-status-wrap" style="display:none;">
+                <select id="bulk-status-select">
+                    <option value="Never Played">Never Played</option>
+                    <option value="Unfinished">Unfinished</option>
+                    <option value="Beaten">Beaten</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Won't Play">Won't Play</option>
+                </select>
+            </div>
+            <div id="bulk-value-pills-wrap" style="display:none;">
+                <div class="pill-input-box" id="bulk-pills-box" style="min-height:38px; max-height:120px; overflow-y:auto;"></div>
+                <input type="hidden" id="bulk-pills-hidden">
+            </div>
+        </div>
         <small id="bulk-value-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:4px;"></small>
 
         <div id="bulk-warning" style="display:none; background:rgba(193,120,0,0.12); border:1px solid #c97c00; border-radius:5px; padding:8px 12px; font-size:0.8rem; color:#c97c00; margin-bottom:8px;"></div>
