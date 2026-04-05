@@ -33,6 +33,22 @@ _SQL_ALLOWED_FUNCTIONS = {
     'cast',
 }
 
+_INTEGER_COLUMNS = {
+    'appid', 'installed', 'unlocked_achievements', 'total_achievements',
+    'review_percentage', 'weighted_percentage', 'total_reviews',
+    'positive_reviews', 'is_free',
+}
+
+def _auto_cast_int_division(sql):
+    """Rewrite `int_col / expr` to `CAST(int_col AS REAL) / expr` so that
+    division against integer columns produces a float result in SQLite."""
+    def _replace(m):
+        col = m.group(1)
+        if col.lower() in _INTEGER_COLUMNS:
+            return f'CAST({col} AS REAL) /'
+        return m.group(0)
+    return _re.sub(r'\b([A-Za-z_][A-Za-z0-9_]*)\s*/', _replace, sql)
+
 def is_safe_sql(sql: str) -> bool:
     """
     Whitelist validator for user-supplied WHERE clauses.
@@ -149,7 +165,7 @@ def build_tree_sql(node, params):
     if node_type == 'custom_expr':
         sql = node.get('sql', '').strip()
         if sql and is_safe_sql(sql):
-            return f"({sql})"
+            return f"({_auto_cast_int_division(sql)})"
         return '1=1'
 
     if node_type == 'group':
@@ -198,7 +214,7 @@ def library():
             if not is_safe_sql(custom_sql):
                 where = '1=0'
             else:
-                where = custom_sql
+                where = _auto_cast_int_division(custom_sql)
         else:
             tree_sql = build_tree_sql(filter_tree, params)
             if tree_sql and tree_sql != '1=1':
@@ -294,7 +310,7 @@ def bulk_edit_games(data):
         custom_sql = _strip_sql_wrapper(filter_tree.get('custom_sql', ''))
         if custom_sql:
             if is_safe_sql(custom_sql):
-                where = custom_sql
+                where = _auto_cast_int_division(custom_sql)
         else:
             tree_sql = build_tree_sql(filter_tree, params)
             if tree_sql and tree_sql != '1=1':
