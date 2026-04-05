@@ -23,7 +23,7 @@ class _TruncatingFormatter(logging.Formatter):
             msg = msg[:_MAX_MSG_LEN] + f'… [{len(msg) - _MAX_MSG_LEN} chars truncated]'
         return msg
 
-_handler_file   = RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=2, encoding='utf-8')
+_handler_file   = RotatingFileHandler(LOG_PATH, maxBytes=1_000_000, backupCount=0, encoding='utf-8')
 _handler_stream = logging.StreamHandler()
 _fmt = _TruncatingFormatter('%(asctime)s [%(levelname)s] %(message)s')
 _handler_file.setFormatter(_fmt)

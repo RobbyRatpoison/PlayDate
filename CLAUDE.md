@@ -134,7 +134,7 @@ All user data lives next to the executable (or project root when running from so
 | `config.json` | Multi-account config: `active_account` (steam_id key), `sgdb_key`, `accounts` dict (`steam_id → {steam_id, api_key, label}`). Use `get_active_account()` from `config.py` to get the active account's API key. |
 | `state.json` | Active filters, shelf layout, sort order, saved filters, artwork orientation, card height |
 | `theme.json` | CSS variable overrides (only non-default keys stored) |
-| `playdate.log` | Application logs (RotatingFileHandler, 1MB cap) |
+| `playdate.log` | Application logs (RotatingFileHandler, 1MB cap, no backup copies) |
 | `static/img/library/vertical/{appid}.jpg` | Cached vertical capsule art |
 | `static/img/library/horizontal/{appid}.jpg` | Cached horizontal header art |
 | `static/img/library/icons/{appid}.jpg` | Cached game icons |
