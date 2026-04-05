@@ -32,11 +32,12 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.2.3 — 2026-04-03
+## v1.2.4 — 2026-04-04
 
 ### New
-- **Filter Import / Export** — save any filter to a `.json` file and import it on another machine or share it with others. Available under Tools → Filter Import / Export.
+- **Populate overhaul** — art, metadata, and achievement scraping now run as concurrent worker pools. Game cards appear immediately as placeholders and fill in live as each phase completes. Cards visible in the viewport are prioritized.
+- **BLAEO pre-scrape** — when populating, PlayDate now runs a BLAEO sync concurrently with the art/metadata workers. Achievement workers start after it finishes and skip any games BLAEO already covered.
 
-### Bug fixes
-- **Fixed: populate failing on Windows for some users** — ACF manifest files containing game names with non-ASCII characters (e.g. Japanese, Chinese) caused a `UnicodeDecodeError` that crashed the entire populate operation.
-- **Fixed: fullscreen state not saving on exit** — toggling fullscreen and then closing the app would revert to fullscreen on next launch. The state is now saved reliably on close.
+### Changes
+- Art worker now skips re-downloading images that already exist on disk
+

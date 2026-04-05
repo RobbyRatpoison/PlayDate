@@ -2,210 +2,471 @@ import json
 import logging
 import math
 import os
+import queue
 import re
 import requests
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, wait as futures_wait
 
 log = logging.getLogger(__name__)
 from bs4 import BeautifulSoup
-from images import download_vertical, download_horizontal, download_icon, _get_steam_assets
+from images import download_vertical, download_horizontal, download_icon, _get_steam_assets, VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR
 from datetime import datetime
 from config import load_config, get_active_account
-from database import add_new_game, update_game_data, get_db, add_to_blacklist
+from database import add_new_game, batch_insert_placeholder_games, update_game_data, get_db, add_to_blacklist
 from utils import get_locally_installed_appids, sync_local_install_status, fetch_local_library, get_acf_names, parse_appinfo
 
 
 class RateLimitedError(Exception):
-    """Raised when Steam returns HTTP 429 and the retry also fails."""
+    """Raised when Steam returns HTTP 429."""
     pass
 
 
+# Backoff delays in seconds: 15s → 1m → 5m → 1h+15s
+BACKOFF_DELAYS = [15, 60, 300, 3615]
+
+
+class _PoolBackoff:
+    """
+    Per-pool rate-limit gate. When any worker in the pool hits a 429 it calls
+    on_rate_limited(), which closes the gate and sleeps for the next delay in
+    the sequence. All other workers in the pool block on wait_ready() until the
+    gate reopens. After BACKOFF_DELAYS is exhausted the pool is marked aborted.
+    """
+
+    def __init__(self, name):
+        self.name    = name
+        self._gate   = threading.Event()
+        self._gate.set()          # open = workers can proceed
+        self._attempt = 0
+        self._lock    = threading.Lock()
+        self.aborted  = False
+
+    def on_rate_limited(self, cancel_event=None):
+        """
+        Called by the worker that received the 429.
+        Returns True if the pool should keep running, False if all retries are
+        exhausted (caller should exit the worker).
+        """
+        with self._lock:
+            if self.aborted:
+                return False
+            if not self._gate.is_set():
+                # Another worker already triggered backoff; just wait for it.
+                return True
+            if self._attempt >= len(BACKOFF_DELAYS):
+                self.aborted = True
+                log.warning(f"[{self.name}] All backoff attempts exhausted — aborting pool.")
+                return False
+            delay = BACKOFF_DELAYS[self._attempt]
+            self._attempt += 1
+            self._gate.clear()
+
+        log.warning(
+            f"[{self.name}] Rate limited. Waiting {delay}s "
+            f"(attempt {self._attempt}/{len(BACKOFF_DELAYS)})..."
+        )
+        deadline = time.time() + delay
+        while time.time() < deadline:
+            if cancel_event and cancel_event.is_set():
+                with self._lock:
+                    self._gate.set()
+                return False
+            time.sleep(min(1.0, deadline - time.time()))
+
+        with self._lock:
+            if not self.aborted:
+                self._gate.set()
+        return True
+
+    def wait_ready(self, cancel_event=None):
+        """
+        Block until the gate is open (pool not in backoff).
+        Returns False if the pool was aborted or cancelled.
+        """
+        while not self._gate.wait(timeout=1.0):
+            if cancel_event and cancel_event.is_set():
+                return False
+        return not self.aborted
+
+
+def _next(priority_q, normal_q, timeout=0.5):
+    """Pull from priority queue first, fall back to normal queue."""
+    try:
+        return priority_q.get_nowait()
+    except queue.Empty:
+        pass
+    try:
+        return normal_q.get(timeout=timeout)
+    except queue.Empty:
+        return None
+
+
+# ── Worker functions ──────────────────────────────────────────────────────────
+
+def _art_worker(normal_q, priority_q, cancel_event, icon_hash_map, today, progress_cb):
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0'
+    while True:
+        if cancel_event and cancel_event.is_set():
+            return
+        appid = _next(priority_q, normal_q)
+        if appid is None:
+            return
+        # Skip if already fetched (priority queue may contain duplicates)
+        db  = get_db()
+        row = db.execute("SELECT art_fetched FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if row and row['art_fetched'] != '0':
+            continue
+        # Skip if image files already exist on disk (e.g. after a DB reset)
+        v_path = os.path.join(VERTICAL_DIR,   f"{appid}.jpg")
+        h_path = os.path.join(HORIZONTAL_DIR, f"{appid}.jpg")
+        i_path = os.path.join(ICONS_DIR,      f"{appid}.jpg")
+        if os.path.exists(v_path) or os.path.exists(h_path) or os.path.exists(i_path):
+            update_game_data(appid, art_fetched=today)
+            if progress_cb:
+                progress_cb('art', appid, None)
+            continue
+        try:
+            assets  = _get_steam_assets(appid)
+            v_src   = download_vertical(appid, assets=assets)
+            h_src   = download_horizontal(appid, assets=assets)
+            i_src   = download_icon(appid, icon_hash_map.get(appid, ''))
+            update_game_data(appid,
+                vertical_art_source=v_src,
+                horizontal_art_source=h_src,
+                icon_source=i_src,
+                art_fetched=today,
+            )
+            if progress_cb:
+                progress_cb('art', appid, None)
+        except Exception as e:
+            log.error(f"[art] Error for {appid}: {e}")
+
+
+def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, progress_cb):
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    AUTO_BLACKLIST_TYPES = set()
+
+    while True:
+        if cancel_event and cancel_event.is_set():
+            return
+        if not backoff.wait_ready(cancel_event):
+            return
+
+        appid = _next(priority_q, normal_q)
+        if appid is None:
+            return
+
+        db  = get_db()
+        row = db.execute("SELECT meta_fetched, name FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if row and row['meta_fetched'] != '0':
+            continue
+
+        name = (row['name'] or '') if row else ''
+
+        try:
+            store_info = fetch_store_data(appid, session=session)
+
+            if not store_info and not name:
+                # Off-store entry with no local name — blacklist and remove placeholder
+                add_to_blacklist(appid, f"AppID {appid}")
+                db = get_db()
+                db.execute("DELETE FROM games WHERE appid=?", (appid,))
+                db.commit()
+                db.close()
+                if progress_cb:
+                    progress_cb('blacklist', appid, total)
+                time.sleep(0.5)
+                continue
+
+            if store_info:
+                app_type = store_info.pop('type', '')
+                if app_type in AUTO_BLACKLIST_TYPES:
+                    add_to_blacklist(appid, name or f"AppID {appid}")
+                    db = get_db()
+                    db.execute("DELETE FROM games WHERE appid=?", (appid,))
+                    db.commit()
+                    db.close()
+                    if progress_cb:
+                        progress_cb('blacklist', appid, total)
+                    time.sleep(0.5)
+                    continue
+
+            game_data = {'meta_fetched': today}
+
+            if store_info:
+                if not name:
+                    # Name not provided by GetOwnedGames or local files — use store name
+                    new_name = store_info.pop('name', '') or f"AppID {appid}"
+                    db = get_db()
+                    db.execute("UPDATE games SET name=? WHERE appid=?", (new_name, appid))
+                    db.commit()
+                    db.close()
+                else:
+                    store_info.pop('name', None)
+                game_data.update(store_info)
+
+            review_info = fetch_review_data(appid, session=session)
+            if review_info:
+                game_data.update(review_info)
+
+            tag_info = fetch_tag_data(appid, session=session)
+            if tag_info:
+                game_data.update(tag_info)
+
+            update_game_data(appid, **game_data)
+            log.info(f"[meta] Done: {name or appid} ({appid})")
+            if progress_cb:
+                progress_cb('meta', appid, total)
+            time.sleep(1.5)
+
+        except RateLimitedError:
+            if progress_cb:
+                attempt = backoff._attempt + 1
+                delay   = BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
+                progress_cb('rate_limit_hit', {'pool': 'meta', 'attempt': attempt, 'delay': delay}, total)
+            priority_q.put(appid)   # re-queue for retry after backoff
+            if not backoff.on_rate_limited(cancel_event):
+                return
+        except Exception as e:
+            log.error(f"[meta] Error for {appid}: {e}")
+            time.sleep(0.1)
+
+
+def _cheevo_worker(normal_q, priority_q, backoff, cancel_event, today, progress_cb):
+    while True:
+        if cancel_event and cancel_event.is_set():
+            return
+        if not backoff.wait_ready(cancel_event):
+            return
+
+        appid = _next(priority_q, normal_q)
+        if appid is None:
+            return
+
+        db  = get_db()
+        row = db.execute("SELECT cheevos_fetched FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if row and row['cheevos_fetched'] != '0':
+            continue
+
+        try:
+            cheevo_info = fetch_cheevo_data(appid)
+            game_data   = {'cheevos_fetched': today}
+            if cheevo_info:
+                game_data.update(cheevo_info)
+            update_game_data(appid, **game_data)
+            if progress_cb:
+                progress_cb('cheevo', appid, None)
+        except RateLimitedError:
+            if progress_cb:
+                attempt = backoff._attempt + 1
+                delay   = BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
+                progress_cb('rate_limit_hit', {'pool': 'cheevo', 'attempt': attempt, 'delay': delay}, total)
+            priority_q.put(appid)
+            if not backoff.on_rate_limited(cancel_event):
+                return
+        except Exception as e:
+            log.error(f"[cheevo] Error for {appid}: {e}")
+
+
+# ── Main populate entry point ─────────────────────────────────────────────────
 
 def add_new(cancel_event=None, progress_cb=None):
-    limit = 0  # 0 = unlimited
     account = get_active_account()
     if not account:
         return {"status": "error", "message": "No account configured"}
 
-    api_key = account.get('api_key')
+    api_key  = account.get('api_key')
     steam_id = account.get('steam_id')
 
+    # ── Phase 1a: fetch game list ─────────────────────────────────────────────
     if api_key:
-        # ── API key path: fetch full library from Steam ────────────────────────
         log.info("Fetching games via Steam API.")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        url = f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={api_key}&steamid={steam_id}&format=json&include_appinfo=true&include_played_free_games=1&skip_unvetted_apps=false"
+        url = (
+            f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/"
+            f"?key={api_key}&steamid={steam_id}&format=json"
+            f"&include_appinfo=true&include_played_free_games=1&skip_unvetted_apps=false"
+        )
         try:
             response = requests.get(url, headers=headers, timeout=15)
             if response.status_code == 403:
                 return {"status": "error", "message": "Steam API: 403 Forbidden. Your API Key may be invalid."}
             response.raise_for_status()
-            data = response.json()
+            data      = response.json()
             raw_games = data.get('response', {}).get('games', [])
             if not raw_games:
                 return {"status": "error", "message": "No games returned. Is your Steam Profile set to Public?"}
-            games = [{'appid': g['appid'], 'name': g.get('name', ''), 'playtime_forever': g.get('playtime_forever', 0), 'last_played': datetime.fromtimestamp(g.get('rtime_last_played', 0)).strftime('%Y-%m-%d') if g.get('rtime_last_played', 0) > 0 else '0', 'icon_hash': g.get('img_icon_url', '')} for g in raw_games]
+            games = [{
+                'appid':            g['appid'],
+                'name':             g.get('name', ''),
+                'playtime_forever': g.get('playtime_forever', 0),
+                'last_played':      datetime.fromtimestamp(g.get('rtime_last_played', 0)).strftime('%Y-%m-%d')
+                                    if g.get('rtime_last_played', 0) > 0 else '0',
+                'icon_hash':        g.get('img_icon_url', ''),
+            } for g in raw_games]
         except requests.exceptions.JSONDecodeError:
             return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
         except Exception as e:
             return {"status": "error", "message": f"Connection Error: {str(e)}"}
     else:
-        # ── No API key path: read library from local Steam files ───────────────
         log.info("No API key — reading library from localconfig.vdf.")
         local_games = fetch_local_library(steam_id)
         if not local_games:
-            return {"status": "error", "message": "Could not read library from local Steam files. Make sure Steam is installed and has been launched at least once. If this is a fresh install, try re-running install.py to ensure all dependencies are up to date."}
+            return {"status": "error", "message": (
+                "Could not read library from local Steam files. Make sure Steam is installed "
+                "and has been launched at least once."
+            )}
         acf_names  = get_acf_names()
-        appinfo_db = parse_appinfo()  # offline name + type from Steam's local cache
+        appinfo_db = parse_appinfo()
         games = [{
             'appid':            g['appid'],
-            # name priority: ACF manifest → appinfo.vdf cache → filled from Store API below
             'name':             acf_names.get(g['appid']) or appinfo_db.get(g['appid'], {}).get('name', ''),
             'playtime_forever': g['playtime_forever'],
             'last_played':      g['last_played'],
             'icon_hash':        '',
         } for g in local_games]
 
-    # No-key path: appinfo_db already loaded above.
-    # API key path: GetOwnedGames can still return DLC/mods/advertising entries,
-    # so load appinfo for pre-filtering to keep the progress counter accurate.
     if api_key:
         appinfo_db = parse_appinfo()
 
-    # Process new games
-    db = get_db()
-    installed_ids   = get_locally_installed_appids()
+    # ── Phase 1b: filter to new games ─────────────────────────────────────────
+    db              = get_db()
     existing_ids    = {row['appid'] for row in db.execute("SELECT appid FROM games").fetchall()}
     blacklisted_ids = {row['appid'] for row in db.execute("SELECT appid FROM blacklist").fetchall()}
     db.close()
 
-    new_games = [g for g in reversed(games) if g['appid'] not in existing_ids and g['appid'] not in blacklisted_ids
-                 and appinfo_db.get(g['appid'], {}).get('type', 'game').lower() == 'game']
-    total_new = len(new_games)
+    installed_ids = get_locally_installed_appids()
+    today         = datetime.now().strftime('%Y-%m-%d')
 
-    new_count = 0
-    skip_count = 0
-    for game in new_games:
-        if cancel_event and cancel_event.is_set():
-            log.info(f"Populate cancelled after {new_count} games.")
-            return {"status": "cancelled", "added": new_count}
+    new_games = []
+    for g in reversed(games):
+        appid = g['appid']
+        if appid in existing_ids or appid in blacklisted_ids:
+            continue
+        if appinfo_db.get(appid, {}).get('type', 'game').lower() != 'game':
+            continue
+        playtime = g['playtime_forever']
+        new_games.append({
+            'appid':            appid,
+            'name':             g['name'],
+            'playtime_forever': playtime,
+            'last_played':      g['last_played'],
+            'icon_hash':        g.get('icon_hash', ''),
+            'completion_status': 'Unfinished' if playtime > 0 else 'Never Played',
+            'installed':        1 if appid in installed_ids else 0,
+        })
 
-        appid = game['appid']
-        rate_limit_attempts = 0
+    total = len(new_games)
+    if total == 0:
+        return {"status": "success", "added": 0}
 
-        while True:
-            try:
-                name = game['name']
-                playtime = game['playtime_forever']
-                last_played = game['last_played']
-                played = "Unfinished" if playtime > 0 else "Never Played"
-                today = datetime.now().strftime('%Y-%m-%d')
-                icon_hash  = game.get('icon_hash', '')
+    # ── Phase 1c: batch insert placeholders ───────────────────────────────────
+    batch_insert_placeholder_games(new_games, today)
+    log.info(f"Inserted {total} placeholder game(s).")
+    for g in new_games:
+        if progress_cb:
+            progress_cb('placeholder', g, total)
 
-                # Types to auto-blacklist (add more once identified via logs)
-                AUTO_BLACKLIST_TYPES = set()
+    if cancel_event and cancel_event.is_set():
+        return {"status": "cancelled", "added": 0}
 
-                store_info = fetch_store_data(appid)
-                if store_info:
-                    app_type = store_info.pop('type', '')
-                    if app_type in AUTO_BLACKLIST_TYPES:
-                        log.info(f"Skipping AppID {appid} ({name!r}) — store type '{app_type}' is blacklisted. Auto-blacklisting.")
-                        add_to_blacklist(appid, name or f"AppID {appid}")
-                        skip_count += 1
-                        total_new -= 1
-                        break
-                    if app_type:
-                        log.info(f"Adding AppID {appid} ({name!r}) — store type '{app_type}'")
-                elif not name:
-                    # No store data and no local name — off-store runtime/tool, skip it
-                    log.info(f"Skipping AppID {appid} — not on Steam store and no local name found. Auto-blacklisting.")
-                    add_to_blacklist(appid, f"AppID {appid}")
-                    skip_count += 1
-                    total_new -= 1
-                    break
+    # ── Phases 2/3/4: concurrent worker pools ────────────────────────────────
+    appid_list    = [g['appid'] for g in new_games]
+    icon_hash_map = {g['appid']: g.get('icon_hash', '') for g in new_games}
 
-                if progress_cb:
-                    progress_cb(new_count, total_new, name or f"AppID {appid}")
+    # Two queues per pool: priority (for viewport-visible games) and normal
+    art_nq,    art_pq    = queue.Queue(), queue.Queue()
+    meta_nq,   meta_pq   = queue.Queue(), queue.Queue()
+    cheevo_nq, cheevo_pq = queue.Queue(), queue.Queue()
 
-                assets            = _get_steam_assets(appid)
-                vertical_source   = download_vertical(appid, assets=assets)
-                horizontal_source = download_horizontal(appid, assets=assets)
-                icon_source       = download_icon(appid, icon_hash)
+    for appid in appid_list:
+        art_nq.put(appid)
+        meta_nq.put(appid)
+        if api_key:
+            cheevo_nq.put(appid)
 
-                game_data = {
-                    'playtime_forever':      playtime,
-                    'date_added':            today,
-                    'completion_status':     played,
-                    'last_played':           last_played,
-                    'vertical_art_source':   vertical_source,
-                    'horizontal_art_source': horizontal_source,
-                    'icon_source':           icon_source,
-                    'icon_hash':             icon_hash,
-                    'installed':             1 if appid in installed_ids else 0,
-                    'unlocked_achievements': 0,
-                    'total_achievements':    0,
-                }
+    art_backoff    = _PoolBackoff('art')
+    meta_backoff   = _PoolBackoff('meta')
+    cheevo_backoff = _PoolBackoff('cheevo')
+    # Expose priority queues so /api/populate-priority can feed them
+    if progress_cb:
+        progress_cb('workers_starting', {
+            'art_pq':    art_pq,
+            'meta_pq':   meta_pq,
+            'cheevo_pq': cheevo_pq,
+        }, total)
 
-                if store_info:
-                    # Use store name as fallback when local sources didn't have one
-                    if not name:
-                        name = store_info.pop('name', '') or f"AppID {appid}"
-                    else:
-                        store_info.pop('name', None)
-                    game_data.update(store_info)
+    ART_WORKERS    = 5
+    META_WORKERS   = 1
+    CHEEVO_WORKERS = 2
 
-                review_info = fetch_review_data(appid)
-                if review_info:
-                    game_data.update(review_info)
+    # ── Phase 1d: BLAEO pre-scrape (concurrent with art + meta workers) ───────
+    # Only worthwhile when there are enough games needing cheevo data.
+    # Runs after placeholder insert so new games exist in the DB.
+    # Cheevo workers are started after BLAEO finishes so they skip covered games.
+    def _run_blaeo():
+        try:
+            db = get_db()
+            needs_cheevos = db.execute(
+                "SELECT COUNT(*) FROM games WHERE cheevos_fetched = '0' OR cheevos_fetched IS NULL"
+            ).fetchone()[0]
+            db.close()
+            if needs_cheevos < 50:
+                log.info(f"[populate] BLAEO pre-scrape skipped ({needs_cheevos} games need cheevos, threshold 50).")
+                return
+            blaeo_result = scrape_blaeo_games(today=today)
+            if blaeo_result.get('status') == 'success':
+                log.info(f"[populate] BLAEO pre-scrape updated {blaeo_result['updated']} game(s).")
+            else:
+                log.info(f"[populate] BLAEO pre-scrape skipped: {blaeo_result.get('message', 'no account')}")
+        except Exception as e:
+            log.warning(f"[populate] BLAEO pre-scrape failed (non-fatal): {e}")
 
-                tag_info = fetch_tag_data(appid)
-                if tag_info:
-                    game_data.update(tag_info)
+    n_workers = ART_WORKERS + META_WORKERS + (CHEEVO_WORKERS if api_key else 0)
+    with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        # Art and meta start immediately
+        futures = []
+        for _ in range(ART_WORKERS):
+            futures.append(executor.submit(
+                _art_worker, art_nq, art_pq, cancel_event, icon_hash_map, today, progress_cb
+            ))
+        for _ in range(META_WORKERS):
+            futures.append(executor.submit(
+                _meta_worker, meta_nq, meta_pq, meta_backoff, cancel_event, total, today, progress_cb
+            ))
 
-                if api_key:
-                    cheevo_info = fetch_cheevo_data(appid)
-                    if cheevo_info:
-                        game_data.update(cheevo_info)
+        # BLAEO runs concurrently; cheevo workers start after it finishes
+        if api_key:
+            blaeo_thread = threading.Thread(target=_run_blaeo, daemon=True)
+            blaeo_thread.start()
+            blaeo_thread.join()
+            for _ in range(CHEEVO_WORKERS):
+                futures.append(executor.submit(
+                    _cheevo_worker, cheevo_nq, cheevo_pq, cheevo_backoff, cancel_event, today, progress_cb
+                ))
 
-                add_new_game(appid, name)
-                update_game_data(appid, **game_data)
+        futures_wait(futures)
 
-                new_count += 1
-                log.info(f"Added game #{new_count}: {name} (AppID {appid})")
-                if progress_cb:
-                    progress_cb(new_count, total_new, name)
-                log.info(f"Added game #{new_count}: {name} (AppID {appid})")
-                break
+    # ── Check if all rate-limitable pools aborted ─────────────────────────────
+    meta_aborted   = meta_backoff.aborted
+    cheevo_aborted = cheevo_backoff.aborted if api_key else True
+    if meta_aborted and cheevo_aborted:
+        if progress_cb:
+            progress_cb('rate_limit_abort', None, total)
 
-            except RateLimitedError:
-                rate_limit_attempts += 1
-                if rate_limit_attempts == 1:
-                    log.warning(f"Rate limited by Steam on AppID {appid}. Pausing 15s before retry...")
-                    if progress_cb:
-                        progress_cb(new_count, total_new, "Rate limited — pausing 15s...")
-                    time.sleep(15)
-                    # loop back and retry this game
-                else:
-                    log.warning("Rate limit persists after retry. Aborting populate.")
-                    return {
-                        "status": "error",
-                        "message": "Steam is rate limiting requests. Try again in a few minutes.",
-                        "added": new_count
-                    }
+    if cancel_event and cancel_event.is_set():
+        return {"status": "cancelled", "added": total}
 
-            except Exception as e:
-                skip_count += 1
-                log.error(f"Error processing {game.get('name', '') or appid} (AppID {appid}): {e} — skipping.")
-                break
+    return {"status": "success", "added": total}
 
-        time.sleep(0.5)
 
-        if limit > 0 and new_count >= limit:
-            return {"status": "success", "added": new_count}
-
-    if skip_count:
-        log.info(f"Populate complete. Added {new_count}, skipped {skip_count}.")
-    return {"status": "success", "added": new_count}
 
 # Scrape Player API (Name, Playtime, Last Played)
 def fetch_player_data(appid):
@@ -243,15 +504,17 @@ def fetch_player_data(appid):
         return None
 
 # Scrape Storefront API (Devs, Pubs, Release Date)
-def fetch_store_data(appid):
+def fetch_store_data(appid, session=None):
     """
     Fetches rich metadata from the Steam Store API for a single appid.
     Returns a dictionary of data or None if the request fails.
+    Pass a requests.Session for connection reuse across multiple calls.
     """
+    _http = session or requests
     url = f"https://store.steampowered.com/api/appdetails?appids={appid}&l=english"
 
     try:
-        response = requests.get(url, timeout=15)
+        response = _http.get(url, timeout=15)
         if response.status_code == 429:
             raise RateLimitedError()
         response.raise_for_status()
@@ -285,19 +548,20 @@ def fetch_store_data(appid):
 
         return extracted
 
+    except RateLimitedError:
+        raise
     except Exception as e:
         log.error(f"Error fetching store data for {appid}")
         return None
 
 
 # Scrape Reviews API (Percentage, Description)
-def fetch_review_data(appid):
-    # Re-adding the num_per_page=0 from your old working version
+def fetch_review_data(appid, session=None):
+    _http = session or requests
     url = f"https://store.steampowered.com/appreviews/{appid}?json=1&language=all&num_per_page=0&purchase_type=all"
 
     try:
-        # Adding a timeout like your old code had to prevent hanging
-        response = requests.get(url, timeout=20)
+        response = _http.get(url, timeout=20)
         if response.status_code == 429:
             raise RateLimitedError()
 
@@ -334,6 +598,8 @@ def fetch_review_data(appid):
             log.warning(f"Steam Review API returned status: {response.status_code}")
             return None
 
+    except RateLimitedError:
+        raise
     except Exception as e:
         log.error(f"Error fetching review data for {appid}")
         return None
@@ -382,15 +648,18 @@ def fetch_cheevo_data(appid):
             'unlocked_achievements': unlocked #INT
         }
 
+    except RateLimitedError:
+        raise
     except Exception as e:
         log.error(f"Error fetching achievement data for AppID: {appid}")
         return None
 
-def fetch_tag_data(appid):
+def fetch_tag_data(appid, session=None):
     """
     Scrapes the top user-defined tags from the Steam store page.
     Returns a dictionary containing a comma-separated string of tags.
     """
+    _http = session or requests
     url = f"https://store.steampowered.com/app/{appid}/?l=english"
     # We include a birthtime cookie to bypass the mature content age-gate
     headers = {
@@ -399,7 +668,7 @@ def fetch_tag_data(appid):
     }
 
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = _http.get(url, headers=headers, timeout=10)
         if response.status_code == 429:
             raise RateLimitedError()
         if response.status_code == 200:
@@ -413,13 +682,17 @@ def fetch_tag_data(appid):
 
             if tags:
                 return {'tags': ",".join(tags)}
+    except RateLimitedError:
+        raise
     except Exception as e:
         log.error(f"Error scraping tags for {appid}: {e}")
 
     return None
 
-def scrape_blaeo_games():
+def scrape_blaeo_games(today=None):
     import requests as req
+    if today is None:
+        today = datetime.now().strftime('%Y-%m-%d')
     config = load_config()
     account = get_active_account()
     blaeo_url = config.get('blaeo_url')
@@ -527,8 +800,8 @@ def scrape_blaeo_games():
 
                     if unlocked_ach is not None:
                         cursor.execute(
-                            "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ? WHERE appid = ?",
-                            (clean_status, new_groups_str, unlocked_ach, total_ach, appid)
+                            "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? WHERE appid = ?",
+                            (clean_status, new_groups_str, unlocked_ach, total_ach, today, appid)
                         )
                     else:
                         cursor.execute(

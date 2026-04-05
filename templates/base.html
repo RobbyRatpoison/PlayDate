@@ -829,6 +829,7 @@
 
         let _populating = false;
         let _populatePoller = null;
+        let _lastRateLimitHits = 0;
         const _configExists = {{ config_exists | tojson }};
 
         function _resetPopulateBtn() {
@@ -840,28 +841,71 @@
             btn.disabled = false;
         }
 
+        function _fmtEta(s) {
+            if (s === null || s === undefined || s <= 0) return '';
+            if (s < 60) return `~${s}s`;
+            const m = Math.floor(s / 60), sec = s % 60;
+            if (m < 60) return sec > 0 ? `~${m}m ${sec}s` : `~${m}m`;
+            const h = Math.floor(m / 60), min = m % 60;
+            return min > 0 ? `~${h}h ${min}m` : `~${h}h`;
+        }
+
         function _updatePopulateBtn(data) {
-            const btn = document.getElementById('add-button');
-            if (data.total > 0) {
-                const pct = Math.round((data.current / data.total) * 100);
-                btn.innerText = `STOP  [${data.current}/${data.total}]  ${pct}%`;
+            const btn   = document.getElementById('add-button');
+            const total = data.total || 0;
+            if (total > 0) {
+                const done = data.meta_done || 0;
+                const pct  = Math.round((done / total) * 100);
+                const eta  = _fmtEta(data.eta_seconds);
+                const art  = data.art_done != null ? `  art:${data.art_done}` : '';
+                btn.innerText = `STOP  [${done}/${total}]  ${pct}%${art}` + (eta ? `  ${eta}` : '');
                 btn.style.background =
                     `linear-gradient(to right, rgba(102,192,244,0.18) ${pct}%, transparent ${pct}%)`;
             } else {
-                btn.innerText = "STOP POPULATING";
-                btn.style.background = "";
+                btn.innerText = 'STOP POPULATING';
+                btn.style.background = '';
             }
         }
 
         function _startPopulatePoller() {
-            // Poll every 2s — when the server says it stopped, show result and reload
+            document.dispatchEvent(new CustomEvent('populate:started'));
             _populatePoller = setInterval(async () => {
                 try {
-                    const res = await fetch('/api/populate-status');
+                    const res  = await fetch('/api/populate-status');
                     const data = await res.json();
+
+                    // Forward live-update events to the library page (if open)
+                    if (data.new_placeholders?.length)
+                        document.dispatchEvent(new CustomEvent('populate:new_cards',    { detail: data.new_placeholders }));
+                    if (data.recently_meta?.length)
+                        document.dispatchEvent(new CustomEvent('populate:meta_complete', { detail: data.recently_meta }));
+                    if (data.recently_art?.length)
+                        document.dispatchEvent(new CustomEvent('populate:art_complete',  { detail: data.recently_art }));
+                    if (data.recently_blacklist?.length)
+                        document.dispatchEvent(new CustomEvent('populate:blacklist',     { detail: data.recently_blacklist }));
+
+                    if ((data.rate_limit_hits || 0) > (_lastRateLimitHits || 0) || data.rate_limit_aborted) {
+                        _lastRateLimitHits = data.rate_limit_hits || 0;
+                        const modal = document.getElementById('rate-limit-modal');
+                        if (modal) {
+                            document.getElementById('rate-limit-added').textContent  = data.meta_done || 0;
+                            document.getElementById('rate-limit-count').textContent  = data.rate_limit_hits || 0;
+                            const last  = data.rate_limit_last;
+                            const infoEl = document.getElementById('rate-limit-info');
+                            if (infoEl && last) {
+                                const poolLabel = last.pool === 'meta' ? 'Metadata' : 'Achievements';
+                                infoEl.textContent = data.rate_limit_aborted
+                                    ? `${poolLabel} pool exhausted all retries and stopped.`
+                                    : `${poolLabel} pool — attempt ${last.attempt} of ${4} — waiting ${last.delay}s before retrying.`;
+                            }
+                            modal.style.display = 'flex';
+                        }
+                    }
+
                     if (!data.running) {
                         clearInterval(_populatePoller);
                         _populatePoller = null;
+                        document.dispatchEvent(new CustomEvent('populate:stopped'));
                         const msg = data.last_result;
                         if (msg) {
                             const btn = document.getElementById('add-button');
@@ -871,7 +915,7 @@
                             } else if (msg.status === 'cancelled') {
                                 btn.innerText = `Cancelled — ${msg.added} added`;
                             } else {
-                                btn.innerText = `✘ Failed`;
+                                btn.innerText = '✘ Failed';
                                 btn.style.borderColor = 'var(--color-danger)';
                             }
                             setTimeout(() => {
@@ -885,7 +929,7 @@
                         _updatePopulateBtn(data);
                     }
                 } catch(e) {}
-            }, 2000);
+            }, 1000);
         }
 
         // On every page load, check if populate is still running server-side.
@@ -897,7 +941,7 @@
                 if (data.running) {
                     _populating = true;
                     const btn = document.getElementById('add-button');
-                    btn.innerText = "STOP POPULATING";
+                    _updatePopulateBtn(data);
                     btn.style.borderColor = "#a32a2a";
                     _startPopulatePoller();
                 } else if (_configExists && !sessionStorage.getItem('_populateTriggered')) {
@@ -1153,5 +1197,38 @@
 
     </script>
     {% block scripts %}{% endblock %}
+
+    <!-- Rate-limit modal -->
+    <div id="rate-limit-modal" style="display:none; position:fixed; inset:0; z-index:99999;
+         background:rgba(0,0,0,0.7); align-items:center; justify-content:center;">
+        <div style="background:var(--bg-raised,#1e2a35); border:1px solid var(--border,#2a3a47);
+                    border-radius:10px; padding:28px 32px; max-width:460px; width:90%;
+                    box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+            <h3 style="margin:0 0 14px; color:var(--color-danger,#e05252); font-size:1.1rem;">
+                Steam Rate Limited
+            </h3>
+            <p style="margin:0 0 6px; line-height:1.6;">
+                Steam returned 429 (too many requests)
+                <strong id="rate-limit-count">0</strong> time(s) —
+                after processing <strong id="rate-limit-added">0</strong> games.
+            </p>
+            <p id="rate-limit-info" style="margin:0 0 10px; line-height:1.6;
+               color:var(--text-secondary,#8899aa); font-size:0.9rem;"></p>
+            <p style="margin:0 0 18px; line-height:1.6;">
+                The games already added to your library are saved. Running
+                <strong>Populate</strong> again will continue from where it left off —
+                previously completed games are skipped automatically.
+            </p>
+            <p style="margin:0 0 18px; line-height:1.6; color:var(--text-secondary,#8899aa); font-size:0.88rem;">
+                If this happens frequently, the request delay between games may need
+                to be increased.
+            </p>
+            <button onclick="document.getElementById('rate-limit-modal').style.display='none'"
+                    style="background:var(--accent,#66c0f4); color:#000; border:none;
+                           border-radius:5px; padding:8px 22px; cursor:pointer; font-weight:bold;">
+                OK
+            </button>
+        </div>
+    </div>
 </body>
 </html>

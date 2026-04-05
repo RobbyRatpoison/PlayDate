@@ -2,10 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project To-Do List
+## Populate Speed Overhaul — Notes
 
-The living to-do list for this project is maintained at:
-https://docs.google.com/document/d/e/2PACX-1vTm6EH_WXQZZGLV8DXIVmegFL1LovMeDpNsbjciYOQYw7SphTJMutnbnw6JQgyWCdHXFDQsvlVVIcAi/pub
+- Populate runs three concurrent worker pools: 5 art, 1 meta, 2 cheevo
+- Meta is 1 worker at 1.5s fixed delay — appdetails hard limit is 200 req/5min (count-based rolling window); 2 workers was the root cause of 429s
+- `_fetched` columns (`art_fetched`, `meta_fetched`, `cheevos_fetched`) track per-phase completion; workers skip already-fetched games
+- Placeholder cards batch-inserted immediately; per-card live updates as each phase completes; viewport-visible cards prioritized via `/api/populate-priority`
+- BLAEO pre-scrape runs concurrently with art/meta after placeholder insert; cheevo workers start after it finishes
+- `RateLimitedError` is re-raised in all fetch functions so `_PoolBackoff` triggers correctly
+
+## To-Do
+
+### Known Bugs
+_(none)_
+
+### Short Term
+- Library UI polish — bulk edit improvements (an "all games" option, UI lockout during scraping), group-by functionality, reorder dropdown lists
+
+### Long Term
+- Non-Steam library support (Epic, GOG, Ubisoft Connect, EA App, emulation)
+- Plugin system
+
+### Potential / Under Consideration
+- Gamepad support improvements — home page editor buttons, bulk edit modal navigation, text input focus, disable RB/LB while in modals
+- HLTB integration (data reliability concerns)
+- Extend Playnite import to also import completion status
+- Refactor app.py into Flask blueprints by area (library, scraping, config, import tools)
 
 ## What This Project Is
 

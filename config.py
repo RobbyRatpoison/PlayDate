@@ -6,7 +6,7 @@ import sys
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.2.3"
+__version__ = "1.2.4"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #

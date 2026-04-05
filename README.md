@@ -35,14 +35,14 @@ PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, ach
 - **Weighted mode** — tune six scoring signals with sliders; toggle individual games in or out of the pool
 
 ### Metadata & Artwork
-- **Steam scraper** — imports playtime, tags, review scores, achievement counts, release dates, developers, publishers, and genres from Steam's API and store pages
+- **Steam scraper** — imports playtime, tags, review scores, achievement counts, release dates, developers, publishers, and genres from Steam's API and store pages; runs concurrent worker pools for art, metadata, and achievements so cards populate live as each phase completes
 - **Startup sync** — on every launch, PlayDate reads your local Steam files to update playtime and last-played dates; if playtime changed, it fetches fresh achievement data and automatically promotes completion status (`Never Played` → `Unfinished`, 100% achievements → `Completed`)
 - **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB
 - **SteamGridDB browser** — search and apply custom artwork for any game from directly within PlayDate
 - **BLAEO sync** — imports completion statuses, list tags, and achievement counts from your BLAEO backlog profile
 
 ### Import Tools
-- **Steam date importer** — a Tampermonkey userscript (`playdate_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (batch-imports dates for an entire filtered selection)
+- **Steam date importer** — a Tampermonkey userscript (`playdate_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (batch-imports dates for an entire filtered selection). Requires **Tampermonkey with Manifest V2 enabled** — MV3 blocks the cross-origin requests the script depends on
 - **Playnite import** — import `date added` values from a Playnite backup ZIP
 - **Database import** — migrate columns from an older PlayDate database into your current one, with column mapping and type-mismatch warnings
 
@@ -114,7 +114,7 @@ On first launch you'll be prompted for:
 - **Steam Web API Key** — from [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) *(optional — without it PlayDate reads your library from local Steam files instead; achievements will not be fetched)*
 - **SteamGridDB API Key** — from [steamgriddb.com/profile/preferences/api](https://www.steamgriddb.com/profile/preferences/api) *(optional — enables custom artwork)*
 
-Then hit **Populate PlayDate** in the navbar to import your library and fetch metadata. This takes a few minutes on first run due to Steam API rate limiting.
+Then hit **Populate PlayDate** in the navbar to import your library and fetch metadata. Game cards appear immediately as placeholders and fill in live as art, metadata, and achievements are fetched in parallel. First-run time depends on library size and Steam's API rate limits.
 
 Additional Steam accounts can be added at any time via **Tools → Account**.
 

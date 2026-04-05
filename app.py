@@ -1,5 +1,6 @@
 from flask import Flask, render_template, redirect, request, url_for, jsonify, send_from_directory
 import logging
+import time
 from logging.handlers import RotatingFileHandler
 import os
 import sys
@@ -118,6 +119,10 @@ def _do_update_check():
         log.warning(f"Update check failed: {e}")
 
 
+# Module-level cancel event so main.py can signal it on window close.
+populate_cancel = threading.Event()
+
+
 def create_app(template_folder=None, static_folder=None):
     """
     Flask application factory.
@@ -174,10 +179,27 @@ def create_app(template_folder=None, static_folder=None):
             unique_categories=get_all_unique_categories(),
         )
 
-    # ── Cancellation state for populate ──────────────────────────────────────
-    _populate_cancel  = threading.Event()
-    _populate_state   = {"running": False, "last_result": None,
-                         "current": 0, "total": 0, "current_name": ""}
+    # ── Cancellation + progress state for populate ───────────────────────────
+    _populate_cancel = populate_cancel   # module-level event; main.py sets it on close
+    _recent_lock     = threading.Lock()
+    _populate_state  = {
+        "running":          False,
+        "last_result":      None,
+        "total":            0,
+        "meta_done":        0,
+        "art_done":         0,
+        "cheevo_done":      0,
+        "started_at":       None,
+        "eta_seconds":      None,
+        "new_placeholders": [],   # game dicts just inserted — cleared each poll
+        "recently_meta":    [],   # appids that just got metadata — cleared each poll
+        "recently_art":     [],   # appids that just got art — cleared each poll
+        "recently_blacklist": [], # appids removed via blacklist — cleared each poll
+        "rate_limit_aborted": False,
+        "rate_limit_hits":    0,        # total 429s received across all pools
+        "rate_limit_last":    None,     # {pool, attempt, delay} for most recent hit
+        "_priority_queues": None, # set when workers start; used by /api/populate-priority
+    }
 
     # ── Routes ────────────────────────────────────────────────────────────────
 
@@ -404,27 +426,84 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/populate-status')
     def populate_status():
+        with _recent_lock:
+            new_ph   = list(_populate_state["new_placeholders"])
+            r_meta   = list(_populate_state["recently_meta"])
+            r_art    = list(_populate_state["recently_art"])
+            r_bl     = list(_populate_state["recently_blacklist"])
+            _populate_state["new_placeholders"].clear()
+            _populate_state["recently_meta"].clear()
+            _populate_state["recently_art"].clear()
+            _populate_state["recently_blacklist"].clear()
         return jsonify({
-            "running":      _populate_state["running"],
-            "last_result":  _populate_state["last_result"],
-            "current":      _populate_state["current"],
-            "total":        _populate_state["total"],
-            "current_name": _populate_state["current_name"],
+            "running":            _populate_state["running"],
+            "last_result":        _populate_state["last_result"],
+            "total":              _populate_state["total"],
+            "meta_done":          _populate_state["meta_done"],
+            "art_done":           _populate_state["art_done"],
+            "cheevo_done":        _populate_state["cheevo_done"],
+            "eta_seconds":        _populate_state["eta_seconds"],
+            "new_placeholders":   new_ph,
+            "recently_meta":      r_meta,
+            "recently_art":       r_art,
+            "recently_blacklist": r_bl,
+            "rate_limit_aborted": _populate_state["rate_limit_aborted"],
+            "rate_limit_hits":    _populate_state["rate_limit_hits"],
+            "rate_limit_last":    _populate_state["rate_limit_last"],
         })
 
     @app.route('/add-new')
     def add_new():
         _populate_cancel.clear()
-        _populate_state["running"]      = True
-        _populate_state["last_result"]  = None
-        _populate_state["current"]      = 0
-        _populate_state["total"]        = 0
-        _populate_state["current_name"] = ""
+        with _recent_lock:
+            _populate_state["running"]            = True
+            _populate_state["last_result"]        = None
+            _populate_state["total"]              = 0
+            _populate_state["meta_done"]          = 0
+            _populate_state["art_done"]           = 0
+            _populate_state["cheevo_done"]        = 0
+            _populate_state["started_at"]         = None
+            _populate_state["eta_seconds"]        = None
+            _populate_state["new_placeholders"]   = []
+            _populate_state["recently_meta"]      = []
+            _populate_state["recently_art"]       = []
+            _populate_state["recently_blacklist"] = []
+            _populate_state["rate_limit_aborted"] = False
+            _populate_state["rate_limit_hits"]    = 0
+            _populate_state["rate_limit_last"]    = None
+            _populate_state["_priority_queues"]   = None
 
-        def _progress(current, total, name):
-            _populate_state["current"]      = current
-            _populate_state["total"]        = total
-            _populate_state["current_name"] = name
+        def _progress(event_type, data, total):
+            now = time.time()
+            with _recent_lock:
+                if event_type == 'placeholder':
+                    _populate_state["total"] = total
+                    _populate_state["new_placeholders"].append(data)
+                elif event_type == 'workers_starting':
+                    _populate_state["started_at"]       = now
+                    _populate_state["_priority_queues"] = data
+                elif event_type == 'meta':
+                    _populate_state["meta_done"] += 1
+                    _populate_state["recently_meta"].append(data)
+                    done  = _populate_state["meta_done"]
+                    total_ = _populate_state["total"]
+                    if done > 0 and _populate_state["started_at"] and total_ > done:
+                        elapsed = now - _populate_state["started_at"]
+                        _populate_state["eta_seconds"] = round((elapsed / done) * (total_ - done))
+                    elif done >= total_:
+                        _populate_state["eta_seconds"] = 0
+                elif event_type == 'art':
+                    _populate_state["art_done"] += 1
+                    _populate_state["recently_art"].append(data)
+                elif event_type == 'cheevo':
+                    _populate_state["cheevo_done"] += 1
+                elif event_type == 'blacklist':
+                    _populate_state["recently_blacklist"].append(data)
+                elif event_type == 'rate_limit_hit':
+                    _populate_state["rate_limit_hits"] += 1
+                    _populate_state["rate_limit_last"]  = data
+                elif event_type == 'rate_limit_abort':
+                    _populate_state["rate_limit_aborted"] = True
 
         try:
             result = scrapers.add_new(_populate_cancel, progress_cb=_progress)
@@ -437,6 +516,24 @@ def create_app(template_folder=None, static_folder=None):
     def cancel_populate():
         _populate_cancel.set()
         return jsonify({"status": "success"})
+
+    @app.route('/api/populate-priority', methods=['POST'])
+    def populate_priority():
+        """
+        Receives a list of visible appids from the library page and pushes them
+        to the front of each worker pool's priority queue so they are processed
+        before off-screen games.
+        """
+        if not _populate_state["running"]:
+            return jsonify({"status": "ok"})
+        queues = _populate_state.get("_priority_queues")
+        if not queues:
+            return jsonify({"status": "ok"})
+        appids = request.json.get("appids", [])
+        for appid in appids:
+            for q in queues.values():
+                q.put(appid)
+        return jsonify({"status": "ok"})
 
     @app.route('/update-installed')
     def update_installed():
@@ -626,25 +723,27 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/artwork/rescrape', methods=['POST'])
     def rescrape_artwork():
         from images import download_vertical, download_horizontal, download_icon
+        from datetime import datetime
         data        = request.json or {}
         appid       = data.get('appid')
         orientation = data.get('orientation')
         if not appid or orientation not in ('vertical', 'horizontal', 'icon'):
             return jsonify({"status": "error", "message": "Missing or invalid parameters"}), 400
         appid = int(appid)
+        today = datetime.now().strftime('%Y-%m-%d')
         if orientation == 'vertical':
             source = download_vertical(appid)
-            update_game_data(appid, vertical_art_source=source)
+            update_game_data(appid, vertical_art_source=source, art_fetched=today)
         elif orientation == 'horizontal':
             source = download_horizontal(appid)
-            update_game_data(appid, horizontal_art_source=source)
+            update_game_data(appid, horizontal_art_source=source, art_fetched=today)
         else:
             db  = get_db()
             row = db.execute("SELECT icon_hash FROM games WHERE appid = ?", (appid,)).fetchone()
             db.close()
             icon_hash = row['icon_hash'] if row else None
             source = download_icon(appid, icon_hash)
-            update_game_data(appid, icon_source=source)
+            update_game_data(appid, icon_source=source, art_fetched=today)
         return jsonify({"status": "success", "source": source})
 
     @app.route('/api/set-background', methods=['POST'])
@@ -808,6 +907,7 @@ def create_app(template_folder=None, static_folder=None):
         """
         from scrapers import fetch_store_data, fetch_tag_data, fetch_review_data, fetch_cheevo_data
         from config import get_active_account
+        from datetime import datetime
         _account  = get_active_account() or {}
         _has_key  = bool(_account.get('api_key'))
 
@@ -816,6 +916,7 @@ def create_app(template_folder=None, static_folder=None):
         if not appids:
             return jsonify({"status": "error", "message": "No appids provided."}), 400
 
+        today   = datetime.now().strftime('%Y-%m-%d')
         updated = 0
         failed  = 0
         for appid in appids:
@@ -832,6 +933,10 @@ def create_app(template_folder=None, static_folder=None):
                 game_data.update(review_data)
                 game_data.update(tag_data)
                 game_data.update(cheevo_data)
+                if store_data or review_data or tag_data:
+                    game_data['meta_fetched'] = today
+                if cheevo_data:
+                    game_data['cheevos_fetched'] = today
 
                 if game_data:
                     update_game_data(appid, **game_data)
@@ -891,6 +996,7 @@ def create_app(template_folder=None, static_folder=None):
     def bulk_art_scrape():
         import time
         from images import download_vertical, download_horizontal, download_icon, _get_steam_assets
+        from datetime import datetime
         data   = request.json or {}
         appids = data.get('appids', [])
         types  = data.get('types', ['vertical', 'horizontal', 'icon'])
@@ -899,6 +1005,7 @@ def create_app(template_folder=None, static_folder=None):
         if not appids:
             return jsonify({"status": "error", "message": "No appids provided."}), 400
 
+        today   = datetime.now().strftime('%Y-%m-%d')
         updated = 0
         failed  = 0
         for appid in appids:
@@ -927,6 +1034,7 @@ def create_app(template_folder=None, static_folder=None):
                         updates['icon_source'] = result
                     time.sleep(1.2)
                 if updates:
+                    updates['art_fetched'] = today
                     update_game_data(int(appid), **updates)
                     updated += 1
             except Exception as e:

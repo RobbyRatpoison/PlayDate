@@ -91,7 +91,7 @@ os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
 # ── Imports ───────────────────────────────────────────────────────────────────
 import webview
 
-from app import create_app
+from app import create_app, populate_cancel
 from config import BASE_DIR, migrate_to_multi_account
 from database import init_db, migrate_image_files
 from utils import find_steam_path, start_steamapps_watcher, stop_steamapps_watcher
@@ -412,6 +412,7 @@ if __name__ == '__main__':
                 log.warning(f"Window move failed: {e}")
 
     def _on_closing():
+        populate_cancel.set()   # stop any running populate before the process exits
         _save_window_state(_tracked)
 
     window.events.maximized += _on_maximized
@@ -431,4 +432,4 @@ if __name__ == '__main__':
     # 8. Clean exit
     log.info("Window closed. PlayDate exiting.")
     stop_steamapps_watcher()
-    sys.exit(0)
+    os._exit(0)  # hard kill — sys.exit() waits for non-daemon threads (e.g. populate workers)

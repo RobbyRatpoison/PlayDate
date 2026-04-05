@@ -11,16 +11,18 @@ def _db():
 
 def get_db():
     db_file = _db()
-    conn = sqlite3.connect(db_file, timeout=10)
+    conn = sqlite3.connect(db_file, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     # Auto-init if the games table is missing (e.g. DB was deleted while running)
     try:
         conn.execute("SELECT 1 FROM games LIMIT 1")
     except sqlite3.OperationalError:
         conn.close()
         init_db()
-        conn = sqlite3.connect(db_file, timeout=10)
+        conn = sqlite3.connect(db_file, timeout=30)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 def init_db():
@@ -70,12 +72,54 @@ def init_db():
         'groups': 'TEXT',
         'genres': 'TEXT',                # Comma-separated Steam genres (e.g. Action,RPG)
         'categories': 'TEXT',            # Comma-separated Steam categories (e.g. Single-player,Co-op)
-        'is_free': 'INT'                 # 1 if free to play, 0 otherwise
+        'is_free': 'INT',                # 1 if free to play, 0 otherwise
+        'art_fetched': 'TEXT',           # '0' = never fetched, YYYY-MM-DD = date last fetched
+        'meta_fetched': 'TEXT',          # '0' = never fetched, YYYY-MM-DD = date last fetched
+        'cheevos_fetched': 'TEXT',       # '0' = never fetched, YYYY-MM-DD = date last fetched
     }
 
     for column_name, column_type in required_columns.items():
         if column_name not in columns:
             cursor.execute(f"ALTER TABLE games ADD COLUMN {column_name} {column_type}")
+
+    # ── Migrate existing games into the _fetched tracking system ─────────────
+    # Runs whenever any of the three columns still have NULLs (i.e. pre-feature
+    # games). Infers fetched status from existing data; remaining NULLs become
+    # '0' so populate treats them as pending.
+    has_nulls = cursor.execute(
+        "SELECT 1 FROM games WHERE meta_fetched IS NULL OR art_fetched IS NULL OR cheevos_fetched IS NULL LIMIT 1"
+    ).fetchone()
+    if has_nulls:
+        from datetime import datetime
+        today = datetime.now().strftime('%Y-%m-%d')
+        # meta: game has tags or review data → already scraped
+        cursor.execute("""
+            UPDATE games SET meta_fetched = ?
+            WHERE meta_fetched IS NULL
+            AND (
+                (tags IS NOT NULL AND tags != '')
+                OR (review_score IS NOT NULL AND review_score != '')
+            )
+        """, (today,))
+        # art: game has a non-missing art source → already downloaded
+        cursor.execute("""
+            UPDATE games SET art_fetched = ?
+            WHERE art_fetched IS NULL
+            AND (
+                (vertical_art_source IS NOT NULL AND vertical_art_source NOT IN ('', 'missing'))
+                OR (horizontal_art_source IS NOT NULL AND horizontal_art_source NOT IN ('', 'missing'))
+            )
+        """, (today,))
+        # cheevos: total_achievements is not NULL → fetch was attempted (0 = no achievements is valid)
+        cursor.execute("""
+            UPDATE games SET cheevos_fetched = ?
+            WHERE cheevos_fetched IS NULL
+            AND total_achievements IS NOT NULL
+        """, (today,))
+        # remaining NULLs → mark as pending so populate will fetch them
+        cursor.execute("UPDATE games SET meta_fetched    = '0' WHERE meta_fetched    IS NULL")
+        cursor.execute("UPDATE games SET art_fetched     = '0' WHERE art_fetched     IS NULL")
+        cursor.execute("UPDATE games SET cheevos_fetched = '0' WHERE cheevos_fetched IS NULL")
 
     # Blacklist table — appids that should be skipped by Populate
     cursor.execute("""
@@ -93,11 +137,47 @@ def add_new_game(appid, name):
     db_file = _db()
     if not os.path.exists(db_file):
         init_db()
-    conn = sqlite3.connect(db_file, timeout=10)
+    conn = sqlite3.connect(db_file, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
     cursor = conn.cursor()
     cursor.execute("INSERT OR IGNORE INTO games (appid, name) VALUES (?, ?)", (str(appid), name))
     conn.commit()
     conn.close()
+
+def batch_insert_placeholder_games(games, today):
+    """
+    Batch-inserts placeholder rows for a list of new games in a single transaction.
+    Each game dict must have: appid, name, playtime_forever, last_played, completion_status,
+    installed, icon_hash. Phase columns are initialised to '0'.
+    Games already in the DB are skipped (INSERT OR IGNORE).
+    """
+    if not games:
+        return
+    db_file = _db()
+    if not os.path.exists(db_file):
+        init_db()
+    cols = [
+        'appid', 'name', 'playtime_forever', 'last_played', 'date_added',
+        'completion_status', 'installed', 'icon_hash',
+        'art_fetched', 'meta_fetched', 'cheevos_fetched',
+    ]
+    placeholders = ', '.join('?' * len(cols))
+    col_str = ', '.join(cols)
+    rows = [
+        (
+            str(g['appid']), g['name'], g['playtime_forever'], g['last_played'],
+            today, g['completion_status'], g['installed'], g.get('icon_hash', ''),
+            '0', '0', '0',
+        )
+        for g in games
+    ]
+    conn = sqlite3.connect(db_file, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    try:
+        conn.executemany(f"INSERT OR IGNORE INTO games ({col_str}) VALUES ({placeholders})", rows)
+        conn.commit()
+    finally:
+        conn.close()
 
 def update_game_data(appid, **kwargs):
     """

@@ -621,6 +621,96 @@
     // Build on load
     document.addEventListener('DOMContentLoaded', buildGrid);
 
+    // ── Live populate updates ─────────────────────────────────────────────────
+
+    // Add placeholder cards for games just inserted by the populate phase 1
+    document.addEventListener('populate:new_cards', (e) => {
+        const grid = document.getElementById('game-grid');
+        if (!grid) return;
+        const fragment = document.createDocumentFragment();
+        for (const g of e.detail) {
+            const appid = g.appid;
+            if (_GAME_MAP.has(appid)) continue;  // already present
+            // Add minimal game object so cardInnerHTML can render it
+            const gameObj = {
+                appid,
+                name:               g.name || '',
+                completion_status:  g.completion_status || 'Never Played',
+                playtime_forever:   g.playtime_forever  || 0,
+            };
+            GAMES.push(gameObj);
+            _GAME_MAP.set(appid, gameObj);
+            const card = document.createElement('div');
+            card.className    = 'game-card';
+            card.id           = `card-${appid}`;
+            card.dataset.appid = appid;
+            fragment.appendChild(card);
+        }
+        grid.appendChild(fragment);
+        // Observe new cards so the IntersectionObserver can populate them
+        grid.querySelectorAll('.game-card:not([data-observed])').forEach(c => {
+            c.dataset.observed = '1';
+            _observer.observe(c);
+        });
+    });
+
+    // Patch cards whose metadata just completed
+    document.addEventListener('populate:meta_complete', async (e) => {
+        for (const appid of e.detail) {
+            try {
+                const res  = await fetch(`/api/game/${appid}`);
+                const data = await res.json();
+                if (data.status === 'success') _patchGameCard(data.game);
+            } catch (_) {}
+        }
+    });
+
+    // Bust image cache for cards whose art just completed
+    document.addEventListener('populate:art_complete', (e) => {
+        const orient = (typeof _artOrientation !== 'undefined' && _artOrientation === 'horizontal')
+            ? 'horizontal' : 'vertical';
+        for (const appid of e.detail) {
+            if (typeof CARD_HTML_CACHE !== 'undefined') CARD_HTML_CACHE.delete(appid);
+            const card = document.querySelector(`.game-card[data-appid="${appid}"]`);
+            if (!card || !card.dataset.populated) continue;
+            const img = card.querySelector('.game-capsule');
+            if (img) img.src = `/static/img/library/${orient}/${appid}.jpg?v=${Date.now()}`;
+        }
+    });
+
+    // Remove cards that got blacklisted during populate
+    document.addEventListener('populate:blacklist', (e) => {
+        for (const appid of e.detail) {
+            _GAME_MAP.delete(appid);
+            const idx = GAMES.findIndex(g => g.appid === appid);
+            if (idx !== -1) GAMES.splice(idx, 1);
+            const card = document.getElementById(`card-${appid}`);
+            if (card) card.remove();
+        }
+    });
+
+    // Post visible appids to the priority endpoint every 3 seconds during populate
+    let _priorityInterval = null;
+    document.addEventListener('populate:started', () => {
+        _priorityInterval = setInterval(() => {
+            const visible = [];
+            document.querySelectorAll('.game-card[data-populated]').forEach(c => {
+                visible.push(parseInt(c.dataset.appid));
+            });
+            if (visible.length > 0) {
+                fetch('/api/populate-priority', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ appids: visible }),
+                }).catch(() => {});
+            }
+        }, 3000);
+    });
+    document.addEventListener('populate:stopped', () => {
+        clearInterval(_priorityInterval);
+        _priorityInterval = null;
+    });
+
     // ── HOVER DELEGATION ──────────────────────────────────────────
     // - Throttled to one update per animation frame via rAF so rapid
     //   mouse movement can't queue more work than the browser can render.
