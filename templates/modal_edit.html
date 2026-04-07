@@ -373,6 +373,11 @@
 
             </div>
 
+            <div id="pag-quals-section" style="display:none; margin-top:16px; padding:10px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px;">
+                <div style="font-size:0.75rem; font-weight:bold; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">PAGYWOSG Qualifications</div>
+                <div id="pag-quals-list" style="font-size:0.82rem; display:flex; flex-direction:column; gap:4px;"></div>
+            </div>
+
             <div style="display: flex; gap: 15px; margin-top: 20px; border-top: 1px solid #2a475e; padding-top: 15px;">
                 <button type="submit" class="btn-save" data-modal-row="2" style="flex: 2; margin: 0;">SAVE CHANGES</button>
                 <button type="button" onclick="closeModal()" class="nav-btn" data-modal-row="2" style="flex: 1; height: auto; padding: 12px;">CANCEL</button>
@@ -666,6 +671,8 @@
             const el = document.getElementById(`sgdb-link-${t}`);
             if (el) el.href = sgdbUrl;
         });
+
+        _pagRenderQuals(game);
 
         const modal = document.getElementById('editModal');
         modal.style.display = 'flex';
@@ -991,6 +998,108 @@
         initCustomSelect(document.getElementById('edit-status'));
         initCustomSelect(document.getElementById('edit-installed'));
     });
+
+    // ── PAGYWOSG qualifications ──────────────────────────────────────────────
+    function _pagCsvContains(csv, val) {
+        return (csv || '').split(',').map(t => t.trim())
+            .some(t => t.toLowerCase() === val.toLowerCase());
+    }
+
+    function _pagLabel(pool, game) {
+        if (pool === 'wins') return '(win)';
+        return _pagCsvContains(game.groups, 'Won on SteamGifts') ? '(win)' : '(backlog)';
+    }
+
+    function _pagExtractConds(tree) {
+        const conds = [];
+        function walk(node, pool) {
+            if (!node) return;
+            if (node.type === 'condition') {
+                if (node.column === 'groups' || node.column === 'completion_status') return;
+                conds.push({col: node.column, op: node.operator, val: node.value, pool});
+            } else if (node.type === 'group') {
+                if (node.logic === 'AND') {
+                    const hasStGifts = (node.items || []).some(i =>
+                        i.type === 'condition' && i.column === 'groups' &&
+                        (i.value || '').toLowerCase().includes('won on steamgifts'));
+                    (node.items || []).forEach(i => {
+                        if (hasStGifts && i.type === 'condition' && i.column === 'groups') return;
+                        walk(i, hasStGifts ? 'wins' : pool);
+                    });
+                } else {
+                    (node.items || []).forEach(i => walk(i, pool));
+                }
+            }
+        }
+        walk(tree, 'all');
+        return conds;
+    }
+
+    function _pagCheckCond(cond, game) {
+        const MONTHS = ['','January','February','March','April','May','June',
+                        'July','August','September','October','November','December'];
+        const {col, op, val} = cond;
+        const rd = game.release_date || '';
+        const map = {
+            tags:        { LIKE:           [`Tags includes ${val}`,           g => _pagCsvContains(g.tags, val)] },
+            name:        { LIKE:           [`Title contains "${val}"`,        g => (g.name||'').toLowerCase().includes(val.toLowerCase())] },
+            appid:       { LIKE:           [`AppID contains ${val}`,          g => String(g.appid).includes(val)] },
+            developers:  { LIKE:           [`Developer includes ${val}`,      g => _pagCsvContains(g.developers, val)] },
+            publishers:  { LIKE:           [`Publisher includes ${val}`,      g => _pagCsvContains(g.publishers, val)] },
+            release_date: {
+                STRFTIME_MONTH: [`Released in ${MONTHS[+val]||val}`,          g => (g.release_date||'').slice(5,7) === String(val).padStart(2,'0')],
+                STRFTIME_DAY:   [`Released on the ${val}${_ordSuffix(+val)}`, g => (g.release_date||'').slice(8,10) === String(val).padStart(2,'0')],
+                STRFTIME_YEAR:  [`Released in ${val}`,                        g => (g.release_date||'').slice(0,4) === String(val)],
+            },
+        };
+        const entry = map[col]?.[op];
+        if (!entry) return null;
+        const [desc, matchFn] = entry;
+        return matchFn(game) ? desc : null;
+    }
+
+    function _ordSuffix(n) {
+        const s = ['th','st','nd','rd'], v = n % 100;
+        return s[(v - 20) % 10] || s[v] || s[0];
+    }
+
+    function _pagRenderQuals(game) {
+        const section = document.getElementById('pag-quals-section');
+        const list    = document.getElementById('pag-quals-list');
+        const ft = typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null;
+        if (!ft?.pagywosg) { section.style.display = 'none'; return; }
+
+        const results = [];
+        const isWin = _pagCsvContains(game.groups, 'Won on SteamGifts');
+
+        // Metadata conditions from filter tree
+        _pagExtractConds(ft).forEach(cond => {
+            if (cond.pool === 'wins' && !isWin) return;
+            const desc = _pagCheckCond(cond, game);
+            if (desc) results.push({desc, label: _pagLabel(cond.pool, game), verified: false});
+        });
+
+        // Community-verified games
+        (ft.pagywosg_verified?.[String(game.appid)] || []).forEach(({cat, pool, verifier, auto}) => {
+            if (pool === 'wins' && !isWin) return;
+            results.push({desc: cat, label: _pagLabel(pool, game), verified: !auto, verifier: verifier || null});
+        });
+
+        list.innerHTML = results.length
+            ? results.map(r => {
+                const verifText = r.verified
+                    ? ` — mod verified${r.verifier ? ` — see ${r.verifier}'s entry` : ''}`
+                    : '';
+                return `<div style="color:var(--text-primary);">
+                    <span style="color:var(--accent-positive);">✓</span>
+                    ${r.desc}
+                    <span style="color:var(--text-secondary); font-size:0.76rem;">${r.label}${verifText}</span>
+                </div>`;
+            }).join('')
+            : `<div style="color:var(--text-secondary);">No qualifying categories found for this game.</div>`;
+
+        section.style.display = 'block';
+    }
 </script>
 
 <!-- ── SteamGridDB Browser Modal ───────────────────────────────────────────── -->

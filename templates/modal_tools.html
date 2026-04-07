@@ -748,13 +748,28 @@
 
 <!-- ── PAGYWOSG MODAL ── -->
 <div id="pagywosg-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePagModal();">
-    <div class="modal-content" style="width:min(760px,95vw); max-height:90vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">PAGYWOSG Filter Builder</h2>
-            <button onclick="closePagModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:min(760px,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
+
+        <!-- Fixed header -->
+        <div style="flex-shrink:0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <h2 style="margin:0; color:var(--text-primary);">PAGYWOSG Filter Builder</h2>
+                <button onclick="closePagModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
+            <div id="pagywosg-loading" style="color:var(--text-secondary); font-size:0.88rem; margin-bottom:8px;">Loading tags…</div>
+            <div id="pag-auto-controls" style="display:none;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
+                    <button id="pag-auto-btn" class="nav-btn" data-modal-row="0" onclick="pagAutoFill(false)">Auto-fill from Current Event</button>
+                    <button id="pag-auto-next-btn" class="nav-btn" data-modal-row="0" onclick="pagAutoFill(true)" style="opacity:0.7;">Auto-fill from Upcoming Event</button>
+                    <span id="pag-auto-event-name" style="color:var(--text-secondary); font-size:0.82rem; font-style:italic;"></span>
+                    <span id="pag-auto-status" style="color:var(--accent-positive); font-size:0.82rem;"></span>
+                </div>
+            </div>
+            <div style="border-bottom:1px solid var(--border); margin-top:10px;"></div>
         </div>
-        <div id="pagywosg-loading" style="color:var(--text-secondary); font-size:0.88rem; margin-bottom:12px;">Loading tags…</div>
-        <div id="pagywosg-inner" style="display:none;">
+
+        <!-- Scrollable body -->
+        <div id="pagywosg-inner" style="display:none; flex:1; overflow-y:auto; min-height:0; padding:14px 12px 14px 0;">
 
             <div style="margin-bottom:20px;">
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
@@ -767,6 +782,7 @@
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
                 <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-wins-conds" style="margin-top:10px;"></div>
+                <div id="pag-wins-appids-info" style="display:none; margin-top:6px; font-size:0.78rem; color:var(--accent);"></div>
                 <button onclick="pagAddCond('wins')" style="margin-top:6px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
                     onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                     onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">+ Add Condition</button>
@@ -785,6 +801,7 @@
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
                 <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-all-conds" style="margin-top:10px;"></div>
+                <div id="pag-all-appids-info" style="display:none; margin-top:6px; font-size:0.78rem; color:var(--accent);"></div>
                 <button onclick="pagAddCond('all')" style="margin-top:6px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
                     onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                     onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">+ Add Condition</button>
@@ -801,7 +818,7 @@
                 </div>
             </div>
 
-            <div style="margin-bottom:14px;">
+            <div>
                 <button onclick="pagToggleSql()" style="background:none;border:none;color:var(--text-secondary);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
                     <span id="pag-sql-chevron">▶</span> Show SQL Preview
                 </button>
@@ -810,21 +827,23 @@
                 </div>
             </div>
 
-            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <button class="nav-btn" data-modal-row="0" onclick="pagShowSaveRow()">Save as Filter</button>
-                <button class="nav-btn" data-modal-row="0" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
-            </div>
-            <div id="pag-save-row" style="display:none; margin-top:10px; display:none; gap:8px; align-items:center; flex-wrap:wrap;">
-                <input type="text" id="pag-filter-name" placeholder="Filter name…"
-                    style="flex:1; min-width:180px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
-                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
-                    onkeydown="if(event.key==='Enter')pagConfirmSave();if(event.key==='Escape')pagCancelSave();">
-                <button class="btn-save" style="height:auto;padding:7px 16px;" onclick="pagConfirmSave()">Save</button>
-                <button class="nav-btn" style="height:auto;padding:7px 16px;" onclick="pagCancelSave()">Cancel</button>
-            </div>
-            <div id="pag-status" class="tool-status"></div>
-
         </div>
+
+        <!-- Fixed footer -->
+        <div id="pag-footer" style="display:none; flex-shrink:0;">
+            <div style="border-top:1px solid var(--border); margin-bottom:12px;"></div>
+            <input type="text" id="pag-filter-name" placeholder="Filter name…"
+                style="width:100%; box-sizing:border-box; margin-bottom:8px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+                onkeydown="if(event.key==='Enter')pagConfirmSave();">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="nav-btn" data-modal-row="0" onclick="pagConfirmSave()" style="background:var(--accent-positive); color:var(--text-bright); border-color:var(--accent-positive);">Save</button>
+                <button class="nav-btn" data-modal-row="0" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
+                <button class="nav-btn" data-modal-row="0" onclick="closePagModal()">Close</button>
+            </div>
+            <div id="pag-save-status" class="tool-status" style="margin-bottom:0;"></div>
+        </div>
+
     </div>
 </div>
 
@@ -1233,6 +1252,12 @@ let _pagAllTags = [];
 let _pagWinsTags = [];
 let _pagSelectedAll = new Set();
 let _pagSelectedWins = new Set();
+let _pagAllAppids  = [];
+let _pagWinsAppids = [];
+let _pagAllGames   = [];   // [{appid, name, categories}]
+let _pagWinsGames  = [];
+let _pagEventId    = null;
+let _pagEventName  = '';
 
 // Columns available for the condition builder
 const PAG_COLUMNS = [
@@ -1271,7 +1296,6 @@ function openPagModal() {
 }
 function closePagModal() {
     document.getElementById('pagywosg-modal').style.display = 'none';
-    document.getElementById('pag-save-row').style.display = 'none';
 }
 
 async function pagInit() {
@@ -1284,7 +1308,9 @@ async function pagInit() {
         pagRenderTags('all');
         pagRenderTags('wins');
         document.getElementById('pagywosg-loading').style.display = 'none';
+        document.getElementById('pag-auto-controls').style.display = 'block';
         document.getElementById('pagywosg-inner').style.display = 'block';
+        document.getElementById('pag-footer').style.display = 'block';
     } catch (e) {
         document.getElementById('pagywosg-loading').textContent = '✘ Failed to load tags: ' + e.message;
     }
@@ -1312,15 +1338,15 @@ function pagRenderTags(pool) {
 
 function pagFilterTags(pool) { pagRenderTags(pool); }
 
-function pagAddCond(pool) {
+function pagAddCond(pool, opts) {
     const container = document.getElementById(`pag-${pool}-conds`);
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;';
+    row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px;';
 
-    const sharedSelStyle = 'padding:5px 24px 5px 8px; background-color:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem;';
+    const sharedSelStyle = 'padding:5px 8px; background-color:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem;';
 
     const colSel = document.createElement('select');
-    colSel.style.cssText = sharedSelStyle;
+    colSel.style.cssText = sharedSelStyle + 'width:150px;';
     PAG_COLUMNS.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.value; opt.textContent = c.label;
@@ -1328,7 +1354,7 @@ function pagAddCond(pool) {
     });
 
     const opSel = document.createElement('select');
-    opSel.style.cssText = sharedSelStyle;
+    opSel.style.cssText = sharedSelStyle + 'width:150px;';
     PAG_OPS.forEach(o => {
         const opt = document.createElement('option');
         opt.value = o.value; opt.textContent = o.label;
@@ -1338,7 +1364,7 @@ function pagAddCond(pool) {
     const valInput = document.createElement('input');
     valInput.type = 'text';
     valInput.placeholder = 'value';
-    valInput.style.cssText = 'flex:1; min-width:100px; padding:5px 8px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem; outline:none;';
+    valInput.style.cssText = 'width:150px; padding:5px 8px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem; outline:none;';
     valInput.onfocus = () => valInput.style.borderColor = 'var(--accent)';
     valInput.onblur  = () => valInput.style.borderColor = 'var(--border)';
 
@@ -1375,6 +1401,13 @@ function pagAddCond(pool) {
     row.appendChild(opSel);
     row.appendChild(valInput);
     row.appendChild(removeBtn);
+
+    if (opts) {
+        if (opts.col) { colSel.value = opts.col; pagRefreshOps(); }
+        if (opts.op)  opSel.value = opts.op;
+        if (opts.val !== undefined) { valInput.value = String(opts.val); pagRefreshPlaceholder(); }
+    }
+
     container.appendChild(row);
 }
 
@@ -1423,8 +1456,14 @@ function pagBuildTree() {
     const allTags  = [..._pagSelectedAll];
     const winsTags = [..._pagSelectedWins];
 
-    const allExtraItems  = Array.from(document.querySelectorAll('#pag-all-conds > div')).map(pagCondToTree).filter(Boolean);
-    const winsExtraItems = Array.from(document.querySelectorAll('#pag-wins-conds > div')).map(pagCondToTree).filter(Boolean);
+    const allExtraItems  = [
+        ...Array.from(document.querySelectorAll('#pag-all-conds > div')).map(pagCondToTree).filter(Boolean),
+        ...(_pagAllAppids.length  ? [{ type: 'custom_expr', sql: `appid IN (${_pagAllAppids.join(',')})` }]  : [])
+    ];
+    const winsExtraItems = [
+        ...Array.from(document.querySelectorAll('#pag-wins-conds > div')).map(pagCondToTree).filter(Boolean),
+        ...(_pagWinsAppids.length ? [{ type: 'custom_expr', sql: `appid IN (${_pagWinsAppids.join(',')})` }] : [])
+    ];
 
     const allTagItems  = allTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
     const winsTagItems = winsTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
@@ -1482,13 +1521,15 @@ function pagBuildWhere() {
     // All-games conditions
     const allConds = [
         ...allTags.map(t => `tags LIKE '%${t.replace(/'/g,"''")}%'`),
-        ...allExtraSql
+        ...allExtraSql,
+        ...(_pagAllAppids.length ? [`appid IN (${_pagAllAppids.join(', ')})`] : [])
     ];
 
     // Wins-only conditions
     const winsConds = [
         ...winsTags.map(t => `tags LIKE '%${t.replace(/'/g,"''")}%'`),
-        ...winsExtraSql
+        ...winsExtraSql,
+        ...(_pagWinsAppids.length ? [`appid IN (${_pagWinsAppids.join(', ')})`] : [])
     ];
 
     // Completion filter
@@ -1524,30 +1565,37 @@ function pagToggleSql() {
     if (open) sqlHighlightPre(document.getElementById('pag-sql-text'), `SELECT * FROM games WHERE\n${pagBuildWhere()}`);
 }
 
-function pagShowSaveRow() {
+async function pagConfirmSave() {
+    const saveStatus = document.getElementById('pag-save-status');
     const where = pagBuildWhere();
     if (where === '1=1') {
-        const status = document.getElementById('pag-status');
-        status.className = 'tool-status error';
-        status.textContent = 'No criteria selected — please pick at least one tag or add a condition.';
+        saveStatus.className = 'tool-status error';
+        saveStatus.textContent = 'No criteria selected — please pick at least one tag or add a condition.';
         return;
     }
-    document.getElementById('pag-status').textContent = '';
-    document.getElementById('pag-status').className = '';
-    const row = document.getElementById('pag-save-row');
-    row.style.display = 'flex';
-    document.getElementById('pag-filter-name').value = '';
-    document.getElementById('pag-filter-name').focus();
-}
-
-function pagCancelSave() {
-    document.getElementById('pag-save-row').style.display = 'none';
-}
-
-async function pagConfirmSave() {
     const name = document.getElementById('pag-filter-name').value.trim();
     if (!name) { document.getElementById('pag-filter-name').focus(); return; }
     const tree = pagBuildTree();
+    tree.pagywosg = true;
+    if (_pagEventId) tree.pagywosg_event = {id: _pagEventId, name: _pagEventName};
+    // Build verified lookup: {appid_str: [{cat, pool}]}
+    const verifiedLookup = {};
+    [
+        ..._pagWinsGames.map(g => ({...g, pool: 'wins'})),
+        ..._pagAllGames.map(g => ({...g, pool: 'all'}))
+    ].forEach(({appid, categories, pool}) => {
+        const key = String(appid);
+        if (!verifiedLookup[key]) verifiedLookup[key] = [];
+        categories.forEach(({cat, verifier, auto}) => {
+            if (!verifiedLookup[key].some(e => e.cat === cat && e.pool === pool)) {
+                const entry = {cat, pool};
+                if (verifier) entry.verifier = verifier;
+                if (auto) entry.auto = true;
+                verifiedLookup[key].push(entry);
+            }
+        });
+    });
+    tree.pagywosg_verified = verifiedLookup;
     try {
         const res = await fetch('/api/save-filter', {
             method: 'POST',
@@ -1555,30 +1603,122 @@ async function pagConfirmSave() {
             body: JSON.stringify({ name, filter_tree: tree })
         });
         const data = await res.json();
-        const status = document.getElementById('pag-status');
         if (data.status === 'success') {
-            document.getElementById('pag-save-row').style.display = 'none';
-            status.className = 'tool-status success';
-            status.textContent = `✔ Saved as "${name}". Load it from the Library filter menu.`;
-            // Update the saved filters dropdown and cache immediately
+            saveStatus.className = 'tool-status success';
+            saveStatus.textContent = `✔ Saved as "${name}".`;
             _savedFilters[name] = tree;
             const selectEl = document.getElementById('saved-filters-select');
             if (selectEl && selectEl._addOption) selectEl._addOption(name, name);
         } else {
-            const status = document.getElementById('pag-status');
-            status.className = 'tool-status error';
-            status.textContent = '✘ Could not save: ' + data.message;
+            saveStatus.className = 'tool-status error';
+            saveStatus.textContent = '✘ Could not save: ' + data.message;
         }
     } catch (e) {
-        const status = document.getElementById('pag-status');
-        status.className = 'tool-status error';
-        status.textContent = '✘ Network error.';
+        saveStatus.className = 'tool-status error';
+        saveStatus.textContent = '✘ Network error.';
+    }
+}
+
+function pagUpdateAppidsInfo(pool) {
+    const el = document.getElementById(`pag-${pool}-appids-info`);
+    if (!el) return;
+    const allGames = pool === 'wins' ? _pagWinsGames : _pagAllGames;
+    const games = allGames.filter(g => g.in_library && !g.redundant);
+    if (!games.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+
+    const listId = `pag-${pool}-appids-list`;
+    el.style.display = '';
+    el.innerHTML = `
+        <span style="cursor:pointer; user-select:none;" onclick="
+            const l=document.getElementById('${listId}');
+            const open=l.style.display==='none';
+            l.style.display=open?'':'none';
+            this.querySelector('.pag-chevron').textContent=open?'▼':'▶';
+        ">
+            <span class="pag-chevron">▶</span>
+            ✓ ${games.length} additional game${games.length !== 1 ? 's' : ''} included
+        </span>
+        <div id="${listId}" style="display:none; margin-top:4px; padding-left:12px; font-size:0.76rem; color:var(--text-secondary); max-height:120px; overflow-y:auto;">
+            ${games.map(g =>
+                `<div style="padding:1px 0;">${g.name} <span style="opacity:0.6;">— ${g.categories.map(c =>
+                    c.verifier ? `${c.cat} <span style="opacity:0.7;">(via ${c.verifier})</span>` : c.cat
+                ).join(', ')}</span></div>`
+            ).join('')}
+        </div>`;
+}
+
+async function pagAutoFill(next = false) {
+    const btn     = document.getElementById('pag-auto-btn');
+    const nextBtn = document.getElementById('pag-auto-next-btn');
+    btn.disabled = nextBtn.disabled = true;
+    (next ? nextBtn : btn).textContent = 'Loading…';
+    document.getElementById('pag-auto-status').textContent = '';
+    try {
+        const res  = await fetch('/api/pagywosg-auto' + (next ? '?next=1' : ''));
+        const data = await res.json();
+        if (data.status !== 'success') {
+            const _s = document.getElementById('pag-auto-status');
+            _s.textContent = '✘ ' + data.message;
+            _s.style.color = 'var(--accent-negative)';
+            return;
+        }
+
+        pagClearAll();
+
+        // Select tags (case-insensitive match against local tag list)
+        data.tags.wins.forEach(tag => {
+            const match = _pagAllTags.find(t => t.toLowerCase() === tag.toLowerCase());
+            if (match) _pagSelectedWins.add(match);
+        });
+        data.tags.all.forEach(tag => {
+            const match = _pagAllTags.find(t => t.toLowerCase() === tag.toLowerCase());
+            if (match) _pagSelectedAll.add(match);
+        });
+        pagRenderTags('wins');
+        pagRenderTags('all');
+
+        // Add condition rows
+        data.conds.wins.forEach(c => pagAddCond('wins', c));
+        data.conds.all.forEach(c  => pagAddCond('all',  c));
+
+        // Set verified appids + game info
+        _pagWinsAppids = data.wins.appids;
+        _pagAllAppids  = data.all.appids;
+        _pagWinsGames  = data.wins.games;
+        _pagAllGames   = data.all.games;
+        pagUpdateAppidsInfo('wins');
+        pagUpdateAppidsInfo('all');
+
+        pagUpdateSql();
+
+        _pagEventId   = data.event.id;
+        _pagEventName = data.event.name;
+        document.getElementById('pag-auto-event-name').textContent = data.event.name;
+        document.getElementById('pag-auto-status').textContent = '✔ Auto-filled';
+
+        // Auto-populate filter name: "PAGYWOSG April 2026" from "April 2026 - ..."
+        const monthYear = data.event.name.split(' - ')[0].trim();
+        const nameInput = document.getElementById('pag-filter-name');
+        if (!nameInput.value) nameInput.value = `PAGYWOSG ${monthYear}`;
+    } catch (e) {
+        document.getElementById('pag-auto-status').textContent = '✘ ' + e.message;
+        document.getElementById('pag-auto-status').style.color = 'var(--accent-negative)';
+    } finally {
+        btn.disabled = nextBtn.disabled = false;
+        btn.textContent     = 'Auto-fill from Current Event';
+        nextBtn.textContent = 'Auto-fill from Upcoming Event';
     }
 }
 
 function pagClearAll() {
     _pagSelectedAll.clear();
     _pagSelectedWins.clear();
+    _pagAllAppids  = [];
+    _pagWinsAppids = [];
+    _pagAllGames   = [];
+    _pagWinsGames  = [];
+    pagUpdateAppidsInfo('all');
+    pagUpdateAppidsInfo('wins');
     pagRenderTags('all');
     pagRenderTags('wins');
     document.getElementById('pag-all-conds').innerHTML = '';
@@ -1586,9 +1726,15 @@ function pagClearAll() {
     document.querySelectorAll('.pag-comp-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.val === 'Never Played' || b.dataset.val === 'Unfinished');
     });
-    document.getElementById('pag-status').textContent = '';
-    document.getElementById('pag-status').className = '';
-    document.getElementById('pag-save-row').style.display = 'none';
+    _pagEventId   = null;
+    _pagEventName = '';
+    document.getElementById('pag-filter-name').value = '';
+    const _autoStatus = document.getElementById('pag-auto-status');
+    _autoStatus.textContent = '';
+    _autoStatus.style.color = 'var(--accent-positive)';
+    document.getElementById('pag-save-status').textContent = '';
+    document.getElementById('pag-save-status').className = 'tool-status';
+    document.getElementById('pag-auto-event-name').textContent = '';
     pagUpdateSql();
 }
 

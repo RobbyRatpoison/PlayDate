@@ -15,25 +15,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 _(none)_
 
+## PAGYWOSG Filter Builder
+
+The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the monthly PAGYWOSG event on SteamGifts.
+
+**Event ID formula:** event 83 = April 2026; `event_id = 83 + (year - 2026) * 12 + (month - 4)`
+
+**Auto-fill:** `/api/pagywosg-auto` (in `app.py`) fetches `https://pagywosg.xyz/api/events/{id}`, classifies categories by regex (tag, release date, appid pattern, title pattern, gifter), and returns structured data. Accepts `?next=1` for upcoming-month prep. `_PAGYWOSG_SUPPLEMENT_PATH` constant in `app.py` points to a local JSON file (`pagywosg_supplement.json` in `BASE_DIR`) with curated data for subjective categories.
+
+**Supplement file format** (`pagywosg_supplement.json`): top-level keys are `icaio_giveaways` (`[{appid, name}]`), `icaio_wishlist` (`{appid_str: name}`), and numeric event IDs for event-specific data. Event entries are keyed by category ID: `{pool, id_name, developers?, publishers?, appids?, verifiers?}` where `verifiers` is `{appid_str: username}`. The supplement is loaded once before the category loop so icaio data is available during classification.
+
+**icaio category auto-detection:** categories whose name contains `"icaio has made a GA for"` are matched against `icaio_giveaways`; categories containing both `"icaio"` and `"wishlist"` are matched against `icaio_wishlist`. These entries are flagged `auto: true` (suppresses "mod verified" label in the quals panel). Phrase matching is intentionally exact to avoid false matches from similarly-worded categories.
+
+**Pool determination:** categories with both `(win)` and `(backlog)` suffix variants go in the "all" pool; categories with no suffix go in the "wins" pool (wins-only).
+
+**Filter tree structure:** root AND containing an OR of [all-pool branch, AND[steamgifts-won condition, wins-pool branch]], plus completion status exclusions. Also includes `appid IN (...)` for mod-verified games.
+
+**Auto-fill appids response:** `_serialise_pool(pool_dict, tags, conds)` in `pagywosg_auto` returns each game with `in_library: bool` and `redundant: bool`. `in_library` is set via a bulk `SELECT appid FROM games WHERE appid IN (...)`. `redundant` is set via `_redundant_set()`, which checks whether the game would already be caught by the pool's tag conditions (`',' || tags || ','  LIKE ?`) or condition rows (`month_is`, `year_is`, `day_is`, `contains` on comma-separated or text columns). The "additional games" collapsible in `pagUpdateAppidsInfo` filters to `g.in_library && !g.redundant` so only genuinely extra library games are shown.
+
+**Saved filter keys:** PAGYWOSG filters are stamped with extra keys on save: `pagywosg: true`, `pagywosg_event: {id, name}`, `pagywosg_verified: {appid: [{cat, pool, verifier?, auto?}]}`. These are preserved when applying a saved filter via `modal_filters.html` using `_loadedSavedTree`. `verifier` is the SteamGifts username of the person who submitted the game for mod verification (cited as proof by others); `auto: true` marks entries sourced from the scraper rather than a human submission.
+
+**Qualifications panel:** `modal_edit.html` shows a `#pag-quals-section` when `_serverFilterTree.pagywosg` is true. `_pagRenderQuals(game)` walks the filter tree via `_pagExtractConds()` (detects wins branch by presence of steamgifts condition in an AND group) and checks each condition against the game. Pool labels: `(win)` for wins pool (only shown if game has "Won on SteamGifts" in groups), `(win)` or `(backlog)` for all pool based on groups. Mod-verified entries show "mod verified — see [username]'s entry" when a submitter is recorded (the username is whoever submitted the game for verification, cited as proof); entries with `auto: true` show no verification label.
+
 ## To-Do
 
-### Known Bugs
-_(none)_
-
-### Short Term
-- Library UI polish — bulk edit improvements (an "all games" option, UI lockout during scraping), group-by functionality, reorder dropdown lists
-- Bulk rescrape optimization — port populate's concurrent worker pools, `RateLimitedError` handling/backoff, and cancellation support to the bulk rescrape route (currently sequential, blocking, no rate limit recovery)
-- Initial config UX — label the Steam API key as "recommended" instead of "optional", and add a brief note explaining what it enables (achievement tracking, more accurate library import via `GetOwnedGames`)
-
-### Long Term
-- Non-Steam library support (Epic, GOG, Ubisoft Connect, EA App, emulation)
-- Plugin system
-
-### Potential / Under Consideration
-- Gamepad support improvements — home page editor buttons, bulk edit modal navigation, text input focus, disable RB/LB while in modals
-- HLTB integration (data reliability concerns)
-- Extend Playnite import to also import completion status
-- Refactor app.py into Flask blueprints by area (library, scraping, config, import tools)
+See [TODO.md](TODO.md).
 
 ## What This Project Is
 
@@ -156,6 +162,7 @@ Filters are a recursive JSON tree of AND/OR groups with conditions. They get com
 - **Date operators**: `STRFTIME_MONTH`, `STRFTIME_DAY`, `STRFTIME_YEAR` compile to `strftime('%m'/'%d'/'%Y', col) = ?`; value is zero-padded for month/day
 - **SQL safety:** All user-supplied SQL passes through `is_safe_sql()` in `library.py`, which uses column/keyword/function whitelists and rejects all DML/DDL. Whitelisted columns include `appid`; whitelisted functions include `strftime`, `cast`; whitelisted keywords include `as`, `text`, `integer`, `real`, `blob`, `numeric`. Parameterized queries are used everywhere else.
 - **PAGYWOSG filters** are saved as proper tree structures (not raw `custom_sql`) via `pagBuildTree()` in `modal_tools.html`, so they are editable in the filter builder. When `populateModalFromTree` loads a tree without `custom_sql`, it explicitly clears the custom SQL textbox to prevent stale SQL from bleeding into the applied filter.
+- **Preserving custom filter keys:** `modal_filters.html` stores the original saved tree in `_loadedSavedTree` when a saved filter is loaded. `applyFilters()` copies `pagywosg`, `pagywosg_event`, and `pagywosg_verified` from `_loadedSavedTree` onto the freshly built tree before sending to the server, preventing those keys from being stripped by the UI rebuild.
 
 ## Key Patterns
 

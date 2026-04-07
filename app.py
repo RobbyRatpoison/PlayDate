@@ -1300,6 +1300,303 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": str(e)}), 500
 
 
+    # Path to local supplement JSON file, relative to BASE_DIR.
+    # Leave empty to skip supplement loading.
+    _PAGYWOSG_SUPPLEMENT_PATH = 'pagywosg_supplement.json'
+
+    @app.route('/api/pagywosg-auto')
+    def pagywosg_auto():
+        import re
+        import json
+        import urllib.request
+        from datetime import date
+
+        # Anchor: event 83 = April 2026
+        today = date.today()
+        event_id = 83 + (today.year - 2026) * 12 + (today.month - 4)
+        if request.args.get('next'):
+            event_id += 1
+
+        def _fetch_event(eid):
+            req = urllib.request.Request(
+                f'https://pagywosg.xyz/api/events/{eid}',
+                headers={'User-Agent': 'PlayDate/1.0'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return json.loads(r.read())['event']
+
+        try:
+            event = _fetch_event(event_id)
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Could not fetch event: {e}"}), 502
+
+        # Validate date range; try adjacent event on boundary days (skip for upcoming)
+        today_str = today.isoformat()
+        if not request.args.get('next'):
+            started, ended = event.get('startedAt', ''), event.get('endedAt', '')
+            if started and ended and not (started <= today_str < ended):
+                adj = event_id + 1 if today_str >= ended else event_id - 1
+                try:
+                    adj_event = _fetch_event(adj)
+                    s2, e2 = adj_event.get('startedAt', ''), adj_event.get('endedAt', '')
+                    if s2 <= today_str < e2:
+                        event = adj_event
+                        event_id = adj
+                except Exception:
+                    pass
+
+        categories = event.get('gameCategories', [])
+        entries    = event.get('entries', [])
+
+        # --- Pool determination via (win)/(backlog) suffix ---
+        suffix_re = re.compile(r'\s*\((win|backlog)\)\s*$', re.IGNORECASE)
+
+        base_to_cats = {}
+        for cat in categories:
+            base = suffix_re.sub('', cat['name']).strip()
+            base_to_cats.setdefault(base, []).append(cat)
+
+        all_pool_bases = set()
+        for base, cats in base_to_cats.items():
+            names_lc = [c['name'].lower() for c in cats]
+            if any('(win)' in n for n in names_lc) and any('(backlog)' in n for n in names_lc):
+                all_pool_bases.add(base)
+
+        # --- Verified appids per category ID: {cat_id: {appid: game_name}} ---
+        verified_by_cat = {}
+        for entry in entries:
+            if entry.get('verified'):
+                cid = str(entry['category']['id'])
+                verified_by_cat.setdefault(cid, {})[entry['game']['id']] = entry['game']['name']
+
+        # --- Category name classifiers ---
+        MONTHS = {
+            'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
+            'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
+        }
+        month_pat    = re.compile(r'released?\s+in\s+(' + '|'.join(MONTHS) + r')\b', re.I)
+        year_pat     = re.compile(r'released?\s+in\s+(\d{4})\b', re.I)
+        day_pat      = re.compile(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', re.I)
+        steamid_pat1 = re.compile(r'steam\s+id\s+containing\s+(\w+)', re.I)
+        steamid_pat2 = re.compile(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', re.I)
+        title_pat    = re.compile(r'["\u201c\u201d]([^"\u201c\u201d]+)["\u201c\u201d]\s+in\s+(?:the|their)\s+title', re.I)
+        tag_pat      = re.compile(r'^\s*tag\s+(.+)$', re.I)
+
+        tags_wins, tags_all   = [], []
+        conds_wins, conds_all = [], []
+        # {appid: {"name": str, "categories": [str]}} for each pool
+        appids_wins, appids_all = {}, {}
+        skipped = []
+
+        # --- Load supplement early so icaio data is available during category loop ---
+        _supplement = {}
+        if _PAGYWOSG_SUPPLEMENT_PATH:
+            try:
+                with open(os.path.join(BASE_DIR, _PAGYWOSG_SUPPLEMENT_PATH), 'r', encoding='utf-8') as f:
+                    _supplement = json.load(f)
+            except Exception:
+                pass
+        _icaio_ga_dict = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
+        _icaio_wl_dict = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
+
+        for base, cats in base_to_cats.items():
+            pool = 'all' if base in all_pool_bases else 'wins'
+
+            # Collect all verified {appid: name} for this logical category group
+            base_appids = {}
+            for cat in cats:
+                base_appids.update(verified_by_cat.get(str(cat['id']), {}))
+
+            def _add_tag(tag):
+                (tags_all if pool == 'all' else tags_wins).append(tag)
+
+            def _add_cond(col, op, val):
+                (conds_all if pool == 'all' else conds_wins).append({'col': col, 'op': op, 'val': val})
+
+            def _add_appids(appid_name_dict, category_name, verifiers=None, auto=False):
+                target = appids_all if pool == 'all' else appids_wins
+                for appid, name in appid_name_dict.items():
+                    if appid not in target:
+                        target[appid] = {"name": name, "categories": []}
+                    if not any(c["cat"] == category_name for c in target[appid]["categories"]):
+                        entry = {"cat": category_name}
+                        if verifiers and str(appid) in verifiers:
+                            entry["verifier"] = verifiers[str(appid)]
+                        if auto:
+                            entry["auto"] = True
+                        target[appid]["categories"].append(entry)
+
+            # Tag
+            m = tag_pat.match(base)
+            if m:
+                _add_tag(m.group(1).strip())
+                continue
+
+            # Month release
+            m = month_pat.search(base)
+            if m:
+                _add_cond('release_date', 'month_is', str(MONTHS[m.group(1).lower()]))
+                continue
+
+            # Year release (after month so "2001" doesn't match month pattern)
+            m = year_pat.search(base)
+            if m:
+                _add_cond('release_date', 'year_is', m.group(1))
+                continue
+
+            # Day release
+            m = day_pat.search(base)
+            if m:
+                _add_cond('release_date', 'day_is', m.group(1))
+                continue
+
+            # Steam ID containing (two phrasings)
+            m = steamid_pat1.search(base) or steamid_pat2.search(base)
+            if m:
+                _add_cond('appid', 'contains', m.group(1))
+                continue
+
+            # Title contains
+            m = title_pat.search(base)
+            if m:
+                _add_cond('name', 'contains', m.group(1).strip())
+                continue
+
+            # Gifter Steam ID — not trackable in our DB
+            if re.search(r'gifter', base, re.I):
+                skipped.append(base)
+                continue
+
+            # icaio giveaway categories — matched by exact copy-pasted phrase
+            if 'icaio has made a GA for' in base:
+                if _icaio_ga_dict:
+                    _add_appids(_icaio_ga_dict, base, auto=True)
+                else:
+                    skipped.append(base)
+                continue
+
+            # icaio wishlist categories
+            if 'icaio' in base and 'wishlist' in base.lower():
+                if _icaio_wl_dict:
+                    _add_appids(_icaio_wl_dict, base, auto=True)
+                else:
+                    skipped.append(base)
+                continue
+
+            # Everything else: use verified appids if available
+            if base_appids:
+                _add_appids(base_appids, base)
+            else:
+                skipped.append(base)
+
+        # --- Supplement JSON (event-specific entries) ---
+        supplement_loaded = False
+        if _supplement:
+            try:
+                supplement = _supplement
+                db = get_db()
+                for _cat_id, sdata in supplement.get(str(event_id), {}).items():
+                    s_pool    = sdata.get('pool', 'wins')
+                    cat_label = sdata.get('id_name', f'Category {_cat_id}')
+                    target_conds  = conds_all  if s_pool == 'all' else conds_wins
+                    target_appids = appids_all if s_pool == 'all' else appids_wins
+                    for dev in sdata.get('developers', []):
+                        target_conds.append({'col': 'developers', 'op': 'contains', 'val': dev})
+                    for pub in sdata.get('publishers', []):
+                        target_conds.append({'col': 'publishers', 'op': 'contains', 'val': pub})
+                    s_verifiers = sdata.get('verifiers', {})
+                    for appid in sdata.get('appids', []):
+                        row = db.execute("SELECT name FROM games WHERE appid = ?", (appid,)).fetchone()
+                        name = row['name'] if row else f"App {appid}"
+                        if appid not in target_appids:
+                            target_appids[appid] = {"name": name, "categories": []}
+                        if not any(c["cat"] == cat_label for c in target_appids[appid]["categories"]):
+                            entry = {"cat": cat_label}
+                            if str(appid) in s_verifiers:
+                                entry["verifier"] = s_verifiers[str(appid)]
+                            target_appids[appid]["categories"].append(entry)
+                db.close()
+                supplement_loaded = True
+            except Exception:
+                pass
+
+        # Determine which appids are in the user's library
+        all_appids_combined = list(appids_wins.keys()) + list(appids_all.keys())
+        in_library_set = set()
+        if all_appids_combined:
+            from database import get_db
+            db = get_db()
+            placeholders = ','.join('?' * len(all_appids_combined))
+            rows = db.execute(
+                f'SELECT appid FROM games WHERE appid IN ({placeholders})',
+                all_appids_combined
+            ).fetchall()
+            in_library_set = {r['appid'] for r in rows}
+
+        _COMMA_SEP_COLS = {'tags', 'groups', 'genres', 'categories', 'developers', 'publishers'}
+
+        def _redundant_set(pool_dict, tags, conds):
+            """Return appids already matched by the pool's tag/condition criteria (not needing the explicit appid list)."""
+            owned = [aid for aid in pool_dict if aid in in_library_set]
+            if not owned:
+                return set()
+            parts, params = [], []
+            for tag in tags:
+                parts.append("(',' || tags || ',') LIKE ?")
+                params.append(f'%,{tag},%')
+            for c in conds:
+                col, op, val = c['col'], c['op'], c['val']
+                if op == 'contains':
+                    if col in _COMMA_SEP_COLS:
+                        parts.append(f"(',' || {col} || ',') LIKE ?")
+                        params.append(f'%,{val},%')
+                    elif col == 'name':
+                        parts.append("name LIKE ?")
+                        params.append(f'%{val}%')
+                elif op == 'month_is':
+                    parts.append(f"strftime('%m', {col}) = ?")
+                    params.append(str(int(val)).zfill(2))
+                elif op == 'year_is':
+                    parts.append(f"strftime('%Y', {col}) = ?")
+                    params.append(str(val))
+                elif op == 'day_is':
+                    parts.append(f"strftime('%d', {col}) = ?")
+                    params.append(str(int(val)).zfill(2))
+            if not parts:
+                return set()
+            ph = ','.join('?' * len(owned))
+            where = ' OR '.join(parts)
+            db = get_db()
+            rows = db.execute(
+                f'SELECT appid FROM games WHERE appid IN ({ph}) AND ({where})',
+                owned + params
+            ).fetchall()
+            return {r['appid'] for r in rows}
+
+        def _serialise_pool(pool_dict, tags, conds):
+            redundant = _redundant_set(pool_dict, tags, conds)
+            return {
+                "appids": sorted(pool_dict.keys()),
+                "games":  sorted(
+                    [{"appid": aid, "name": v["name"], "categories": v["categories"],
+                      "in_library": aid in in_library_set,
+                      "redundant":  aid in redundant}
+                     for aid, v in pool_dict.items()],
+                    key=lambda g: g["name"].lower()
+                ),
+            }
+
+        return jsonify({
+            "status": "success",
+            "event": {"id": event_id, "name": event.get('name', '')},
+            "tags":   {"wins": tags_wins, "all": tags_all},
+            "conds":  {"wins": conds_wins, "all": conds_all},
+            "wins":   _serialise_pool(appids_wins, tags_wins, conds_wins),
+            "all":    _serialise_pool(appids_all,  tags_all,  conds_all),
+            "skipped": skipped,
+            "supplement_loaded": supplement_loaded,
+        })
+
     @app.route('/api/pagywosg-tags')
     def pagywosg_tags():
         try:

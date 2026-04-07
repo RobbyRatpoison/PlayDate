@@ -32,13 +32,14 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.2.6 — 2026-04-05
+## v1.2.7 — 2026-04-07
 
 ### New
-- **Date import overhaul** — the bulk date import no longer switches tabs for every game. It now stays on a single Steam Help page and fetches each game's date in the background, showing a live per-game log as results come in. The userscript no longer requires Tampermonkey Manifest V2.
-- **Auto-complete fix** — games with 100% achievements are now correctly marked Completed on startup, even if the achievement data was imported via BLAEO rather than the Steam API
+- **PAGYWOSG filter builder Auto-fill** — PAGYWOSG Filter Builder can now populate itself from the current event via the PAGYWOSG API, detecting tags, date conditions, appid/title patterns, and mod-verified games. An "Auto-fill from Upcoming Event" button is also available for next-month prep. A collapsible "additional games included" section shows mod-verified library games that wouldn't already qualify through the filter's other criteria.
+- **PAGYWOSG qualifications panel** — the edit modal now shows which PAGYWOSG categories a game qualifies for when a PAGYWOSG filter is active, including pool labels (`(win)` for wins-only, `(win)`/`(backlog)` for all-games based on SteamGifts win status). Mod-verified entries show the original submitter so you can cite their entry as proof.
+- **PAGYWOSG icaio category support** — categories like "Any game icaio has made a GA for" are automatically populated using icaio's giveaway history and wishlist, bundled with the app.
+- **PAGYWOSG filter name** — auto-populated with the event name (e.g. "PAGYWOSG April 2026")
 
 ### Changes
-- **Library grid** — edge cards are no longer clipped by the grid's paint boundary
-- **Filter modal** — the field selector and value input are now equal width
+- **PAGYWOSG filter modal** — restructured with fixed header/footer with scrollable middle so the Save/Close buttons are always accessible without scrolling.
 

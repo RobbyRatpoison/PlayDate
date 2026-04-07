@@ -1505,14 +1505,22 @@ function collectTree() {
 
 // ── Apply / Clear ───────────────────────────────────────────────
 
+let _loadedSavedTree = null;
+
 async function applyFilters() {
     const tree = collectTree();
+    if (_loadedSavedTree && _loadedSavedTree.pagywosg) {
+        tree.pagywosg = _loadedSavedTree.pagywosg;
+        if (_loadedSavedTree.pagywosg_event) tree.pagywosg_event = _loadedSavedTree.pagywosg_event;
+        if (_loadedSavedTree.pagywosg_verified) tree.pagywosg_verified = _loadedSavedTree.pagywosg_verified;
+    }
     updateActivePills(tree);
     await sendStateUpdate({ filter_tree: tree });
     closeFilterModal();
 }
 
 async function clearAllFilters() {
+    _loadedSavedTree = null;
     // Clear the search bar input visually
     const searchInput = document.getElementById('library-search');
     if (searchInput) searchInput.value = '';
@@ -1527,6 +1535,7 @@ if (typeof _savedFilters === 'undefined') {
 const _builtinFilterWheres = {{ builtin_filters | tojson if builtin_filters is defined else '{}' }};
 
 async function applyBuiltinFilter(key) {
+    _loadedSavedTree = null;
     const preset = _builtinFilterWheres[key];
     if (!preset || !preset.where) return;
     // "All Games" (where=1=1) means no filter — treat it as a clear
@@ -1544,7 +1553,10 @@ function loadSavedFilterFromModal(selectEl) {
     const name = selectEl.value;
     if (!name) return;
     const tree = _savedFilters[name];
-    if (tree) populateModalFromTree(tree);
+    if (tree) {
+        _loadedSavedTree = tree;
+        populateModalFromTree(tree);
+    }
 }
 
 async function renameSavedFilterFromModal() {
