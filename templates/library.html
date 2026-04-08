@@ -800,50 +800,92 @@ const BULK_PILL_SUGGESTIONS = {
 };
 const BULK_GAME_COUNT = {{ games|length }};
 
-function openBulkEditModal() {
-    // Decide default scope based on whether anything is selected
+const ALL_GAME_COUNT = {{ total_games }};
+
+let _currentBulkTab     = 'edit';
+let _bulkOpPollInterval = null;
+
+// ── Tab management ──────────────────────────────────────────────────────────
+function switchBulkTab(tab) {
+    document.querySelectorAll('.bulk-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('[id^="bulk-pane-"]').forEach(p => p.style.display = 'none');
+    document.getElementById('bulk-tab-btn-' + tab).classList.add('active');
+    document.getElementById('bulk-pane-' + tab).style.display = '';
+    _currentBulkTab = tab;
+}
+
+function openBulkEditModal(tab = 'edit') {
     const hasSelection = _selectedIds.size > 0;
-    const scopeFiltered = document.getElementById('scope-filtered');
-    const scopeSelected = document.getElementById('scope-selected');
+    const defaultScope = hasSelection ? 'selected' : 'filtered';
 
-    if (hasSelection) {
-        scopeSelected.checked = true;
-    } else {
-        scopeFiltered.checked = true;
-    }
+    // Set scope radios for each tab
+    ['scope', 'brs-scope', 'bdi-scope'].forEach(prefix => {
+        const el = document.getElementById(prefix + '-' + defaultScope);
+        if (el) el.checked = true;
+    });
     onBulkScopeChange();
+    onBulkRescrapeScopeChange();
+    onBulkDateImportScopeChange();
 
-    document.getElementById('bulk-edit-modal').style.display = 'flex';
+    // Reset edit tab
     document.getElementById('bulk-status').textContent = '';
     document.getElementById('bulk-status').className = '';
     document.getElementById('bulk-value-text').value = '';
     onBulkColumnChange();
+
+    // Reset rescrape tab (only if not running)
+    if (!_bulkOpPollInterval) {
+        document.getElementById('brs-status').textContent = '';
+        document.getElementById('brs-status').className = '';
+        document.getElementById('brs-progress').style.display = 'none';
+        document.getElementById('brs-stop-btn').style.display = 'none';
+        document.getElementById('brs-start-meta-btn').disabled = false;
+        document.getElementById('brs-start-art-btn').disabled  = false;
+        const _pdbBtn = document.getElementById('brs-start-protondb-btn');
+        if (_pdbBtn) _pdbBtn.disabled = false;
+    }
+
+    // Reset date tab (only if not running)
+    if (!_bdiPollInterval) {
+        document.getElementById('bdi-status').textContent = '';
+        document.getElementById('bdi-status').className = '';
+        document.getElementById('bdi-progress').style.display = 'none';
+        document.getElementById('bdi-stop-btn').style.display = 'none';
+        document.getElementById('bdi-start-btn').disabled = false;
+    }
+
+    switchBulkTab(tab);
+    document.getElementById('bulk-edit-modal').style.display = 'flex';
 }
 
 function closeBulkEditModal() {
     document.getElementById('bulk-edit-modal').style.display = 'none';
 }
 
-function onBulkScopeChange() {
-    const scope = document.querySelector('input[name="bulk-scope"]:checked').value;
-    const selInfo = document.getElementById('bulk-selected-info');
-    const filtInfo = document.getElementById('bulk-filtered-info');
+// Thin wrappers so old call sites still work
+function openBulkRescrapeModal()   { openBulkEditModal('rescrape'); }
+function openBulkArtScrapeModal()  { openBulkEditModal('rescrape'); }
+function openBulkDateImportModal() { openBulkEditModal('dates'); }
 
-    // Clear the other scope's selection
-    if (scope === 'selected') {
-        filtInfo.style.display = 'none';
-        selInfo.style.display = 'block';
-        selInfo.textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
-        // Clear visual selection in filtered mode remnants — none needed, just re-run hint
-    } else {
-        selInfo.style.display = 'none';
-        filtInfo.style.display = 'block';
-        filtInfo.textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
-        // Clear checkmarks and ids when switching to filtered
+// ── EDIT TAB ─────────────────────────────────────────────────────────────────
+function onBulkScopeChange() {
+    const scope = document.querySelector('input[name="bulk-scope"]:checked')?.value;
+    if (!scope) return;
+    document.getElementById('bulk-all-info').style.display      = scope === 'all'      ? 'block' : 'none';
+    document.getElementById('bulk-filtered-info').style.display = scope === 'filtered' ? 'block' : 'none';
+    document.getElementById('bulk-selected-info').style.display = scope === 'selected' ? 'block' : 'none';
+    if (scope === 'all') {
+        document.getElementById('bulk-all-info').textContent = `${ALL_GAME_COUNT} game${ALL_GAME_COUNT !== 1 ? 's' : ''} in library`;
         _selectedIds.clear();
         document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        const btn = document.getElementById('select-mode-btn');
-        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    } else if (scope === 'filtered') {
+        document.getElementById('bulk-filtered-info').textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
+        _selectedIds.clear();
+        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    } else {
+        document.getElementById('bulk-selected-info').textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
     }
     onBulkModeChange();
 }
@@ -885,8 +927,8 @@ function onBulkModeChange() {
     const hint = document.getElementById('bulk-mode-hint');
     const valHint = document.getElementById('bulk-value-hint');
     const warning = document.getElementById('bulk-warning');
-    const scope = document.querySelector('input[name="bulk-scope"]:checked').value;
-    const count = scope === 'selected' ? _selectedIds.size : BULK_GAME_COUNT;
+    const scope = document.querySelector('input[name="bulk-scope"]:checked')?.value || 'filtered';
+    const count = scope === 'selected' ? _selectedIds.size : scope === 'all' ? ALL_GAME_COUNT : BULK_GAME_COUNT;
     const colLabel = document.getElementById('bulk-column').options[document.getElementById('bulk-column').selectedIndex].text;
 
     if (mode === 'replace') {
@@ -952,9 +994,10 @@ async function runBulkEdit() {
     const payload = { column, mode, value };
     if (scope === 'selected') {
         payload.appids = Array.from(_selectedIds);
-    } else {
+    } else if (scope === 'filtered') {
         payload.filter_tree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
     }
+    // scope === 'all': no appids and no filter_tree → backend uses WHERE 1=1
 
     try {
         const res = await fetch('/api/bulk-edit', {
@@ -982,250 +1025,148 @@ async function runBulkEdit() {
     }
 }
 
-// ── BULK RESCRAPE ──────────────────────────────────────────────
-function openBulkRescrapeModal() {
-    closeBulkEditModal();
-    const hasSelection = _selectedIds.size > 0;
-    const scopeFiltered = document.getElementById('br-scope-filtered');
-    const scopeSelected = document.getElementById('br-scope-selected');
-    if (hasSelection) {
-        scopeSelected.checked = true;
-    } else {
-        scopeFiltered.checked = true;
-    }
-    onBulkRescrapeScopeChange();
-    document.getElementById('bulk-rescrape-modal').style.display = 'flex';
-    document.getElementById('br-status').textContent = '';
-    document.getElementById('br-status').className = '';
-    document.getElementById('br-progress').style.display = 'none';
-}
-
-function closeBulkRescrapeModal() {
-    if (document.getElementById('br-apply-btn')?.disabled) return;
-    document.getElementById('bulk-rescrape-modal').style.display = 'none';
-}
-
+// ── RE-SCRAPE TAB ───────────────────────────────────────────────────────────
 function onBulkRescrapeScopeChange() {
-    const scope    = document.querySelector('input[name="br-scope"]:checked').value;
-    const selInfo  = document.getElementById('br-selected-info');
-    const filtInfo = document.getElementById('br-filtered-info');
-    const warning  = document.getElementById('br-warning');
-    if (scope === 'selected') {
-        filtInfo.style.display = 'none';
-        selInfo.style.display  = 'block';
-        selInfo.textContent    = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
-        warning.textContent    = `Steam will be queried for each game. This may take a while.`;
-    } else {
-        selInfo.style.display  = 'none';
-        filtInfo.style.display = 'block';
-        filtInfo.textContent   = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
-        warning.textContent    = `Steam will be queried for each of the ${BULK_GAME_COUNT} games. This may take a while.`;
+    const scope = document.querySelector('input[name="brs-scope"]:checked')?.value;
+    if (!scope) return;
+    document.getElementById('brs-all-info').style.display      = scope === 'all'      ? 'block' : 'none';
+    document.getElementById('brs-filtered-info').style.display = scope === 'filtered' ? 'block' : 'none';
+    document.getElementById('brs-selected-info').style.display = scope === 'selected' ? 'block' : 'none';
+    if (scope === 'all') {
+        document.getElementById('brs-all-info').textContent = `${ALL_GAME_COUNT} game${ALL_GAME_COUNT !== 1 ? 's' : ''} in library`;
         _selectedIds.clear();
         document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        const btn = document.getElementById('select-mode-btn');
-        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    } else if (scope === 'filtered') {
+        document.getElementById('brs-filtered-info').textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
+        _selectedIds.clear();
+        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    } else {
+        document.getElementById('brs-selected-info').textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
     }
 }
 
-let _rescrapeCancel = false;
+async function startBulkOp(op) {
+    if (_bulkOpPollInterval) return;
 
-async function runBulkRescrape() {
-    const scope  = document.querySelector('input[name="br-scope"]:checked').value;
-    const status = document.getElementById('br-status');
-    const progress = document.getElementById('br-progress');
-    const progressBar = document.getElementById('br-progress-bar');
-    const progressLabel = document.getElementById('br-progress-label');
-    const stopBtn = document.getElementById('br-stop-btn');
+    const scope  = document.querySelector('input[name="brs-scope"]:checked')?.value || 'filtered';
+    const status = document.getElementById('brs-status');
 
-    if (scope === 'selected' && _selectedIds.size === 0) {
-        status.className = 'bulk-status-error';
-        status.textContent = 'No games selected.';
-        return;
+    let appids = [];
+    if (scope === 'selected') {
+        appids = Array.from(_selectedIds);
+        if (!appids.length) {
+            status.className = 'bulk-status-error';
+            status.textContent = 'No games selected.';
+            return;
+        }
+    } else if (scope === 'filtered') {
+        appids = Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
     }
 
-    const appids = scope === 'selected'
-        ? Array.from(_selectedIds)
-        : Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+    const displayCount = scope === 'all' ? ALL_GAME_COUNT : appids.length;
+    const payload = { op, scope };
+    if (scope !== 'all') payload.appids = appids;
 
-    const count = appids.length;
-    if (!await confirm(`Re-scrape Steam data for ${count} game${count !== 1 ? 's' : ''}?\n\nThis will update tags, store info, and review scores from Steam. It may take several minutes.`)) return;
+    if (op === 'art') {
+        const types = [];
+        if (document.getElementById('brs-type-vertical').checked)   types.push('vertical');
+        if (document.getElementById('brs-type-horizontal').checked) types.push('horizontal');
+        if (document.getElementById('brs-type-icon').checked)       types.push('icon');
+        if (!types.length) {
+            status.className = 'bulk-status-error';
+            status.textContent = 'Select at least one artwork type.';
+            return;
+        }
+        payload.types  = types;
+        payload.source = document.querySelector('input[name="brs-source"]:checked')?.value || 'auto';
+    }
 
-    const btn = document.getElementById('br-apply-btn');
-    _rescrapeCancel = false;
-    btn.disabled = true;
-    btn.textContent = 'Scraping…';
+    const opLabel = op === 'rescrape' ? 'Re-scrape Steam data' : op === 'protondb' ? 'Fetch ProtonDB data' : 'Scrape artwork';
+    const suffix  = scope === 'all' ? '\n\nThis will process your entire library and may take a long time.' : '';
+    if (!await confirm(`${opLabel} for ${displayCount} game${displayCount !== 1 ? 's' : ''}?${suffix}`)) return;
+
+    document.getElementById('brs-start-meta-btn').disabled = true;
+    document.getElementById('brs-start-art-btn').disabled  = true;
+    const protondbBtn = document.getElementById('brs-start-protondb-btn');
+    if (protondbBtn) protondbBtn.disabled = true;
+    const stopBtn = document.getElementById('brs-stop-btn');
     stopBtn.style.display = '';
     stopBtn.disabled = false;
     stopBtn.textContent = 'Stop';
-    status.className = '';
-    status.textContent = '';
+    status.className = ''; status.textContent = '';
+
+    const progress      = document.getElementById('brs-progress');
+    const progressBar   = document.getElementById('brs-progress-bar');
+    const progressLabel = document.getElementById('brs-progress-label');
     progress.style.display = 'block';
     progressBar.style.width = '0%';
-    progressLabel.textContent = `0 / ${count}`;
+    progressLabel.textContent = `0 / ${displayCount}`;
 
-    let updated = 0, failed = 0, done = 0;
-
-    for (let i = 0; i < appids.length; i++) {
-        if (_rescrapeCancel) break;
-        try {
-            const res  = await fetch('/api/bulk-rescrape', {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ appids: [appids[i]] })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                updated += data.updated;
-                failed  += data.failed;
-            }
-        } catch (e) {
-            failed += 1;
+    try {
+        const res  = await fetch('/api/bulk-op/start', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const d = await res.json();
+        if (d.status !== 'success') {
+            status.className = 'bulk-status-error';
+            status.textContent = '✘ ' + (d.message || 'Failed to start.');
+            document.getElementById('brs-start-meta-btn').disabled = false;
+            document.getElementById('brs-start-art-btn').disabled  = false;
+            stopBtn.style.display = 'none';
+            return;
         }
-        done = i + 1;
-        const pct = Math.round((done / count) * 100);
-        progressBar.style.width = pct + '%';
-        progressLabel.textContent = `${done} / ${count}`;
-    }
-
-    stopBtn.style.display = 'none';
-    btn.disabled = false;
-    btn.textContent = 'Re-scrape';
-
-    if (_rescrapeCancel) {
+        progressLabel.textContent = `0 / ${d.total}`;
+    } catch (e) {
         status.className = 'bulk-status-error';
-        status.textContent = `Stopped after ${done} / ${count} — ${updated} updated.`;
-    } else {
-        status.className = updated > 0 ? 'bulk-status-success' : 'bulk-status-error';
-        status.textContent = `✔ Done — ${updated} updated${failed ? `, ${failed} failed` : ''}.`;
-        if (updated > 0) setTimeout(() => { closeBulkRescrapeModal(); window.location.reload(); }, 1200);
-    }
-}
-
-// ── BULK ART SCRAPE ─────────────────────────────────────────────
-function openBulkArtScrapeModal() {
-    closeBulkEditModal();
-    const hasSelection = _selectedIds.size > 0;
-    const scopeFiltered = document.getElementById('bas-scope-filtered');
-    const scopeSelected = document.getElementById('bas-scope-selected');
-    if (hasSelection) {
-        scopeSelected.checked = true;
-    } else {
-        scopeFiltered.checked = true;
-    }
-    onBulkArtScopeScopeChange();
-    document.getElementById('bulk-art-scrape-modal').style.display = 'flex';
-    document.getElementById('bas-status').textContent = '';
-    document.getElementById('bas-status').className = '';
-    document.getElementById('bas-progress').style.display = 'none';
-}
-
-function closeBulkArtScrapeModal() {
-    if (document.getElementById('bas-apply-btn')?.disabled) return;
-    document.getElementById('bulk-art-scrape-modal').style.display = 'none';
-}
-
-function onBulkArtScopeScopeChange() {
-    const scope    = document.querySelector('input[name="bas-scope"]:checked').value;
-    const selInfo  = document.getElementById('bas-selected-info');
-    const filtInfo = document.getElementById('bas-filtered-info');
-    if (scope === 'selected') {
-        filtInfo.style.display = 'none';
-        selInfo.style.display  = 'block';
-        selInfo.textContent    = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
-    } else {
-        selInfo.style.display  = 'none';
-        filtInfo.style.display = 'block';
-        filtInfo.textContent   = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        const btn = document.getElementById('select-mode-btn');
-        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
-    }
-}
-
-let _artScrapeCancel = false;
-
-async function runBulkArtScrape() {
-    const scope  = document.querySelector('input[name="bas-scope"]:checked').value;
-    const source = document.querySelector('input[name="bas-source"]:checked').value;
-    const status = document.getElementById('bas-status');
-    const progress = document.getElementById('bas-progress');
-    const progressBar = document.getElementById('bas-progress-bar');
-    const progressLabel = document.getElementById('bas-progress-label');
-    const stopBtn = document.getElementById('bas-stop-btn');
-
-    const types = [];
-    if (document.getElementById('bas-type-vertical').checked)   types.push('vertical');
-    if (document.getElementById('bas-type-horizontal').checked) types.push('horizontal');
-    if (document.getElementById('bas-type-icon').checked)       types.push('icon');
-
-    if (types.length === 0) {
-        status.className = 'bulk-status-error';
-        status.textContent = 'Select at least one artwork type.';
-        return;
-    }
-    if (scope === 'selected' && _selectedIds.size === 0) {
-        status.className = 'bulk-status-error';
-        status.textContent = 'No games selected.';
+        status.textContent = '✘ Network error.';
+        document.getElementById('brs-start-meta-btn').disabled = false;
+        document.getElementById('brs-start-art-btn').disabled  = false;
+        const _pdbBtn = document.getElementById('brs-start-protondb-btn');
+        if (_pdbBtn) _pdbBtn.disabled = false;
+        stopBtn.style.display = 'none';
         return;
     }
 
-    const appids = scope === 'selected'
-        ? Array.from(_selectedIds)
-        : Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+    _pollBulkOp();
+}
 
-    const count = appids.length;
-    const sourceLabel = { auto: 'Steam + SGDB', steam: 'Steam only', sgdb: 'SGDB only' }[source];
-    if (!await confirm(`Scrape artwork for ${count} game${count !== 1 ? 's' : ''}?\n\nTypes: ${types.join(', ')}\nSource: ${sourceLabel}\n\nThis will overwrite existing cached images.`)) return;
+async function stopBulkOp() {
+    document.getElementById('brs-stop-btn').disabled = true;
+    document.getElementById('brs-stop-btn').textContent = 'Stopping…';
+    await fetch('/api/bulk-op/cancel', { method: 'POST' }).catch(() => {});
+}
 
-    const btn = document.getElementById('bas-apply-btn');
-    _artScrapeCancel = false;
-    btn.disabled = true;
-    btn.textContent = 'Scraping…';
-    stopBtn.style.display = '';
-    stopBtn.disabled = false;
-    stopBtn.textContent = 'Stop';
-    status.className = '';
-    status.textContent = '';
-    progress.style.display = 'block';
-    progressBar.style.width = '0%';
-    progressLabel.textContent = `0 / ${count}`;
-
-    let updated = 0, failed = 0, done = 0;
-
-    for (let i = 0; i < appids.length; i++) {
-        if (_artScrapeCancel) break;
+function _pollBulkOp() {
+    _bulkOpPollInterval = setInterval(async () => {
         try {
-            const res  = await fetch('/api/bulk-art-scrape', {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ appids: [appids[i]], types, source })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                updated += data.updated;
-                failed  += data.failed;
+            const r = await fetch('/api/bulk-op/status');
+            const d = await r.json();
+            const done = d.done + d.failed;
+            const pct  = d.total > 0 ? Math.round((done / d.total) * 100) : 0;
+            document.getElementById('brs-progress-bar').style.width = pct + '%';
+            document.getElementById('brs-progress-label').textContent =
+                `${done} / ${d.total}${d.rate_limit_hit ? ' — rate limited, waiting…' : ''}`;
+
+            if (!d.running) {
+                clearInterval(_bulkOpPollInterval);
+                _bulkOpPollInterval = null;
+                const status = document.getElementById('brs-status');
+                if (d.result?.error) {
+                    status.className = 'bulk-status-error';
+                    status.textContent = '✘ Error: ' + d.result.error;
+                } else {
+                    status.className = d.done > 0 ? 'bulk-status-success' : '';
+                    status.textContent = `✔ Done — ${d.done} updated${d.failed ? `, ${d.failed} failed` : ''}${d.aborted ? ' (rate limit exhausted)' : ''}.`;
+                }
+                document.getElementById('brs-start-meta-btn').disabled = false;
+                document.getElementById('brs-start-art-btn').disabled  = false;
+                document.getElementById('brs-stop-btn').style.display  = 'none';
             }
-        } catch (e) {
-            failed += 1;
-        }
-        done = i + 1;
-        const pct = Math.round((done / count) * 100);
-        progressBar.style.width = pct + '%';
-        progressLabel.textContent = `${done} / ${count}`;
-    }
-
-    stopBtn.style.display = 'none';
-    btn.disabled = false;
-    btn.textContent = 'Scrape';
-
-    if (_artScrapeCancel) {
-        status.className = 'bulk-status-error';
-        status.textContent = `Stopped after ${done} / ${count} — ${updated} updated.`;
-    } else {
-        status.className = updated > 0 ? 'bulk-status-success' : 'bulk-status-error';
-        status.textContent = `✔ Done — ${updated} updated${failed ? `, ${failed} failed` : ''}.`;
-    }
+        } catch (e) { /* ignore */ }
+    }, 1000);
 }
 
 // ── BULK DELETE ────────────────────────────────────────────────
@@ -1326,41 +1267,30 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('bulk-status-select'));
 });
 
-// ── BULK DATE IMPORT ────────────────────────────────────────────
-function openBulkDateImportModal() {
-    closeBulkEditModal();
-    const hasSelection = _selectedIds.size > 0;
-    document.getElementById('bdi-scope-' + (hasSelection ? 'selected' : 'filtered')).checked = true;
-    onBulkDateImportScopeChange();
-    document.getElementById('bulk-date-import-modal').style.display = 'flex';
-    document.getElementById('bdi-status').textContent = '';
-    document.getElementById('bdi-status').className = '';
-    document.getElementById('bdi-progress').style.display = 'none';
-    document.getElementById('bdi-stop-btn').style.display = 'none';
-    document.getElementById('bdi-start-btn').disabled = false;
-}
-
+// ── DATE IMPORTER TAB ───────────────────────────────────────────────────────
 function closeBulkDateImportModal() {
-    document.getElementById('bulk-date-import-modal').style.display = 'none';
     if (_bdiPollInterval) { clearInterval(_bdiPollInterval); _bdiPollInterval = null; }
+    closeBulkEditModal();
 }
 
 function onBulkDateImportScopeChange() {
-    const scope    = document.querySelector('input[name="bdi-scope"]:checked').value;
-    const selInfo  = document.getElementById('bdi-selected-info');
-    const filtInfo = document.getElementById('bdi-filtered-info');
-    if (scope === 'selected') {
-        filtInfo.style.display = 'none';
-        selInfo.style.display  = 'block';
-        selInfo.textContent    = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
-    } else {
-        selInfo.style.display  = 'none';
-        filtInfo.style.display = 'block';
-        filtInfo.textContent   = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
+    const scope = document.querySelector('input[name="bdi-scope"]:checked')?.value;
+    if (!scope) return;
+    document.getElementById('bdi-all-info').style.display      = scope === 'all'      ? 'block' : 'none';
+    document.getElementById('bdi-filtered-info').style.display = scope === 'filtered' ? 'block' : 'none';
+    document.getElementById('bdi-selected-info').style.display = scope === 'selected' ? 'block' : 'none';
+    if (scope === 'all') {
+        document.getElementById('bdi-all-info').textContent = `${ALL_GAME_COUNT} game${ALL_GAME_COUNT !== 1 ? 's' : ''} in library`;
         _selectedIds.clear();
         document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        const btn = document.getElementById('select-mode-btn');
-        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    } else if (scope === 'filtered') {
+        document.getElementById('bdi-filtered-info').textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
+        _selectedIds.clear();
+        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+    } else {
+        document.getElementById('bdi-selected-info').textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
     }
 }
 
@@ -1380,9 +1310,12 @@ async function startBulkDateImport() {
         return;
     }
 
-    const appids = scope === 'selected'
-        ? Array.from(_selectedIds)
-        : Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+    const payload = { scope };
+    if (scope === 'selected') {
+        payload.appids = Array.from(_selectedIds);
+    } else if (scope === 'filtered') {
+        payload.appids = Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+    }
 
     startBtn.disabled = true;
     status.className = '';
@@ -1393,7 +1326,7 @@ async function startBulkDateImport() {
         const res = await fetch('/api/bulk-date-import/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ appids })
+            body: JSON.stringify(payload)
         });
         data = await res.json();
     } catch (e) {
@@ -1504,158 +1437,6 @@ async function stopBulkDateImport() {
 }
 </script>
 
-<!-- Bulk Rescrape Modal -->
-<div id="bulk-rescrape-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkRescrapeModal();">
-    <div class="modal-content" style="width:460px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h2 style="margin:0; color:var(--accent);">Re-scrape Steam Data</h2>
-            <button onclick="closeBulkRescrapeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-        </div>
-
-        <!-- Scope toggle -->
-        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
-                <input type="radio" name="br-scope" id="br-scope-filtered" value="filtered"
-                       onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">All filtered games</strong><br>
-                    <small id="br-filtered-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
-            <div style="width:1px; background:#2a475e;"></div>
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
-                <input type="radio" name="br-scope" id="br-scope-selected" value="selected"
-                       onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
-                    <small id="br-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
-        </div>
-
-        <div id="br-warning" style="background:rgba(102,192,244,0.08); border:1px solid #2a475e; border-radius:5px; padding:8px 12px; font-size:0.8rem; color:#8f98a0; margin-bottom:12px;"></div>
-
-        <!-- Progress bar -->
-        <div id="br-progress" style="display:none; margin-bottom:12px;">
-            <div style="background:#0e1923; border-radius:4px; height:8px; overflow:hidden; margin-bottom:4px;">
-                <div id="br-progress-bar" style="height:100%; background:var(--accent); width:0%; transition:width 0.3s;"></div>
-            </div>
-            <div id="br-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
-        </div>
-
-        <div id="br-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
-
-        <div style="display:flex; gap:12px;">
-            <button id="br-apply-btn" data-modal-row="0" onclick="runBulkRescrape()"
-                style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
-                Re-scrape
-            </button>
-            <button id="br-stop-btn" data-modal-row="0"
-                onclick="_rescrapeCancel = true; this.disabled = true; this.textContent = 'Stopping…';"
-                style="display:none; flex:1; height:auto; padding:12px; background:var(--color-danger); color:var(--text-bright); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
-                Stop
-            </button>
-            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkRescrapeModal()">Close</button>
-        </div>
-    </div>
-</div>
-
-<!-- Bulk Art Scrape Modal -->
-<div id="bulk-art-scrape-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkArtScrapeModal();">
-    <div class="modal-content" style="width:480px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h2 style="margin:0; color:var(--accent);">Bulk Scrape Artwork</h2>
-            <button onclick="closeBulkArtScrapeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-        </div>
-
-        <!-- Scope toggle -->
-        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
-                <input type="radio" name="bas-scope" id="bas-scope-filtered" value="filtered"
-                       onchange="onBulkArtScopeScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">All filtered games</strong><br>
-                    <small id="bas-filtered-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
-            <div style="width:1px; background:#2a475e;"></div>
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
-                <input type="radio" name="bas-scope" id="bas-scope-selected" value="selected"
-                       onchange="onBulkArtScopeScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
-                    <small id="bas-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
-        </div>
-
-        <!-- Art type checkboxes -->
-        <label style="margin-bottom:6px; display:block;">Artwork Types</label>
-        <div style="display:flex; gap:16px; margin-bottom:14px; flex-wrap:wrap;">
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.88rem;">
-                <input type="checkbox" id="bas-type-vertical" checked style="width:auto; margin:0;"> Vertical
-            </label>
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.88rem;">
-                <input type="checkbox" id="bas-type-horizontal" checked style="width:auto; margin:0;"> Horizontal
-            </label>
-            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.88rem;">
-                <input type="checkbox" id="bas-type-icon" checked style="width:auto; margin:0;"> Icon
-            </label>
-        </div>
-
-        <!-- Source radio -->
-        <label style="margin-bottom:6px; display:block;">Source</label>
-        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; background:transparent; transition:background 0.15s; font-size:0.85rem;">
-                <input type="radio" name="bas-source" value="auto" checked style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white;">Auto</strong><br>
-                    <small style="color:#8f98a0; font-size:0.72rem;">Steam first, SGDB fallback</small>
-                </span>
-            </label>
-            <div style="width:1px; background:#2a475e;"></div>
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; background:transparent; transition:background 0.15s; font-size:0.85rem;">
-                <input type="radio" name="bas-source" value="steam" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white;">Steam only</strong><br>
-                    <small style="color:#8f98a0; font-size:0.72rem;">No SGDB requests</small>
-                </span>
-            </label>
-            <div style="width:1px; background:#2a475e;"></div>
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; background:transparent; transition:background 0.15s; font-size:0.85rem;">
-                <input type="radio" name="bas-source" value="sgdb" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white;">SGDB only</strong><br>
-                    <small style="color:#8f98a0; font-size:0.72rem;">Requires API key</small>
-                </span>
-            </label>
-        </div>
-
-        <!-- Progress bar -->
-        <div id="bas-progress" style="display:none; margin-bottom:12px;">
-            <div style="background:#0e1923; border-radius:4px; height:8px; overflow:hidden; margin-bottom:4px;">
-                <div id="bas-progress-bar" style="height:100%; background:var(--accent); width:0%; transition:width 0.3s;"></div>
-            </div>
-            <div id="bas-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
-        </div>
-
-        <div id="bas-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
-
-        <div style="display:flex; gap:12px;">
-            <button id="bas-apply-btn" data-modal-row="0" onclick="runBulkArtScrape()"
-                style="flex:2; padding:12px; font-size:0.95rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:6px; cursor:pointer;">
-                Scrape
-            </button>
-            <button id="bas-stop-btn" data-modal-row="0"
-                onclick="_artScrapeCancel = true; this.disabled = true; this.textContent = 'Stopping…';"
-                style="display:none; flex:1; height:auto; padding:12px; background:var(--color-danger); color:var(--text-bright); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
-                Stop
-            </button>
-            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkArtScrapeModal()">Close</button>
-        </div>
-    </div>
-</div>
-
 <!-- Bulk Delete Modal -->
 <div id="bulk-delete-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkDeleteModal();">
     <div class="modal-content" style="width:460px;">
@@ -1700,189 +1481,329 @@ async function stopBulkDateImport() {
         </div>
     </div>
 </div>
+<!-- Bulk Edit Modal (tabbed: Edit / Re-scrape / Date Importer) -->
 <div id="bulk-edit-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkEditModal();">
-    <div class="modal-content" style="width:500px;">
+    <div class="modal-content" style="width:520px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h2 style="margin:0; color:#fff;">Bulk Edit</h2>
+            <h2 style="margin:0; color:#fff;">Bulk Operations</h2>
             <button onclick="closeBulkEditModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
-        <!-- Scope toggle -->
-        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
-                   id="scope-filtered-label">
-                <input type="radio" name="bulk-scope" id="scope-filtered" value="filtered"
-                       onchange="onBulkScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">All filtered games</strong><br>
-                    <small id="bulk-filtered-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
-            <div style="width:1px; background:#2a475e;"></div>
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
-                   id="scope-selected-label">
-                <input type="radio" name="bulk-scope" id="scope-selected" value="selected"
-                       onchange="onBulkScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
-                    <small id="bulk-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
+        <!-- Tab strip -->
+        <div style="display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid #2a475e;">
+            <button id="bulk-tab-btn-edit" class="bulk-tab-btn active" onclick="switchBulkTab('edit')">Edit</button>
+            <button id="bulk-tab-btn-rescrape" class="bulk-tab-btn" onclick="switchBulkTab('rescrape')">Re-scrape</button>
+            <button id="bulk-tab-btn-dates" class="bulk-tab-btn" onclick="switchBulkTab('dates')">Date Importer</button>
         </div>
-        <p style="color:#8f98a0; font-size:0.78rem; margin: -8px 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
-            To select specific games, close this modal, press <strong style="color:#c2c8cc;">SELECT</strong> in the toolbar, click games to toggle, then reopen Bulk Edit.
-        </p>
 
-        <label>Column to Edit</label>
-        <select id="bulk-column" style="margin-bottom:12px;" onchange="onBulkColumnChange()">
-            <option value="completion_status">Completion Status</option>
-            <option value="tags">Tags</option>
-            <option value="groups">Groups</option>
-            <option value="developers">Developers</option>
-            <option value="publishers">Publishers</option>
-            <option value="release_date">Release Date</option>
-            <option value="review_score">Review Score</option>
-            <option value="review_percentage">Review %</option>
-            <option value="weighted_percentage">Weighted %</option>
-            <option value="total_reviews">Total Reviews</option>
-            <option value="positive_reviews">Positive Reviews</option>
-            <option value="unlocked_achievements">Unlocked Achievements</option>
-            <option value="total_achievements">Total Achievements</option>
-            <option value="genres">Genres</option>
-            <option value="categories">Categories</option>
-            <option value="is_free">Free to Play (0/1)</option>
-            <option value="playtime_forever">Playtime (Mins)</option>
-            <option value="date_added">Date Added</option>
-            <option value="installed">Installed (0/1)</option>
-            <option value="vertical_art_source">Vertical Art Source</option>
-            <option value="horizontal_art_source">Horizontal Art Source</option>
-            <option value="icon_source">Icon Source</option>
-        </select>
-
-        <label>Edit Mode</label>
-        <select id="bulk-mode" style="margin-bottom:4px;" onchange="onBulkModeChange()">
-            <option value="replace">Replace — overwrite the entire column value</option>
-            <option value="append">Append — add to comma-separated list</option>
-            <option value="remove">Remove — remove from comma-separated list</option>
-        </select>
-        <small id="bulk-mode-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:12px;"></small>
-
-        <label>Value</label>
-        <div id="bulk-value-container" style="margin-bottom:4px;">
-            <div id="bulk-value-text-wrap">
-                <input type="text" id="bulk-value-text" placeholder="Enter value…" style="width:100%; box-sizing:border-box;">
+        <!-- ── EDIT PANE ── -->
+        <div id="bulk-pane-edit">
+            <!-- Scope toggle -->
+            <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                    <input type="radio" name="bulk-scope" id="scope-all" value="all"
+                           onchange="onBulkScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">All games</strong><br>
+                        <small id="bulk-all-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
+                <div style="width:1px; background:#2a475e;"></div>
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
+                       id="scope-filtered-label">
+                    <input type="radio" name="bulk-scope" id="scope-filtered" value="filtered"
+                           onchange="onBulkScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">Filtered games</strong><br>
+                        <small id="bulk-filtered-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
+                <div style="width:1px; background:#2a475e;"></div>
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
+                       id="scope-selected-label">
+                    <input type="radio" name="bulk-scope" id="scope-selected" value="selected"
+                           onchange="onBulkScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">Selected</strong><br>
+                        <small id="bulk-selected-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
             </div>
-            <div id="bulk-value-status-wrap" style="display:none;">
-                <select id="bulk-status-select">
-                    <option value="Never Played">Never Played</option>
-                    <option value="Unfinished">Unfinished</option>
-                    <option value="Beaten">Beaten</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Won't Play">Won't Play</option>
-                </select>
+            <p style="color:#8f98a0; font-size:0.78rem; margin: -8px 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
+                To select specific games, close this modal, press <strong style="color:#c2c8cc;">SELECT</strong> in the toolbar, click games to toggle, then reopen Bulk Edit.
+            </p>
+
+            <label>Column to Edit</label>
+            <select id="bulk-column" style="margin-bottom:12px;" onchange="onBulkColumnChange()">
+                <option value="completion_status">Completion Status</option>
+                <option value="tags">Tags</option>
+                <option value="groups">Groups</option>
+                <option value="developers">Developers</option>
+                <option value="publishers">Publishers</option>
+                <option value="release_date">Release Date</option>
+                <option value="review_score">Review Score</option>
+                <option value="review_percentage">Review %</option>
+                <option value="weighted_percentage">Weighted %</option>
+                <option value="total_reviews">Total Reviews</option>
+                <option value="positive_reviews">Positive Reviews</option>
+                <option value="unlocked_achievements">Unlocked Achievements</option>
+                <option value="total_achievements">Total Achievements</option>
+                <option value="genres">Genres</option>
+                <option value="categories">Categories</option>
+                <option value="is_free">Free to Play (0/1)</option>
+                <option value="playtime_forever">Playtime (Mins)</option>
+                <option value="date_added">Date Added</option>
+                <option value="installed">Installed (0/1)</option>
+                <option value="vertical_art_source">Vertical Art Source</option>
+                <option value="horizontal_art_source">Horizontal Art Source</option>
+                <option value="icon_source">Icon Source</option>
+            </select>
+
+            <label>Edit Mode</label>
+            <select id="bulk-mode" style="margin-bottom:4px;" onchange="onBulkModeChange()">
+                <option value="replace">Replace — overwrite the entire column value</option>
+                <option value="append">Append — add to comma-separated list</option>
+                <option value="remove">Remove — remove from comma-separated list</option>
+            </select>
+            <small id="bulk-mode-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:12px;"></small>
+
+            <label>Value</label>
+            <div id="bulk-value-container" style="margin-bottom:4px;">
+                <div id="bulk-value-text-wrap">
+                    <input type="text" id="bulk-value-text" placeholder="Enter value…" style="width:100%; box-sizing:border-box;">
+                </div>
+                <div id="bulk-value-status-wrap" style="display:none;">
+                    <select id="bulk-status-select">
+                        <option value="Never Played">Never Played</option>
+                        <option value="Unfinished">Unfinished</option>
+                        <option value="Beaten">Beaten</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Won't Play">Won't Play</option>
+                    </select>
+                </div>
+                <div id="bulk-value-pills-wrap" style="display:none;">
+                    <div class="pill-input-box" id="bulk-pills-box" style="min-height:38px; max-height:120px; overflow-y:auto;"></div>
+                    <input type="hidden" id="bulk-pills-hidden">
+                </div>
             </div>
-            <div id="bulk-value-pills-wrap" style="display:none;">
-                <div class="pill-input-box" id="bulk-pills-box" style="min-height:38px; max-height:120px; overflow-y:auto;"></div>
-                <input type="hidden" id="bulk-pills-hidden">
+            <small id="bulk-value-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:4px;"></small>
+
+            <div id="bulk-warning" style="display:none; background:rgba(193,120,0,0.12); border:1px solid #c97c00; border-radius:5px; padding:8px 12px; font-size:0.8rem; color:#c97c00; margin-bottom:8px;"></div>
+            <div id="bulk-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
+
+            <div style="display:flex; gap:12px; margin-bottom:12px;">
+                <button id="bulk-apply-btn" class="btn-save" data-modal-row="0" style="flex:2; margin:0;" onclick="runBulkEdit()">Apply</button>
+                <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkEditModal()">Close</button>
+            </div>
+
+            <div style="padding-top:12px; border-top:1px solid #2a3f55;">
+                <button data-modal-row="1" onclick="openBulkDeleteModal()"
+                    style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:#ff8080; border:1px solid #a32a2a; border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
+                    onmouseover="this.style.background='rgba(163,42,42,0.15)'"
+                    onmouseout="this.style.background='transparent'">
+                    BULK DELETE THESE GAMES
+                </button>
             </div>
         </div>
-        <small id="bulk-value-hint" style="color:#8f98a0; font-size:0.75rem; display:block; margin-bottom:4px;"></small>
 
-        <div id="bulk-warning" style="display:none; background:rgba(193,120,0,0.12); border:1px solid #c97c00; border-radius:5px; padding:8px 12px; font-size:0.8rem; color:#c97c00; margin-bottom:8px;"></div>
-        <div id="bulk-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
-
-        <div style="display:flex; gap:12px;">
-            <button id="bulk-apply-btn" class="btn-save" data-modal-row="0" style="flex:2; margin:0;" onclick="runBulkEdit()">Apply</button>
-            <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkEditModal()">Close</button>
-        </div>
-
-        <div style="margin-top:12px; padding-top:12px; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:8px;">
-            <button data-modal-row="1" onclick="openBulkRescrapeModal()"
-                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
-                onmouseover="this.style.background='rgba(102,192,244,0.1)'"
-                onmouseout="this.style.background='transparent'">
-                RE-SCRAPE STEAM DATA
-            </button>
-            <button data-modal-row="2" onclick="openBulkArtScrapeModal()"
-                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
-                onmouseover="this.style.background='rgba(102,192,244,0.1)'"
-                onmouseout="this.style.background='transparent'">
-                BULK SCRAPE ARTWORK
-            </button>
-            <button data-modal-row="3" onclick="openBulkDateImportModal()"
-                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:var(--accent); border:1px solid var(--accent); border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
-                onmouseover="this.style.background='rgba(102,192,244,0.1)'"
-                onmouseout="this.style.background='transparent'">
-                IMPORT DATES FROM STEAM
-            </button>
-            <button data-modal-row="4" onclick="openBulkDeleteModal()"
-                style="width:100%; padding:10px; font-size:0.85rem; font-weight:bold; background:transparent; color:#ff8080; border:1px solid #a32a2a; border-radius:6px; cursor:pointer; transition:background 0.15s; letter-spacing:0.04em;"
-                onmouseover="this.style.background='rgba(163,42,42,0.15)'"
-                onmouseout="this.style.background='transparent'">
-                BULK DELETE THESE GAMES
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Bulk Date Import Modal -->
-<div id="bulk-date-import-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBulkDateImportModal();">
-    <div class="modal-content" style="width:460px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-            <h2 style="margin:0; color:var(--accent);">Import Dates from Steam</h2>
-            <button onclick="closeBulkDateImportModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-        </div>
-
-        <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
-                <input type="radio" name="bdi-scope" id="bdi-scope-filtered" value="filtered"
-                       onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">All filtered games</strong><br>
-                    <small id="bdi-filtered-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
-            <div style="width:1px; background:#2a475e;"></div>
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
-                <input type="radio" name="bdi-scope" id="bdi-scope-selected" value="selected"
-                       onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
-                <span>
-                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
-                    <small id="bdi-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
-                </span>
-            </label>
-        </div>
-
-        <p style="color:#8f98a0; font-size:0.78rem; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
-            Requires the <a href="https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js" target="_blank" style="color:#c2c8cc;">PlayDate Date Importer</a> Tampermonkey script.
-            A Steam help page will open in your browser and fetch dates in the background.
-        </p>
-
-        <div id="bdi-progress" style="display:none; margin-bottom:12px;">
-            <div style="font-size:0.82rem; color:#c2c8cc; margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                <span id="bdi-current-game">—</span>
+        <!-- ── RE-SCRAPE PANE ── -->
+        <div id="bulk-pane-rescrape" style="display:none;">
+            <!-- Scope toggle -->
+            <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                    <input type="radio" name="brs-scope" id="brs-scope-all" value="all"
+                           onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">All games</strong><br>
+                        <small id="brs-all-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
+                <div style="width:1px; background:#2a475e;"></div>
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                    <input type="radio" name="brs-scope" id="brs-scope-filtered" value="filtered"
+                           onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">Filtered games</strong><br>
+                        <small id="brs-filtered-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
+                <div style="width:1px; background:#2a475e;"></div>
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                    <input type="radio" name="brs-scope" id="brs-scope-selected" value="selected"
+                           onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">Selected</strong><br>
+                        <small id="brs-selected-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
             </div>
-            <div style="background:#1a2332; border-radius:4px; height:8px; overflow:hidden; margin-bottom:6px;">
-                <div id="bdi-progress-bar" style="background:var(--accent); height:100%; width:0%; transition:width 0.4s;"></div>
+
+            <!-- Steam Data subsection -->
+            <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:10px;">
+                <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">STEAM DATA</div>
+                <div style="display:flex; gap:16px; margin-bottom:10px; flex-wrap:wrap;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem;">
+                        <input type="checkbox" id="brs-do-meta" checked style="width:auto; margin:0;"> Store info &amp; reviews
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem;">
+                        <input type="checkbox" id="brs-do-cheevo" checked style="width:auto; margin:0;"> Achievements
+                    </label>
+                </div>
+                <button id="brs-start-meta-btn" data-modal-row="0" onclick="startBulkOp('rescrape')"
+                    style="width:100%; padding:9px; font-size:0.85rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:5px; cursor:pointer;">
+                    Re-scrape Steam Data
+                </button>
             </div>
-            <div id="bdi-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right; margin-bottom:10px;"></div>
-            <div id="bdi-log" style="max-height:180px; overflow-y:auto; border:1px solid #2a475e; border-radius:4px; padding:6px 8px; background:#0e1923; font-size:0.75rem; font-family:monospace;"></div>
+
+            <!-- Artwork subsection -->
+            <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:12px;">
+                <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">ARTWORK</div>
+                <div style="display:flex; gap:16px; margin-bottom:8px; flex-wrap:wrap;">
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem;">
+                        <input type="checkbox" id="brs-type-vertical" checked style="width:auto; margin:0;"> Vertical
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem;">
+                        <input type="checkbox" id="brs-type-horizontal" checked style="width:auto; margin:0;"> Horizontal
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem;">
+                        <input type="checkbox" id="brs-type-icon" checked style="width:auto; margin:0;"> Icon
+                    </label>
+                </div>
+                <div style="display:flex; gap:0; margin-bottom:10px; border:1px solid #2a475e; border-radius:5px; overflow:hidden;">
+                    <label style="flex:1; display:flex; align-items:center; gap:6px; padding:7px 10px; cursor:pointer; font-size:0.82rem;">
+                        <input type="radio" name="brs-source" value="auto" checked style="width:auto; margin:0;">
+                        <span><strong style="color:white;">Auto</strong><br><small style="color:#8f98a0; font-size:0.72rem;">Steam + SGDB fallback</small></span>
+                    </label>
+                    <div style="width:1px; background:#2a475e;"></div>
+                    <label style="flex:1; display:flex; align-items:center; gap:6px; padding:7px 10px; cursor:pointer; font-size:0.82rem;">
+                        <input type="radio" name="brs-source" value="steam" style="width:auto; margin:0;">
+                        <span><strong style="color:white;">Steam only</strong><br><small style="color:#8f98a0; font-size:0.72rem;">No SGDB requests</small></span>
+                    </label>
+                    <div style="width:1px; background:#2a475e;"></div>
+                    <label style="flex:1; display:flex; align-items:center; gap:6px; padding:7px 10px; cursor:pointer; font-size:0.82rem;">
+                        <input type="radio" name="brs-source" value="sgdb" style="width:auto; margin:0;">
+                        <span><strong style="color:white;">SGDB only</strong><br><small style="color:#8f98a0; font-size:0.72rem;">Requires API key</small></span>
+                    </label>
+                </div>
+                <button id="brs-start-art-btn" data-modal-row="1" onclick="startBulkOp('art')"
+                    style="width:100%; padding:9px; font-size:0.85rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:5px; cursor:pointer;">
+                    Scrape Artwork
+                </button>
+            </div>
+
+            {% if not is_windows %}
+            <!-- ProtonDB subsection -->
+            <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:10px;">
+                <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">PROTONDB</div>
+                <p style="font-size:0.78rem; color:#8f98a0; margin:0 0 10px;">Fetches Linux compatibility ratings from ProtonDB.</p>
+                <button id="brs-start-protondb-btn" data-modal-row="2" onclick="startBulkOp('protondb')"
+                    style="width:100%; padding:9px; font-size:0.85rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:5px; cursor:pointer;">
+                    Fetch ProtonDB Data
+                </button>
+            </div>
+            {% endif %}
+
+            <!-- Shared progress + status -->
+            <div id="brs-progress" style="display:none; margin-bottom:10px;">
+                <div style="background:#0e1923; border-radius:4px; height:8px; overflow:hidden; margin-bottom:4px;">
+                    <div id="brs-progress-bar" style="height:100%; background:var(--accent); width:0%; transition:width 0.3s;"></div>
+                </div>
+                <div id="brs-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right;"></div>
+            </div>
+            <div id="brs-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:10px;"></div>
+
+            <div style="display:flex; gap:12px;">
+                <button id="brs-stop-btn" data-modal-row="2" onclick="stopBulkOp()"
+                    style="display:none; flex:2; padding:10px; background:var(--color-danger); color:var(--text-bright); border:none; border-radius:6px; cursor:pointer; font-weight:bold;">
+                    Stop
+                </button>
+                <button class="nav-btn" data-modal-row="2" style="flex:1; height:auto; padding:10px;" onclick="closeBulkEditModal()">Close</button>
+            </div>
         </div>
 
-        <div id="bdi-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
+        <!-- ── DATE IMPORTER PANE ── -->
+        <div id="bulk-pane-dates" style="display:none;">
+            <div style="background:rgba(102,192,244,0.06); border:1px solid #2a475e; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.8rem; color:#8f98a0; line-height:1.5;">
+                PlayDate sets <strong style="color:#c2c8cc;">Date Added</strong> to the date a game was added to PlayDate, not to your Steam library.
+                This tool fetches the actual Steam library activation dates from Steam's website and writes them into <strong style="color:#c2c8cc;">Date Added</strong> for each game.
+            </div>
 
-        <div style="display:flex; gap:12px;">
-            <button id="bdi-start-btn" class="btn-save" style="flex:2; margin:0;" onclick="startBulkDateImport()">Start</button>
-            <button id="bdi-stop-btn" class="nav-btn" style="display:none; flex:1; height:auto; padding:12px;" onclick="stopBulkDateImport()">Stop</button>
-            <button class="nav-btn" style="flex:1; height:auto; padding:12px;" onclick="closeBulkDateImportModal()">Close</button>
+            <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                    <input type="radio" name="bdi-scope" id="bdi-scope-all" value="all"
+                           onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">All games</strong><br>
+                        <small id="bdi-all-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
+                <div style="width:1px; background:#2a475e;"></div>
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                    <input type="radio" name="bdi-scope" id="bdi-scope-filtered" value="filtered"
+                           onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">Filtered games</strong><br>
+                        <small id="bdi-filtered-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
+                <div style="width:1px; background:#2a475e;"></div>
+                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                    <input type="radio" name="bdi-scope" id="bdi-scope-selected" value="selected"
+                           onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
+                    <span>
+                        <strong style="color:white; font-size:0.85rem;">Selected</strong><br>
+                        <small id="bdi-selected-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
+                    </span>
+                </label>
+            </div>
+
+            <p style="color:#8f98a0; font-size:0.78rem; margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
+                Requires the <a href="https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js" target="_blank" style="color:#c2c8cc;">PlayDate Date Importer</a> Tampermonkey script.
+                A Steam help page will open in your browser and fetch dates in the background.
+            </p>
+
+            <div id="bdi-progress" style="display:none; margin-bottom:12px;">
+                <div style="font-size:0.82rem; color:#c2c8cc; margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span id="bdi-current-game">—</span>
+                </div>
+                <div style="background:#1a2332; border-radius:4px; height:8px; overflow:hidden; margin-bottom:6px;">
+                    <div id="bdi-progress-bar" style="background:var(--accent); height:100%; width:0%; transition:width 0.4s;"></div>
+                </div>
+                <div id="bdi-progress-label" style="font-size:0.78rem; color:#8f98a0; text-align:right; margin-bottom:10px;"></div>
+                <div id="bdi-log" style="max-height:180px; overflow-y:auto; border:1px solid #2a475e; border-radius:4px; padding:6px 8px; background:#0e1923; font-size:0.75rem; font-family:monospace;"></div>
+            </div>
+
+            <div id="bdi-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
+
+            <div style="display:flex; gap:12px;">
+                <button id="bdi-start-btn" class="btn-save" data-modal-row="0" style="flex:2; margin:0;" onclick="startBulkDateImport()">Start</button>
+                <button id="bdi-stop-btn" class="nav-btn" style="display:none; flex:1; height:auto; padding:12px;" onclick="stopBulkDateImport()">Stop</button>
+                <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:12px;" onclick="closeBulkEditModal()">Close</button>
+            </div>
         </div>
     </div>
 </div>
 
 <style>
+.bulk-tab-btn {
+    padding: 7px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+}
+.bulk-tab-btn:hover { color: #c2c8cc; }
+.bulk-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 .bulk-status-success { color: #5c7e10; }
 .bulk-status-error   { color: #ff4d4d; }
-input[name="bulk-scope"]:checked + span strong { color: var(--accent) !important; }
+input[name="bulk-scope"]:checked + span strong,
+input[name="brs-scope"]:checked + span strong,
 input[name="bdi-scope"]:checked + span strong { color: var(--accent) !important; }
 </style>
 

@@ -220,6 +220,12 @@ def create_app(template_folder=None, static_folder=None):
         "_priority_queues": None, # set when workers start; used by /api/populate-priority
     }
 
+    # ── Cancellation + progress state for bulk operations ────────────────────
+    _bulk_op_state  = {'running': False, 'op': None, 'total': 0, 'done': 0,
+                       'failed': 0, 'rate_limit_hit': False, 'aborted': False, 'result': None}
+    _bulk_op_lock   = threading.Lock()
+    _bulk_op_cancel = threading.Event()
+
     # ── Routes ────────────────────────────────────────────────────────────────
 
     @app.route('/pick')
@@ -868,12 +874,17 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/bulk-date-import/start', methods=['POST'])
     def bulk_date_import_start():
         data   = request.json or {}
+        scope  = data.get('scope', 'selected')
         appids = data.get('appids', [])
-        if not appids:
-            return jsonify({'status': 'error', 'message': 'No games provided.'}), 400
         db  = get_db()
-        ph  = ','.join('?' * len(appids))
-        rows = db.execute(f'SELECT appid, name FROM games WHERE appid IN ({ph})', appids).fetchall()
+        if scope == 'all':
+            rows = db.execute('SELECT appid, name FROM games ORDER BY name').fetchall()
+        elif appids:
+            ph   = ','.join('?' * len(appids))
+            rows = db.execute(f'SELECT appid, name FROM games WHERE appid IN ({ph})', appids).fetchall()
+        else:
+            db.close()
+            return jsonify({'status': 'error', 'message': 'No games provided.'}), 400
         db.close()
         queue = [{'appid': r['appid'], 'name': r['name']} for r in rows]
         if not queue:
@@ -970,57 +981,78 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/api/bulk-rescrape', methods=['POST'])
-    def bulk_rescrape():
-        """
-        Re-scrape Steam metadata for a list of appids.
-        Runs synchronously and streams a JSON result when done.
-        Called in chunks from the frontend to show progress.
-        """
-        from scrapers import fetch_store_data, fetch_tag_data, fetch_review_data, fetch_cheevo_data
-        from config import get_active_account
-        from datetime import datetime
-        _account  = get_active_account() or {}
-        _has_key  = bool(_account.get('api_key'))
+    @app.route('/api/bulk-op/start', methods=['POST'])
+    def bulk_op_start():
+        if _bulk_op_state['running']:
+            return jsonify({'status': 'error', 'message': 'Already running'}), 400
 
         data   = request.json or {}
+        op     = data.get('op')            # 'rescrape' or 'art'
+        scope  = data.get('scope', 'filtered')
         appids = data.get('appids', [])
+        types  = data.get('types', ['vertical', 'horizontal', 'icon'])
+        source = data.get('source', 'auto')
+
+        if op not in ('rescrape', 'art', 'protondb'):
+            return jsonify({'status': 'error', 'message': 'Invalid op'}), 400
+
+        if scope == 'all':
+            db     = get_db()
+            rows   = db.execute("SELECT appid FROM games").fetchall()
+            db.close()
+            appids = [r['appid'] for r in rows]
+
+        appids = [int(a) for a in appids]
         if not appids:
-            return jsonify({"status": "error", "message": "No appids provided."}), 400
+            return jsonify({'status': 'error', 'message': 'No games to process'}), 400
 
-        today   = datetime.now().strftime('%Y-%m-%d')
-        updated = 0
-        failed  = 0
-        for appid in appids:
+        _bulk_op_cancel.clear()
+        with _bulk_op_lock:
+            _bulk_op_state.update(running=True, op=op, total=len(appids),
+                                  done=0, failed=0, rate_limit_hit=False,
+                                  aborted=False, result=None)
+
+        def _progress(event, _data, _total):
+            with _bulk_op_lock:
+                if event == 'done':
+                    _bulk_op_state['done'] += 1
+                elif event == 'failed':
+                    _bulk_op_state['failed'] += 1
+                elif event == 'rate_limit':
+                    _bulk_op_state['rate_limit_hit'] = True
+
+        def _run():
+            from scrapers import bulk_rescrape_games, bulk_art_scrape_games, bulk_protondb_scrape_games
             try:
-                store_data  = fetch_store_data(appid)  or {}
-                store_data.pop('name', None)  # don't overwrite existing game names on rescrape
-                store_data.pop('type', None)  # no type column in DB
-                review_data = fetch_review_data(appid) or {}
-                tag_data    = fetch_tag_data(appid)    or {}
-                cheevo_data = fetch_cheevo_data(appid) or {} if _has_key else {}
-
-                game_data = {}
-                game_data.update(store_data)
-                game_data.update(review_data)
-                game_data.update(tag_data)
-                game_data.update(cheevo_data)
-                if store_data or review_data or tag_data:
-                    game_data['meta_fetched'] = today
-                if cheevo_data:
-                    game_data['cheevos_fetched'] = today
-
-                if game_data:
-                    update_game_data(appid, **game_data)
-                    updated += 1
+                if op == 'rescrape':
+                    result = bulk_rescrape_games(appids, _bulk_op_cancel, _progress)
+                elif op == 'art':
+                    result = bulk_art_scrape_games(appids, types, source, _bulk_op_cancel, _progress)
                 else:
-                    failed += 1
-
+                    result = bulk_protondb_scrape_games(appids, _bulk_op_cancel, _progress)
+                with _bulk_op_lock:
+                    _bulk_op_state['result']  = result
+                    _bulk_op_state['aborted'] = result.get('aborted', False)
             except Exception as e:
-                log.warning(f"bulk_rescrape: failed for appid {appid}: {e}")
-                failed += 1
+                log.exception(f"bulk_op_start ({op}): {e}")
+                with _bulk_op_lock:
+                    _bulk_op_state['result'] = {'error': str(e)}
+            finally:
+                with _bulk_op_lock:
+                    _bulk_op_state['running'] = False
 
-        return jsonify({"status": "success", "updated": updated, "failed": failed})
+        threading.Thread(target=_run, daemon=True).start()
+        return jsonify({'status': 'success', 'total': len(appids)})
+
+    @app.route('/api/bulk-op/status', methods=['GET'])
+    def bulk_op_status():
+        with _bulk_op_lock:
+            return jsonify(dict(_bulk_op_state))
+
+    @app.route('/api/bulk-op/cancel', methods=['POST'])
+    def bulk_op_cancel_route():
+        _bulk_op_cancel.set()
+        return jsonify({'status': 'success'})
 
     @app.route('/api/shuffle-shelf/<shelf_id>')
     def shuffle_shelf(shelf_id):
@@ -1064,56 +1096,6 @@ def create_app(template_folder=None, static_folder=None):
             log.exception(f"shuffle_shelf error for {shelf_id}: {e}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
-    @app.route('/api/bulk-art-scrape', methods=['POST'])
-    def bulk_art_scrape():
-        import time
-        from images import download_vertical, download_horizontal, download_icon, _get_steam_assets
-        from datetime import datetime
-        data   = request.json or {}
-        appids = data.get('appids', [])
-        types  = data.get('types', ['vertical', 'horizontal', 'icon'])
-        source = data.get('source', 'auto')  # 'auto', 'steam', or 'sgdb'
-
-        if not appids:
-            return jsonify({"status": "error", "message": "No appids provided."}), 400
-
-        today   = datetime.now().strftime('%Y-%m-%d')
-        updated = 0
-        failed  = 0
-        for appid in appids:
-            try:
-                updates = {}
-                # Fetch Steam asset manifest once and share between vertical + horizontal
-                # to avoid two identical API calls per game.
-                assets = _get_steam_assets(appid) if source != 'sgdb' else {}
-                if 'vertical' in types:
-                    result = download_vertical(appid, assets=assets, source=source)
-                    if result != 'missing':
-                        updates['vertical_art_source'] = result
-                    time.sleep(1.2)
-                if 'horizontal' in types:
-                    result = download_horizontal(appid, assets=assets, source=source)
-                    if result != 'missing':
-                        updates['horizontal_art_source'] = result
-                    time.sleep(1.2)
-                if 'icon' in types:
-                    db  = get_db()
-                    row = db.execute("SELECT icon_hash FROM games WHERE appid = ?", (appid,)).fetchone()
-                    db.close()
-                    icon_hash = row['icon_hash'] if row else None
-                    result = download_icon(appid, icon_hash, source=source)
-                    if result != 'missing':
-                        updates['icon_source'] = result
-                    time.sleep(1.2)
-                if updates:
-                    updates['art_fetched'] = today
-                    update_game_data(int(appid), **updates)
-                    updated += 1
-            except Exception as e:
-                log.warning(f"bulk_art_scrape: failed for appid {appid}: {e}")
-                failed += 1
-
-        return jsonify({"status": "success", "updated": updated, "failed": failed})
 
     @app.route('/api/bulk-edit', methods=['POST'])
     def bulk_edit():

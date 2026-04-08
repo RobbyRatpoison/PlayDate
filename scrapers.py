@@ -1024,3 +1024,205 @@ def sync_recent_playtime():
 
     except Exception as e:
         logging.getLogger(__name__).warning(f"sync_recent_playtime failed: {e}")
+
+
+# ── Bulk concurrent operations ────────────────────────────────────────────────
+
+def bulk_rescrape_games(appids, cancel_event, progress_cb):
+    """
+    Concurrent metadata re-scrape for a list of appids.
+    Uses _PoolBackoff for rate limiting; respects cancel_event.
+    3 concurrent workers with 1s inter-game delay.
+    """
+    backoff  = _PoolBackoff('bulk_rescrape')
+    today    = datetime.now().strftime('%Y-%m-%d')
+    _account = get_active_account() or {}
+    has_key  = bool(_account.get('api_key'))
+
+    q = queue.Queue()
+    for appid in appids:
+        q.put(appid)
+    total = len(appids)
+
+    counts = {'done': 0, 'failed': 0}
+    lock   = threading.Lock()
+
+    def worker():
+        while True:
+            if cancel_event and cancel_event.is_set():
+                return
+            if not backoff.wait_ready(cancel_event):
+                return
+            try:
+                appid = q.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                store_data  = fetch_store_data(appid)  or {}
+                store_data.pop('name', None)
+                store_data.pop('type', None)
+                review_data = fetch_review_data(appid) or {}
+                tag_data    = fetch_tag_data(appid)    or {}
+                cheevo_data = fetch_cheevo_data(appid) or {} if has_key else {}
+
+                game_data = {}
+                game_data.update(store_data)
+                game_data.update(review_data)
+                game_data.update(tag_data)
+                game_data.update(cheevo_data)
+                if store_data or review_data or tag_data:
+                    game_data['meta_fetched'] = today
+                if cheevo_data:
+                    game_data['cheevos_fetched'] = today
+
+                if game_data:
+                    update_game_data(appid, **game_data)
+                    with lock:
+                        counts['done'] += 1
+                else:
+                    with lock:
+                        counts['failed'] += 1
+
+                if progress_cb:
+                    progress_cb('done', appid, total)
+                time.sleep(1.0)
+
+            except RateLimitedError:
+                q.put(appid)   # re-queue for retry after backoff
+                if progress_cb:
+                    attempt = backoff._attempt + 1
+                    delay   = BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
+                    progress_cb('rate_limit', {'attempt': attempt, 'delay': delay}, total)
+                if not backoff.on_rate_limited(cancel_event):
+                    with lock:
+                        counts['failed'] += 1
+                    return
+            except Exception as e:
+                log.error(f"[bulk_rescrape] Error for {appid}: {e}")
+                with lock:
+                    counts['failed'] += 1
+                if progress_cb:
+                    progress_cb('failed', appid, total)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures_wait([pool.submit(worker) for _ in range(3)])
+
+    counts['aborted'] = backoff.aborted
+    return counts
+
+
+def bulk_art_scrape_games(appids, types, source, cancel_event, progress_cb):
+    """
+    Concurrent artwork scrape for a list of appids.
+    3 concurrent workers with 0.8s inter-game delay.
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    if appids:
+        db   = get_db()
+        rows = db.execute(
+            f"SELECT appid, icon_hash FROM games WHERE appid IN ({','.join('?' * len(appids))})",
+            appids
+        ).fetchall()
+        db.close()
+        icon_hash_map = {r['appid']: r['icon_hash'] or '' for r in rows}
+    else:
+        icon_hash_map = {}
+
+    q = queue.Queue()
+    for appid in appids:
+        q.put(appid)
+    total = len(appids)
+
+    counts = {'done': 0, 'failed': 0}
+    lock   = threading.Lock()
+
+    def worker():
+        while True:
+            if cancel_event and cancel_event.is_set():
+                return
+            try:
+                appid = q.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                updates = {}
+                assets  = _get_steam_assets(appid) if source != 'sgdb' else {}
+                if 'vertical' in types:
+                    updates['vertical_art_source']   = download_vertical(appid, assets=assets, source=source)
+                if 'horizontal' in types:
+                    updates['horizontal_art_source'] = download_horizontal(appid, assets=assets, source=source)
+                if 'icon' in types:
+                    updates['icon_source']            = download_icon(appid, icon_hash_map.get(appid, ''), source=source)
+                updates['art_fetched'] = today
+                update_game_data(appid, **updates)
+
+                with lock:
+                    counts['done'] += 1
+                if progress_cb:
+                    progress_cb('done', appid, total)
+                time.sleep(0.8)
+
+            except Exception as e:
+                log.error(f"[bulk_art_scrape] Error for {appid}: {e}")
+                with lock:
+                    counts['failed'] += 1
+                if progress_cb:
+                    progress_cb('failed', appid, total)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures_wait([pool.submit(worker) for _ in range(3)])
+
+    return counts
+
+
+def bulk_protondb_scrape_games(appids, cancel_event, progress_cb):
+    """
+    Fetch ProtonDB tier + confidence for a list of appids via per-game API.
+    2 concurrent workers, no artificial delay (ProtonDB has no documented rate limit).
+    """
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    q = queue.Queue()
+    for appid in appids:
+        q.put(appid)
+    total = len(appids)
+
+    counts = {'done': 0, 'failed': 0}
+    lock   = threading.Lock()
+
+    def worker():
+        session = requests.Session()
+        session.headers['User-Agent'] = 'Mozilla/5.0'
+        while True:
+            if cancel_event and cancel_event.is_set():
+                return
+            try:
+                appid = q.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                info = fetch_protondb_data(appid, session=session)
+                game_data = {'protondb_fetched': today}
+                if info:
+                    game_data.update(info)
+                else:
+                    game_data['protondb_tier']       = None
+                    game_data['protondb_confidence'] = None
+                update_game_data(appid, **game_data)
+
+                with lock:
+                    counts['done'] += 1
+                if progress_cb:
+                    progress_cb('done', appid, total)
+            except Exception as e:
+                log.error(f"[bulk_protondb] Error for {appid}: {e}")
+                with lock:
+                    counts['failed'] += 1
+                if progress_cb:
+                    progress_cb('failed', appid, total)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures_wait([pool.submit(worker) for _ in range(2)])
+
+    return counts
