@@ -116,16 +116,27 @@ def _art_worker(normal_q, priority_q, cancel_event, icon_hash_map, today, progre
             return
         # Skip if already fetched (priority queue may contain duplicates)
         db  = get_db()
-        row = db.execute("SELECT art_fetched FROM games WHERE appid=?", (appid,)).fetchone()
+        row = db.execute(
+            "SELECT art_fetched, vertical_art_source, horizontal_art_source, icon_source FROM games WHERE appid=?",
+            (appid,)
+        ).fetchone()
         db.close()
         if row and row['art_fetched'] != '0':
             continue
-        # Skip if image files already exist on disk (e.g. after a DB reset)
+        # Skip if image files already exist on disk (e.g. after a DB reset),
+        # but backfill any source columns that were never recorded.
         v_path = os.path.join(VERTICAL_DIR,   f"{appid}.jpg")
         h_path = os.path.join(HORIZONTAL_DIR, f"{appid}.jpg")
         i_path = os.path.join(ICONS_DIR,      f"{appid}.jpg")
         if os.path.exists(v_path) or os.path.exists(h_path) or os.path.exists(i_path):
-            update_game_data(appid, art_fetched=today)
+            src_updates = {}
+            if os.path.exists(v_path) and not (row and row['vertical_art_source']):
+                src_updates['vertical_art_source'] = 'capsule'
+            if os.path.exists(h_path) and not (row and row['horizontal_art_source']):
+                src_updates['horizontal_art_source'] = 'header'
+            if os.path.exists(i_path) and not (row and row['icon_source']):
+                src_updates['icon_source'] = 'steam' if icon_hash_map.get(appid) else 'sgdb_icon'
+            update_game_data(appid, art_fetched=today, **src_updates)
             if progress_cb:
                 progress_cb('art', appid, None)
             continue
@@ -275,6 +286,69 @@ def _cheevo_worker(normal_q, priority_q, backoff, cancel_event, today, progress_
             log.error(f"[cheevo] Error for {appid}: {e}")
 
 
+# ── ProtonDB fetch functions ──────────────────────────────────────────────────
+
+def fetch_protondb_data(appid, session=None):
+    """
+    Fetch ProtonDB summary for a single appid.
+    Returns {'protondb_tier': str, 'protondb_confidence': str} or None.
+    'pending' tier (no reports) is normalised to None so the caller stores NULL.
+    """
+    url = f'https://www.protondb.com/api/v1/reports/summaries/{appid}.json'
+    try:
+        if session:
+            r = session.get(url, timeout=10)
+        else:
+            r = requests.get(url, timeout=10)
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        data = r.json()
+        tier = data.get('tier', '')
+        if not tier or tier == 'pending':
+            return None
+        return {
+            'protondb_tier':       tier,
+            'protondb_confidence': data.get('confidence'),
+        }
+    except Exception as e:
+        log.warning(f"[protondb] fetch failed for {appid}: {e}")
+        return None
+
+
+def _protondb_worker(normal_q, priority_q, cancel_event, today, progress_cb):
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0'
+    while True:
+        if cancel_event and cancel_event.is_set():
+            return
+
+        appid = _next(priority_q, normal_q)
+        if appid is None:
+            return
+
+        db  = get_db()
+        row = db.execute("SELECT protondb_fetched FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if row and row['protondb_fetched'] != '0':
+            continue
+
+        try:
+            info = fetch_protondb_data(appid, session=session)
+            game_data = {'protondb_fetched': today}
+            if info:
+                game_data.update(info)
+            else:
+                # No data / pending — clear stale tier in case this is a re-fetch
+                game_data['protondb_tier']       = None
+                game_data['protondb_confidence'] = None
+            update_game_data(appid, **game_data)
+            if progress_cb:
+                progress_cb('protondb', appid, None)
+        except Exception as e:
+            log.error(f"[protondb] Error for {appid}: {e}")
+
+
 # ── Main populate entry point ─────────────────────────────────────────────────
 
 def add_new(cancel_event=None, progress_cb=None):
@@ -382,15 +456,17 @@ def add_new(cancel_event=None, progress_cb=None):
     icon_hash_map = {g['appid']: g.get('icon_hash', '') for g in new_games}
 
     # Two queues per pool: priority (for viewport-visible games) and normal
-    art_nq,    art_pq    = queue.Queue(), queue.Queue()
-    meta_nq,   meta_pq   = queue.Queue(), queue.Queue()
-    cheevo_nq, cheevo_pq = queue.Queue(), queue.Queue()
+    art_nq,      art_pq      = queue.Queue(), queue.Queue()
+    meta_nq,     meta_pq     = queue.Queue(), queue.Queue()
+    cheevo_nq,   cheevo_pq   = queue.Queue(), queue.Queue()
+    protondb_nq, protondb_pq = queue.Queue(), queue.Queue()
 
     for appid in appid_list:
         art_nq.put(appid)
         meta_nq.put(appid)
         if api_key:
             cheevo_nq.put(appid)
+        protondb_nq.put(appid)
 
     art_backoff    = _PoolBackoff('art')
     meta_backoff   = _PoolBackoff('meta')
@@ -398,14 +474,16 @@ def add_new(cancel_event=None, progress_cb=None):
     # Expose priority queues so /api/populate-priority can feed them
     if progress_cb:
         progress_cb('workers_starting', {
-            'art_pq':    art_pq,
-            'meta_pq':   meta_pq,
-            'cheevo_pq': cheevo_pq,
+            'art_pq':      art_pq,
+            'meta_pq':     meta_pq,
+            'cheevo_pq':   cheevo_pq,
+            'protondb_pq': protondb_pq,
         }, total)
 
-    ART_WORKERS    = 5
-    META_WORKERS   = 1
-    CHEEVO_WORKERS = 2
+    ART_WORKERS      = 5
+    META_WORKERS     = 1
+    CHEEVO_WORKERS   = 2
+    PROTONDB_WORKERS = 2
 
     # ── Phase 1d: BLAEO pre-scrape (concurrent with art + meta workers) ───────
     # Only worthwhile when there are enough games needing cheevo data.
@@ -429,7 +507,7 @@ def add_new(cancel_event=None, progress_cb=None):
         except Exception as e:
             log.warning(f"[populate] BLAEO pre-scrape failed (non-fatal): {e}")
 
-    n_workers = ART_WORKERS + META_WORKERS + (CHEEVO_WORKERS if api_key else 0)
+    n_workers = ART_WORKERS + META_WORKERS + (CHEEVO_WORKERS if api_key else 0) + PROTONDB_WORKERS
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         # Art and meta start immediately
         futures = []
@@ -440,6 +518,10 @@ def add_new(cancel_event=None, progress_cb=None):
         for _ in range(META_WORKERS):
             futures.append(executor.submit(
                 _meta_worker, meta_nq, meta_pq, meta_backoff, cancel_event, total, today, progress_cb
+            ))
+        for _ in range(PROTONDB_WORKERS):
+            futures.append(executor.submit(
+                _protondb_worker, protondb_nq, protondb_pq, cancel_event, today, progress_cb
             ))
 
         # BLAEO runs concurrently; cheevo workers start after it finishes

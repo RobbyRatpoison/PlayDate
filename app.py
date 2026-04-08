@@ -185,6 +185,7 @@ def create_app(template_folder=None, static_folder=None):
         from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
         bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
         ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
+        import sys as _sys
         return dict(
             background_ts=ts,
             builtin_filters=BUILTIN_FILTERS,
@@ -193,6 +194,7 @@ def create_app(template_folder=None, static_folder=None):
             unique_groups=get_all_unique_groups(),
             unique_genres=get_all_unique_genres(),
             unique_categories=get_all_unique_categories(),
+            is_windows=_sys.platform == 'win32',
         )
 
     # ── Cancellation + progress state for populate ───────────────────────────
@@ -205,6 +207,7 @@ def create_app(template_folder=None, static_folder=None):
         "meta_done":        0,
         "art_done":         0,
         "cheevo_done":      0,
+        "protondb_done":    0,
         "started_at":       None,
         "eta_seconds":      None,
         "new_placeholders": [],   # game dicts just inserted — cleared each poll
@@ -458,6 +461,7 @@ def create_app(template_folder=None, static_folder=None):
             "meta_done":          _populate_state["meta_done"],
             "art_done":           _populate_state["art_done"],
             "cheevo_done":        _populate_state["cheevo_done"],
+            "protondb_done":      _populate_state["protondb_done"],
             "eta_seconds":        _populate_state["eta_seconds"],
             "new_placeholders":   new_ph,
             "recently_meta":      r_meta,
@@ -478,6 +482,7 @@ def create_app(template_folder=None, static_folder=None):
             _populate_state["meta_done"]          = 0
             _populate_state["art_done"]           = 0
             _populate_state["cheevo_done"]        = 0
+            _populate_state["protondb_done"]      = 0
             _populate_state["started_at"]         = None
             _populate_state["eta_seconds"]        = None
             _populate_state["new_placeholders"]   = []
@@ -513,6 +518,8 @@ def create_app(template_folder=None, static_folder=None):
                     _populate_state["recently_art"].append(data)
                 elif event_type == 'cheevo':
                     _populate_state["cheevo_done"] += 1
+                elif event_type == 'protondb':
+                    _populate_state["protondb_done"] += 1
                 elif event_type == 'blacklist':
                     _populate_state["recently_blacklist"].append(data)
                 elif event_type == 'rate_limit_hit':
@@ -761,6 +768,22 @@ def create_app(template_folder=None, static_folder=None):
             source = download_icon(appid, icon_hash)
             update_game_data(appid, icon_source=source, art_fetched=today)
         return jsonify({"status": "success", "source": source})
+
+    @app.route('/api/protondb/<int:appid>', methods=['POST'])
+    def rescrape_protondb(appid):
+        from scrapers import fetch_protondb_data
+        from datetime import datetime
+        today = datetime.now().strftime('%Y-%m-%d')
+        info  = fetch_protondb_data(appid)
+        game_data = {'protondb_fetched': today}
+        if info:
+            game_data.update(info)
+        else:
+            game_data['protondb_tier']       = None
+            game_data['protondb_confidence'] = None
+        update_game_data(appid, **game_data)
+        return jsonify({'status': 'success', 'tier': info.get('protondb_tier') if info else None,
+                        'confidence': info.get('protondb_confidence') if info else None})
 
     @app.route('/api/set-background', methods=['POST'])
     def set_background():

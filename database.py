@@ -76,6 +76,9 @@ def init_db():
         'art_fetched': 'TEXT',           # '0' = never fetched, YYYY-MM-DD = date last fetched
         'meta_fetched': 'TEXT',          # '0' = never fetched, YYYY-MM-DD = date last fetched
         'cheevos_fetched': 'TEXT',       # '0' = never fetched, YYYY-MM-DD = date last fetched
+        'protondb_tier': 'TEXT',         # platinum/gold/silver/bronze/borked or NULL
+        'protondb_confidence': 'TEXT',   # strong/good/weak or NULL
+        'protondb_fetched': 'TEXT',      # '0' = never fetched, YYYY-MM-DD = date last fetched
     }
 
     for column_name, column_type in required_columns.items():
@@ -121,6 +124,36 @@ def init_db():
         cursor.execute("UPDATE games SET art_fetched     = '0' WHERE art_fetched     IS NULL")
         cursor.execute("UPDATE games SET cheevos_fetched = '0' WHERE cheevos_fetched IS NULL")
 
+    # protondb_fetched: NULL means column was just added — mark all as pending ('0').
+    # Also reset any games that were marked fetched but have no tier data (caused by
+    # the failed bulk-download path that stored NULL tier for all games).
+    cursor.execute("UPDATE games SET protondb_fetched = '0' WHERE protondb_fetched IS NULL")
+    cursor.execute(
+        "UPDATE games SET protondb_fetched = '0'"
+        " WHERE protondb_fetched != '0' AND protondb_tier IS NULL"
+    )
+
+    # ── Backfill art source columns for games stuck with art_fetched set but ──
+    # all three source columns NULL.  This happens when the art worker took the
+    # "files already exist on disk" shortcut without recording sources (fixed in
+    # the populate speed overhaul).  Uses conservative defaults; 'capsule' and
+    # 'header' are the most common Steam sources, and icon_source is guessed
+    # from whether an icon_hash is recorded.
+    cursor.execute("""
+        UPDATE games
+        SET vertical_art_source   = 'capsule',
+            horizontal_art_source = 'header',
+            icon_source           = CASE
+                                        WHEN icon_hash IS NOT NULL AND icon_hash != '' THEN 'steam'
+                                        ELSE 'sgdb_icon'
+                                    END
+        WHERE art_fetched IS NOT NULL
+        AND   art_fetched != '0'
+        AND   vertical_art_source   IS NULL
+        AND   horizontal_art_source IS NULL
+        AND   icon_source           IS NULL
+    """)
+
     # Blacklist table — appids that should be skipped by Populate
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS blacklist (
@@ -159,7 +192,7 @@ def batch_insert_placeholder_games(games, today):
     cols = [
         'appid', 'name', 'playtime_forever', 'last_played', 'date_added',
         'completion_status', 'installed', 'icon_hash',
-        'art_fetched', 'meta_fetched', 'cheevos_fetched',
+        'art_fetched', 'meta_fetched', 'cheevos_fetched', 'protondb_fetched',
     ]
     placeholders = ', '.join('?' * len(cols))
     col_str = ', '.join(cols)
@@ -167,7 +200,7 @@ def batch_insert_placeholder_games(games, today):
         (
             str(g['appid']), g['name'], g['playtime_forever'], g['last_played'],
             today, g['completion_status'], g['installed'], g.get('icon_hash', ''),
-            '0', '0', '0',
+            '0', '0', '0', '0',
         )
         for g in games
     ]

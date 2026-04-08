@@ -13,7 +13,8 @@ SAFE_COLUMNS = {
     'review_score', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
     'groups', 'tags', 'developers', 'publishers',
     'total_reviews', 'positive_reviews', 'unlocked_achievements', 'total_achievements',
-    'genres', 'categories', 'is_free'
+    'genres', 'categories', 'is_free',
+    'protondb_tier', 'protondb_confidence',
 }
 
 import re as _re
