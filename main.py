@@ -94,7 +94,7 @@ import webview
 from app import create_app, populate_cancel
 from config import BASE_DIR, migrate_to_multi_account
 from database import init_db, migrate_image_files
-from utils import find_steam_path, start_steamapps_watcher, stop_steamapps_watcher
+from utils import find_steam_path, start_steamapps_watcher, stop_steamapps_watcher, sync_local_install_status
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PORT      = 5000
@@ -304,12 +304,21 @@ if __name__ == '__main__':
         log.critical(f"Database initialization failed: {e}", exc_info=True)
         raise
 
-    # 2b. Start steamapps filesystem watcher
+    # 2b. Start steamapps filesystem watcher + sync install status on launch
     _steamapps_path = find_steam_path()
     if _steamapps_path:
         start_steamapps_watcher(_steamapps_path)
     else:
         log.warning("Steam path not found — steamapps watcher not started")
+
+    def _run_install_sync():
+        try:
+            count = sync_local_install_status()
+            log.info(f"Install status synced on startup: {count} games installed")
+        except Exception as e:
+            log.warning(f"Startup install sync failed: {e}")
+
+    threading.Thread(target=_run_install_sync, daemon=True).start()
 
     # 2c. Sync recent playtime from Steam API in background
     def _run_playtime_sync():

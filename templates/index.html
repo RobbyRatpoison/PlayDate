@@ -303,6 +303,7 @@
         <div class="shelf-split-side"
              style="flex:{{ shelf.col_width or 2 }};"
              data-shelf-id="{{ shelf.id }}"
+             data-filter-key="{{ shelf.filter_key or '' }}"
              data-visible="{{ shelf.visible | lower }}">
             <div class="shelf-edit-bar" data-for="{{ shelf.id }}"></div>
             <div class="shelf-sql-panel" id="sql-panel-{{ shelf.id }}">
@@ -345,6 +346,7 @@
     <div class="shelf"
          style="height:{{ shelf.row_height }}vh;"
          data-shelf-id="{{ shelf.id }}"
+         data-filter-key="{{ shelf.filter_key or '' }}"
          data-visible="{{ shelf.visible | lower }}"
          draggable="false">
         <div class="shelf-edit-bar" data-for="{{ shelf.id }}"></div>
@@ -1285,5 +1287,31 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('sem-sort'));
     initCustomSelect(document.getElementById('sem-sort-dir'));
 });
+
+// ── Install status polling ────────────────────────────────────────────────────
+setInterval(async () => {
+    try {
+        const res  = await fetch('/api/install-changed');
+        const data = await res.json();
+        if (!data.changed) return;
+
+        const installedSet = new Set(data.installed_appids.map(String));
+
+        // Update data-installed on all capsule-wraps
+        document.querySelectorAll('.shelf-capsule-wrap[data-appid]').forEach(el => {
+            el.dataset.installed = installedSet.has(el.dataset.appid) ? '1' : '0';
+        });
+
+        // Show/hide cards in installed/not_installed shelves
+        document.querySelectorAll('[data-shelf-id]').forEach(shelf => {
+            const key = shelf.dataset.filterKey;
+            if (key !== 'installed' && key !== 'not_installed') return;
+            shelf.querySelectorAll('.shelf-capsule-wrap').forEach(el => {
+                const isInstalled = installedSet.has(el.dataset.appid);
+                el.style.display = (key === 'installed') === isInstalled ? '' : 'none';
+            });
+        });
+    } catch { /* silently ignore network errors */ }
+}, 5000);
 </script>
 {% endblock %}

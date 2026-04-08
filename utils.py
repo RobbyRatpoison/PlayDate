@@ -8,6 +8,16 @@ from datetime import datetime
 
 log = logging.getLogger(__name__)
 
+# ── Install status change flag ────────────────────────────────────────────────
+_install_status_dirty = False
+
+def consume_install_dirty():
+    """Return True (and reset) if install status changed since last call."""
+    global _install_status_dirty
+    dirty = _install_status_dirty
+    _install_status_dirty = False
+    return dirty
+
 # ── Steamapps filesystem watcher ──────────────────────────────────────────────
 _watcher_observer = None
 
@@ -336,6 +346,7 @@ def is_real_game(file_path):
     return True
 
 def sync_local_install_status():
+    global _install_status_dirty
     # 1. Get the real IDs from your hard drive
     local_ids = get_locally_installed_appids()
 
@@ -349,8 +360,9 @@ def sync_local_install_status():
         # 3. Bulk update the ones we actually found
         from database import bulk_update_column
         bulk_update_column(local_ids, 'installed', 1)
-        return len(local_ids)
-    return 0
+
+    _install_status_dirty = True
+    return len(local_ids) if local_ids else 0
 
 def record_launch(appid):
     db = get_db()

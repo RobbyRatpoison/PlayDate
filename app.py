@@ -830,6 +830,16 @@ def create_app(template_folder=None, static_folder=None):
         account = get_active_account() or {}
         return jsonify({'steam_id': account.get('steam_id', '')})
 
+    @app.route('/api/install-changed')
+    def install_changed():
+        from utils import consume_install_dirty
+        if not consume_install_dirty():
+            return jsonify({'changed': False})
+        db = get_db()
+        rows = db.execute("SELECT appid FROM games WHERE installed = 1").fetchall()
+        db.close()
+        return jsonify({'changed': True, 'installed_appids': [r['appid'] for r in rows]})
+
     # ── Bulk date import ──────────────────────────────────────────────────────
 
     @app.route('/api/bulk-date-import/start', methods=['POST'])
