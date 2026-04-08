@@ -1535,24 +1535,20 @@ def create_app(template_folder=None, static_folder=None):
             except Exception:
                 pass
 
-        # Determine which appids are in the user's library
-        all_appids_combined = list(appids_wins.keys()) + list(appids_all.keys())
-        in_library_set = set()
-        if all_appids_combined:
-            from database import get_db
-            db = get_db()
-            placeholders = ','.join('?' * len(all_appids_combined))
-            rows = db.execute(
-                f'SELECT appid FROM games WHERE appid IN ({placeholders})',
-                all_appids_combined
-            ).fetchall()
-            in_library_set = {r['appid'] for r in rows}
+        # Determine which appids are in the user's library.
+        # Scan the whole games table once (fast — user's library is small) and
+        # intersect in Python, avoiding a huge IN (?, ?, ...) with 5000+ params.
+        from database import get_db
+        _lib_db = get_db()
+        _all_library_appids = {r['appid'] for r in _lib_db.execute('SELECT appid FROM games').fetchall()}
+        all_appids_combined = set(appids_wins.keys()) | set(appids_all.keys())
+        in_library_set = _all_library_appids & all_appids_combined
 
         _COMMA_SEP_COLS = {'tags', 'groups', 'genres', 'categories', 'developers', 'publishers'}
 
         def _redundant_set(pool_dict, tags, conds):
             """Return appids already matched by the pool's tag/condition criteria (not needing the explicit appid list)."""
-            owned = [aid for aid in pool_dict if aid in in_library_set]
+            owned = {aid for aid in pool_dict if aid in in_library_set}
             if not owned:
                 return set()
             parts, params = [], []
@@ -1579,19 +1575,32 @@ def create_app(template_folder=None, static_folder=None):
                     params.append(str(int(val)).zfill(2))
             if not parts:
                 return set()
-            ph = ','.join('?' * len(owned))
+            # Query only the tag/condition filter against the whole library,
+            # then intersect with owned in Python — no large IN clause needed.
             where = ' OR '.join(parts)
-            db = get_db()
-            rows = db.execute(
-                f'SELECT appid FROM games WHERE appid IN ({ph}) AND ({where})',
-                owned + params
+            rows = _lib_db.execute(
+                f'SELECT appid FROM games WHERE ({where})',
+                params
             ).fetchall()
-            return {r['appid'] for r in rows}
+            return {r['appid'] for r in rows} & owned
 
         def _serialise_pool(pool_dict, tags, conds):
             redundant = _redundant_set(pool_dict, tags, conds)
+            # Group appids by contributing category label for labeled appid_list nodes
+            source_map = {}   # {cat_label: {"appids": [...], "auto": bool}}
+            for aid, v in pool_dict.items():
+                for cat_entry in v.get("categories", []):
+                    label = cat_entry.get("cat", "")
+                    if not label:
+                        continue
+                    if label not in source_map:
+                        source_map[label] = {"appids": [], "auto": bool(cat_entry.get("auto"))}
+                    source_map[label]["appids"].append(aid)
+            appid_sources = [{"label": lbl, "appids": sorted(v["appids"]), "auto": v["auto"]}
+                             for lbl, v in source_map.items()]
             return {
                 "appids": sorted(pool_dict.keys()),
+                "appid_sources": appid_sources,
                 "games":  sorted(
                     [{"appid": aid, "name": v["name"], "categories": v["categories"],
                       "in_library": aid in in_library_set,
@@ -1601,7 +1610,7 @@ def create_app(template_folder=None, static_folder=None):
                 ),
             }
 
-        return jsonify({
+        result = {
             "status": "success",
             "event": {"id": event_id, "name": event.get('name', '')},
             "tags":   {"wins": tags_wins, "all": tags_all},
@@ -1610,7 +1619,9 @@ def create_app(template_folder=None, static_folder=None):
             "all":    _serialise_pool(appids_all,  tags_all,  conds_all),
             "skipped": skipped,
             "supplement_loaded": supplement_loaded,
-        })
+        }
+        _lib_db.close()
+        return jsonify(result)
 
     @app.route('/api/pagywosg-tags')
     def pagywosg_tags():

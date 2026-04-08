@@ -163,6 +163,13 @@ def build_tree_sql(node, params):
     if node_type == 'condition':
         return build_condition_sql(node, params)
 
+    if node_type == 'appid_list':
+        raw = node.get('appids', [])
+        safe = [a for a in raw if isinstance(a, int) and a > 0]
+        if not safe:
+            return '1=1'
+        return f"appid IN ({','.join(str(a) for a in safe)})"
+
     if node_type == 'custom_expr':
         sql = node.get('sql', '').strip()
         if sql and is_safe_sql(sql):
@@ -244,9 +251,14 @@ def library():
     groups = get_all_unique_groups()
     tags   = get_all_unique_tags()
 
+    total_db = get_db()
+    total_games = total_db.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+    total_db.close()
+
     return render_template('library.html', games=games, state=state,
                            unique_tags=tags, unique_groups=groups,
-                           sql_error=sql_error, builtin_filters=BUILTIN_FILTERS)
+                           sql_error=sql_error, builtin_filters=BUILTIN_FILTERS,
+                           total_games=total_games)
 
 
 @library_bp.route('/update_game', methods=['POST'])

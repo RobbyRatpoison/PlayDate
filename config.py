@@ -297,6 +297,7 @@ def inject_config_status():
         existing_steam_id=active.get('steam_id', ''),
         existing_api_key=active.get('api_key', ''),
         existing_sgdb_key=config.get('sgdb_key', ''),
+        existing_sg_username=config.get('sg_username', ''),
         accounts_list=accounts_list,
         active_steam_id=active_id or '',
         initial_fullscreen=state.get('fullscreen', False),
@@ -607,3 +608,15 @@ def remove_account():
     with open(CONFIG_PATH, 'w') as f:
         json.dump(config_data, f, indent=4)
     return jsonify({'status': 'success', 'new_active': config_data.get('active_account')})
+
+@config_bp.route('/api/save-sg-username', methods=['POST'])
+def save_sg_username():
+    username = ((request.json or {}).get('sg_username') or '').strip()
+    if not is_configured():
+        return jsonify({'status': 'error', 'message': 'Not configured'}), 400
+    with open(CONFIG_PATH, 'r') as f:
+        config_data = json.load(f)
+    config_data['sg_username'] = username
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(config_data, f, indent=4)
+    return jsonify({'status': 'success'})

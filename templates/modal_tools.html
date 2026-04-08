@@ -413,6 +413,26 @@
     .settings-item:last-of-type { margin-bottom: 0; }
     .settings-item:hover:not(:disabled) { background: var(--bg-surface); border-color: var(--accent); }
     .settings-item:disabled { opacity: 0.5; cursor: default; }
+    [data-tooltip] { position: relative; cursor: default; }
+    [data-tooltip]::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1a2233;
+        color: #c2c8cc;
+        border: 1px solid #3a4a5c;
+        border-radius: 5px;
+        padding: 6px 10px;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s;
+        z-index: 9999;
+    }
+    [data-tooltip]:hover::after { opacity: 1; }
 </style>
 
 <!-- ── SETTINGS MODAL ── -->
@@ -474,12 +494,12 @@
 
         <div style="margin-bottom:14px;">
             <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
-                Steam API Key <span style="font-style:italic;">(optional)</span>
+                Steam API Key <span style="font-style:italic; color:#c89a3c;" data-tooltip="Enables achievements, accurate completion status, and full library import. Without: local Steam files only, no achievements.">(recommended)</span>
                 — <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
             </label>
             <div style="display:flex; gap:6px;">
                 <input id="cfg-api-key" type="password" value="{{ existing_api_key }}"
-                    placeholder="Leave blank to use local files only"
+                    placeholder="Enables achievements, full library import, and vanity name lookup"
                     style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
                 <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
@@ -535,6 +555,24 @@
             <div style="display:flex; align-items:center; gap:10px;">
                 <button class="nav-btn" onclick="saveSgdbKey()">Save SGDB Key</button>
                 <div id="cfg-sgdb-status" class="tool-status" style="margin:0;"></div>
+            </div>
+        </div>
+
+        <!-- SteamGifts username -->
+        <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+            <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
+                SteamGifts Username <span style="font-style:italic;">(optional)</span>
+                — used in the PAGYWOSG qualifications panel
+            </label>
+            <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <input id="cfg-sg-username" type="text" value="{{ existing_sg_username }}"
+                    placeholder="Your SteamGifts username"
+                    style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <button class="nav-btn" onclick="saveSgUsername()">Save</button>
+                <div id="cfg-sg-status" class="tool-status" style="margin:0;"></div>
             </div>
         </div>
     </div>
@@ -1254,6 +1292,8 @@ let _pagSelectedAll = new Set();
 let _pagSelectedWins = new Set();
 let _pagAllAppids  = [];
 let _pagWinsAppids = [];
+let _pagAllAppidSources  = [];  // [{label, appids}]
+let _pagWinsAppidSources = [];
 let _pagAllGames   = [];   // [{appid, name, categories}]
 let _pagWinsGames  = [];
 let _pagEventId    = null;
@@ -1456,13 +1496,17 @@ function pagBuildTree() {
     const allTags  = [..._pagSelectedAll];
     const winsTags = [..._pagSelectedWins];
 
+    const _toAppidListNodes = (sources, fallbackAppids) => {
+        if (sources.length) return sources.map(s => ({ type: 'appid_list', appids: s.appids, label: s.label, auto: s.auto }));
+        return fallbackAppids.length ? [{ type: 'appid_list', appids: fallbackAppids }] : [];
+    };
     const allExtraItems  = [
         ...Array.from(document.querySelectorAll('#pag-all-conds > div')).map(pagCondToTree).filter(Boolean),
-        ...(_pagAllAppids.length  ? [{ type: 'custom_expr', sql: `appid IN (${_pagAllAppids.join(',')})` }]  : [])
+        ..._toAppidListNodes(_pagAllAppidSources,  _pagAllAppids)
     ];
     const winsExtraItems = [
         ...Array.from(document.querySelectorAll('#pag-wins-conds > div')).map(pagCondToTree).filter(Boolean),
-        ...(_pagWinsAppids.length ? [{ type: 'custom_expr', sql: `appid IN (${_pagWinsAppids.join(',')})` }] : [])
+        ..._toAppidListNodes(_pagWinsAppidSources, _pagWinsAppids)
     ];
 
     const allTagItems  = allTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
@@ -1522,14 +1566,14 @@ function pagBuildWhere() {
     const allConds = [
         ...allTags.map(t => `tags LIKE '%${t.replace(/'/g,"''")}%'`),
         ...allExtraSql,
-        ...(_pagAllAppids.length ? [`appid IN (${_pagAllAppids.join(', ')})`] : [])
+        ...(_pagAllAppids.length ? [_pagAllAppids.length <= 6 ? `appid IN (${_pagAllAppids.join(', ')})` : `appid IN (${_pagAllAppids.slice(0,3).join(', ')}, … [${_pagAllAppids.length} total])`] : [])
     ];
 
     // Wins-only conditions
     const winsConds = [
         ...winsTags.map(t => `tags LIKE '%${t.replace(/'/g,"''")}%'`),
         ...winsExtraSql,
-        ...(_pagWinsAppids.length ? [`appid IN (${_pagWinsAppids.join(', ')})`] : [])
+        ...(_pagWinsAppids.length ? [_pagWinsAppids.length <= 6 ? `appid IN (${_pagWinsAppids.join(', ')})` : `appid IN (${_pagWinsAppids.slice(0,3).join(', ')}, … [${_pagWinsAppids.length} total])`] : [])
     ];
 
     // Completion filter
@@ -1575,6 +1619,15 @@ async function pagConfirmSave() {
     }
     const name = document.getElementById('pag-filter-name').value.trim();
     if (!name) { document.getElementById('pag-filter-name').focus(); return; }
+    if (_savedFilters[name]) {
+        const replace = await confirmCustom(`A filter named "${name}" already exists.\n\nReplace it, or go back to rename?`, 'Replace', 'Rename');
+        if (!replace) {
+            const nameInput = document.getElementById('pag-filter-name');
+            nameInput.select();
+            nameInput.focus();
+            return;
+        }
+    }
     const tree = pagBuildTree();
     tree.pagywosg = true;
     if (_pagEventId) tree.pagywosg_event = {id: _pagEventId, name: _pagEventName};
@@ -1682,10 +1735,12 @@ async function pagAutoFill(next = false) {
         data.conds.all.forEach(c  => pagAddCond('all',  c));
 
         // Set verified appids + game info
-        _pagWinsAppids = data.wins.appids;
-        _pagAllAppids  = data.all.appids;
-        _pagWinsGames  = data.wins.games;
-        _pagAllGames   = data.all.games;
+        _pagWinsAppids        = data.wins.appids;
+        _pagAllAppids         = data.all.appids;
+        _pagWinsAppidSources  = data.wins.appid_sources || [];
+        _pagAllAppidSources   = data.all.appid_sources  || [];
+        _pagWinsGames         = data.wins.games;
+        _pagAllGames          = data.all.games;
         pagUpdateAppidsInfo('wins');
         pagUpdateAppidsInfo('all');
 
@@ -1713,10 +1768,12 @@ async function pagAutoFill(next = false) {
 function pagClearAll() {
     _pagSelectedAll.clear();
     _pagSelectedWins.clear();
-    _pagAllAppids  = [];
-    _pagWinsAppids = [];
-    _pagAllGames   = [];
-    _pagWinsGames  = [];
+    _pagAllAppids         = [];
+    _pagWinsAppids        = [];
+    _pagAllAppidSources   = [];
+    _pagWinsAppidSources  = [];
+    _pagAllGames          = [];
+    _pagWinsGames         = [];
     pagUpdateAppidsInfo('all');
     pagUpdateAppidsInfo('wins');
     pagRenderTags('all');
@@ -3015,6 +3072,32 @@ async function saveSgdbKey() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sgdb_key: sgdbKey })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.textContent = '✔ Saved.';
+            status.className = 'tool-status success';
+        } else {
+            status.textContent = '✘ ' + (data.message || 'Save failed.');
+            status.className = 'tool-status error';
+        }
+    } catch (e) {
+        status.textContent = '✘ Network error.';
+        status.className = 'tool-status error';
+    }
+    setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 5000);
+}
+
+async function saveSgUsername() {
+    const status = document.getElementById('cfg-sg-status');
+    const username = document.getElementById('cfg-sg-username').value.trim();
+    status.textContent = 'Saving…';
+    status.className = 'tool-status info';
+    try {
+        const res = await fetch('/api/save-sg-username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sg_username: username })
         });
         const data = await res.json();
         if (data.status === 'success') {

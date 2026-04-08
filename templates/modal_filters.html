@@ -85,7 +85,7 @@
                             style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
                             oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
                         <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
-                            Use standard SQLite syntax. Column names: appid, name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers.
+                            Use standard SQLite syntax. Column names: appid, name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers, protondb_tier, protondb_confidence.
                         </div>
                         <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
                             <button type="button" onclick="parseSqlToTree()"
@@ -433,12 +433,6 @@ const FM_FILTER_CONFIG = {
                             options: ["Overwhelmingly Positive","Very Positive","Positive","Mostly Positive","Mixed","Mostly Negative","Negative","Very Negative","Overwhelmingly Negative","No Reviews","Not Enough Reviews"] },
     'developers':         { label: 'Developer',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
     'publishers':         { label: 'Publisher',            type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
-    'vertical_art_source':   { label: 'Vertical Art Source',   type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
-                               options: ['capsule_2x','capsule','sgdb_grid','custom','missing'] },
-    'horizontal_art_source': { label: 'Horizontal Art Source', type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
-                               options: ['header','sgdb_grid_wide','custom','missing'] },
-    'icon_source':           { label: 'Icon Source',           type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
-                               options: ['steam','sgdb_icon','custom','missing'] },
     'unlocked_achievements': { label: 'Unlocked Achievements', type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'total_achievements':    { label: 'Total Achievements',    type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'total_reviews':         { label: 'Total Reviews',         type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
@@ -449,6 +443,16 @@ const FM_FILTER_CONFIG = {
                             options: {{ unique_categories | tojson if unique_categories is defined else '[]' }} },
     'is_free':            { label: 'Free to Play',          type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {'1':'Yes','0':'No'} },
+    'protondb_tier':      { label: 'ProtonDB Tier',         type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not fetched','IS NOT NULL':'is set'},
+                            options: ['platinum','gold','silver','bronze','borked'] },
+    'protondb_confidence':{ label: 'ProtonDB Confidence',   type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                            options: ['strong','good','weak'] },
+    'vertical_art_source':   { label: 'Vertical Art Source',   type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                               options: ['capsule_2x','capsule','sgdb_grid','custom','missing'] },
+    'horizontal_art_source': { label: 'Horizontal Art Source', type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                               options: ['header','sgdb_grid_wide','custom','missing'] },
+    'icon_source':           { label: 'Icon Source',           type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                               options: ['steam','sgdb_icon','custom','missing'] },
 };
 
 // Operators that need no value input
@@ -514,7 +518,7 @@ function populateModalFromTree(tree) {
             _customSqlActive = false;
 
             const hasGroups = tree.items.some(i => i.type === 'group');
-            const hasExpr   = tree.items.some(i => i.type === 'custom_expr');
+            const hasExpr   = tree.items.some(i => i.type === 'custom_expr' || i.type === 'appid_list');
             const hasValCol = tree.items.some(i => i.type === 'condition' && i.value_col);
             if (hasGroups || hasExpr || hasValCol) {
                 setFilterMode('advanced');
@@ -600,6 +604,14 @@ function updateSqlPreview() {
 
 function treeToSql(node) {
     if (!node) return '';
+    if (node.type === 'appid_list') {
+        const n = node.appids?.length || 0;
+        if (!n) return '';
+        const countStr = node.auto === false
+            ? (n === 1 ? '1 verified game ID' : `${n} verified game IDs`)
+            : (n === 1 ? '1 game ID' : `${n} game IDs`);
+        return node.label ? `appid IN (${node.label} — ${countStr})` : `appid IN (${countStr})`;
+    }
     if (node.type === 'custom_expr') {
         return node.sql ? `(${node.sql})` : '';
     }
@@ -651,7 +663,7 @@ function updateActivePills(tree) {
 }
 
 function flattenConditions(node) {
-    if (node.type === 'condition' || node.type === 'custom_expr') return [node];
+    if (node.type === 'condition' || node.type === 'custom_expr' || node.type === 'appid_list') return [node];
     if (node.type === 'group') return (node.items||[]).flatMap(flattenConditions);
     return [];
 }
@@ -912,6 +924,8 @@ function buildAdvancedFromTree(tree) {
             addAdvancedGroup(root, item);
         } else if (item.type === 'custom_expr') {
             addAdvancedExprRow(root, item);
+        } else if (item.type === 'appid_list') {
+            addAppidListRow(root, item);
         }
     });
 }
@@ -1026,6 +1040,7 @@ function addAdvancedGroup(parentGroupEl, existingTree = null) {
             if (item.type === 'condition') addAdvancedRow(groupEl, item);
             else if (item.type === 'group') addAdvancedGroup(groupEl, item);
             else if (item.type === 'custom_expr') addAdvancedExprRow(groupEl, item);
+            else if (item.type === 'appid_list') addAppidListRow(groupEl, item);
         });
     }
     // No auto-add — user clicks + Condition when ready
@@ -1068,6 +1083,48 @@ function removeGroupPromoteChildren(groupEl) {
 // ── Custom Expression Row ───────────────────────────────────────
 
 const _EXPR_STYLE = 'width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:6px 10px;border-radius:5px;resize:vertical;min-height:42px;outline:none;';
+
+function addAppidListRow(groupEl, data) {
+    const rowsEl = groupEl.querySelector(':scope > .fmg-rows');
+    const logic  = groupEl.dataset.logic || 'AND';
+    addConnectorIfNeeded(rowsEl, logic);
+
+    const row = document.createElement('div');
+    row.className = 'fm-appid-list-row';
+    row.dataset.appids = JSON.stringify(data.appids || []);
+    if (data.label) row.dataset.label = data.label;
+    if (data.auto !== undefined) row.dataset.auto = String(data.auto);
+    row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:4px 0;';
+
+    const badge = document.createElement('span');
+    badge.textContent = 'APPIDS';
+    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--accent);border-radius:4px;padding:3px 7px;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;';
+
+    const label = document.createElement('span');
+    const n = (data.appids || []).length;
+    label.style.cssText = 'flex:1;color:#8f98a0;font-size:0.82rem;font-family:monospace;';
+    const countStr = data.auto === false
+        ? (n === 1 ? '1 verified game ID' : `${n} verified game IDs`)
+        : (n === 1 ? '1 game ID' : `${n} game IDs`);
+    label.textContent = data.label ? `${data.label} (${countStr})` : `appid IN (${countStr})`;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'fm-remove';
+    removeBtn.textContent = '✕';
+    removeBtn.onclick = () => {
+        const prev = row.previousElementSibling;
+        if (prev && prev.classList.contains('fmg-connector')) prev.remove();
+        row.remove();
+        updateSqlPreview();
+    };
+
+    row.appendChild(badge);
+    row.appendChild(label);
+    row.appendChild(removeBtn);
+    rowsEl.appendChild(row);
+    updateSqlPreview();
+    return row;
+}
 
 function addAdvancedExprRow(groupEl, data = null) {
     const rowsEl = groupEl.querySelector(':scope > .fmg-rows');
@@ -1464,7 +1521,15 @@ function collectGroupData(groupEl) {
 
     Array.from(rowsEl.children).forEach(child => {
         if (child.classList.contains('fmg-connector')) return;
-        if (child.classList.contains('fm-expr-row')) {
+        if (child.classList.contains('fm-appid-list-row')) {
+            const appids = JSON.parse(child.dataset.appids || '[]');
+            if (appids.length) {
+                const node = { type: 'appid_list', appids };
+                if (child.dataset.label) node.label = child.dataset.label;
+                if (child.dataset.auto !== undefined && child.dataset.auto !== '') node.auto = child.dataset.auto === 'true';
+                items.push(node);
+            }
+        } else if (child.classList.contains('fm-expr-row')) {
             const sql = child.querySelector('.fm-expr-input')?.value?.trim();
             if (sql) items.push({ type: 'custom_expr', sql });
         } else if (child.classList.contains('fm-row')) {
