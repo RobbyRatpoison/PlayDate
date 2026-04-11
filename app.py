@@ -208,6 +208,7 @@ def create_app(template_folder=None, static_folder=None):
         "art_done":         0,
         "cheevo_done":      0,
         "protondb_done":    0,
+        "hltb_done":        0,
         "started_at":       None,
         "eta_seconds":      None,
         "new_placeholders": [],   # game dicts just inserted — cleared each poll
@@ -468,6 +469,7 @@ def create_app(template_folder=None, static_folder=None):
             "art_done":           _populate_state["art_done"],
             "cheevo_done":        _populate_state["cheevo_done"],
             "protondb_done":      _populate_state["protondb_done"],
+            "hltb_done":          _populate_state["hltb_done"],
             "eta_seconds":        _populate_state["eta_seconds"],
             "new_placeholders":   new_ph,
             "recently_meta":      r_meta,
@@ -489,6 +491,7 @@ def create_app(template_folder=None, static_folder=None):
             _populate_state["art_done"]           = 0
             _populate_state["cheevo_done"]        = 0
             _populate_state["protondb_done"]      = 0
+            _populate_state["hltb_done"]          = 0
             _populate_state["started_at"]         = None
             _populate_state["eta_seconds"]        = None
             _populate_state["new_placeholders"]   = []
@@ -526,6 +529,8 @@ def create_app(template_folder=None, static_folder=None):
                     _populate_state["cheevo_done"] += 1
                 elif event_type == 'protondb':
                     _populate_state["protondb_done"] += 1
+                elif event_type == 'hltb':
+                    _populate_state["hltb_done"] += 1
                 elif event_type == 'blacklist':
                     _populate_state["recently_blacklist"].append(data)
                 elif event_type == 'rate_limit_hit':
@@ -616,6 +621,40 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "success", "last_played": new_date})
         else:
             return jsonify({"status": "launched", "message": "Game launched but not marked installed — date not updated"})
+
+    @app.route('/api/game-running')
+    def game_running():
+        """
+        Check whether a Steam game is currently running.
+        Uses Steam's 'reaper' process wrapper, which is present for all Steam game
+        launches on Linux (Proton and native). Returns {'running': bool} on Linux,
+        {'running': null} on other platforms (caller should fall back to focus events).
+        """
+        import platform as _platform
+        if _platform.system() != 'Linux':
+            return jsonify({'running': None})
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['pgrep', '-f', 'reaper SteamLaunch'],
+                capture_output=True, timeout=3
+            )
+            return jsonify({'running': result.returncode == 0})
+        except Exception:
+            return jsonify({'running': None})
+
+    @app.route('/api/raise-window', methods=['POST'])
+    def raise_window_route():
+        """Raise and focus the PlayDate window via GTK (Linux only)."""
+        try:
+            import gi
+            gi.require_version('Gtk', '3.0')
+            from gi.repository import Gtk, GLib
+            for win in Gtk.Window.list_toplevels():
+                GLib.idle_add(win.present)
+        except Exception:
+            pass
+        return jsonify({'ok': True})
 
     @app.route('/api/scrape_single/<int:appid>', methods=['GET', 'POST'])
     def scrape_single(appid):
@@ -790,6 +829,116 @@ def create_app(template_folder=None, static_folder=None):
         update_game_data(appid, **game_data)
         return jsonify({'status': 'success', 'tier': info.get('protondb_tier') if info else None,
                         'confidence': info.get('protondb_confidence') if info else None})
+
+    @app.route('/api/hltb/matches', methods=['GET'])
+    def hltb_matches():
+        db   = get_db()
+        rows = db.execute("""
+            SELECT appid, name, hltb_id, hltb_matched_name, hltb_match_score,
+                   hltb_main, hltb_extras, hltb_completionist, hltb_fetched
+            FROM games
+            WHERE hltb_id IS NOT NULL
+            ORDER BY name COLLATE NOCASE
+        """).fetchall()
+        unfetched = db.execute(
+            "SELECT COUNT(*) FROM games WHERE hltb_fetched = '0' OR hltb_fetched IS NULL"
+        ).fetchone()[0]
+        no_match = db.execute(
+            "SELECT COUNT(*) FROM games WHERE hltb_fetched = 'no_match'"
+        ).fetchone()[0]
+        db.close()
+        return jsonify({'matches': [dict(r) for r in rows], 'unfetched_count': unfetched, 'no_match_count': no_match})
+
+    @app.route('/api/hltb/<int:appid>/search', methods=['GET'])
+    def hltb_search(appid):
+        from scrapers import search_hltb_results
+        db  = get_db()
+        row = db.execute("SELECT name FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+        name = request.args.get('q', '').strip() or row['name']
+        results = search_hltb_results(name)
+        return jsonify({'status': 'success', 'results': results})
+
+    @app.route('/api/hltb/<int:appid>/select', methods=['POST'])
+    def select_hltb(appid):
+        data     = request.json or {}
+        hltb_id  = data.get('hltb_id')
+        if not hltb_id:
+            return jsonify({'status': 'error', 'message': 'hltb_id required'}), 400
+        from scrapers import fetch_hltb_by_id
+        from datetime import datetime
+        db  = get_db()
+        row = db.execute("SELECT name FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+        today  = datetime.now().strftime('%Y-%m-%d')
+        result = fetch_hltb_by_id(row['name'], hltb_id)
+        if result is None:
+            return jsonify({'status': 'error', 'message': 'Could not reach HLTB'}), 500
+        times_available = result.pop('times_available', True)
+        score = data.get('hltb_match_score')
+        if times_available:
+            update_game_data(appid, hltb_fetched=today, hltb_id=hltb_id,
+                             hltb_match_score=score, **result)
+            return jsonify({'status': 'success', 'times_available': True,
+                            'data': {**result, 'hltb_id': hltb_id,
+                                     'hltb_match_score': score, 'hltb_fetched': today}})
+        else:
+            # ID exists in HLTB DB but times couldn't be retrieved — don't confirm
+            return jsonify({'status': 'error', 'message': 'Could not fetch times for this ID'}), 500
+
+    @app.route('/api/hltb/<int:appid>', methods=['POST'])
+    def rescrape_hltb(appid):
+        from scrapers import fetch_hltb_data
+        from config import load_state
+        db   = get_db()
+        row  = db.execute("SELECT name FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+        threshold = load_state().get('hltb_match_threshold', 75)
+        info = fetch_hltb_data(row['name'], threshold=threshold)
+        if info:
+            update_game_data(appid, **info)
+        else:
+            update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
+                             hltb_main=None, hltb_extras=None,
+                             hltb_completionist=None, hltb_match_score=None)
+        return jsonify({'status': 'success', 'data': info})
+
+    @app.route('/api/hltb/<int:appid>/confirm', methods=['POST'])
+    def confirm_hltb(appid):
+        from scrapers import fetch_hltb_by_id
+        from datetime import datetime
+        db  = get_db()
+        row = db.execute("SELECT name, hltb_id FROM games WHERE appid=?", (appid,)).fetchone()
+        db.close()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+        today  = datetime.now().strftime('%Y-%m-%d')
+        result = fetch_hltb_by_id(row['name'], row['hltb_id']) if row['hltb_id'] else None
+        if result is None:
+            return jsonify({'status': 'error', 'message': 'No HLTB ID stored'}), 400
+        times_available = result.pop('times_available', True)
+        if times_available:
+            update_game_data(appid, hltb_fetched=today, **result)
+            return jsonify({'status': 'success', 'data': {**result, 'hltb_fetched': today}})
+        else:
+            # ID lookup failed — clear to no_match so the game surfaces in the review tab
+            cleared = {'hltb_fetched': 'no_match', 'hltb_id': None,
+                       'hltb_matched_name': None, 'hltb_match_score': None,
+                       'hltb_main': None, 'hltb_extras': None, 'hltb_completionist': None}
+            update_game_data(appid, **cleared)
+            return jsonify({'status': 'success', 'data': cleared})
+
+    @app.route('/api/hltb/<int:appid>', methods=['DELETE'])
+    def delete_hltb(appid):
+        update_game_data(appid, hltb_fetched='0', hltb_id=None, hltb_main=None,
+                         hltb_extras=None, hltb_completionist=None, hltb_match_score=None)
+        return jsonify({'status': 'success'})
 
     @app.route('/api/set-background', methods=['POST'])
     def set_background():
@@ -993,12 +1142,17 @@ def create_app(template_folder=None, static_folder=None):
         types  = data.get('types', ['vertical', 'horizontal', 'icon'])
         source = data.get('source', 'auto')
 
-        if op not in ('rescrape', 'art', 'protondb'):
+        if op not in ('rescrape', 'art', 'protondb', 'hltb'):
             return jsonify({'status': 'error', 'message': 'Invalid op'}), 400
 
         if scope == 'all':
             db     = get_db()
             rows   = db.execute("SELECT appid FROM games").fetchall()
+            db.close()
+            appids = [r['appid'] for r in rows]
+        elif scope == 'unfetched' and op == 'hltb':
+            db     = get_db()
+            rows   = db.execute("SELECT appid FROM games WHERE hltb_fetched = '0' OR hltb_fetched IS NULL OR hltb_fetched = 'no_match'").fetchall()
             db.close()
             appids = [r['appid'] for r in rows]
 
@@ -1022,14 +1176,16 @@ def create_app(template_folder=None, static_folder=None):
                     _bulk_op_state['rate_limit_hit'] = True
 
         def _run():
-            from scrapers import bulk_rescrape_games, bulk_art_scrape_games, bulk_protondb_scrape_games
+            from scrapers import bulk_rescrape_games, bulk_art_scrape_games, bulk_protondb_scrape_games, bulk_hltb_scrape_games
             try:
                 if op == 'rescrape':
                     result = bulk_rescrape_games(appids, _bulk_op_cancel, _progress)
                 elif op == 'art':
                     result = bulk_art_scrape_games(appids, types, source, _bulk_op_cancel, _progress)
-                else:
+                elif op == 'protondb':
                     result = bulk_protondb_scrape_games(appids, _bulk_op_cancel, _progress)
+                else:
+                    result = bulk_hltb_scrape_games(appids, _bulk_op_cancel, _progress)
                 with _bulk_op_lock:
                     _bulk_op_state['result']  = result
                     _bulk_op_state['aborted'] = result.get('aborted', False)
@@ -1104,7 +1260,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/save-filter', methods=['POST'])
     def save_filter():
-        from config import load_state, STATE_PATH
+        from config import _state_lock, _load_state_unlocked, _write_state_atomic
         data = request.json
         name = (data.get('name') or '').strip()
         tree = data.get('filter_tree')
@@ -1112,43 +1268,43 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": "Name cannot be empty."}), 400
         if not tree:
             return jsonify({"status": "error", "message": "No filter to save."}), 400
-        state = load_state()
-        if 'saved_filters' not in state:
-            state['saved_filters'] = {}
-        state['saved_filters'][name] = tree
-        with open(STATE_PATH, 'w') as f:
-            json.dump(state, f, indent=4)
+        with _state_lock:
+            state = _load_state_unlocked()
+            if 'saved_filters' not in state:
+                state['saved_filters'] = {}
+            state['saved_filters'][name] = tree
+            _write_state_atomic(state)
         return jsonify({"status": "success"})
 
     @app.route('/api/delete-filter', methods=['POST'])
     def delete_filter():
-        from config import load_state, STATE_PATH
+        from config import _state_lock, _load_state_unlocked, _write_state_atomic
         name = (request.json.get('name') or '').strip()
         if not name:
             return jsonify({"status": "error", "message": "Name required."}), 400
-        state = load_state()
-        state.get('saved_filters', {}).pop(name, None)
-        with open(STATE_PATH, 'w') as f:
-            json.dump(state, f, indent=4)
+        with _state_lock:
+            state = _load_state_unlocked()
+            state.get('saved_filters', {}).pop(name, None)
+            _write_state_atomic(state)
         return jsonify({"status": "success"})
 
     @app.route('/api/rename-filter', methods=['POST'])
     def rename_filter():
-        from config import load_state, STATE_PATH
+        from config import _state_lock, _load_state_unlocked, _write_state_atomic
         old_name = (request.json.get('old_name') or '').strip()
         new_name = (request.json.get('new_name') or '').strip()
         if not old_name or not new_name:
             return jsonify({"status": "error", "message": "Both names required."}), 400
-        state = load_state()
-        filters = state.get('saved_filters', {})
-        if old_name not in filters:
-            return jsonify({"status": "error", "message": "Filter not found."}), 404
-        if new_name in filters:
-            return jsonify({"status": "error", "message": f'A filter named "{new_name}" already exists.'}), 400
-        filters[new_name] = filters.pop(old_name)
-        state['saved_filters'] = filters
-        with open(STATE_PATH, 'w') as f:
-            json.dump(state, f, indent=4)
+        with _state_lock:
+            state = _load_state_unlocked()
+            filters = state.get('saved_filters', {})
+            if old_name not in filters:
+                return jsonify({"status": "error", "message": "Filter not found."}), 404
+            if new_name in filters:
+                return jsonify({"status": "error", "message": f'A filter named "{new_name}" already exists.'}), 400
+            filters[new_name] = filters.pop(old_name)
+            state['saved_filters'] = filters
+            _write_state_atomic(state)
         return jsonify({"status": "success"})
 
     @app.route('/api/export-filter', methods=['POST'])

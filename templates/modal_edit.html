@@ -149,7 +149,7 @@
 <div id="editModal" class="modal-overlay" style="display: none;">
     <div class="modal-content" style="width: 1080px; max-width: 96vw; max-height: 95vh; overflow-y: auto; position: relative;">
 
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 15px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 12px;">
             <h2 style="margin: 0; color: #ffffff;">Edit Game Details</h2>
             <div style="display: flex; gap: 10px; align-items: center;">
                 <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--accent);">
@@ -162,157 +162,204 @@
             </div>
         </div>
 
-        <p style="margin-bottom: 15px; color: #8f98a0; font-size: 0.85rem; border-bottom: 1px solid #2a475e; padding-bottom: 10px;">
+        <p style="margin-bottom: 12px; color: #8f98a0; font-size: 0.85rem; border-bottom: 1px solid #2a475e; padding-bottom: 10px;">
             AppID: <span id="display-appid"></span>
             <a id="steam-store-link" href="#" target="_blank"
                style="color: var(--accent); font-size: 0.8rem; text-decoration: none; margin-left: 12px;">
                 View on Steam Store ↗
-            </a>
-            <a id="hltb-link" href="#" target="_blank"
-               style="color: var(--accent); font-size: 0.8rem; text-decoration: none; margin-left: 12px;">
-                Search HLTB ↗
             </a>
         </p>
 
         <form id="edit-game-form">
             <input type="hidden" name="edit-appid" id="edit-appid">
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1.2fr; column-gap: 20px; row-gap: 0; align-items: start;">
+            <div style="display: grid; grid-template-columns: 1fr 350px; column-gap: 20px; align-items: start;">
 
-                <!-- LEFT COLUMN: Title, Dev, Pub, Release Date + Free to Play, Groups, Tags, Genres -->
-                <div style="display: flex; flex-direction: column;">
-                    <label>Game Title</label>
-                    <input type="text" name="name" id="edit-name">
-
-                    <label>Developers</label>
-                    <input type="text" name="developers" id="edit-dev">
-
-                    <label>Publishers</label>
-                    <input type="text" name="publishers" id="edit-pub">
-
-                    <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px;">
-                        <div>
-                            <label>Release Date</label>
-                            <input type="text" name="release_date" id="edit-rel" placeholder="YYYY-MM-DD">
-                        </div>
-                        <div>
-                            <label>Free to Play</label>
-                            <select name="is_free" id="edit-is-free">
-                                <option value="0">No</option>
-                                <option value="1">Yes</option>
-                            </select>
-                        </div>
+                <!-- LEFT: tabbed content area -->
+                <div>
+                    <!-- Tab strip -->
+                    <div class="edit-tab-strip">
+                        <button type="button" id="edit-tab-btn-info"  class="edit-tab-btn active" onclick="switchEditTab('info')">Info</button>
+                        <button type="button" id="edit-tab-btn-stats" class="edit-tab-btn"        onclick="switchEditTab('stats')">Stats</button>
                     </div>
 
-                    <label style="margin-top: 8px;">Tags</label>
-                    <div class="pill-input-box" id="edit-tags-box" style="min-height: 38px; max-height: 198px; overflow-y: auto;"></div>
-                    <input type="hidden" name="tags" id="edit-tags">
-                    <small class="pill-hint">Type a value and press Enter to add</small>
+                    <!-- INFO pane -->
+                    <div id="edit-pane-info">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; align-items: stretch;">
 
-                    <label style="margin-top: 8px;">Groups</label>
-                    <div class="pill-input-box" id="edit-groups-box" style="min-height: 38px; max-height: 100px; overflow-y: auto;"></div>
-                    <input type="hidden" name="groups" id="edit-groups">
-                    <small class="pill-hint">Type a value and press Enter to add</small>
+                            <!-- Info left sub-col: game metadata + reviews -->
+                            <div id="edit-info-left" style="display: flex; flex-direction: column;">
+                                <label>Game Title</label>
+                                <input type="text" name="name" id="edit-name">
+
+                                <label>Developers</label>
+                                <input type="text" name="developers" id="edit-dev">
+
+                                <label>Publishers</label>
+                                <input type="text" name="publishers" id="edit-pub">
+
+                                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label>Release Date</label>
+                                        <input type="text" name="release_date" id="edit-rel" placeholder="YYYY-MM-DD">
+                                    </div>
+                                    <div>
+                                        <label>Free to Play</label>
+                                        <select name="is_free" id="edit-is-free">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <label style="margin-top: 8px;">Review Score</label>
+                                <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive">
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
+                                    <div>
+                                        <label>Review %</label>
+                                        <input type="number" name="review_percentage" id="edit-review-percentage" min="0" max="100">
+                                    </div>
+                                    <div>
+                                        <label title="Review score adjusted for confidence. Low review counts are pulled toward 50 (neutral) rather than the raw score. Formula: score - (score - 0.5) × 2^(-log₁₀(reviews+1))">Weighted %</label>
+                                        <input type="number" name="weighted_percentage" id="edit-weighted-pct">
+                                    </div>
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
+                                    <div>
+                                        <label>Total Reviews</label>
+                                        <input type="number" name="total_reviews" id="edit-total-reviews">
+                                    </div>
+                                    <div>
+                                        <label>Positive Reviews</label>
+                                        <input type="number" name="positive_reviews" id="edit-positive-reviews">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Info right sub-col: tags, genres, categories -->
+                            <div id="edit-info-right" style="display: flex; flex-direction: column;">
+                                <label>Tags</label>
+                                <div class="pill-input-box" id="edit-tags-box" style="flex: 1; min-height: 38px; overflow-y: auto;"></div>
+                                <input type="hidden" name="tags" id="edit-tags">
+                                <small class="pill-hint">Type a value and press Enter to add</small>
+
+                                <label style="margin-top: 8px;">Genres</label>
+                                <div class="pill-input-box" id="edit-genres-box" style="min-height: 38px; overflow-y: auto;"></div>
+                                <input type="hidden" name="genres" id="edit-genres">
+                                <small class="pill-hint">Type a value and press Enter to add</small>
+
+                                <label style="margin-top: 8px;">Categories</label>
+                                <div class="pill-input-box" id="edit-categories-box" style="min-height: 38px; overflow-y: auto;"></div>
+                                <input type="hidden" name="categories" id="edit-categories">
+                                <small class="pill-hint">Type a value and press Enter to add</small>
+                            </div>
+                        </div>
+
+                        <div id="hltb-row" style="display:none; flex-direction:column; gap:6px; margin-top:10px; padding:10px 14px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0; font-weight:bold;">HLTB:</span>
+                                <span id="edit-hltb-warn" style="font-size:0.75rem; color:#e6b450; display:none;" title="Low match confidence — please verify">&#9888;</span>
+                                <a id="edit-hltb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
+                                <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" id="edit-hltb-confirm" onclick="_confirmHLTB()"
+                                        style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
+                                    <button type="button" id="edit-hltb-other" onclick="_otherMatchHLTB(this)"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
+                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB()"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
+                                    <button type="button" id="edit-hltb-refresh" onclick="_refreshHLTB()"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
+                                </div>
+                            </div>
+                            <div id="edit-hltb-times" style="font-size:0.85rem; color:#c2c8cc;"></div>
+                        </div>
+                        <div id="edit-hltb-alt-results" style="flex-direction:column; gap:4px; margin-top:4px; padding:8px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;"></div>
+                    </div>
+
+                    <!-- STATS pane -->
+                    <div id="edit-pane-stats" style="display:none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; align-items: start;">
+
+                            <!-- Stats left sub-col: user-specific fields -->
+                            <div style="display: flex; flex-direction: column;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label>Completion Status</label>
+                                        <select name="completion_status" id="edit-status">
+                                            <option value="Never Played">Never Played</option>
+                                            <option value="Unfinished">Unfinished</option>
+                                            <option value="Beaten">Beaten</option>
+                                            <option value="Completed">Completed</option>
+                                            <option value="Won't Play">Won't Play</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label>Installed</label>
+                                        <select name="installed" id="edit-installed">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label>Last Played</label>
+                                        <input type="text" name="last_played" id="edit-last-played" placeholder="YYYY-MM-DD">
+                                    </div>
+                                    <div>
+                                        <label>Date Added <a id="steam-help-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
+                                        <input type="text" name="date_added" id="edit-date-added" placeholder="YYYY-MM-DD">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Stats right sub-col: playtime + achievements -->
+                            <div style="display: flex; flex-direction: column;">
+                                <label>Playtime (Mins)</label>
+                                <input type="number" name="playtime_forever" id="edit-playtime">
+
+                                <label>Achievements <a id="achievements-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="flex: 1;"><input type="number" name="unlocked_achievements" id="edit-unlocked-ach" placeholder="Unlocked"></div>
+                                    <span>/</span>
+                                    <div style="flex: 1;"><input type="number" name="total_achievements" id="edit-total-ach" placeholder="Total"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Full-width rows within stats pane -->
+                        <div style="margin-top:10px;">
+                            <label>Groups</label>
+                            <div class="pill-input-box" id="edit-groups-box" style="min-height: 38px; max-height: 90px; overflow-y: auto;"></div>
+                            <input type="hidden" name="groups" id="edit-groups">
+                            <small class="pill-hint">Type a value and press Enter to add</small>
+                        </div>
+
+                        {% if not is_windows %}
+                        <div id="protondb-row" style="display:none; align-items:center; gap:8px; margin-top:10px; padding:6px 10px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
+                            <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0;">ProtonDB</span>
+                            <span id="edit-protondb-tier" style="font-size:0.82rem; font-weight:bold;"></span>
+                            <span id="edit-protondb-weak" style="font-size:0.75rem; color:#8f98a0; display:none;">— few reports</span>
+                            <a id="edit-protondb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; margin-left:auto; flex-shrink:0;">ProtonDB ↗</a>
+                            <button type="button" id="edit-protondb-refresh" onclick="_refreshProtonDB()"
+                                style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer; flex-shrink:0;">Refresh</button>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- PAGYWOSG quals: below both panes -->
+                    <div id="pag-quals-section" style="display:none; margin-top:14px; padding:10px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px;">
+                        <div style="font-size:0.75rem; font-weight:bold; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">PAGYWOSG Qualifications</div>
+                        <div id="pag-quals-list" style="font-size:0.82rem; display:flex; flex-direction:column; gap:4px;"></div>
+                    </div>
                 </div>
 
-                <!-- MIDDLE COLUMN: Status, Installed, dates, playtime, achievements, reviews, categories -->
-                <div style="display: flex; flex-direction: column;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>
-                            <label>Completion Status</label>
-                            <select name="completion_status" id="edit-status">
-                                <option value="Never Played">Never Played</option>
-                                <option value="Unfinished">Unfinished</option>
-                                <option value="Beaten">Beaten</option>
-                                <option value="Completed">Completed</option>
-                                <option value="Won't Play">Won't Play</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label>Installed</label>
-                            <select name="installed" id="edit-installed">
-                                <option value="0">No</option>
-                                <option value="1">Yes</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>
-                            <label>Last Played</label>
-                            <input type="text" name="last_played" id="edit-last-played" placeholder="YYYY-MM-DD">
-                        </div>
-                        <div>
-                            <label>Date Added <a id="steam-help-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
-                            <input type="text" name="date_added" id="edit-date-added" placeholder="YYYY-MM-DD">
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <div>
-                            <label>Playtime (Mins)</label>
-                            <input type="number" name="playtime_forever" id="edit-playtime">
-                        </div>
-                        <div>
-                            <label>Review Score</label>
-                            <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive">
-                        </div>
-                    </div>
-
-                    <label>Achievements <a id="achievements-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div style="flex: 1;"><input type="number" name="unlocked_achievements" id="edit-unlocked-ach" placeholder="Unlocked"></div>
-                        <span>/</span>
-                        <div style="flex: 1;"><input type="number" name="total_achievements" id="edit-total-ach" placeholder="Total"></div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
-                        <div>
-                            <label>Review %</label>
-                            <input type="number" name="review_percentage" id="edit-review-percentage" min="0" max="100">
-                        </div>
-                        <div>
-                            <label title="Review score adjusted for confidence. Low review counts are pulled toward 50 (neutral) rather than the raw score. Formula: score - (score - 0.5) × 2^(-log₁₀(reviews+1))">Weighted %</label>
-                            <input type="number" name="weighted_percentage" id="edit-weighted-pct">
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
-                        <div>
-                            <label>Total Reviews</label>
-                            <input type="number" name="total_reviews" id="edit-total-reviews">
-                        </div>
-                        <div>
-                            <label>Positive Reviews</label>
-                            <input type="number" name="positive_reviews" id="edit-positive-reviews">
-                        </div>
-                    </div>
-
-                    {% if not is_windows %}
-                    <div id="protondb-row" style="display:none; align-items:center; gap:8px; margin-top:8px; padding:6px 10px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
-                        <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0;">ProtonDB</span>
-                        <span id="edit-protondb-tier" style="font-size:0.82rem; font-weight:bold;"></span>
-                        <span id="edit-protondb-weak" style="font-size:0.75rem; color:#8f98a0; display:none;">— few reports</span>
-                        <a id="edit-protondb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; margin-left:auto; flex-shrink:0;">ProtonDB ↗</a>
-                        <button type="button" id="edit-protondb-refresh" onclick="_refreshProtonDB()"
-                            style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer; flex-shrink:0;">Refresh</button>
-                    </div>
-                    {% endif %}
-
-                    <label style="margin-top: 8px;">Categories</label>
-                    <div class="pill-input-box" id="edit-categories-box" style="min-height: 38px; overflow-y: auto;"></div>
-                    <input type="hidden" name="categories" id="edit-categories">
-                    <small class="pill-hint">Type a value and press Enter to add</small>
-
-                    <label style="margin-top: 8px;">Genres</label>
-                    <div class="pill-input-box" id="edit-genres-box" style="min-height: 38px; max-height: 68px; overflow-y: auto;"></div>
-                    <input type="hidden" name="genres" id="edit-genres">
-                    <small class="pill-hint">Type a value and press Enter to add</small>
-                </div>
-
-                <!-- RIGHT COLUMN: artwork panels -->
+                <!-- RIGHT: artwork panel -->
                 <div style="border-left: 1px solid #2a475e; padding-left: 20px; display:flex; flex-direction:column; gap:10px;">
-                    <!-- Tabs -->
+                    <!-- Art type tabs -->
                     <div style="display:flex; gap:6px;">
                         <button type="button" class="art-tab-btn active" onclick="openArtTab('vertical')"   id="art-tab-vertical">Vertical</button>
                         <button type="button" class="art-tab-btn"        onclick="openArtTab('horizontal')" id="art-tab-horizontal">Horizontal</button>
@@ -385,17 +432,11 @@
                         <div id="art-status-icon" class="art-status"></div>
                     </div>
                 </div>
-
-            </div>
-
-            <div id="pag-quals-section" style="display:none; margin-top:16px; padding:10px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px;">
-                <div style="font-size:0.75rem; font-weight:bold; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">PAGYWOSG Qualifications</div>
-                <div id="pag-quals-list" style="font-size:0.82rem; display:flex; flex-direction:column; gap:4px;"></div>
             </div>
 
             <div style="display: flex; gap: 15px; margin-top: 20px; border-top: 1px solid #2a475e; padding-top: 15px;">
                 <button type="submit" class="btn-save" data-modal-row="2" style="flex: 2; margin: 0;">SAVE CHANGES</button>
-                <button type="button" onclick="closeModal()" class="nav-btn" data-modal-row="2" style="flex: 1; height: auto; padding: 12px;">CANCEL</button>
+                <button type="button" onclick="closeModal()" class="nav-btn" data-modal-row="2" style="flex: 1; height: auto; padding: 12px;">CLOSE</button>
             </div>
         </form>
     </div>
@@ -404,6 +445,20 @@
 <style>
     #meta-btn { color: var(--accent); background: transparent; }
     #meta-btn:hover { background: var(--accent) !important; color: #1b2838 !important; }
+
+    .edit-tab-strip {
+        display: flex; gap: 0; margin-bottom: 14px;
+        border-bottom: 2px solid #2a475e;
+    }
+    .edit-tab-btn {
+        padding: 7px 20px; font-size: 0.85rem; font-weight: bold;
+        background: transparent; border: none;
+        border-bottom: 2px solid transparent; margin-bottom: -2px;
+        color: var(--text-secondary); cursor: pointer;
+        letter-spacing: 0.03em; transition: color 0.15s;
+    }
+    .edit-tab-btn:hover { color: #c2c8cc; }
+    .edit-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
     .art-tab-btn {
         padding: 4px 10px; font-size: 0.72rem; border-radius: 4px;
@@ -634,24 +689,19 @@
 
     // ── End pill input widget ────────────────────────────────────────────────
 
-    let _catResizeObserver = null;
-
-    function _syncCategoriesHeight() {
-        const catBox  = document.getElementById('edit-categories-box');
-        const leftCol = document.getElementById('edit-tags-box').parentElement;
-        const midCol  = catBox.parentElement;
-        if (!catBox || !leftCol || !midCol) return;
-        const delta = leftCol.getBoundingClientRect().bottom - midCol.getBoundingClientRect().bottom;
-        const newH  = Math.max(38, Math.round(catBox.getBoundingClientRect().height + delta));
-        if (parseInt(catBox.style.height) !== newH) catBox.style.height = newH + 'px';
-    }
-
     document.querySelectorAll('.pill-input-box[style*="overflow-y"]').forEach(el => {
         el.addEventListener('wheel', e => {
             e.preventDefault();
             el.scrollTop += e.deltaY > 0 ? 40 : -40;
         }, { passive: false });
     });
+
+    function switchEditTab(tab) {
+        ['info', 'stats'].forEach(t => {
+            document.getElementById('edit-tab-btn-' + t).classList.toggle('active', t === tab);
+            document.getElementById('edit-pane-' + t).style.display = t === tab ? '' : 'none';
+        });
+    }
 
     function safeSet(id, value, type = 'value') {
         const el = document.getElementById(id);
@@ -663,6 +713,7 @@
     }
 
     function openEditModal(game) {
+        switchEditTab('info');
         safeSet('edit-appid', game.appid);
         safeSet('display-appid', game.appid, 'textContent');
         safeSet('edit-name', game.name);
@@ -697,10 +748,7 @@
         const storeLink = document.getElementById('steam-store-link');
         if (storeLink) storeLink.href = `https://store.steampowered.com/app/${game.appid}/`;
 
-        const hltbLink = document.getElementById('hltb-link');
-        if (hltbLink) hltbLink.href = `https://howlongtobeat.com/?q=${encodeURIComponent(game.name)}`;
-
-        const achLink = document.getElementById('achievements-link');
+const achLink = document.getElementById('achievements-link');
         if (achLink && _serverSteamId) {
             const profileSeg = /^\d+$/.test(_serverSteamId) ? `profiles/${_serverSteamId}` : `id/${_serverSteamId}`;
             achLink.href = `https://steamcommunity.com/${profileSeg}/stats/${game.appid}/achievements/`;
@@ -724,14 +772,10 @@
 
         _pagRenderQuals(game);
         _renderProtonDB(game);
+        _renderHLTB(game);
 
         const modal = document.getElementById('editModal');
         modal.style.display = 'flex';
-        void modal.offsetHeight;
-        _syncCategoriesHeight();
-        if (_catResizeObserver) _catResizeObserver.disconnect();
-        _catResizeObserver = new ResizeObserver(_syncCategoriesHeight);
-        _catResizeObserver.observe(document.getElementById('edit-tags-box').parentElement);
     }
 
     let _pendingDatePoll = null;
@@ -865,7 +909,6 @@
     }
 
     function closeModal() {
-        if (_catResizeObserver) { _catResizeObserver.disconnect(); _catResizeObserver = null; }
         _dismissSuggestions();
         const form = document.getElementById('edit-game-form');
         if (form) {
@@ -993,16 +1036,14 @@
                     _patchGameCard(result.game);
                     closeModal();
                 } else {
-                    artStatus.style.color = '#ff4d4d';
-                    artStatus.textContent = '✘ ' + (result.message || 'Save failed.');
                     saveBtn.disabled = false;
-                    saveBtn.textContent = 'SAVE CHANGES';
+                    saveBtn.textContent = '✘ ' + (result.message || 'Save failed.');
+                    setTimeout(() => { saveBtn.textContent = 'SAVE CHANGES'; }, 3000);
                 }
             } catch (err) {
-                artStatus.style.color = '#ff4d4d';
-                artStatus.textContent = '✘ Network error saving changes.';
                 saveBtn.disabled = false;
-                saveBtn.textContent = 'SAVE CHANGES';
+                saveBtn.textContent = '✘ Network error';
+                setTimeout(() => { saveBtn.textContent = 'SAVE CHANGES'; }, 3000);
             }
         });
     });
@@ -1187,7 +1228,246 @@
                 document.getElementById('edit-protondb-weak').style.display =
                     data.confidence === 'weak' ? '' : 'none';
             })
-            .finally(() => { btn.textContent = 'Refresh'; btn.disabled = false; });
+            .finally(() => { btn.textContent = 'Re-scrape'; btn.disabled = false; });
+    }
+
+    let _hltbAppid = null;
+    let _hltbGame  = null;
+
+    function _fmtMins(mins) {
+        if (mins == null) return null;
+        const h = Math.floor(mins / 60), m = mins % 60;
+        return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+
+    function _renderHLTB(game) {
+        _hltbAppid = game.appid;
+        _hltbGame  = game;
+        const altEl = document.getElementById('edit-hltb-alt-results');
+        if (altEl) altEl.classList.remove('open');
+        const otherBtn = document.getElementById('edit-hltb-other');
+        if (otherBtn) otherBtn.textContent = 'Other match';
+        const row     = document.getElementById('hltb-row');
+        const fetched = game.hltb_fetched;
+        const hasData = game.hltb_id && (fetched === 'unconfirmed' || (fetched && fetched !== '0'));
+
+        row.style.display = 'flex';
+
+        const link = document.getElementById('edit-hltb-link');
+        const timesEl = document.getElementById('edit-hltb-times');
+
+        const refreshBtn = document.getElementById('edit-hltb-refresh');
+
+        if (!hasData) {
+            document.getElementById('edit-hltb-warn').style.display    = 'none';
+            document.getElementById('edit-hltb-confirm').style.display = 'none';
+            document.getElementById('edit-hltb-clear').style.display   = 'none';
+            if (refreshBtn) refreshBtn.style.display = 'none';
+            if (link) {
+                link.style.display = '';
+                link.href = `https://howlongtobeat.com/?q=${encodeURIComponent(game.name || '')}`;
+                link.textContent = 'Search HLTB ↗';
+            }
+            timesEl.textContent = '';
+            if (otherBtn) {
+                otherBtn.textContent = 'Find match';
+                const altEl = document.getElementById('edit-hltb-alt-results');
+                if (altEl && !altEl.classList.contains('open')) _otherMatchHLTB(otherBtn);
+            }
+            return;
+        }
+
+        document.getElementById('edit-hltb-clear').style.display = '';
+        if (refreshBtn) refreshBtn.style.display = '';
+        if (otherBtn) otherBtn.textContent = 'Other match';
+        if (link) {
+            link.style.display = '';
+            link.href = `https://howlongtobeat.com/game/${game.hltb_id}`;
+            link.textContent = (game.hltb_matched_name || 'HLTB') + ' ↗';
+        }
+
+        const unconfirmed = fetched === 'unconfirmed';
+        document.getElementById('edit-hltb-warn').style.display    = unconfirmed ? '' : 'none';
+        document.getElementById('edit-hltb-confirm').style.display = unconfirmed ? '' : 'none';
+
+        if (unconfirmed) {
+            timesEl.textContent = 'Unconfirmed match';
+            timesEl.style.color = '#8f98a0';
+        } else {
+            const parts = [];
+            const main   = _fmtMins(game.hltb_main);
+            const extras = _fmtMins(game.hltb_extras);
+            const compl  = _fmtMins(game.hltb_completionist);
+            if (main)   parts.push(`Main: ${main}`);
+            if (extras) parts.push(`+Extras: ${extras}`);
+            if (compl)  parts.push(`Completionist: ${compl}`);
+            timesEl.textContent = parts.join(' · ') || 'No times';
+            timesEl.style.color = '#c2c8cc';
+        }
+    }
+
+    function _refreshHLTB() {
+        if (!_hltbAppid) return;
+        const btn = document.getElementById('edit-hltb-refresh');
+        btn.textContent = '...';
+        btn.disabled = true;
+        fetch(`/api/hltb/${_hltbAppid}`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+            })
+            .finally(() => { btn.textContent = 'Re-scrape'; btn.disabled = false; });
+    }
+
+    function _confirmHLTB() {
+        if (!_hltbAppid) return;
+        const btn = document.getElementById('edit-hltb-confirm');
+        btn.textContent = '...';
+        btn.disabled = true;
+        fetch(`/api/hltb/${_hltbAppid}/confirm`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+            })
+            .finally(() => { btn.textContent = 'Confirm'; btn.disabled = false; });
+    }
+
+    function _clearHLTB() {
+        if (!_hltbAppid) return;
+        document.getElementById('edit-hltb-alt-results').classList.remove('open');
+        fetch(`/api/hltb/${_hltbAppid}`, {method: 'DELETE'})
+            .then(() => _renderHLTB({...(_hltbGame || {}), hltb_id: null, hltb_fetched: null, hltb_main: null, hltb_extras: null, hltb_completionist: null, hltb_matched_name: null, hltb_match_score: null}));
+    }
+
+    function _otherMatchHLTB(btn) {
+        if (!_hltbAppid) return;
+        const altEl = document.getElementById('edit-hltb-alt-results');
+        if (altEl.classList.contains('open')) {
+            altEl.classList.remove('open');
+            return;
+        }
+        const origLabel = btn.textContent;
+        btn.textContent = '...';
+        btn.disabled = true;
+        _hltbRunSearch(_hltbGame?.name || '')
+            .finally(() => { btn.textContent = origLabel; btn.disabled = false; });
+    }
+
+    function _hltbRunSearch(query) {
+        if (!_hltbAppid) return Promise.resolve();
+        const altEl = document.getElementById('edit-hltb-alt-results');
+
+        // Event delegation for Select buttons — set up once per altEl lifetime
+        if (!altEl._hltbDelegated) {
+            altEl._hltbDelegated = true;
+            altEl.addEventListener('click', function(e) {
+                const btn = e.target.closest('[data-hltb-select]');
+                if (btn) _selectHLTBMatch(
+                    parseInt(btn.dataset.hltbId),
+                    btn.dataset.hltbScore != null ? parseInt(btn.dataset.hltbScore) : null,
+                    btn.dataset.hltbName
+                );
+            });
+        }
+
+        const url = `/api/hltb/${_hltbAppid}/search` + (query ? `?q=${encodeURIComponent(query)}` : '');
+        return fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                const results = data.results || [];
+                const titleRowHtml = `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                    <input id="edit-hltb-search-query" type="text" value="${_escHtml(query)}"
+                        style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();_hltbResearch();}">
+                    <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                        onclick="_hltbResearch()">Search</button>
+                </div>`;
+                const manualHtml = `<div style="display:flex; align-items:center; gap:6px; padding:6px 0 2px; border-top:1px solid #2a475e; margin-top:4px;">
+                    <input id="edit-hltb-manual-id" type="text" placeholder="Paste HLTB URL or game ID…"
+                        style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
+                        onkeydown="if(event.key==='Enter')_selectHLTBById()">
+                    <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                        onclick="_selectHLTBById()">Apply</button>
+                </div>`;
+                const resultsHtml = results.length
+                    ? results.map(r => {
+                        const parts = [];
+                        if (r.hltb_main   != null) parts.push(`Main: ${_fmtMins(r.hltb_main)}`);
+                        if (r.hltb_extras != null) parts.push(`+Extras: ${_fmtMins(r.hltb_extras)}`);
+                        if (r.hltb_completionist != null) parts.push(`Compl: ${_fmtMins(r.hltb_completionist)}`);
+                        const times = parts.join(' · ');
+                        return `<div style="display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:4px; background:rgba(255,255,255,0.03); font-size:0.78rem; color:#c2c8cc;">
+                            <span style="flex:1; min-width:0;">${_escHtml(r.hltb_matched_name || '')}</span>
+                            <span style="color:#8f98a0; flex-shrink:0;">${r.hltb_match_score}</span>
+                            <span style="color:#8f98a0; flex:1; font-size:0.72rem;">${times}</span>
+                            <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                                data-hltb-select="1" data-hltb-id="${r.hltb_id}"
+                                data-hltb-score="${r.hltb_match_score ?? ''}"
+                                data-hltb-name="${_escHtml(r.hltb_matched_name || '')}">Select</button>
+                        </div>`;
+                    }).join('')
+                    : '<div style="color:#8f98a0; font-size:0.78rem; padding-bottom:4px;">No results found.</div>';
+                altEl.innerHTML = titleRowHtml + resultsHtml + manualHtml;
+                altEl.classList.add('open');
+            });
+    }
+
+    function _hltbResearch() {
+        const input = document.getElementById('edit-hltb-search-query');
+        if (!input) return;
+        const q = input.value.trim();
+        if (!q) return;
+        input.disabled = true;
+        _hltbRunSearch(q).finally(() => {
+            const el = document.getElementById('edit-hltb-search-query');
+            if (el) el.disabled = false;
+        });
+    }
+
+    function _selectHLTBMatch(hltbId, score, matchedName) {
+        if (!_hltbAppid) return;
+        fetch(`/api/hltb/${_hltbAppid}/select`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: score})
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('edit-hltb-alt-results').classList.remove('open');
+                    document.getElementById('edit-hltb-other').textContent = 'Other match';
+                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {}), hltb_matched_name: matchedName});
+                }
+            });
+    }
+
+    function _selectHLTBById() {
+        if (!_hltbAppid) return;
+        const input = document.getElementById('edit-hltb-manual-id');
+        if (!input) return;
+        const raw = input.value.trim();
+        if (!raw) return;
+        const match = raw.match(/(?:game\/)?(\d+)/);
+        if (!match) { input.style.borderColor = 'var(--color-danger)'; return; }
+        input.style.borderColor = '';
+        const hltbId = parseInt(match[1], 10);
+        input.disabled = true;
+        fetch(`/api/hltb/${_hltbAppid}/select`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: null})
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('edit-hltb-alt-results').classList.remove('open');
+                    document.getElementById('edit-hltb-other').textContent = 'Other match';
+                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                } else {
+                    input.style.borderColor = 'var(--color-danger)';
+                }
+            })
+            .finally(() => { input.disabled = false; });
     }
 
     function _pagRenderQuals(game) {
@@ -1267,6 +1547,8 @@
 </div>
 
 <style>
+    #edit-hltb-alt-results { display: none; }
+    #edit-hltb-alt-results.open { display: flex; }
     .sgdb-thumb {
         cursor: pointer; border-radius: 4px; overflow: hidden;
         border: 2px solid transparent; transition: border-color 0.15s;

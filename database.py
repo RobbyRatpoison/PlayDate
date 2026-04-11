@@ -79,6 +79,13 @@ def init_db():
         'protondb_tier': 'TEXT',         # platinum/gold/silver/bronze/borked or NULL
         'protondb_confidence': 'TEXT',   # strong/good/weak or NULL
         'protondb_fetched': 'TEXT',      # '0' = never fetched, YYYY-MM-DD = date last fetched
+        'hltb_main': 'INT',              # Main story time in minutes
+        'hltb_extras': 'INT',            # Main + extras time in minutes
+        'hltb_completionist': 'INT',     # Completionist time in minutes
+        'hltb_id': 'INT',               # HLTB game ID (for direct URL)
+        'hltb_matched_name': 'TEXT',     # HLTB game name as returned by search
+        'hltb_match_score': 'INT',       # 0-100 name similarity score
+        'hltb_fetched': 'TEXT',          # '0' = pending, YYYY-MM-DD = confirmed, 'unconfirmed' = below threshold
     }
 
     for column_name, column_type in required_columns.items():
@@ -128,6 +135,23 @@ def init_db():
     # Also reset any games that were marked fetched but have no tier data (caused by
     # the failed bulk-download path that stored NULL tier for all games).
     cursor.execute("UPDATE games SET protondb_fetched = '0' WHERE protondb_fetched IS NULL")
+    cursor.execute("UPDATE games SET hltb_fetched = '0' WHERE hltb_fetched IS NULL")
+    # Games fetched before the 'no_match' sentinel existed: date stored but no hltb_id.
+    cursor.execute(
+        "UPDATE games SET hltb_fetched = 'no_match'"
+        " WHERE hltb_fetched NOT IN ('0', 'unconfirmed', 'no_match') AND hltb_id IS NULL"
+    )
+    # Games stored as confirmed but with all-NULL times: the confirm endpoint previously
+    # marked these as confirmed even when the ID lookup failed (times_available=False).
+    # Reset to no_match so they surface in the HLTB review tab and can be re-scraped.
+    cursor.execute("""
+        UPDATE games
+        SET hltb_fetched = 'no_match', hltb_id = NULL,
+            hltb_matched_name = NULL, hltb_match_score = NULL
+        WHERE hltb_fetched NOT IN ('0', 'no_match', 'unconfirmed')
+        AND   hltb_fetched IS NOT NULL
+        AND   hltb_main IS NULL AND hltb_extras IS NULL AND hltb_completionist IS NULL
+    """)
     cursor.execute(
         "UPDATE games SET protondb_fetched = '0'"
         " WHERE protondb_fetched != '0' AND protondb_tier IS NULL"
@@ -153,6 +177,12 @@ def init_db():
         AND   horizontal_art_source IS NULL
         AND   icon_source           IS NULL
     """)
+
+    # Indexes on frequently filtered/sorted columns
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_installed         ON games(installed)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_completion_status ON games(completion_status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_last_played       ON games(last_played)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_playtime_forever  ON games(playtime_forever)")
 
     # Blacklist table — appids that should be skipped by Populate
     cursor.execute("""
@@ -192,7 +222,7 @@ def batch_insert_placeholder_games(games, today):
     cols = [
         'appid', 'name', 'playtime_forever', 'last_played', 'date_added',
         'completion_status', 'installed', 'icon_hash',
-        'art_fetched', 'meta_fetched', 'cheevos_fetched', 'protondb_fetched',
+        'art_fetched', 'meta_fetched', 'cheevos_fetched', 'protondb_fetched', 'hltb_fetched',
     ]
     placeholders = ', '.join('?' * len(cols))
     col_str = ', '.join(cols)
@@ -200,7 +230,7 @@ def batch_insert_placeholder_games(games, today):
         (
             str(g['appid']), g['name'], g['playtime_forever'], g['last_played'],
             today, g['completion_status'], g['installed'], g.get('icon_hash', ''),
-            '0', '0', '0', '0',
+            '0', '0', '0', '0', '0',
         )
         for g in games
     ]

@@ -85,7 +85,7 @@
                             style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
                             oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
                         <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
-                            Use standard SQLite syntax. Column names: appid, name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers, protondb_tier, protondb_confidence.
+                            Use standard SQLite syntax. Column names: appid, name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers, protondb_tier, protondb_confidence, hltb_main, hltb_extras, hltb_completionist.
                         </div>
                         <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
                             <button type="button" onclick="parseSqlToTree()"
@@ -447,6 +447,9 @@ const FM_FILTER_CONFIG = {
                             options: ['platinum','gold','silver','bronze','borked'] },
     'protondb_confidence':{ label: 'ProtonDB Confidence',   type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: ['strong','good','weak'] },
+    'hltb_main':          { label: 'HLTB Main Story (min)', type: 'number', comparisons: {'=':'=','!=':'≠','<':'<','<=':'≤','>':'>','>=':'≥','IS NULL':'not fetched','IS NOT NULL':'is set'} },
+    'hltb_extras':        { label: 'HLTB Main+Extras (min)',type: 'number', comparisons: {'=':'=','!=':'≠','<':'<','<=':'≤','>':'>','>=':'≥','IS NULL':'not fetched','IS NOT NULL':'is set'} },
+    'hltb_completionist': { label: 'HLTB Completionist (min)', type: 'number', comparisons: {'=':'=','!=':'≠','<':'<','<=':'≤','>':'>','>=':'≥','IS NULL':'not fetched','IS NOT NULL':'is set'} },
     'vertical_art_source':   { label: 'Vertical Art Source',   type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                                options: ['capsule_2x','capsule','sgdb_grid','custom','missing'] },
     'horizontal_art_source': { label: 'Horizontal Art Source', type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},

@@ -413,7 +413,7 @@
     .settings-item:last-of-type { margin-bottom: 0; }
     .settings-item:hover:not(:disabled) { background: var(--bg-surface); border-color: var(--accent); }
     .settings-item:disabled { opacity: 0.5; cursor: default; }
-    [data-tooltip] { position: relative; cursor: default; }
+    [data-tooltip] { position: relative; cursor: help; }
     [data-tooltip]::after {
         content: attr(data-tooltip);
         position: absolute;
@@ -433,6 +433,31 @@
         z-index: 9999;
     }
     [data-tooltip]:hover::after { opacity: 1; }
+
+    .hltb-slider {
+        flex: 1;
+        min-width: 0;
+        cursor: pointer;
+        -webkit-appearance: none;
+        appearance: none;
+        height: 4px;
+        border-radius: 2px;
+        background: transparent;
+        outline: none;
+    }
+    .hltb-slider::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(to right, var(--accent) var(--slider-pct, 75%), var(--bg-raised, #555) var(--slider-pct, 75%));
+    }
+    .hltb-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px; height: 14px;
+        margin-top: -5px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+    }
 </style>
 
 <!-- ── SETTINGS MODAL ── -->
@@ -452,6 +477,22 @@
             <div class="hub-section-label">Appearance</div>
             <button class="settings-item" data-modal-row="1" onclick="closeSettingsModal();openBgModal()">Background Image</button>
             <button class="settings-item" data-modal-row="1" onclick="openThemePickerModal()">Theme</button>
+        </div>
+
+        <div class="hub-section">
+            <div class="hub-section-label">HLTB</div>
+            <div style="padding:8px 10px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:2px;">Auto-confirm threshold</label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px;">Minimum name similarity (0–100) for auto-confirming a match. Matches below this are flagged as unconfirmed.</div>
+                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                    <input type="range" id="hltb-threshold-slider" min="0" max="100" value="{{ hltb_match_threshold }}"
+                        oninput="_onHltbSlider(this)"
+                        class="hltb-slider">
+                    <span id="hltb-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
+                </div>
+                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" onclick="saveHltbThreshold()">Save</button>
+                <div id="hltb-threshold-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
+            </div>
         </div>
 
         <div class="hub-section">
@@ -3220,6 +3261,27 @@ function openAccountModal() {
 function closeAccountModal() {
     document.getElementById('account-modal').style.display = 'none';
 }
+function _onHltbSlider(el) {
+    document.getElementById('hltb-threshold-val').textContent = el.value;
+    const pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--slider-pct', pct + '%');
+}
+
+function saveHltbThreshold() {
+    const val = parseInt(document.getElementById('hltb-threshold-slider').value, 10);
+    const status = document.getElementById('hltb-threshold-status');
+    savePreference({ hltb_match_threshold: val });
+    status.textContent = 'Saved.';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+}
+
+(function _initHltbSlider() {
+    const el = document.getElementById('hltb-threshold-slider');
+    if (!el) return;
+    const pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--slider-pct', pct + '%');
+})();
+
 function openSettingsModal() {
     document.getElementById('settings-modal').style.display = 'flex';
 }
