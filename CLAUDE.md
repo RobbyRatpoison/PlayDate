@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Pending (next release)
+
+> When a TODO item is completed, move it here immediately. When releasing, use this section to write release notes, then clear it. Old release notes are deleted from `RELEASE_NOTES.md` on each publish — only the current version's notes are kept.
+
+*(none)*
+
 ## Populate Speed Overhaul — Notes
 
 - Populate runs three concurrent worker pools: 5 art, 1 meta, 2 cheevo
@@ -32,7 +38,25 @@ The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the mo
 
 **Saved filter keys:** PAGYWOSG filters are stamped with extra keys on save: `pagywosg: true`, `pagywosg_event: {id, name}`, `pagywosg_verified: {appid: [{cat, pool, verifier?, auto?}]}`. These are preserved when applying a saved filter via `modal_filters.html` using `_loadedSavedTree`. `verifier` is the SteamGifts username of the person who submitted the game for mod verification (cited as proof by others); `auto: true` marks entries sourced from the scraper rather than a human submission.
 
-**Qualifications panel:** `modal_edit.html` shows a `#pag-quals-section` when `_serverFilterTree.pagywosg` is true. `_pagRenderQuals(game)` walks the filter tree via `_pagExtractConds()` (detects wins branch by presence of steamgifts condition in an AND group) and checks each condition against the game. Pool labels: `(win)` for wins pool (only shown if game has "Won on SteamGifts" in groups), `(win)` or `(backlog)` for all pool based on groups. Mod-verified entries show "mod verified — see [username]'s entry" when a submitter is recorded (the username is whoever submitted the game for verification, cited as proof); entries with `auto: true` show no verification label.
+**Qualifications panel:** `modal_edit.html` shows a `#pag-quals-section` when `_serverFilterTree.pagywosg` is true. `_pagRenderQuals(game)` walks the filter tree via `_pagExtractConds()` (detects wins branch by presence of a `groups` condition in any AND group) and checks each condition against the game. Pool labels: `(win)` for wins pool (only shown if game has the configured SG wins group), `(win)` or `(backlog)` for all pool based on groups. Mod-verified entries show "mod verified — see [username]'s entry"; entries with `auto: true` show no verification label.
+
+**SG wins group configuration:** `_pagExtractSgGroup(tree)` (in `modal_edit.html`) extracts the `groups` condition value from the filter tree's wins-branch AND group — this is the actual group name used when the filter was built. `_pagSgGroup` in `modal_tools.html` holds the current working group name (string = chosen group, `null` = no SG wins, `undefined` = not yet loaded). `GET /api/pagywosg-sg-group` returns `{saved, unset, default_group, groups}`; `POST` saves to `state.json` as `pagywosg_sg_group`. On init, if `unset` and `default_group` is null, a warning UI prompts the user to choose a substitute or confirm no SG wins. The choice persists and pre-fills future builds.
+
+**PAGYWOSG hover tooltip:** `library.html` has an IIFE that activates only when `_serverFilterTree?.pagywosg` is true. It uses event delegation on `#game-grid` with `mouseover`, calls `_pagExtractConds` / `_pagCheckCond` / `_pagLabel` / `_pagExtractSgGroup` (all available from `modal_edit.html` via `base.html`), and shows quals + HLTB min (formatted with `fmtHours()`) in a fixed tooltip div `#pag-hover-tooltip`.
+
+## HLTB Integration
+
+HowLongToBeat data is scraped via `howlongtobeatpy` in `scrapers.py`. Times are stored in minutes.
+
+**`hltb_fetched` column states:** `NULL` or `'0'` = never fetched; `'unconfirmed'` = matched but below threshold (times stored as NULL); `'no_match'` = search returned no results; `YYYY-MM-DD` = confirmed match date.
+
+**During populate:** `_hltb_worker` pool (2 workers) runs after BLAEO pre-scrape. Games already confirmed are skipped via `hltb_fetched` check.
+
+**Startup catch-up:** `sync_hltb_unfetched()` in `scrapers.py` runs after `sync_recent_playtime()` in `_run_playtime_sync` (`main.py`). Fetches only `hltb_fetched = '0' OR NULL` — does not retry `no_match` games automatically.
+
+**HLTB Review tool:** lives in `modal_tools.html` (accessible from Tools menu on all pages). Four collapsible sections: above-threshold unconfirmed, below-threshold unconfirmed, no-match, confirmed-below-threshold. `_hltbSectionCollapsed` dict controls collapse state; `_hltbToggleSection(key)` does direct DOM manipulation to avoid re-rendering open alt-results panels. Listens for `populate:hltb_done` custom event to refresh when populate finishes.
+
+**`hltb_min` sort:** `library.py` defines `_HLTB_MIN_EXPR` / `_HLTB_MAX_EXPR` as SQL CASE expressions under `VIRTUAL_SORT_COLS['hltb_min']`; games with all NULL/zero times sort last.
 
 ## To-Do
 
@@ -221,6 +245,8 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - `sort_col`: can be `'RANDOM()'` for shuffle shelves
 - `dedup` + `dedup_priority`: shelves with lower priority numbers are processed first; their appids are excluded from later shelves
 - `split_group`: shelves sharing the same group key render side-by-side in a flex row
+
+**Edit mode cancel/restore:** on entering edit mode (via hamburger "Edit Home Layout" or E key), `_initEditBackup()` saves `_shelves` to `sessionStorage` under `editModeBackup` (only once — not on `saveAndReload` reloads, which persist to state.json and reload to `/?edit=1`). `exitEditMode()` (Cancel) restores the backup via POST to `/api/shelves` before navigating to `/`. `saveLayout()` and `resetLayout()` call `_clearEditBackup()` so an intentional save doesn't restore the old state.
 
 ### Library Virtual Grid
 `library.html` uses an IntersectionObserver to lazy-load card content. Key details:

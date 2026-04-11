@@ -2,39 +2,42 @@
 
 ## Known Bugs
 
-- **Sort pills case-sensitive** — sort pills sort case-sensitively, so e.g. "RPG" sorts before "Racing". Should use case-insensitive ordering.
-- **Installed shelf doesn't refill on uninstall** — when install status changes are detected, the installed shelf removes uninstalled games but doesn't pull in new games to fill the shelf to its limit. Requires a page refresh to see a replacement game. The shelf limit (e.g. 7) is respected during the initial render but not during live install-status updates.
-- **Filters modal "Clear All" reloads page** — should clear the filter tree in place so the user can build a new one without leaving the modal. Currently applies empty filters and reloads.
-- **Filters modal Cancel → Close** — rename the Cancel button to Close.
-- **Tampermonkey script: stop auto-closing the Steam Help tab** — in single-game mode, after sending the date the script polls until the modal consumes it, then closes the tab. It should leave the tab open so the user can keep it for reference.
+*(none)*
 
 ---
 
-## Short Term
+## Improvements
 
-- **Import tool column mapping UX** — three small improvements: (1) the "Table" dropdown should auto-select `games` if that table exists in the uploaded file; (2) whichever column is designated as the AppID source should be removed from the "From uploaded file" column list, since it is already consumed as the row key; (3) `appid` should be removed from the "Into your library" column list, since it is the match key and should not be overwritten as a regular field.
+- **Gamepad support** — home page editor buttons, bulk edit modal navigation, text input focus, disable RB/LB while in modals
+- **Pick 6 smart length limits** — currently uses scoring bias only; medium-length games still appear when the library has many of them. Idea: find the tightest hourly cutoff (starting at 1hr, stepping up) that keeps at least 12 games and 1% of the eligible pool, then hard-exclude games outside it. Open questions: thresholds vs filtered pool or full library; step size (30min vs 1hr); behavior when even 10hr cap doesn't hit thresholds; whether to surface the applied cutoff to the user.
+
+---
+
+## Small Features
+
 - **Library group-by** — sort games into sections by a chosen field (e.g. installed status, completion status, ProtonDB tier); each section sorted by the active sort column and direction. Implementation approach for non-obvious grouping fields TBD. Group-by installed (installed games first) is the most-wanted specific case.
+- **PAGYWOSG Snowballs / Secret Santa support** — Snowballs and Secret Santa are PAGYWOSG/POP gift events. The filter builder and quals panel should recognise their pool/criteria structure the same way the main PAGYWOSG event does.
 
 ---
 
-## Long Term
+## Big Features
 
-- **Date/time overhaul** — migrate all date columns (`last_played`, `date_added`, `release_date`) from `'YYYY-MM-DD'` strings to Unix timestamps stored as integers. Users see and input human-readable dates and times; backend works entirely in timestamps. Migration is straightforward since the formats are unambiguous and easy to tell apart. Primary motivation: `last_played` sort precision when multiple games are played in the same day. Also: display `playtime_forever` (stored as minutes) as hours with one decimal place (e.g. `12,345.6 hrs`) everywhere in the UI -- matches Steam's own display format.
-- **Non-Steam library support** — see Planned Features below
+- **Non-Steam library support** — see Implementation Plans
+- **Card badges** — see Implementation Plans
 - **Plugin system**
 
 ---
 
 ## Potential / Under Consideration
 
+- **BLAEO sync downgrade prevention** — BLAEO sync unconditionally overwrites `completion_status` with whatever BLAEO reports, which can downgrade e.g. `Beaten` → `Unfinished`. Options: a hard guard matching `sync_recent_playtime` logic (never downgrade Beaten/Completed), a per-direction setting (e.g. "allow BLAEO to downgrade from Beaten"), or a setting toggle for each status transition. Direction of travel: probably a settings option since some users may want BLAEO to be authoritative.
 - **Sort by total reviews** — sort by `total_reviews` to surface popular games or find obscure ones. Already in `SAFE_COLUMNS`, just needs a dropdown option.
-- **Gamepad support improvements** — home page editor buttons, bulk edit modal navigation, text input focus, disable RB/LB while in modals
 - **Extend Playnite import** — also import completion status
 - **Refactor app.py into Flask blueprints** — by area (library, scraping, config, import tools)
 
 ---
 
-## Planned Features (with implementation notes)
+## Implementation Plans
 
 ### Non-Steam Library Support
 
