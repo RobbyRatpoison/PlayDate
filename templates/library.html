@@ -340,7 +340,7 @@
         </button>
         {% set has_filters = state.filter_tree and (state.filter_tree.get('items') or state.filter_tree.get('custom_sql')) %}
         {% if has_filters %}
-        <button onclick="clearAllFilters()" class="clear-btn">✕ CLEAR FILTERS</button>
+        <button onclick="clearAndReload()" class="clear-btn">✕ CLEAR FILTERS</button>
         {% endif %}
         <button onclick="openFilterModal()">FILTERS</button>
         <button onclick="openBulkEditModal()">BULK OPS</button>
@@ -364,6 +364,14 @@
     </div>
 
     <div class="game-grid" id="game-grid"></div>
+
+    <!-- PAGYWOSG hover tooltip -->
+    <div id="pag-hover-tooltip" style="
+        display:none; position:fixed; z-index:9000; pointer-events:none;
+        background:var(--bg-surface); border:1px solid var(--border);
+        border-radius:7px; padding:9px 12px; max-width:320px;
+        font-size:0.8rem; line-height:1.5; box-shadow:0 4px 18px rgba(0,0,0,0.45);
+    "></div>
 
 {% endblock %}
 
@@ -474,6 +482,11 @@
     }
 
     function updateSort(column) { sendStateUpdate({ sort: column }); }
+
+    async function clearAndReload() {
+        const emptyTree = { type: 'group', logic: 'AND', items: [] };
+        await sendStateUpdate({ filter_tree: emptyTree });
+    }
 
     function toggleOrder() {
         const currentOrder = "{{ state.order }}";
@@ -712,10 +725,6 @@
         _priorityInterval = null;
     });
 
-    document.addEventListener('populate:hltb_done', () => {
-        if (_currentBulkTab === 'hltb') _hltbLoadMatches(true);
-    });
-
     // ── HOVER DELEGATION ──────────────────────────────────────────
     // - Throttled to one update per animation frame via rAF so rapid
     //   mouse movement can't queue more work than the browser can render.
@@ -817,7 +826,6 @@ function switchBulkTab(tab) {
     document.getElementById('bulk-tab-btn-' + tab).classList.add('active');
     document.getElementById('bulk-pane-' + tab).style.display = '';
     _currentBulkTab = tab;
-    if (tab === 'hltb') _hltbLoadMatches();
 }
 
 function openBulkEditModal(tab = 'edit') {
@@ -849,8 +857,6 @@ function openBulkEditModal(tab = 'edit') {
         document.getElementById('brs-start-art-btn').disabled  = false;
         const _pdbBtn = document.getElementById('brs-start-protondb-btn');
         if (_pdbBtn) _pdbBtn.disabled = false;
-        const _hltbBtn = document.getElementById('brs-start-hltb-btn');
-        if (_hltbBtn) _hltbBtn.disabled = false;
     }
 
     // Reset date tab (only if not running)
@@ -867,7 +873,6 @@ function openBulkEditModal(tab = 'edit') {
 }
 
 function closeBulkEditModal() {
-    if (_hltbScrapeInterval) { clearInterval(_hltbScrapeInterval); _hltbScrapeInterval = null; }
     document.getElementById('bulk-edit-modal').style.display = 'none';
 }
 
@@ -875,385 +880,6 @@ function closeBulkEditModal() {
 function openBulkRescrapeModal()   { openBulkEditModal('rescrape'); }
 function openBulkArtScrapeModal()  { openBulkEditModal('rescrape'); }
 function openBulkDateImportModal() { openBulkEditModal('dates'); }
-
-// ── HLTB REVIEW TAB ──────────────────────────────────────────────────────────
-let _hltbMatches = [];
-let _hltbUnfetchedCount = 0;
-let _hltbNoMatchCount = 0;
-
-function _hltbStatsText() {
-    const unconfirmed = _hltbMatches.filter(r => r.hltb_fetched === 'unconfirmed').length;
-    const confirmed   = _hltbMatches.length - unconfirmed;
-    const parts = [`${confirmed} confirmed`, `${unconfirmed} unconfirmed`, `${_hltbUnfetchedCount} unfetched`];
-    if (_hltbNoMatchCount) parts.push(`${_hltbNoMatchCount} no match found`);
-    return parts.join(' · ');
-}
-
-function _onHltbReviewSlider(el) {
-    document.getElementById('hltb-review-threshold-val').textContent = el.value;
-    const pct = (el.value - el.min) / (el.max - el.min) * 100;
-    el.style.setProperty('--slider-pct', pct + '%');
-    _hltbRenderList();
-}
-
-function _hltbGetThreshold() {
-    return parseInt(document.getElementById('hltb-review-slider').value, 10);
-}
-
-function _fmtMinsHltb(mins) {
-    if (mins == null) return null;
-    const h = Math.floor(mins / 60), m = mins % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-function _hltbTimesStr(row) {
-    const parts = [];
-    if (row.hltb_main   != null) parts.push(`Main: ${_fmtMinsHltb(row.hltb_main)}`);
-    if (row.hltb_extras != null) parts.push(`+Extras: ${_fmtMinsHltb(row.hltb_extras)}`);
-    if (row.hltb_completionist != null) parts.push(`Compl: ${_fmtMinsHltb(row.hltb_completionist)}`);
-    return parts.join(' · ');
-}
-
-async function _hltbLoadMatches(live = false) {
-    const list  = document.getElementById('hltb-review-list');
-    const stats = document.getElementById('hltb-review-stats');
-    if (!live) {
-        list.innerHTML  = '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">Loading...</div>';
-        stats.textContent = '';
-    }
-    try {
-        const data = await fetch('/api/hltb/matches').then(r => r.json());
-        if (!live) {
-            _hltbMatches        = data.matches;
-            _hltbUnfetchedCount = data.unfetched_count;
-            _hltbNoMatchCount   = data.no_match_count ?? 0;
-            const slider = document.getElementById('hltb-review-slider');
-            const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
-            slider.style.setProperty('--slider-pct', pct + '%');
-            _hltbRenderList();
-        } else {
-            _hltbMergeLive(data.matches, data.unfetched_count, data.no_match_count);
-        }
-    } catch(e) {
-        if (!live) list.innerHTML = '<div style="color:#ff6b6b; font-size:0.8rem; padding:8px;">Failed to load matches.</div>';
-    }
-}
-
-function _hltbMergeLive(incoming, unfetchedCount, noMatchCount) {
-    const knownIds = new Set(_hltbMatches.map(r => r.appid));
-
-    // Sync counts
-    if (unfetchedCount != null) _hltbUnfetchedCount = unfetchedCount;
-    if (noMatchCount != null) _hltbNoMatchCount = noMatchCount;
-
-    // Merge new entries into master array
-    const added = incoming.filter(r => !knownIds.has(r.appid));
-    if (added.length) {
-        _hltbMatches = _hltbMatches.concat(added);
-        // Full re-render only when new rows arrive — avoids destroying open alt-results panels
-        _hltbRenderList();
-    } else {
-        // Just update the stats line without touching list DOM
-        const stats = document.getElementById('hltb-review-stats');
-        if (stats) stats.textContent = _hltbStatsText();
-    }
-}
-
-function _hltbToggleShowConfirmed(btn) {
-    const on = btn.dataset.active === '1';
-    btn.dataset.active = on ? '0' : '1';
-    btn.style.background = on ? '' : 'var(--accent)';
-    btn.style.color      = on ? '' : '#0e1621';
-    _hltbRenderList();
-}
-
-function _hltbRenderList() {
-    const threshold = _hltbGetThreshold();
-    const list      = document.getElementById('hltb-review-list');
-    const stats     = document.getElementById('hltb-review-stats');
-
-    const showConfirmed = document.getElementById('hltb-show-confirmed-btn')?.dataset.active === '1';
-    const unconfirmed   = _hltbMatches.filter(r => r.hltb_fetched === 'unconfirmed');
-    const confirmedBelow = showConfirmed
-        ? _hltbMatches.filter(r => r.hltb_fetched !== 'unconfirmed' && r.hltb_match_score != null && r.hltb_match_score < threshold)
-        : [];
-
-    if (!unconfirmed.length && !confirmedBelow.length) {
-        const msg = _hltbMatches.length
-            ? '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">No unconfirmed matches.</div>'
-            : '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">No HLTB matches yet. Run a fetch first.</div>';
-        list.innerHTML = msg;
-        stats.textContent = (_hltbMatches.length || _hltbUnfetchedCount) ? _hltbStatsText() : '';
-        return;
-    }
-
-    stats.textContent = _hltbStatsText();
-
-    // Unconfirmed: above threshold first, then below; confirmed-below appended after
-    const sorted = [...unconfirmed].sort((a, b) => {
-        const aAbove = a.hltb_match_score >= threshold;
-        const bAbove = b.hltb_match_score >= threshold;
-        if (aAbove !== bAbove) return aAbove ? -1 : 1;
-        return b.hltb_match_score - a.hltb_match_score;
-    }).concat(confirmedBelow.sort((a, b) => b.hltb_match_score - a.hltb_match_score));
-
-    list.innerHTML = sorted.map(row => {
-        const isConfirmed = row.hltb_fetched !== 'unconfirmed';
-        const cls      = row.hltb_match_score >= threshold ? 'above' : 'below';
-        const badgeCls = cls;
-        const times   = _hltbTimesStr(row);
-        return `<div class="hltb-match-row ${cls}" id="hltb-row-${row.appid}">
-            <div style="display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
-                <div style="flex:1; min-width:0;">
-                    <span class="game-name">${_escHtml(row.name)}</span>
-                    <span style="color:#4a5e6e; margin:0 4px;">→</span>
-                    <span class="match-name">${_escHtml(row.hltb_matched_name || '?')}</span>
-                    <span class="score-badge ${badgeCls}" style="margin-left:6px;">${row.hltb_match_score ?? '?'}</span>
-                    ${isConfirmed ? '<span style="font-size:0.72rem; color:#8f98a0; margin-left:4px;">confirmed</span>' : ''}
-                </div>
-                <div class="row-btns">
-                    ${!isConfirmed ? `<button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbRowConfirm(${row.appid})">Confirm</button>` : ''}
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbRowOtherMatch(${row.appid}, this)">Other match</button>
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; color:var(--text-secondary);" onclick="_hltbRowClear(${row.appid})">Clear</button>
-                </div>
-            </div>
-            ${times ? `<div class="times" style="margin-top:3px;">${times}</div>` : ''}
-            <div class="hltb-alt-results" id="hltb-alt-${row.appid}"></div>
-        </div>`;
-    }).join('');
-}
-
-function _escHtml(s) {
-    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-async function _hltbRowConfirm(appid) {
-    const rowEl = document.getElementById(`hltb-row-${appid}`);
-    const btn   = rowEl?.querySelector('button');
-    if (btn) { btn.textContent = '...'; btn.disabled = true; }
-    try {
-        const data = await fetch(`/api/hltb/${appid}/confirm`, {method:'POST'}).then(r=>r.json());
-        if (data.status === 'success') {
-            const idx = _hltbMatches.findIndex(r => r.appid === appid);
-            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data);
-            _hltbRenderList();
-        }
-    } catch(e) { if (btn) { btn.textContent = 'Confirm'; btn.disabled = false; } }
-}
-
-async function _hltbRowClear(appid) {
-    await fetch(`/api/hltb/${appid}`, {method:'DELETE'});
-    _hltbMatches = _hltbMatches.filter(r => r.appid !== appid);
-    _hltbUnfetchedCount++; // cleared games return to unfetched state
-    _hltbRenderList();
-}
-
-async function _hltbRowOtherMatch(appid, btn) {
-    const altEl = document.getElementById(`hltb-alt-${appid}`);
-    if (altEl.classList.contains('open')) {
-        altEl.classList.remove('open');
-        btn.textContent = 'Other match';
-        return;
-    }
-    btn.textContent = '...';
-    btn.disabled = true;
-    const rowData = _hltbMatches.find(r => r.appid === appid);
-    await _hltbRowRunSearch(appid, rowData?.name || '');
-    btn.textContent = 'Other match';
-    btn.disabled = false;
-}
-
-function _hltbSetupAltDelegation(appid, altEl) {
-    if (altEl._hltbDelegated) return;
-    altEl._hltbDelegated = true;
-    altEl.addEventListener('click', function(e) {
-        const sel = e.target.closest('[data-hltb-select]');
-        if (sel) { _hltbRowSelect(appid, parseInt(sel.dataset.hltbId), sel.dataset.hltbScore ? parseInt(sel.dataset.hltbScore) : null, sel.dataset.hltbName); return; }
-        if (e.target.closest('[data-hltb-apply]')) { _hltbRowSelectById(appid); return; }
-        if (e.target.closest('[data-hltb-research]')) {
-            const input = altEl.querySelector('.hltb-row-search-query');
-            if (input) _hltbRowRunSearch(appid, input.value.trim());
-        }
-    });
-    altEl.addEventListener('keydown', function(e) {
-        if (e.key !== 'Enter') return;
-        if (e.target.classList.contains('hltb-row-search-query')) { e.preventDefault(); _hltbRowRunSearch(appid, e.target.value.trim()); }
-        else if (e.target.classList.contains('hltb-row-manual-id')) { _hltbRowSelectById(appid); }
-    });
-}
-
-async function _hltbRowRunSearch(appid, query) {
-    let altEl = document.getElementById(`hltb-alt-${appid}`);
-    if (!altEl) return;
-    _hltbSetupAltDelegation(appid, altEl);
-    try {
-        const url = `/api/hltb/${appid}/search` + (query ? `?q=${encodeURIComponent(query)}` : '');
-        const data = await fetch(url).then(r => r.json());
-        // Re-fetch altEl after await in case _hltbRenderList re-rendered the list
-        altEl = document.getElementById(`hltb-alt-${appid}`);
-        if (!altEl) return;
-        _hltbSetupAltDelegation(appid, altEl);
-        const results = data.results || [];
-        const titleRowHtml = `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-            <input class="hltb-row-search-query" type="text" value="${_escHtml(query)}"
-                style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);">
-            <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
-                data-hltb-research="1">Search</button>
-        </div>`;
-        const manualHtml = `<div style="display:flex; align-items:center; gap:6px; padding:6px 0 2px; border-top:1px solid #2a475e; margin-top:4px;">
-            <input class="hltb-row-manual-id" id="hltb-manual-id-${appid}" type="text" placeholder="Paste HLTB URL or game ID…"
-                style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);">
-            <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
-                data-hltb-apply="1">Apply</button>
-        </div>`;
-        const resultsHtml = results.length
-            ? results.map(r => {
-                const times = [];
-                if (r.hltb_main   != null) times.push(`Main: ${_fmtMinsHltb(r.hltb_main)}`);
-                if (r.hltb_extras != null) times.push(`+Extras: ${_fmtMinsHltb(r.hltb_extras)}`);
-                if (r.hltb_completionist != null) times.push(`Compl: ${_fmtMinsHltb(r.hltb_completionist)}`);
-                return `<div class="hltb-alt-result-row">
-                    <span style="flex:1; min-width:0;">${_escHtml(r.hltb_matched_name)}</span>
-                    <span style="color:#8f98a0; font-size:0.72rem; flex-shrink:0;">${r.hltb_match_score}</span>
-                    <span style="color:#8f98a0; font-size:0.72rem; flex:1;">${times.join(' · ')}</span>
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
-                        data-hltb-select="1" data-hltb-id="${r.hltb_id}"
-                        data-hltb-score="${r.hltb_match_score ?? ''}"
-                        data-hltb-name="${_escHtml(r.hltb_matched_name)}">Select</button>
-                </div>`;
-            }).join('')
-            : '<div style="color:#8f98a0; font-size:0.78rem; padding-bottom:4px;">No results found.</div>';
-        altEl.innerHTML = titleRowHtml + resultsHtml + manualHtml;
-        altEl.classList.add('open');
-    } catch(e) {
-        altEl = document.getElementById(`hltb-alt-${appid}`) || altEl;
-        altEl.innerHTML = '<div style="color:#ff6b6b; font-size:0.78rem;">Search failed.</div>';
-        altEl.classList.add('open');
-    }
-}
-
-async function _hltbRowSelect(appid, hltbId, score, matchedName) {
-    const rowEl = document.getElementById(`hltb-row-${appid}`);
-    try {
-        const data = await fetch(`/api/hltb/${appid}/select`, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: score})
-        }).then(r=>r.json());
-        if (data.status === 'success') {
-            const idx = _hltbMatches.findIndex(r => r.appid === appid);
-            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data, {hltb_matched_name: matchedName, hltb_id: hltbId});
-            _hltbRenderList();
-        }
-    } catch(e) {}
-}
-
-async function _hltbRowSelectById(appid) {
-    const input = document.getElementById(`hltb-manual-id-${appid}`);
-    if (!input) return;
-    const raw = input.value.trim();
-    if (!raw) return;
-    // Parse ID from URL (howlongtobeat.com/game/12345) or raw number
-    const match = raw.match(/(?:game\/)?(\d+)/);
-    if (!match) { input.style.borderColor = 'var(--color-danger)'; return; }
-    input.style.borderColor = '';
-    const hltbId = parseInt(match[1], 10);
-    input.disabled = true;
-    try {
-        const data = await fetch(`/api/hltb/${appid}/select`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: null})
-        }).then(r => r.json());
-        if (data.status === 'success') {
-            const idx = _hltbMatches.findIndex(r => r.appid === appid);
-            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data, {hltb_id: hltbId});
-            if (!data.times_available) {
-                // Times couldn't be fetched (e.g. compilation) — remove from unconfirmed list
-                // since it's now confirmed with a manual ID
-                _hltbMatches = _hltbMatches.filter(r => r.appid !== appid);
-            }
-            _hltbRenderList();
-        } else {
-            input.style.borderColor = 'var(--color-danger)';
-        }
-    } catch(e) {
-        input.style.borderColor = 'var(--color-danger)';
-    }
-    input.disabled = false;
-}
-
-async function _hltbConfirmAllAbove() {
-    const threshold = _hltbGetThreshold();
-    const targets   = _hltbMatches.filter(r => r.hltb_match_score >= threshold && r.hltb_fetched === 'unconfirmed');
-    if (!targets.length) return;
-    if (!await confirm(`Confirm ${targets.length} unconfirmed match${targets.length !== 1 ? 'es' : ''} above threshold ${threshold}?`)) return;
-    const stats = document.getElementById('hltb-review-stats');
-    stats.textContent = `Confirming 0 / ${targets.length}...`;
-    let done = 0;
-    for (const row of targets) {
-        const data = await fetch(`/api/hltb/${row.appid}/confirm`, {method:'POST'}).then(r=>r.json()).catch(()=>null);
-        if (data?.status === 'success') {
-            const idx = _hltbMatches.findIndex(r => r.appid === row.appid);
-            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data);
-        }
-        done++;
-        stats.textContent = `Confirming ${done} / ${targets.length}...`;
-    }
-    _hltbRenderList();
-}
-
-let _hltbScrapeInterval = null;
-
-async function _hltbScrapeUnfetched() {
-    const scrapeBtn = document.getElementById('hltb-scrape-btn');
-    const stopBtn   = document.getElementById('hltb-stop-btn');
-    const statusEl  = document.getElementById('hltb-scrape-status');
-
-    scrapeBtn.disabled = true;
-    statusEl.textContent = 'Starting…';
-
-    const res = await fetch('/api/bulk-op/start', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({op: 'hltb', scope: 'unfetched'})
-    }).then(r => r.json()).catch(() => null);
-
-    if (!res || res.status !== 'success') {
-        statusEl.textContent = res?.message ? '✘ ' + res.message : '✘ Failed to start.';
-        scrapeBtn.disabled = false;
-        return;
-    }
-
-    scrapeBtn.style.display = 'none';
-    stopBtn.style.display   = '';
-    statusEl.textContent    = `0 / ${res.total}`;
-
-    _hltbScrapeInterval = setInterval(async () => {
-        try {
-            const d = await fetch('/api/bulk-op/status').then(r => r.json());
-            const done = d.done + d.failed;
-            statusEl.textContent = `${done} / ${d.total}${d.failed ? ` (${d.failed} failed)` : ''}`;
-            if (d.done > 0) _hltbLoadMatches(true);
-            if (!d.running) {
-                clearInterval(_hltbScrapeInterval);
-                _hltbScrapeInterval = null;
-                scrapeBtn.style.display = '';
-                scrapeBtn.disabled = false;
-                stopBtn.style.display = 'none';
-                statusEl.textContent = d.result?.error
-                    ? '✘ ' + d.result.error
-                    : `Done — ${d.done} fetched${d.failed ? ', ' + d.failed + ' failed' : ''}.`;
-                _hltbLoadMatches(false);
-            }
-        } catch(e) {}
-    }, 1000);
-}
-
-async function _hltbStopScrape() {
-    document.getElementById('hltb-stop-btn').disabled = true;
-    await fetch('/api/bulk-op/cancel', {method: 'POST'}).catch(() => {});
-}
 
 // ── EDIT TAB ─────────────────────────────────────────────────────────────────
 function onBulkScopeChange() {
@@ -1830,6 +1456,85 @@ async function stopBulkDateImport() {
     document.getElementById('bdi-status').className = '';
     document.getElementById('bdi-status').textContent = 'Cancelled.';
 }
+
+// ── PAGYWOSG hover tooltip ────────────────────────────────────────────────────
+(function() {
+    if (!_serverFilterTree?.pagywosg) return;
+
+    const tooltip  = document.getElementById('pag-hover-tooltip');
+    const grid     = document.getElementById('game-grid');
+    const sgGroup  = _pagExtractSgGroup(_serverFilterTree);
+
+    function _hltbMin(game) {
+        const vals = [game.hltb_main, game.hltb_extras, game.hltb_completionist]
+            .filter(v => v && v > 0);
+        return vals.length ? Math.min(...vals) : null;
+    }
+
+    function _buildTooltip(game) {
+        const isWin = sgGroup ? _pagCsvContains(game.groups, sgGroup) : false;
+
+        const results = [];
+        _pagExtractConds(_serverFilterTree).forEach(cond => {
+            if (cond.pool === 'wins' && !isWin) return;
+            const desc = _pagCheckCond(cond, game);
+            if (desc) results.push({ desc, label: _pagLabel(cond.pool, game, sgGroup), verified: false });
+        });
+        (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).forEach(({ cat, pool, verifier, auto }) => {
+            if (pool === 'wins' && !isWin) return;
+            results.push({ desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifier: verifier || null });
+        });
+
+        const hltbMin = _hltbMin(game);
+        if (!results.length && hltbMin === null) return null;
+
+        let html = results.map(r => {
+            const verifPart = r.verified
+                ? ` <span style="color:var(--text-secondary);">— mod verified${r.verifier ? ` (${r.verifier})` : ''}</span>`
+                : '';
+            return `<div><span style="color:var(--accent-positive);">✓</span> ${r.desc} <span style="color:var(--text-secondary);">${r.label}${verifPart}</span></div>`;
+        }).join('');
+
+        if (hltbMin !== null) {
+            if (results.length) html += `<div style="margin-top:5px; border-top:1px solid var(--border); padding-top:5px;">`;
+            html += `<span style="color:var(--text-secondary);">HLTB min:</span> <strong>${fmtHours(hltbMin)}</strong>`;
+            if (results.length) html += `</div>`;
+        }
+
+        return html;
+    }
+
+    let _hoveredAppid = null;
+
+    grid.addEventListener('mouseover', e => {
+        const card = e.target.closest('.game-card[data-appid]');
+        const appid = card ? parseInt(card.dataset.appid) : null;
+        if (appid === _hoveredAppid) return;
+        _hoveredAppid = appid;
+        if (!appid || !card.dataset.populated) { tooltip.style.display = 'none'; return; }
+        const game = _GAME_MAP.get(appid);
+        if (!game) { tooltip.style.display = 'none'; return; }
+        const html = _buildTooltip(game);
+        if (!html) { tooltip.style.display = 'none'; return; }
+        tooltip.innerHTML = html;
+        tooltip.style.display = 'block';
+    });
+
+    grid.addEventListener('mouseleave', () => {
+        _hoveredAppid = null;
+        tooltip.style.display = 'none';
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (tooltip.style.display === 'none') return;
+        const pad = 14, tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+        let x = e.clientX + pad, y = e.clientY + pad;
+        if (x + tw > window.innerWidth  - pad) x = e.clientX - tw - pad;
+        if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
+        tooltip.style.left = x + 'px';
+        tooltip.style.top  = y + 'px';
+    });
+})();
 </script>
 
 <!-- Bulk Delete Modal -->
@@ -1888,7 +1593,6 @@ async function stopBulkDateImport() {
         <div style="display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid #2a475e;">
             <button id="bulk-tab-btn-edit" class="bulk-tab-btn active" onclick="switchBulkTab('edit')">Edit</button>
             <button id="bulk-tab-btn-rescrape" class="bulk-tab-btn" onclick="switchBulkTab('rescrape')">Re-scrape</button>
-            <button id="bulk-tab-btn-hltb" class="bulk-tab-btn" onclick="switchBulkTab('hltb')">HLTB</button>
             <button id="bulk-tab-btn-dates" class="bulk-tab-btn" onclick="switchBulkTab('dates')">Date Importer</button>
         </div>
 
@@ -1947,7 +1651,7 @@ async function stopBulkDateImport() {
                 <option value="genres">Genres</option>
                 <option value="categories">Categories</option>
                 <option value="is_free">Free to Play (0/1)</option>
-                <option value="playtime_forever">Playtime (Mins)</option>
+                <option value="playtime_forever">Playtime (mins)</option>
                 <option value="date_added">Date Added</option>
                 <option value="installed">Installed (0/1)</option>
                 <option value="vertical_art_source">Vertical Art Source</option>
@@ -2127,30 +1831,6 @@ async function stopBulkDateImport() {
             </div>
         </div>
 
-        <!-- ── HLTB REVIEW PANE ── -->
-        <div id="bulk-pane-hltb" style="display:none;">
-            <!-- Threshold + actions bar -->
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0;">Auto-confirm threshold</span>
-                <input type="range" id="hltb-review-slider" min="0" max="100"
-                    value="{{ hltb_match_threshold }}"
-                    oninput="_onHltbReviewSlider(this)"
-                    class="hltb-review-slider">
-                <span id="hltb-review-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
-                <button class="nav-btn" style="font-size:0.78rem;" onclick="_hltbConfirmAllAbove()">Confirm all above</button>
-                <button id="hltb-scrape-btn" class="nav-btn" style="font-size:0.78rem;" onclick="_hltbScrapeUnfetched()">Scrape unfetched / unmatched</button>
-                <button id="hltb-stop-btn" class="nav-btn" style="font-size:0.78rem; display:none; color:var(--color-danger);" onclick="_hltbStopScrape()">Stop</button>
-                <button id="hltb-show-confirmed-btn" class="nav-btn" style="font-size:0.78rem;" onclick="_hltbToggleShowConfirmed(this)" data-active="0">Show confirmed?</button>
-            </div>
-            <div id="hltb-scrape-status" style="font-size:0.78rem; color:#8f98a0; min-height:1.1rem; margin-bottom:6px;"></div>
-            <!-- Stats line -->
-            <div id="hltb-review-stats" style="font-size:0.78rem; color:#8f98a0; margin-bottom:10px;"></div>
-            <!-- Match list -->
-            <div id="hltb-review-list" style="display:flex; flex-direction:column; gap:6px; max-height:60vh; overflow-y:auto;"></div>
-        </div>
-
         <!-- ── DATE IMPORTER PANE ── -->
         <div id="bulk-pane-dates" style="display:none;">
             <div style="background:rgba(102,192,244,0.06); border:1px solid #2a475e; border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.8rem; color:#8f98a0; line-height:1.5;">
@@ -2231,42 +1911,6 @@ async function stopBulkDateImport() {
 }
 .bulk-tab-btn:hover { color: #c2c8cc; }
 .bulk-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-.hltb-review-slider {
-    flex: 1; min-width: 0; cursor: pointer;
-    -webkit-appearance: none; appearance: none;
-    height: 4px; border-radius: 2px;
-    background: transparent; outline: none;
-}
-.hltb-review-slider::-webkit-slider-runnable-track {
-    height: 4px; border-radius: 2px;
-    background: linear-gradient(to right, var(--accent) var(--slider-pct, 75%), var(--bg-raised, #555) var(--slider-pct, 75%));
-}
-.hltb-review-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px; height: 14px; margin-top: -5px;
-    border-radius: 50%; background: var(--accent); cursor: pointer;
-}
-.hltb-match-row {
-    padding: 8px 10px; border-radius: 5px;
-    border: 1px solid #2a475e; background: var(--bg-input);
-    font-size: 0.8rem;
-}
-.hltb-match-row.above { border-color: #2a475e; }
-.hltb-match-row.below { opacity: 0.55; border-color: #1e2e3a; }
-.hltb-match-row .game-name { color: #c2c8cc; font-weight: 600; }
-.hltb-match-row .match-name { color: #8f98a0; }
-.hltb-match-row .score-badge {
-    display: inline-block; font-size: 0.72rem; font-weight: bold;
-    padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
-}
-.hltb-match-row .score-badge.above { background: rgba(92,126,16,0.25); color: #8bc34a; }
-.hltb-match-row .score-badge.below { background: rgba(180,80,50,0.2); color: #e06c4a; }
-.hltb-match-row .times { color: #8f98a0; font-size: 0.75rem; }
-.hltb-match-row .row-btns { display: flex; gap: 6px; flex-shrink: 0; }
-.hltb-alt-results { display: none; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #2a475e; }
-.hltb-alt-results.open { display: flex; }
-.hltb-alt-result-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; background: rgba(255,255,255,0.03); font-size: 0.78rem; color: #c2c8cc; }
-.hltb-alt-result-row:hover { background: rgba(255,255,255,0.07); }
 .bulk-status-success { color: #5c7e10; }
 .bulk-status-error   { color: #ff4d4d; }
 input[name="bulk-scope"]:checked + span strong,

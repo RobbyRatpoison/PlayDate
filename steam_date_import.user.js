@@ -134,25 +134,13 @@
             try {
                 const res = await pdFetch('POST', '/api/pending-date', { appid, date });
                 if (res.status === 200) {
-                    showBanner(`Date sent: ${date} — waiting for PlayDate…`, '#1a7f4b');
-                    waitForConsumptionThenClose();
+                    showBanner(`Date sent: ${date}`, '#1a7f4b');
                 } else {
                     showBanner(`PlayDate error: ${res.status}`, '#c97c00');
                 }
             } catch (e) {
                 showBanner('Could not reach PlayDate. Make sure it is running.', '#c97c00');
             }
-        }
-
-        function waitForConsumptionThenClose() {
-            let checks = 0;
-            const poll = setInterval(async () => {
-                try {
-                    const r = await pdFetch('GET', `/api/pending-date/${appid}/peek`);
-                    const d = JSON.parse(r.responseText);
-                    if (!d.pending || ++checks >= 40) { clearInterval(poll); window.close(); }
-                } catch (e) { clearInterval(poll); window.close(); }
-            }, 250);
         }
 
         checkAccountThenRun();

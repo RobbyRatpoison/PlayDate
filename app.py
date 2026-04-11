@@ -249,12 +249,11 @@ def create_app(template_folder=None, static_folder=None):
         mode         = data.get('mode', 'random')
         use_filtered = data.get('use_filtered', False)
         statuses     = data.get('statuses', None)  # None means all statuses
-        w_tags       = float(data.get('w_tags',      65))
-        w_review     = float(data.get('w_review',    35))
-        w_staleness  = float(data.get('w_staleness',  0))
-        w_completion = float(data.get('w_completion', 0))
-        w_playtime   = float(data.get('w_playtime',   0))
-        w_recency    = float(data.get('w_recency',    0))
+        w_tags      = float(data.get('w_tags',      65))
+        w_review    = float(data.get('w_review',    35))
+        w_staleness = float(data.get('w_staleness',  0))
+        w_recency   = float(data.get('w_recency',    0))
+        w_hltb      = float(data.get('w_hltb',       0))
 
         state  = load_state()
         db     = get_db()
@@ -346,56 +345,68 @@ def create_app(template_folder=None, static_folder=None):
                 lp = g.get('last_played')
                 if lp:
                     try:
-                        ts = datetime.strptime(lp[:10], '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp()
-                        return min((now - ts) / 86400, 730) / 730.0
+                        return min((now - float(lp)) / 86400, 730) / 730.0
                     except Exception:
                         return 0.5
                 return 1.0
 
-            def completion_bias_score(g):
-                cs = g.get('completion_status', '')
-                return 1.0 if cs == 'Never Played' else 0.5
-
-            def playtime_score(g):
-                pt = float(g.get('playtime_forever') or 0)
-                return 1.0 - min(pt, 3000) / 3000.0
+            def hltb_length_score(g):
+                # Returns [0,1] where 1 = longest, or None if no data.
+                # sqrt curve concentrates probability at the extremes so moderate
+                # lengths don't crowd out clearly short/long games.
+                import math
+                times = [v for v in [g.get('hltb_main'), g.get('hltb_extras'), g.get('hltb_completionist')] if v]
+                if not times:
+                    return None  # handled as low (not neutral) by sig() via unknown_val
+                if w_hltb >= 0:
+                    # Prefer long: max time, floor at 10hrs, scale over 100hrs above floor.
+                    # 10hr → 0, 35hr → 0.5, 110hr+ → 1.0
+                    val = max(times)
+                    return math.sqrt(max(0.0, min(float(val) - 600.0, 6000.0) / 6000.0)
+)
+                else:
+                    # Prefer short: min time, cap at 10hrs.
+                    # 0hr → 0, 2.5hr → 0.5, 10hr+ → 1.0
+                    val = min(times)
+                    return math.sqrt(min(float(val), 600.0) / 600.0)
 
             def recency_score(g):
-                rd = g.get('release_date') or ''
+                rd = g.get('release_date')
+                if not rd:
+                    return 0.5
                 try:
-                    import re as _re
-                    year = int(_re.search(r'\d{4}', rd).group())
-                    from datetime import datetime
+                    from datetime import datetime, timezone
+                    year = datetime.fromtimestamp(float(rd), tz=timezone.utc).year
                     age_years = max(datetime.now().year - year, 0)
                     return 1.0 - min(age_years, 10) / 10.0
                 except Exception:
                     return 0.5
 
             def score_game(g):
-                if mode == 'weighted':
-                    total_w = (w_tags + w_review + w_staleness + w_completion + w_playtime + w_recency) or 1.0
-                    wt  = w_tags       / total_w
-                    wr  = w_review     / total_w
-                    ws  = w_staleness  / total_w
-                    wc  = w_completion / total_w
-                    wpl = w_playtime   / total_w
-                    wrc = w_recency    / total_w
-                else:
-                    wt, wr, ws, wc, wpl, wrc = 0.65, 0.35, 0.0, 0.0, 0.0, 0.0
-
                 sim, matched = tag_similarity(g)
                 rev  = review_score(g)
                 stal = staleness_score(g)
-                comp = completion_bias_score(g)
-                play = playtime_score(g)
                 rec  = recency_score(g)
+                hltb = hltb_length_score(g)
 
-                if rev is None:
-                    leftover = wr
-                    denom = (wt + ws + wc + wpl + wrc + leftover) or 1.0
-                    final = ((wt + leftover) * sim + ws * stal + wc * comp + wpl * play + wrc * rec) / denom
+                if mode == 'weighted':
+                    total_w = (abs(w_tags) + abs(w_review) + abs(w_staleness) + abs(w_recency) + abs(w_hltb)) or 1.0
+                    def sig(w_raw, score, unknown_val=0.5):
+                        # Apply signal: direction flips score if negative.
+                        # unknown_val controls contribution when score is None (missing data).
+                        if w_raw == 0:
+                            return 0.0
+                        s = unknown_val if score is None else score
+                        norm = abs(w_raw) / total_w
+                        return norm * s if w_raw > 0 else norm * (1.0 - s)
+                    final = (sig(w_tags, sim) + sig(w_review, rev) + sig(w_staleness, stal)
+                             + sig(w_recency, rec) + sig(w_hltb, hltb, unknown_val=0.1))
                 else:
-                    final = wt * sim + wr * rev + ws * stal + wc * comp + wpl * play + wrc * rec
+                    # Smart mode: fixed weights, review weight falls back to tags if missing.
+                    if rev is None:
+                        final = sim
+                    else:
+                        final = 0.65 * sim + 0.35 * rev
 
                 return final, sim, matched
 
@@ -616,9 +627,10 @@ def create_app(template_folder=None, static_folder=None):
             print(f"Failed to launch AppID {appid}: {e}")
 
         # Record the launch date only if the game is marked installed
-        new_date = record_launch(appid)
-        if new_date:
-            return jsonify({"status": "success", "last_played": new_date})
+        new_ts = record_launch(appid)
+        if new_ts:
+            from database import ts_to_date
+            return jsonify({"status": "success", "last_played": ts_to_date(new_ts)})
         else:
             return jsonify({"status": "launched", "message": "Game launched but not marked installed — date not updated"})
 
@@ -708,6 +720,12 @@ def create_app(template_folder=None, static_folder=None):
             data_out['last_played'] = last_played
         if name:
             data_out['name'] = name
+
+        # Convert timestamps to date strings for the frontend form
+        from database import ts_to_date
+        for col in ('last_played', 'release_date'):
+            if data_out.get(col) is not None:
+                data_out[col] = ts_to_date(data_out[col]) or ''
 
         return jsonify({"status": "success", "data": data_out})
 
@@ -840,14 +858,18 @@ def create_app(template_folder=None, static_folder=None):
             WHERE hltb_id IS NOT NULL
             ORDER BY name COLLATE NOCASE
         """).fetchall()
+        no_match_rows = db.execute(
+            "SELECT appid, name FROM games WHERE hltb_fetched = 'no_match' ORDER BY name COLLATE NOCASE"
+        ).fetchall()
         unfetched = db.execute(
             "SELECT COUNT(*) FROM games WHERE hltb_fetched = '0' OR hltb_fetched IS NULL"
         ).fetchone()[0]
-        no_match = db.execute(
-            "SELECT COUNT(*) FROM games WHERE hltb_fetched = 'no_match'"
-        ).fetchone()[0]
         db.close()
-        return jsonify({'matches': [dict(r) for r in rows], 'unfetched_count': unfetched, 'no_match_count': no_match})
+        return jsonify({
+            'matches':        [dict(r) for r in rows],
+            'no_match_games': [dict(r) for r in no_match_rows],
+            'unfetched_count': unfetched,
+        })
 
     @app.route('/api/hltb/<int:appid>/search', methods=['GET'])
     def hltb_search(appid):
@@ -1064,8 +1086,9 @@ def create_app(template_folder=None, static_folder=None):
         date  = data.get('date', '').strip()
         if not appid or not date:
             return jsonify({'status': 'error', 'message': 'Missing appid or date'}), 400
+        from database import date_to_ts
         current = _bulk_date_state.get('current') or {}
-        update_game_data(appid, date_added=date)
+        update_game_data(appid, date_added=date_to_ts(date))
         log.info(f"Bulk date import: saved {date} for AppID {appid}")
         _bulk_date_state['done'] += 1
         _bulk_date_state['results'].insert(0, {'appid': appid, 'name': current.get('name', ''), 'date': date})
@@ -1109,11 +1132,16 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/game/<int:appid>')
     def get_game(appid):
         try:
+            from database import ts_to_date
             db  = get_db()
             row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
             db.close()
             if row:
-                return jsonify({"status": "success", "game": dict(row)})
+                game = dict(row)
+                for col in ('last_played', 'date_added', 'release_date'):
+                    if game.get(col):
+                        game[col] = ts_to_date(game[col])
+                return jsonify({"status": "success", "game": game})
             return jsonify({"status": "error", "message": "Game not found"}), 404
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
@@ -1150,9 +1178,9 @@ def create_app(template_folder=None, static_folder=None):
             rows   = db.execute("SELECT appid FROM games").fetchall()
             db.close()
             appids = [r['appid'] for r in rows]
-        elif scope == 'unfetched' and op == 'hltb':
+        elif scope == 'no_match' and op == 'hltb':
             db     = get_db()
-            rows   = db.execute("SELECT appid FROM games WHERE hltb_fetched = '0' OR hltb_fetched IS NULL OR hltb_fetched = 'no_match'").fetchall()
+            rows   = db.execute("SELECT appid FROM games WHERE hltb_fetched = 'no_match'").fetchall()
             db.close()
             appids = [r['appid'] for r in rows]
 
@@ -1252,6 +1280,48 @@ def create_app(template_folder=None, static_folder=None):
             log.exception(f"shuffle_shelf error for {shelf_id}: {e}")
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
+
+    @app.route('/api/refill-shelf/<shelf_id>', methods=['POST'])
+    def refill_shelf(shelf_id):
+        try:
+            from database import get_db
+            from config import load_state
+            from index import _build_shelf_query
+            data = request.json or {}
+            exclude_appids = [int(a) for a in data.get('exclude_appids', [])]
+
+            state = load_state()
+            shelves = state.get('shelves', [])
+            shelf = next((s for s in shelves if s['id'] == shelf_id), None)
+            if not shelf:
+                return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
+
+            saved_filters = state.get('saved_filters', {})
+            where, order = _build_shelf_query(shelf, saved_filters)
+            if where is None:
+                return jsonify({'status': 'success', 'games': []})
+
+            limit = int(shelf.get('limit', 10))
+            db = get_db()
+            if exclude_appids:
+                placeholders = ','.join('?' * len(exclude_appids))
+                rows = db.execute(
+                    f"SELECT appid, name, installed, completion_status FROM games "
+                    f"WHERE ({where}) AND appid NOT IN ({placeholders}) ORDER BY {order} LIMIT ?",
+                    (*exclude_appids, limit)
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    f"SELECT appid, name, installed, completion_status FROM games "
+                    f"WHERE {where} ORDER BY {order} LIMIT ?",
+                    (limit,)
+                ).fetchall()
+            db.close()
+            games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or ''} for r in rows]
+            return jsonify({'status': 'success', 'games': games})
+        except Exception as e:
+            log.exception(f"refill_shelf error for {shelf_id}: {e}")
+            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @app.route('/api/bulk-edit', methods=['POST'])
     def bulk_edit():
@@ -1449,12 +1519,13 @@ def create_app(template_folder=None, static_folder=None):
         if not date_map:
             app.logger.warning("Playnite import: no Steam games with dates found")
             return jsonify({"status": "error", "message": "No Steam games with dates found in the backup."}), 400
+        from database import date_to_ts
         db = get_db()
         updated = 0
         for appid, date_str in date_map.items():
             cursor = db.execute(
                 "UPDATE games SET date_added = ? WHERE appid = ?",
-                (date_str, appid)
+                (date_to_ts(date_str), appid)
             )
             updated += cursor.rowcount
         db.commit()
@@ -1779,6 +1850,28 @@ def create_app(template_folder=None, static_folder=None):
         _lib_db.close()
         return jsonify(result)
 
+    @app.route('/api/pagywosg-sg-group', methods=['GET', 'POST'])
+    def pagywosg_sg_group():
+        from config import load_state, save_state
+        from utils import get_all_unique_groups
+        if request.method == 'POST':
+            data = request.json or {}
+            # 'group' may be a non-empty string (chosen group) or None (no SG wins)
+            grp = data.get('group')
+            save_state({'pagywosg_sg_group': grp})
+            return jsonify({'status': 'success'})
+        # GET
+        state = load_state()
+        saved = state.get('pagywosg_sg_group', '__unset__')
+        groups = get_all_unique_groups()
+        default_group = next((g for g in groups if g.lower() == 'won on steamgifts'), None)
+        return jsonify({
+            'saved': None if saved == '__unset__' else saved,
+            'unset': saved == '__unset__',
+            'default_group': default_group,
+            'groups': groups,
+        })
+
     @app.route('/api/pagywosg-tags')
     def pagywosg_tags():
         try:
@@ -1970,6 +2063,7 @@ def create_app(template_folder=None, static_folder=None):
             'Achievement %'
         ]
 
+        from database import ts_to_date
         out = []
         for r in rows:
             pt_mins = r['playtime_forever'] or 0
@@ -1984,14 +2078,14 @@ def create_app(template_folder=None, static_folder=None):
                 r['tags']               or '',
                 r['groups']             or '',
                 pt_hrs,
-                r['last_played']        or '',
-                r['date_added']         or '',
+                ts_to_date(r['last_played'])   or '',
+                ts_to_date(r['date_added'])    or '',
                 'Yes' if r['installed'] else 'No',
                 r['review_score']       or '',
                 r['review_percentage']  if r['review_percentage'] is not None else '',
                 r['developers']         or '',
                 r['publishers']         or '',
-                r['release_date']       or '',
+                ts_to_date(r['release_date'])  or '',
                 unlocked,
                 total,
                 cheevo_pct,

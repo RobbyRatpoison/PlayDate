@@ -2,6 +2,19 @@
  * playdate.js — shared utilities loaded on every page via base.html
  */
 
+/**
+ * Format a playtime value (stored as minutes) as a human-readable hours string.
+ * e.g. 75 → "1.2 hrs", 12345 → "205.8 hrs"
+ */
+function fmtHours(minutes) {
+    if (!minutes) return '0 hrs';
+    const h = minutes / 60;
+    const formatted = h >= 1000
+        ? h.toLocaleString('en-US', { maximumFractionDigits: 0 })
+        : h.toFixed(1);
+    return formatted + ' hrs';
+}
+
 // ─── SQL Syntax Highlighter ────────────────────────────────────────────────
 
 const _SQL_HL_KEYWORDS = new Set([

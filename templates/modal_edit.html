@@ -318,8 +318,18 @@
 
                             <!-- Stats right sub-col: playtime + achievements -->
                             <div style="display: flex; flex-direction: column;">
-                                <label>Playtime (Mins)</label>
-                                <input type="number" name="playtime_forever" id="edit-playtime">
+                                <label>Playtime</label>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
+                                        <input type="number" name="playtime_forever" id="edit-playtime" placeholder="mins" min="0" step="1">
+                                        <span style="font-size:0.72rem; color:var(--text-secondary); padding-left:2px;">mins</span>
+                                    </div>
+                                    <span style="color:var(--text-secondary); padding-bottom:18px;">=</span>
+                                    <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
+                                        <input type="number" id="edit-playtime-hrs" placeholder="hrs" min="0" step="0.1">
+                                        <span style="font-size:0.72rem; color:var(--text-secondary); padding-left:2px;">hrs</span>
+                                    </div>
+                                </div>
 
                                 <label>Achievements <a id="achievements-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
                                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -712,6 +722,27 @@
         }
     }
 
+    function setPlaytime(mins) {
+        const minsEl = document.getElementById('edit-playtime');
+        const hrsEl  = document.getElementById('edit-playtime-hrs');
+        if (minsEl) minsEl.value = mins !== null && mins !== '' ? mins : '';
+        if (hrsEl)  hrsEl.value  = mins !== null && mins !== '' && mins !== 0
+            ? (mins / 60).toFixed(1) : '';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const minsEl = document.getElementById('edit-playtime');
+        const hrsEl  = document.getElementById('edit-playtime-hrs');
+        if (minsEl) minsEl.addEventListener('input', () => {
+            const v = parseFloat(minsEl.value);
+            hrsEl.value = isNaN(v) ? '' : (v / 60).toFixed(1);
+        });
+        if (hrsEl) hrsEl.addEventListener('input', () => {
+            const v = parseFloat(hrsEl.value);
+            minsEl.value = isNaN(v) ? '' : Math.round(v * 60);
+        });
+    });
+
     function openEditModal(game) {
         switchEditTab('info');
         safeSet('edit-appid', game.appid);
@@ -726,7 +757,7 @@
         pillInputSet('edit-categories', 'edit-categories-box', game.categories);
         safeSet('edit-is-free', game.is_free ?? 0);
         safeSet('edit-status', game.completion_status);
-        safeSet('edit-playtime', game.playtime_forever);
+        setPlaytime(game.playtime_forever);
         safeSet('edit-installed', game.installed);
         safeSet('edit-date-added', game.date_added);
         safeSet('edit-last-played', game.last_played);
@@ -999,7 +1030,7 @@ const achLink = document.getElementById('achievements-link');
                 safeSet('edit-positive-reviews', game.positive_reviews);
                 safeSet('edit-weighted-pct', game.weighted_percentage);
                 safeSet('edit-last-played', game.last_played);
-                safeSet('edit-playtime', game.playtime_forever);
+                setPlaytime(game.playtime_forever);
                 safeSet('edit-unlocked-ach', game.unlocked_achievements);
                 safeSet('edit-total-ach', game.total_achievements);
                 if ((game.total_achievements ?? 0) > 0 &&
@@ -1127,9 +1158,25 @@ const achLink = document.getElementById('achievements-link');
             .some(t => t.toLowerCase() === val.toLowerCase());
     }
 
-    function _pagLabel(pool, game) {
+    function _pagExtractSgGroup(tree) {
+        // Returns the groups condition value used as the wins-branch marker, or null.
+        let found = null;
+        function walk(node) {
+            if (!node || found) return;
+            if (node.type === 'group' && node.logic === 'AND') {
+                const gc = (node.items || []).find(i => i.type === 'condition' && i.column === 'groups');
+                if (gc) { found = gc.value; return; }
+            }
+            (node.items || []).forEach(walk);
+        }
+        walk(tree);
+        return found;
+    }
+
+    function _pagLabel(pool, game, sgGroup) {
         if (pool === 'wins') return '(win)';
-        return _pagCsvContains(game.groups, 'Won on SteamGifts') ? '(win)' : '(backlog)';
+        if (!sgGroup) return '(backlog)';
+        return _pagCsvContains(game.groups, sgGroup) ? '(win)' : '(backlog)';
     }
 
     function _pagExtractConds(tree) {
@@ -1141,12 +1188,12 @@ const achLink = document.getElementById('achievements-link');
                 conds.push({col: node.column, op: node.operator, val: node.value, pool});
             } else if (node.type === 'group') {
                 if (node.logic === 'AND') {
-                    const hasStGifts = (node.items || []).some(i =>
-                        i.type === 'condition' && i.column === 'groups' &&
-                        (i.value || '').toLowerCase().includes('won on steamgifts'));
+                    // Wins branch is any AND group that has a 'groups' condition as marker
+                    const sgCond = (node.items || []).find(i =>
+                        i.type === 'condition' && i.column === 'groups');
                     (node.items || []).forEach(i => {
-                        if (hasStGifts && i.type === 'condition' && i.column === 'groups') return;
-                        walk(i, hasStGifts ? 'wins' : pool);
+                        if (sgCond && i.type === 'condition' && i.column === 'groups') return;
+                        walk(i, sgCond ? 'wins' : pool);
                     });
                 } else {
                     (node.items || []).forEach(i => walk(i, pool));
@@ -1477,19 +1524,20 @@ const achLink = document.getElementById('achievements-link');
         if (!ft?.pagywosg) { section.style.display = 'none'; return; }
 
         const results = [];
-        const isWin = _pagCsvContains(game.groups, 'Won on SteamGifts');
+        const sgGroup = _pagExtractSgGroup(ft);
+        const isWin = sgGroup ? _pagCsvContains(game.groups, sgGroup) : false;
 
         // Metadata conditions from filter tree
         _pagExtractConds(ft).forEach(cond => {
             if (cond.pool === 'wins' && !isWin) return;
             const desc = _pagCheckCond(cond, game);
-            if (desc) results.push({desc, label: _pagLabel(cond.pool, game), verified: false});
+            if (desc) results.push({desc, label: _pagLabel(cond.pool, game, sgGroup), verified: false});
         });
 
         // Community-verified games
         (ft.pagywosg_verified?.[String(game.appid)] || []).forEach(({cat, pool, verifier, auto}) => {
             if (pool === 'wins' && !isWin) return;
-            results.push({desc: cat, label: _pagLabel(pool, game), verified: !auto, verifier: verifier || null});
+            results.push({desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifier: verifier || null});
         });
 
         list.innerHTML = results.length

@@ -1,6 +1,27 @@
 from config import BASE_DIR
 import sqlite3
 import os
+from datetime import datetime, timezone
+
+
+def date_to_ts(date_str):
+    """'YYYY-MM-DD' string → Unix timestamp int, or None."""
+    if not date_str:
+        return None
+    try:
+        return int(datetime.strptime(str(date_str)[:10], '%Y-%m-%d').replace(tzinfo=timezone.utc).timestamp())
+    except (ValueError, TypeError):
+        return None
+
+
+def ts_to_date(ts):
+    """Unix timestamp int → 'YYYY-MM-DD' string, or None."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime('%Y-%m-%d')
+    except (ValueError, OSError, TypeError):
+        return None
 
 
 def _db():
@@ -51,13 +72,13 @@ def init_db():
     required_columns = {
         'playtime_forever': 'INT',       # Total playtime in minutes
         'installed': 'INT',              # 1 for yes, 0 for no
-        'last_played': 'TEXT',           # Last played timestamp
-        'date_added': 'TEXT',            # Date added to library
+        'last_played': 'INTEGER',        # Last played — Unix timestamp
+        'date_added': 'INTEGER',         # Date added — Unix timestamp
         'developers': 'TEXT',            # Developer metadata
         'publishers': 'TEXT',            # Publisher metadata
         'completion_status': 'TEXT',     # e.g., "Not Played", "Completed"
         'tags': 'TEXT',                  # Genres/Tags
-        'release_date': 'TEXT',          # Game release date
+        'release_date': 'INTEGER',       # Game release date — Unix timestamp
         'unlocked_achievements': 'INT',  # Achievements earned
         'total_achievements': 'INT',     # Total achievements available
         'review_score': 'TEXT',          # e.g., 'Very Positive'
@@ -91,6 +112,68 @@ def init_db():
     for column_name, column_type in required_columns.items():
         if column_name not in columns:
             cursor.execute(f"ALTER TABLE games ADD COLUMN {column_name} {column_type}")
+
+    # ── Migrate YYYY-MM-DD date strings to Unix timestamps ────────────────────
+    from datetime import datetime
+    def _migrate_date_col(col):
+        rows = cursor.execute(
+            f"SELECT rowid, {col} FROM games WHERE {col} IS NOT NULL"
+        ).fetchall()
+        updates, nulls = [], []
+        for rowid, val in rows:
+            if isinstance(val, str):
+                if val == '0' or not val.strip():
+                    nulls.append((rowid,))
+                elif len(val) >= 10 and val[4] == '-':
+                    try:
+                        ts = int(datetime.strptime(val[:10], '%Y-%m-%d')
+                                 .replace(tzinfo=timezone.utc).timestamp())
+                        updates.append((ts, rowid))
+                    except ValueError:
+                        nulls.append((rowid,))
+        if updates:
+            cursor.executemany(f"UPDATE games SET {col} = ? WHERE rowid = ?", updates)
+        if nulls:
+            cursor.executemany(f"UPDATE games SET {col} = NULL WHERE rowid = ?", nulls)
+
+    _migrate_date_col('last_played')
+    _migrate_date_col('date_added')
+    _migrate_date_col('release_date')
+
+    # ── Promote date columns from TEXT to INTEGER affinity ────────────────────
+    # These columns were originally TEXT; the migration above stored integer
+    # timestamps into them but SQLite's TEXT affinity coerced them back to
+    # strings, breaking numeric sort order. Rename→re-add→copy→drop converts
+    # the stored values to true integers. Requires SQLite 3.35+ for DROP COLUMN.
+    #
+    # Indexes on a column must be dropped before that column can be dropped;
+    # we drop them here and let the CREATE INDEX block at the bottom recreate
+    # them. Also handles a previously-interrupted migration where a _txt_bak
+    # column was left behind.
+    def _drop_indexes_referencing(col_name):
+        """Drop any index on the games table whose SQL mentions col_name."""
+        import re as _re_idx
+        pat = _re_idx.compile(r'\b' + _re_idx.escape(col_name) + r'\b')
+        rows = cursor.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='games'"
+        ).fetchall()
+        for idx_name, idx_sql in rows:
+            if idx_sql and pat.search(idx_sql):
+                cursor.execute(f"DROP INDEX IF EXISTS {idx_name}")
+
+    cursor.execute("PRAGMA table_info(games)")
+    col_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
+    for _dc in ('last_played', 'date_added', 'release_date'):
+        _tmp = f"{_dc}_txt_bak"
+        # Promote to INTEGER affinity if still TEXT.
+        if col_info.get(_dc, 'INTEGER') not in ('INTEGER', 'INT'):
+            _drop_indexes_referencing(_dc)
+            cursor.execute(f"ALTER TABLE games RENAME COLUMN {_dc} TO {_tmp}")
+            cursor.execute(f"ALTER TABLE games ADD COLUMN {_dc} INTEGER")
+            cursor.execute(f"UPDATE games SET {_dc} = CAST({_tmp} AS INTEGER) WHERE {_tmp} IS NOT NULL")
+            cursor.execute(f"ALTER TABLE games DROP COLUMN {_tmp}")
+            cursor.execute("PRAGMA table_info(games)")
+            col_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
 
     # ── Migrate existing games into the _fetched tracking system ─────────────
     # Runs whenever any of the three columns still have NULLs (i.e. pre-feature

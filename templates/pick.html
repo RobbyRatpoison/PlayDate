@@ -184,7 +184,14 @@
     .slider-row input[type="range"]::-webkit-slider-runnable-track {
         height: 4px;
         border-radius: 2px;
-        background: linear-gradient(to right, var(--accent) var(--slider-pct, 50%), var(--bg-raised, #555) var(--slider-pct, 50%));
+        background: linear-gradient(to right,
+            var(--bg-raised, #555) 0%,
+            var(--bg-raised, #555) var(--slider-left, 50%),
+            var(--accent) var(--slider-left, 50%),
+            var(--accent) var(--slider-right, 50%),
+            var(--bg-raised, #555) var(--slider-right, 50%),
+            var(--bg-raised, #555) 100%
+        );
     }
     .slider-row input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none;
@@ -392,24 +399,29 @@
             <!-- Weighted sliders (shown only in weighted mode) -->
             <div class="weighted-panel" id="weighted-panel">
                 <div class="slider-row">
-                    <div class="slider-label">Tag Similarity<small>Match your beaten/played history</small></div>
-                    <input type="range" id="w-tags" min="0" max="100" value="65" oninput="onSliderChange('tags')">
+                    <div class="slider-label">Tag Similarity<small id="desc-tags">Strong match to your taste profile</small></div>
+                    <input type="range" id="w-tags" min="-100" max="100" value="65" oninput="onSliderChange('tags')">
                     <span class="slider-val" id="v-tags">65</span>
                 </div>
                 <div class="slider-row">
-                    <div class="slider-label">Review Score<small>Prefer highly-reviewed games</small></div>
-                    <input type="range" id="w-review" min="0" max="100" value="35" oninput="onSliderChange('review')">
+                    <div class="slider-label">Review Score<small id="desc-review">Moderate preference for highly-reviewed</small></div>
+                    <input type="range" id="w-review" min="-100" max="100" value="35" oninput="onSliderChange('review')">
                     <span class="slider-val" id="v-review">35</span>
                 </div>
                 <div class="slider-row">
-                    <div class="slider-label">Staleness<small>Prefer games untouched longer</small></div>
-                    <input type="range" id="w-staleness" min="0" max="100" value="0" oninput="onSliderChange('staleness')">
+                    <div class="slider-label">Staleness<small id="desc-staleness">No preference</small></div>
+                    <input type="range" id="w-staleness" min="-100" max="100" value="0" oninput="onSliderChange('staleness')">
                     <span class="slider-val" id="v-staleness">0</span>
                 </div>
                 <div class="slider-row">
-                    <div class="slider-label">Recent Releases<small>Prefer newer release dates</small></div>
-                    <input type="range" id="w-recency" min="0" max="100" value="0" oninput="onSliderChange('recency')">
+                    <div class="slider-label">Release Date<small id="desc-recency">No preference</small></div>
+                    <input type="range" id="w-recency" min="-100" max="100" value="0" oninput="onSliderChange('recency')">
                     <span class="slider-val" id="v-recency">0</span>
+                </div>
+                <div class="slider-row">
+                    <div class="slider-label">Length (HLTB)<small id="desc-hltb">No preference</small></div>
+                    <input type="range" id="w-hltb" min="-100" max="100" value="0" oninput="onSliderChange('hltb')">
+                    <span class="slider-val" id="v-hltb">0</span>
                 </div>
             </div>
 
@@ -479,17 +491,54 @@ function setMode(mode) {
     document.getElementById('weighted-panel').classList.toggle('open', mode === 'weighted');
 }
 
+const SNAP_ZONE = 5;
+
+function sliderDesc(key, val) {
+    if (val === 0) return 'No preference';
+    const a = Math.abs(val);
+    const level = a <= 33 ? 'Slight' : a <= 66 ? 'Moderate' : a <= 89 ? 'Strong' : 'Very strong';
+    const pref = level + ' preference for ';
+    switch (key) {
+        case 'tags':
+            return val > 0
+                ? level + ' match to your taste profile'
+                : level + ' match to your taste profile — may produce undesirable results';
+        case 'review':    return pref + (val > 0 ? 'highly-reviewed games'   : 'low-reviewed / hidden gems');
+        case 'staleness': return pref + (val > 0 ? 'long-untouched games'    : 'recently played games');
+        case 'recency':   return pref + (val > 0 ? 'newer releases'          : 'older releases');
+        case 'hltb':      return pref + (val > 0 ? 'longer games'            : 'shorter games');
+    }
+    return '';
+}
+
+function updateSliderFill(el) {
+    const val    = parseInt(el.value);
+    const min    = parseInt(el.min);
+    const max    = parseInt(el.max);
+    const pct    = (val - min) / (max - min) * 100;
+    const center = (0   - min) / (max - min) * 100;
+    el.style.setProperty('--slider-left',  Math.min(center, pct) + '%');
+    el.style.setProperty('--slider-right', Math.max(center, pct) + '%');
+}
+
 function onSliderChange(key) {
     const el = document.getElementById('w-' + key);
-    document.getElementById('v-' + key).textContent = el.value;
-    const pct = (el.value - el.min) / (el.max - el.min) * 100;
-    el.style.setProperty('--slider-pct', pct + '%');
+    let val = parseInt(el.value);
+    if (val !== 0 && Math.abs(val) <= SNAP_ZONE) {
+        val = 0;
+        el.value = 0;
+    }
+    document.getElementById('v-' + key).textContent = val;
+    document.getElementById('desc-' + key).textContent = sliderDesc(key, val);
+    updateSliderFill(el);
 }
 
 function _initSliderFills() {
     document.querySelectorAll('.slider-row input[type="range"]').forEach(el => {
-        const pct = (el.value - el.min) / (el.max - el.min) * 100;
-        el.style.setProperty('--slider-pct', pct + '%');
+        updateSliderFill(el);
+        const key = el.id.replace('w-', '');
+        const desc = document.getElementById('desc-' + key);
+        if (desc) desc.textContent = sliderDesc(key, parseInt(el.value));
     });
 }
 
@@ -506,10 +555,11 @@ async function pickGame() {
         .map(b => b.dataset.status);
     const payload = { mode: currentMode, use_filtered: useFiltered, statuses: activeStatuses };
     if (currentMode === 'weighted') {
-        payload.w_tags       = parseInt(document.getElementById('w-tags').value);
-        payload.w_review     = parseInt(document.getElementById('w-review').value);
-        payload.w_staleness  = parseInt(document.getElementById('w-staleness').value);
-        payload.w_recency    = parseInt(document.getElementById('w-recency').value);
+        payload.w_tags      = parseInt(document.getElementById('w-tags').value);
+        payload.w_review    = parseInt(document.getElementById('w-review').value);
+        payload.w_staleness = parseInt(document.getElementById('w-staleness').value);
+        payload.w_recency   = parseInt(document.getElementById('w-recency').value);
+        payload.w_hltb      = parseInt(document.getElementById('w-hltb').value);
     }
 
     try {

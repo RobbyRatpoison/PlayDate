@@ -4,7 +4,7 @@ import re
 import struct
 import logging
 from database import get_db, update_game_data
-from datetime import datetime
+from datetime import datetime, timezone
 
 log = logging.getLogger(__name__)
 
@@ -219,7 +219,7 @@ def fetch_local_library(steam_id=None):
     """
     Parses localconfig.vdf and returns a list of dicts for every game that has
     been launched at least once:
-        {'appid': int, 'playtime_forever': int (minutes), 'last_played': str 'YYYY-MM-DD'}
+        {'appid': int, 'playtime_forever': int (minutes), 'last_played': int (Unix ts) or None}
     Returns an empty list if the file cannot be found or parsed.
     """
     try:
@@ -259,9 +259,9 @@ def fetch_local_library(steam_id=None):
             playtime = 0
         try:
             ts = int(info.get('LastPlayed', info.get('lastplayed', 0)))
-            last_played = datetime.fromtimestamp(ts).strftime('%Y-%m-%d') if ts > 0 else '0'
+            last_played = ts if ts > 0 else None
         except (ValueError, TypeError):
-            last_played = '0'
+            last_played = None
 
         games.append({
             'appid':            int(appid_str),
@@ -368,13 +368,13 @@ def record_launch(appid):
     game = db.execute("SELECT installed, completion_status FROM games WHERE appid=?", (appid,)).fetchone()
     db.close()
     if game and game['installed'] == 1:
-        now = datetime.now().strftime("%Y-%m-%d")
+        now_ts = int(datetime.now(timezone.utc).timestamp())
         if game['completion_status'] == "Never Played":
-            update_game_data(appid, last_played=now, completion_status="Unfinished")
+            update_game_data(appid, last_played=now_ts, completion_status="Unfinished")
         else:
-            update_game_data(appid, last_played=now)
+            update_game_data(appid, last_played=now_ts)
         print(f"Recorded launch for Installed AppID: {appid}")
-        return now
+        return now_ts
     print(f"Launch ignored for AppID {appid}: Not marked as installed.")
     return None
 
@@ -388,7 +388,7 @@ def get_all_unique_groups():
             # Split by comma, strip whitespace, and add to set
             parts = [g.strip() for g in row['groups'].split(',') if g.strip()]
             all_groups.update(parts)
-    return sorted(list(all_groups))
+    return sorted(all_groups, key=str.casefold)
 
 def get_all_unique_tags():
     db = get_db()
@@ -399,7 +399,7 @@ def get_all_unique_tags():
         if row['tags']:
             parts = [g.strip() for g in row['tags'].split(',') if g.strip()]
             all_tags.update(parts)
-    return sorted(list(all_tags))
+    return sorted(all_tags, key=str.casefold)
 
 def get_all_unique_genres():
     db = get_db()
@@ -410,7 +410,7 @@ def get_all_unique_genres():
         if row['genres']:
             parts = [g.strip() for g in row['genres'].split(',') if g.strip()]
             all_genres.update(parts)
-    return sorted(list(all_genres))
+    return sorted(all_genres, key=str.casefold)
 
 def get_all_unique_categories():
     db = get_db()
@@ -421,7 +421,7 @@ def get_all_unique_categories():
         if row['categories']:
             parts = [c.strip() for c in row['categories'].split(',') if c.strip()]
             all_categories.update(parts)
-    return sorted(list(all_categories))
+    return sorted(all_categories, key=str.casefold)
 
 
 def parse_appinfo():

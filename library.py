@@ -140,15 +140,18 @@ def build_condition_sql(cond, params):
             params.append(f"%,{val},%")
             return f"',' || {col} || ',' NOT LIKE ?"
 
-    # Date columns with LIKE — user provides their own pattern (e.g. %-03-%)
-    if col in DATE_COLUMNS and op == 'LIKE':
-        params.append(val)  # pass raw, user owns wildcards
-        return f"{col} LIKE ?"
-
     if op == '=':
+        if col in DATE_COLUMNS:
+            from database import date_to_ts
+            params.append(date_to_ts(val))
+            return f"{col} = ?"
         params.append(val)
         return f"{col} = ? COLLATE NOCASE"
     elif op == '!=':
+        if col in DATE_COLUMNS:
+            from database import date_to_ts
+            params.append(date_to_ts(val))
+            return f"{col} != ?"
         params.append(val)
         return f"{col} != ? COLLATE NOCASE"
     elif op == 'LIKE':
@@ -158,20 +161,31 @@ def build_condition_sql(cond, params):
         params.append(f"%{val}%")
         return f"{col} NOT LIKE ?"
     elif op in ('>', '<', '>=', '<='):
-        params.append(val)
+        if col in DATE_COLUMNS:
+            from database import date_to_ts
+            ts = date_to_ts(val)
+            if ts is None:
+                return '1=1'
+            params.append(ts)
+        else:
+            params.append(val)
         return f"{col} {op} ?"
     elif op == 'STRFTIME_MONTH':
         params.append(val.zfill(2))
-        return f"strftime('%m', {col}) = ?"
+        return f"strftime('%m', {col}, 'unixepoch') = ?"
     elif op == 'STRFTIME_DAY':
         params.append(val.zfill(2))
-        return f"strftime('%d', {col}) = ?"
+        return f"strftime('%d', {col}, 'unixepoch') = ?"
     elif op == 'STRFTIME_YEAR':
         params.append(val)
-        return f"strftime('%Y', {col}) = ?"
+        return f"strftime('%Y', {col}, 'unixepoch') = ?"
     elif op == 'IS NULL':
+        if col in DATE_COLUMNS:
+            return f"{col} IS NULL"
         return f"({col} IS NULL OR {col} = '')"
     elif op == 'IS NOT NULL':
+        if col in DATE_COLUMNS:
+            return f"{col} IS NOT NULL"
         return f"({col} IS NOT NULL AND {col} != '')"
     else:
         params.append(val)
@@ -273,8 +287,12 @@ def library():
 
     # Drop icon_hash — it's a raw Steam hash used only server-side during scraping,
     # never referenced in browser JS, so no need to ship it to every page load.
+    from database import ts_to_date
     for g in games:
         g.pop('icon_hash', None)
+        for col in ('last_played', 'date_added', 'release_date'):
+            if g.get(col):
+                g[col] = ts_to_date(g[col])
 
     groups = get_all_unique_groups()
     tags   = get_all_unique_tags()
@@ -295,7 +313,10 @@ def update_game():
     appid = data.pop('edit-appid')
     if 'installed' in data:
         data['installed'] = 1 if data['installed'] == '1' else 0
-    from database import update_game_data
+    from database import update_game_data, date_to_ts
+    for col in ('last_played', 'date_added', 'release_date'):
+        if col in data:
+            data[col] = date_to_ts(data[col]) if data[col] else None
     from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
     try:
         update_game_data(appid, **data)

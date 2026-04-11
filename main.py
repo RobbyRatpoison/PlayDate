@@ -438,10 +438,12 @@ if __name__ == '__main__':
 
     threading.Thread(target=_run_install_sync, daemon=True).start()
 
-    # 2c. Sync recent playtime from Steam API in background
+    # 2c. Sync recent playtime from Steam API in background, then fetch any
+    #     unfetched HLTB data silently in the same thread.
     def _run_playtime_sync():
-        from scrapers import sync_recent_playtime
+        from scrapers import sync_recent_playtime, sync_hltb_unfetched
         sync_recent_playtime()
+        sync_hltb_unfetched()
 
     threading.Thread(target=_run_playtime_sync, daemon=True).start()
     log.info("Playtime sync started in background.")

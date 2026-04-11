@@ -9,7 +9,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -514,6 +514,7 @@ def save_state(updates):
         if "window_state" in updates: state["window_state"] = updates["window_state"]
         if "fullscreen" in updates: state["fullscreen"] = updates["fullscreen"]
         if "hltb_match_threshold" in updates: state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
+        if "pagywosg_sg_group" in updates: state["pagywosg_sg_group"] = updates["pagywosg_sg_group"]
 
         if "shelves" in updates:
             state["shelves"] = updates["shelves"]

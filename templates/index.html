@@ -599,13 +599,34 @@ if (window.ResizeObserver) {
 }
 
 // ── Edit mode ─────────────────────────────────────────────────────────────────
+function _initEditBackup() {
+    // Save the pre-edit snapshot only once — not on saveAndReload reloads.
+    if (!sessionStorage.getItem('editModeActive')) {
+        sessionStorage.setItem('editModeActive', '1');
+        sessionStorage.setItem('editModeBackup', JSON.stringify(_shelves));
+    }
+}
+function _clearEditBackup() {
+    sessionStorage.removeItem('editModeActive');
+    sessionStorage.removeItem('editModeBackup');
+}
 function enterEditMode() {
+    _initEditBackup();
     document.body.classList.add('edit-mode');
     buildAllEditBars(); initDragAndDrop();
     history.replaceState(null,'','/?edit=1');
 }
 function exitEditMode() {
-    window.location.href = '/';
+    const backup = sessionStorage.getItem('editModeBackup');
+    _clearEditBackup();
+    if (backup) {
+        fetch('/api/shelves', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({shelves: JSON.parse(backup)})
+        }).finally(() => { window.location.href = '/'; });
+    } else {
+        window.location.href = '/';
+    }
 }
 document.addEventListener('keydown', e => {
     if (e.key === 'e' || e.key === 'E') {
@@ -614,7 +635,7 @@ document.addEventListener('keydown', e => {
     }
 });
 {% if edit_mode %}
-document.addEventListener('DOMContentLoaded', () => { buildAllEditBars(); initDragAndDrop(); });
+document.addEventListener('DOMContentLoaded', () => { _initEditBackup(); buildAllEditBars(); initDragAndDrop(); });
 {% endif %}
 
 // ── Build edit bars ───────────────────────────────────────────────────────────
@@ -1268,7 +1289,7 @@ async function saveLayout() {
             body: JSON.stringify({shelves: _shelves})
         });
         const data = await res.json();
-        if (data.status==='success') window.location.href = '/';
+        if (data.status==='success') { _clearEditBackup(); window.location.href = '/'; }
         else alert('Save failed: ' + data.message);
     } catch(e) { alert('Network error saving layout.'); }
 }
@@ -1277,7 +1298,7 @@ async function resetLayout() {
     try {
         const res = await fetch('/api/shelves/reset', {method:'POST'});
         const data = await res.json();
-        if (data.status==='success') window.location.href='/';
+        if (data.status==='success') { _clearEditBackup(); window.location.href='/'; }
         else alert('Reset failed: '+data.message);
     } catch(e) { alert('Network error.'); }
 }
@@ -1302,14 +1323,49 @@ setInterval(async () => {
             el.dataset.installed = installedSet.has(el.dataset.appid) ? '1' : '0';
         });
 
-        // Show/hide cards in installed/not_installed shelves
-        document.querySelectorAll('[data-shelf-id]').forEach(shelf => {
+        // Add/remove cards in installed/not_installed shelves
+        document.querySelectorAll('[data-shelf-id]').forEach(async shelf => {
             const key = shelf.dataset.filterKey;
             if (key !== 'installed' && key !== 'not_installed') return;
-            shelf.querySelectorAll('.shelf-capsule-wrap').forEach(el => {
+            const grid = shelf.querySelector('.shelf-grid');
+            if (!grid) return;
+            let anyRemoved = false;
+            grid.querySelectorAll('.shelf-capsule-wrap').forEach(el => {
                 const isInstalled = installedSet.has(el.dataset.appid);
-                el.style.display = (key === 'installed') === isInstalled ? '' : 'none';
+                const shouldShow = (key === 'installed') === isInstalled;
+                if (!shouldShow) { el.remove(); anyRemoved = true; }
             });
+            if (anyRemoved && key === 'installed') {
+                const shelfId = shelf.dataset.shelfId;
+                if (!shelfId) return;
+                const presentAppids = Array.from(grid.querySelectorAll('.shelf-capsule-wrap'))
+                    .map(el => parseInt(el.dataset.appid, 10));
+                try {
+                    const res = await fetch(`/api/refill-shelf/${shelfId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ exclude_appids: presentAppids })
+                    });
+                    const data = await res.json();
+                    if (data.status !== 'success' || !data.games.length) return;
+                    data.games.forEach(g => {
+                        if (presentAppids.includes(g.appid)) return;
+                        const wrap = document.createElement('div');
+                        wrap.className = 'shelf-capsule-wrap';
+                        wrap.dataset.appid = g.appid;
+                        wrap.dataset.installed = g.installed || 0;
+                        wrap.dataset.name = g.name;
+                        wrap.dataset.status = g.completion_status || '';
+                        wrap.setAttribute('onclick', `launchGame(${g.appid})`);
+                        wrap.innerHTML = `<img src="/static/img/library/vertical/${g.appid}.jpg"
+                            alt="${g.name.replace(/"/g, '&quot;')}"
+                            class="shelf-capsule" draggable="false"
+                            onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">`;
+                        grid.appendChild(wrap);
+                    });
+                    requestAnimationFrame(() => trimGrid(grid));
+                } catch { /* silently ignore */ }
+            }
         });
     } catch { /* silently ignore network errors */ }
 }, 5000);

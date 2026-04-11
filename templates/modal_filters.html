@@ -157,9 +157,9 @@
         </div>
         <!-- Action row -->
         <div style="display:flex; gap:10px;">
-            <button onclick="applyFilters()" class="btn-save" data-modal-row="4" style="flex:2;margin:0;">APPLY FILTERS</button>
+            <button onclick="applyFilters()" class="btn-save" data-modal-row="4" style="flex:2;margin:0;">APPLY</button>
             <button onclick="clearAllFilters()" class="nav-btn" data-modal-row="4" style="flex:1;">CLEAR ALL</button>
-            <button onclick="closeFilterModal()" class="nav-btn" data-modal-row="4" style="flex:1;">CANCEL</button>
+            <button onclick="closeFilterModal()" class="nav-btn" data-modal-row="4" style="flex:1;">CLOSE</button>
         </div>
     </div>
 
@@ -1587,12 +1587,14 @@ async function applyFilters() {
     closeFilterModal();
 }
 
-async function clearAllFilters() {
+function clearAllFilters() {
     _loadedSavedTree = null;
-    // Clear the search bar input visually
     const searchInput = document.getElementById('library-search');
     if (searchInput) searchInput.value = '';
-    await sendStateUpdate({ filter_tree: { type: 'group', logic: 'AND', items: [] } });
+    setFilterMode('simple');
+    clearSimpleRows();
+    resetAdvancedTree();
+    document.getElementById('fm-custom-sql-input').value = '';
 }
 
 // _savedFilters may already be declared by the host page (e.g. index.html)
@@ -1606,9 +1608,13 @@ async function applyBuiltinFilter(key) {
     _loadedSavedTree = null;
     const preset = _builtinFilterWheres[key];
     if (!preset || !preset.where) return;
-    // "All Games" (where=1=1) means no filter — treat it as a clear
+    // "All Games" (where=1=1) means no filter — commit empty tree and close
     if (preset.where === '1=1') {
+        const emptyTree = { type: 'group', logic: 'AND', items: [] };
         clearAllFilters();
+        updateActivePills(emptyTree);
+        await sendStateUpdate({ filter_tree: emptyTree });
+        closeFilterModal();
         return;
     }
     const tree = { type: 'group', logic: 'AND', items: [], custom_sql: preset.where };

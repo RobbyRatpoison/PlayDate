@@ -627,8 +627,7 @@ def add_new(cancel_event=None, progress_cb=None):
                 'appid':            g['appid'],
                 'name':             g.get('name', ''),
                 'playtime_forever': g.get('playtime_forever', 0),
-                'last_played':      datetime.fromtimestamp(g.get('rtime_last_played', 0)).strftime('%Y-%m-%d')
-                                    if g.get('rtime_last_played', 0) > 0 else '0',
+                'last_played':      g.get('rtime_last_played') or None,
                 'icon_hash':        g.get('img_icon_url', ''),
             } for g in raw_games]
         except requests.exceptions.JSONDecodeError:
@@ -663,7 +662,8 @@ def add_new(cancel_event=None, progress_cb=None):
     db.close()
 
     installed_ids = get_locally_installed_appids()
-    today         = datetime.now().strftime('%Y-%m-%d')
+    from datetime import timezone as _tz
+    today         = int(datetime.now(_tz.utc).timestamp())
 
     new_games = []
     for g in reversed(games):
@@ -832,11 +832,10 @@ def fetch_player_data(appid):
 
         game = games[0]
         last_played_unix = game.get('rtime_last_played', 0)
-        last_played_date = datetime.fromtimestamp(last_played_unix).strftime('%Y-%m-%d') if last_played_unix > 0 else '0'
         return {
             'name': game.get('name'),
             'playtime_forever': game.get('playtime_forever', 0),
-            'last_played': last_played_date
+            'last_played': last_played_unix or None,
         }
     except Exception as e:
         log.error(f"Error fetching player data for {appid}: {e}")
@@ -865,10 +864,12 @@ def fetch_store_data(appid, session=None):
             return None
 
         data = json_data[str(appid)]['data']
-        date_value = data.get('release_date', {}).get('date', '')
+        from datetime import timezone as _tz
+        raw_date = data.get('release_date', {}).get('date', '')
+        date_value = None
         for fmt in ("%b %d, %Y", "%d %b, %Y"):
             try:
-                date_value = datetime.strptime(date_value, fmt).strftime("%Y-%m-%d")
+                date_value = int(datetime.strptime(raw_date, fmt).replace(tzinfo=_tz.utc).timestamp())
                 break
             except (ValueError, TypeError):
                 continue
@@ -1193,7 +1194,7 @@ def sync_recent_playtime():
             {
                 'appid':            g['appid'],
                 'playtime_forever': g['playtime_forever'],
-                'last_played':      g['last_played'] if g['last_played'] != '0' else None,
+                'last_played':      g['last_played'],
             }
             for g in fetch_local_library(steam_id)
         ]
@@ -1483,6 +1484,70 @@ def bulk_protondb_scrape_games(appids, cancel_event, progress_cb):
         futures_wait([pool.submit(worker) for _ in range(2)])
 
     return counts
+
+
+_startup_hltb_cancel = threading.Event()
+
+
+def sync_hltb_unfetched():
+    """
+    On startup: silently fetch HLTB data for all games with hltb_fetched = '0' or NULL.
+    Runs after sync_recent_playtime() in the same daemon thread. Logs only, no UI progress.
+    Skips no_match games — those require manual retry via the HLTB tool.
+    """
+    from config import load_state
+    state     = load_state()
+    threshold = state.get('hltb_match_threshold', 99)
+
+    db    = get_db()
+    rows  = db.execute(
+        "SELECT appid, name FROM games WHERE hltb_fetched = '0' OR hltb_fetched IS NULL"
+    ).fetchall()
+    db.close()
+
+    if not rows:
+        log.info("sync_hltb_unfetched: nothing to fetch.")
+        return
+
+    total = len(rows)
+    log.info(f"sync_hltb_unfetched: fetching HLTB data for {total} game(s).")
+
+    q = queue.Queue()
+    for row in rows:
+        q.put((row['appid'], row['name']))
+
+    counts = {'done': 0, 'failed': 0}
+    lock   = threading.Lock()
+
+    def worker():
+        while True:
+            if _startup_hltb_cancel.is_set():
+                return
+            try:
+                appid, name = q.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                info = fetch_hltb_data(name, threshold=threshold)
+                if info:
+                    update_game_data(appid, **info)
+                else:
+                    update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
+                                     hltb_matched_name=None, hltb_match_score=None,
+                                     hltb_main=None, hltb_extras=None,
+                                     hltb_completionist=None)
+                with lock:
+                    counts['done'] += 1
+            except Exception as e:
+                log.error(f"[sync_hltb_unfetched] Error for appid {appid}: {e}")
+                with lock:
+                    counts['failed'] += 1
+            time.sleep(0.5)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures_wait([pool.submit(worker) for _ in range(2)])
+
+    log.info(f"sync_hltb_unfetched: done={counts['done']} failed={counts['failed']} / {total}")
 
 
 def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
