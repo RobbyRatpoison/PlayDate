@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PlayDate</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ app_version }}">
     {% if theme_vars %}
     <style>
         :root {
@@ -18,8 +18,8 @@
     {% if background_ts %}
     <style>body { background-image: url('/static/img/backgrounds/background.jpg?v={{ background_ts }}'); }</style>
     {% endif %}
-    <script src="{{ url_for('static', filename='js/playdate.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/input.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/playdate.js') }}?v={{ app_version }}"></script>
+    <script src="{{ url_for('static', filename='js/input.js') }}?v={{ app_version }}"></script>
     <style>
     /* ── SQL syntax highlighter overlay ─────────────────────────────── */
     .sql-hl-wrap { position: relative; display: block; }
@@ -160,6 +160,8 @@
                     <div class="hamburger-sep"></div>
                     <button id="update-check-btn" class="hamburger-item" onclick="handleUpdateBtn()"><span id="update-check-label">Check for Updates</span><span id="update-menu-dot"></span></button>
                     <div id="update-menu-status" class="hamburger-status"></div>
+                    <div class="hamburger-sep"></div>
+                    <button class="hamburger-item" onclick="hamburgerOpenUrl('https://discord.gg/ESqXvFWkFe')">Discord ↗</button>
                 </div>
             </div>
             <a class="{{ 'active' if request.path == '/' }}" onclick="window.location.href='/'">HOME</a>
@@ -690,13 +692,25 @@
                     const end = _selEnd;
                     hideMenu();
                     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-                        try {
-                            const text = await navigator.clipboard.readText();
-                            el.focus();
+                        el.focus();
+                        el.setSelectionRange(s, end);
+                        let text = null;
+                        // Prefer Python API — reads OS clipboard without browser permission restrictions
+                        if (window.pywebview?.api?.read_clipboard) {
+                            try { text = await window.pywebview.api.read_clipboard(); } catch (_) {}
+                        }
+                        // Fall back to JS Clipboard API (works in browser mode)
+                        if (text === null) {
+                            try { text = await navigator.clipboard.readText(); } catch (_) {}
+                        }
+                        if (text !== null) {
                             el.value = el.value.slice(0, s) + text + el.value.slice(end);
                             el.selectionStart = el.selectionEnd = s + text.length;
                             el.dispatchEvent(new Event('input', { bubbles: true }));
-                        } catch (_) {}
+                        } else {
+                            document.execCommand('paste');
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
                     }
                     break;
                 }
@@ -818,6 +832,11 @@
                 return;
             }
             
+            // Suppress gamepad input while the game is running.
+            // Persists across the page reload below via sessionStorage.
+            // Cleared only when the user clicks or types in PlayDate.
+            if (window._inputMgr) window._inputMgr.suppressForGame();
+
             // Steam is launched server-side via subprocess — pywebview blocks steam:// protocol
             fetch(`/api/launch/${appid}`, { method: 'POST' }).catch(() => {});
 
@@ -830,6 +849,7 @@
         let _populating = false;
         let _populatePoller = null;
         let _lastRateLimitHits = 0;
+        let _lastHltbDone = 0;
         const _configExists = {{ config_exists | tojson }};
 
         function _resetPopulateBtn() {
@@ -868,6 +888,7 @@
         }
 
         function _startPopulatePoller() {
+            _lastHltbDone = 0;
             document.dispatchEvent(new CustomEvent('populate:started'));
             _populatePoller = setInterval(async () => {
                 try {
@@ -883,6 +904,10 @@
                         document.dispatchEvent(new CustomEvent('populate:art_complete',  { detail: data.recently_art }));
                     if (data.recently_blacklist?.length)
                         document.dispatchEvent(new CustomEvent('populate:blacklist',     { detail: data.recently_blacklist }));
+                    if ((data.hltb_done || 0) > (_lastHltbDone || 0)) {
+                        _lastHltbDone = data.hltb_done;
+                        document.dispatchEvent(new CustomEvent('populate:hltb_done'));
+                    }
 
                     if ((data.rate_limit_hits || 0) > (_lastRateLimitHits || 0) || data.rate_limit_aborted) {
                         _lastRateLimitHits = data.rate_limit_hits || 0;
@@ -984,6 +1009,15 @@
         }
         function closeHamburger() {
             document.getElementById('hamburger-menu').classList.remove('open');
+        }
+        function hamburgerOpenUrl(url) {
+            closeHamburger();
+            if (window.pywebview?.api?.open_url) {
+                window.pywebview.api.open_url(url);
+            } else {
+                fetch('/api/open-url', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ url }) })
+                    .catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
+            }
         }
         document.addEventListener('click', function(e) {
             const wrap = document.getElementById('hamburger-wrap');
@@ -1194,6 +1228,18 @@
                 }
             }
         });
+
+        // Prevent modal-overlay click-to-close when the drag started inside the modal content
+        // (e.g. highlighting text and releasing the mouse over the overlay).
+        let _modalDragFromContent = false;
+        document.addEventListener('mousedown', e => {
+            _modalDragFromContent = !!e.target.closest('.modal-content');
+        });
+        document.addEventListener('click', e => {
+            if (_modalDragFromContent && e.target.classList.contains('modal-overlay')) {
+                e.stopPropagation();
+            }
+        }, true); // capture phase — runs before inline onclick handlers
 
     </script>
     {% block scripts %}{% endblock %}

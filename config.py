@@ -3,10 +3,13 @@ from flask import Blueprint, request, jsonify
 import json
 import os
 import sys
+import threading
+
+_state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.2.8"
+__version__ = "1.3.0"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -233,7 +236,8 @@ DEFAULT_STATE = {
     "artwork_orientation": "vertical",
     "card_height": 200,
     "check_for_updates": True,
-    "window_state": None
+    "window_state": None,
+    "hltb_match_threshold": 99
 }
 
 def validate_steam_creds(api_key, steam_id):
@@ -301,6 +305,8 @@ def inject_config_status():
         accounts_list=accounts_list,
         active_steam_id=active_id or '',
         initial_fullscreen=state.get('fullscreen', False),
+        hltb_match_threshold=state.get('hltb_match_threshold', 99),
+        app_version=__version__,
     )
 
 def load_config():
@@ -449,16 +455,24 @@ def get_default_shelves():
     import copy
     return copy.deepcopy(DEFAULT_SHELVES)
 
-def create_state(force=False):
-    """Creates state.json with defaults if it doesn't exist."""
-    if not os.path.exists(STATE_PATH) or force:
-        with open(STATE_PATH, 'w') as f:
-            json.dump(DEFAULT_STATE, f, indent=4)
-        return DEFAULT_STATE
-    return load_state()
+def _write_state_atomic(state):
+    """Write state to a temp file then rename — prevents corruption on crash mid-write."""
+    tmp = STATE_PATH + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(state, f, indent=4)
+    os.replace(tmp, STATE_PATH)
 
-def load_state():
-    """Loads the current state or creates it if missing."""
+def create_state(force=False):
+    """Creates state.json with defaults if it doesn't exist. Caller must hold _state_lock."""
+    if not os.path.exists(STATE_PATH) or force:
+        import copy
+        state = copy.deepcopy(DEFAULT_STATE)
+        _write_state_atomic(state)
+        return state
+    return _load_state_unlocked()
+
+def _load_state_unlocked():
+    """Read and migrate state from disk. Caller must hold _state_lock."""
     if not os.path.exists(STATE_PATH):
         return create_state()
     with open(STATE_PATH, 'r') as f:
@@ -477,30 +491,35 @@ def load_state():
         state['card_height'] = 200
         dirty = True
     if dirty:
-        with open(STATE_PATH, 'w') as f:
-            json.dump(state, f, indent=4)
+        _write_state_atomic(state)
     return state
+
+def load_state():
+    """Loads the current state or creates it if missing."""
+    with _state_lock:
+        return _load_state_unlocked()
 
 def save_state(updates):
-    state = load_state()
+    with _state_lock:
+        state = _load_state_unlocked()
 
-    if "filter_tree" in updates:
-        state["filter_tree"] = updates["filter_tree"]
+        if "filter_tree" in updates:
+            state["filter_tree"] = updates["filter_tree"]
 
-    if "sort" in updates: state["sort"] = updates["sort"]
-    if "order" in updates: state["order"] = updates["order"]
-    if "artwork_orientation" in updates: state["artwork_orientation"] = updates["artwork_orientation"]
-    if "card_height" in updates: state["card_height"] = updates["card_height"]
-    if "check_for_updates" in updates: state["check_for_updates"] = updates["check_for_updates"]
-    if "window_state" in updates: state["window_state"] = updates["window_state"]
-    if "fullscreen" in updates: state["fullscreen"] = updates["fullscreen"]
+        if "sort" in updates: state["sort"] = updates["sort"]
+        if "order" in updates: state["order"] = updates["order"]
+        if "artwork_orientation" in updates: state["artwork_orientation"] = updates["artwork_orientation"]
+        if "card_height" in updates: state["card_height"] = updates["card_height"]
+        if "check_for_updates" in updates: state["check_for_updates"] = updates["check_for_updates"]
+        if "window_state" in updates: state["window_state"] = updates["window_state"]
+        if "fullscreen" in updates: state["fullscreen"] = updates["fullscreen"]
+        if "hltb_match_threshold" in updates: state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
 
-    if "shelves" in updates:
-        state["shelves"] = updates["shelves"]
+        if "shelves" in updates:
+            state["shelves"] = updates["shelves"]
 
-    with open(STATE_PATH, 'w') as f:
-        json.dump(state, f, indent=4)
-    return state
+        _write_state_atomic(state)
+        return state
 
 @config_bp.route('/api/update_state', methods=['POST'])
 def update_state_api():

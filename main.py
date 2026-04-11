@@ -134,6 +134,89 @@ def _fix_window_icon(window):
     except Exception:
         pass
 
+# ── Gamepad focus handler ─────────────────────────────────────────────────────
+# Re-enables gamepad input the instant the OS gives PlayDate focus again after
+# a game was running. Mirrors WPF's Application.Activated used by Playnite.
+def _setup_focus_handler(webview_window):
+    import platform as _platform
+    _os = _platform.system()
+
+    if _os == 'Linux':
+        # GTK: connect to focus-in-event on the native window.
+        # Fires immediately on alt-tab — no click required.
+        try:
+            import gi
+            gi.require_version('Gtk', '3.0')
+            from gi.repository import Gtk
+
+            _connected = set()
+
+            def _on_gtk_focus_in(gtk_win, event):
+                # evaluate_js blocks waiting for the GTK main thread to process
+                # the JS result — but we ARE on the GTK main thread right now
+                # (signal handler), so calling it directly deadlocks. Run it in
+                # a separate thread so the GTK main thread stays free.
+                def _do():
+                    try:
+                        webview_window.evaluate_js(
+                            'if(window._inputMgr && window._inputMgr.unsuppressGamepad)'
+                            ' window._inputMgr.unsuppressGamepad();'
+                        )
+                    except Exception:
+                        pass
+                threading.Thread(target=_do, daemon=True).start()
+                return False  # don't consume the event
+
+            def _connect_focus():
+                for gtk_win in Gtk.Window.list_toplevels():
+                    if id(gtk_win) not in _connected:
+                        gtk_win.connect('focus-in-event', _on_gtk_focus_in)
+                        _connected.add(id(gtk_win))
+
+            webview_window.events.loaded += lambda: _connect_focus()
+            _connect_focus()
+        except Exception as e:
+            log.warning(f"GTK focus handler setup failed: {e}")
+
+    elif _os == 'Windows':
+        # Win32: poll the foreground window every 500ms.
+        # When PlayDate regains foreground, unsuppress gamepad.
+        import ctypes
+        import time as _time
+
+        _user32   = ctypes.windll.user32
+        _kernel32 = ctypes.windll.kernel32
+        _pd_hwnd  = [None]   # filled on first poll once the window exists
+
+        def _get_window_title(hwnd):
+            length = _user32.GetWindowTextLengthW(hwnd)
+            if not length:
+                return ''
+            buf = ctypes.create_unicode_buffer(length + 1)
+            _user32.GetWindowTextW(hwnd, buf, length + 1)
+            return buf.value
+
+        def _focus_poll():
+            was_foreground = True  # assume foreground at start
+            while True:
+                _time.sleep(0.5)
+                try:
+                    hwnd      = _user32.GetForegroundWindow()
+                    title     = _get_window_title(hwnd)
+                    is_pd     = 'PlayDate' in title
+                    if is_pd and not was_foreground:
+                        webview_window.evaluate_js(
+                            'if(window._inputMgr && window._inputMgr.unsuppressGamepad)'
+                            ' window._inputMgr.unsuppressGamepad();'
+                        )
+                    was_foreground = is_pd
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_focus_poll, daemon=True)
+        t.start()
+
+
 # ── Quit handler ──────────────────────────────────────────────────────────────
 def _destroy_window():
     try:
@@ -175,6 +258,41 @@ class PyWebviewAPI:
                 subprocess.Popen(f'start "" "{url}"', shell=True)
         except Exception as e:
             log.warning(f"open_url failed for {url!r}: {e}")
+
+    def read_clipboard(self):
+        """Read text from the system clipboard. Returns string or None."""
+        import platform
+        sys_name = platform.system()
+        if sys_name == 'Linux':
+            # Use GTK clipboard directly — works on both X11 and Wayland,
+            # and is always available since pywebview already depends on GTK.
+            try:
+                from gi.repository import Gtk, Gdk
+                clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+                text = clipboard.wait_for_text()
+                return text  # may be None if clipboard has no text
+            except Exception as e:
+                log.warning(f"read_clipboard (gtk) failed: {e}")
+        elif sys_name == 'Darwin':
+            try:
+                import subprocess
+                r = subprocess.run(['pbpaste'], capture_output=True, text=True, timeout=2)
+                if r.returncode == 0:
+                    return r.stdout
+            except Exception as e:
+                log.warning(f"read_clipboard (pbpaste) failed: {e}")
+        elif sys_name == 'Windows':
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ['powershell', '-noprofile', '-command', 'Get-Clipboard'],
+                    capture_output=True, text=True, timeout=2
+                )
+                if r.returncode == 0:
+                    return r.stdout.rstrip('\r\n')
+            except Exception as e:
+                log.warning(f"read_clipboard (powershell) failed: {e}")
+        return None
 
     def pick_open_path(self, file_types=None):
         """
@@ -431,8 +549,9 @@ if __name__ == '__main__':
     window.events.shown     += _on_shown
     window.events.closing   += _on_closing
 
-    # 6. Linux icon fix
+    # 6. Linux icon fix + GTK focus handler
     _fix_window_icon(window)
+    _setup_focus_handler(window)
 
     # 7. Start webview event loop
     log.info("Launching PlayDate window")

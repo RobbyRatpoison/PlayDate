@@ -80,11 +80,86 @@
 
     // Expose focusedAppid so library.html's observeCards can re-apply the class
     window._inputMgr = {
-        get focusedAppid() { return _state.focusedAppid; }
+        get focusedAppid() { return _state.focusedAppid; },
+        suppressForGame() {
+            _gameSuppressed = true;
+            sessionStorage.setItem('pd_game_running', '1');
+            _clearGamepadState();
+            _watchForGameClose();
+        },
+        unsuppressGamepad() {
+            _unsuppressGamepad();
+        },
     };
 
     // Track whether a gamepad has ever been seen this session (persisted across page loads)
     let _gpEverSeen = sessionStorage.getItem('pd_gp_seen') === '1';
+
+    // ── Game-running suppression ──────────────────────────────────────────────
+    // Set when a game launches; persists across the page reload that follows.
+    // Cleared only when the user explicitly interacts with PlayDate (click/key).
+    // This is the only reliable way to stop gamepad input while a game is running:
+    // the gamepad is shared hardware and focus events don't fire in pywebview.
+    let _gameSuppressed = sessionStorage.getItem('pd_game_running') === '1';
+
+    function _clearGamepadState() {
+        _gp.prev        = {};
+        _gp.heldSince   = {};
+        _gp.lastRepeat  = {};
+        _gp.stickDir    = null;
+        _gp.stickHeld   = 0;
+        _gp.stickRepeat = 0;
+    }
+
+    function _unsuppressGamepad() {
+        if (!_gameSuppressed) return;
+        _gameSuppressed = false;
+        sessionStorage.removeItem('pd_game_running');
+    }
+
+    // Two-phase watcher: polls /api/game-running (checks Steam's reaper process on
+    // Linux) to detect when a launched game actually closes, then unsuppresses the
+    // gamepad and raises the PlayDate window regardless of where the window manager
+    // sent focus after the game exited.
+    function _watchForGameClose() {
+        let gameStarted = false;
+        let attempts = 0;
+        const MAX_ATTEMPTS = 90; // 3 minutes at 2s intervals
+
+        function poll() {
+            if (!_gameSuppressed) return; // already cleared by click/key/focus
+            if (++attempts > MAX_ATTEMPTS) {
+                // Safety timeout — something went wrong, unsuppress anyway
+                _unsuppressGamepad();
+                return;
+            }
+            fetch('/api/game-running')
+                .then(r => r.json())
+                .then(d => {
+                    if (d.running === null) return; // unsupported platform, rely on focus events
+                    if (d.running) {
+                        gameStarted = true;
+                        setTimeout(poll, 2000);
+                    } else if (gameStarted) {
+                        // Game was running, now it's not — it closed
+                        fetch('/api/raise-window', { method: 'POST' }).catch(() => {});
+                        _unsuppressGamepad();
+                    } else {
+                        // Game hasn't started yet (Steam loading), keep waiting
+                        setTimeout(poll, 2000);
+                    }
+                })
+                .catch(() => setTimeout(poll, 3000));
+        }
+
+        setTimeout(poll, 1000);
+    }
+
+    // Also start watching if we're resuming suppressed state from a page reload
+    if (_gameSuppressed) _watchForGameClose();
+
+    document.addEventListener('mousedown', _unsuppressGamepad);
+    document.addEventListener('keydown',   _unsuppressGamepad);
 
     // ── Gamepad polling state ─────────────────────────────────────────────────
     const _gp = {
@@ -1577,6 +1652,8 @@
         _rafId = requestAnimationFrame(_pollLoop);
         _pollCount++;
 
+        if (_gameSuppressed) return;
+
         const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
         let gp = null;
         for (const g of gamepads) { if (g) { gp = g; break; } }
@@ -1663,13 +1740,7 @@
             cancelAnimationFrame(_rafId);
             _rafId = null;
         }
-        // Clear held state so no phantom inputs fire when focus returns
-        _gp.prev        = {};
-        _gp.heldSince   = {};
-        _gp.lastRepeat  = {};
-        _gp.stickDir    = null;
-        _gp.stickHeld   = 0;
-        _gp.stickRepeat = 0;
+        _clearGamepadState();
     });
     window.addEventListener('focus', () => {
         if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);

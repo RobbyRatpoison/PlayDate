@@ -347,19 +347,18 @@ def is_real_game(file_path):
 
 def sync_local_install_status():
     global _install_status_dirty
-    # 1. Get the real IDs from your hard drive
+    # Fetch IDs from disk first, before touching the DB
     local_ids = get_locally_installed_appids()
 
-    # 2. Reset everything in DB to 0 (Uninstalled)
+    # Reset and re-set in a single transaction so there is no window
+    # where the DB shows everything as uninstalled
     db = get_db()
     db.execute("UPDATE games SET installed = 0")
-    db.commit()
-    db.close() # Close to allow bulk_update to open its own connection
-
     if local_ids:
-        # 3. Bulk update the ones we actually found
-        from database import bulk_update_column
-        bulk_update_column(local_ids, 'installed', 1)
+        db.executemany("UPDATE games SET installed = 1 WHERE appid = ?",
+                       [(a,) for a in local_ids])
+    db.commit()
+    db.close()
 
     _install_status_dirty = True
     return len(local_ids) if local_ids else 0
