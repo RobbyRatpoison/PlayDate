@@ -11,9 +11,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - BLAEO pre-scrape runs concurrently with art/meta after placeholder insert; cheevo workers start after it finishes
 - `RateLimitedError` is re-raised in all fetch functions so `_PoolBackoff` triggers correctly
 
-## Pending (Next Release — Not Yet Committed)
-
-_(none)_
 
 ## PAGYWOSG Filter Builder
 

@@ -32,26 +32,19 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.2.8 — 2026-04-08
+## v1.3.0 — 2026-04-10
 
 ### New
-- **ProtonDB integration** — Linux compatibility ratings are now fetched from ProtonDB. Tier (platinum/gold/silver/bronze/borked) and confidence (strong/good/weak) are stored per game. The edit modal shows a coloured tier badge with a link to the ProtonDB page and a Refresh button; hidden on Windows. ProtonDB data can be fetched for your full library via the Re-scrape tab in Bulk Operations, or for individual games via the Refresh button. Both `protondb_tier` and `protondb_confidence` are available as filter conditions.
-- **Bulk Operations modal** — the four separate bulk modals (bulk edit, re-scrape, art scrape, date import) have been replaced by a single tabbed Bulk Operations modal with Edit, Re-scrape, and Date Importer tabs. The Re-scrape tab has separate sub-sections for Steam data and artwork. Closing the modal while a scrape is running no longer blocks it; operations continue in the background.
-- **Install status live update** — the home page polls for install status changes every 5 seconds and updates shelf visibility without a full page reload.
-- **HLTB search link** — a "Search HLTB ↗" link appears in the edit modal next to the AppID, pre-filled with the game name.
-- **Achievements link** — a "↗" link appears inline with the Achievements label in the edit modal, opening your Steam achievement page for that game. Hidden if no Steam ID is configured.
-- **Sync Store auto-complete** — syncing store data in the edit modal automatically sets completion status to Completed when achievement counts show 100%.
-- **PAGYWOSG quals self-verifier** — a SteamGifts username field has been added to account settings. When a game in the qualifications panel was submitted for mod verification by you, it shows "mod verified — already submitted" instead of directing you to someone else's entry.
+- **HowLongToBeat integration** — Main Story, +Extras, and Completionist times are now scraped and stored per game (in minutes). During populate, games are matched by name against HLTB; matches above the auto-confirm threshold are confirmed automatically, matches below are flagged as unconfirmed. A new HLTB Review tab in Bulk Operations shows unconfirmed matches sorted by score, with a threshold slider, "Confirm all above" button, and "Scrape unfetched / unmatched" to process the rest. The edit modal shows times with Confirm / Other match / Clear / Re-scrape actions and an alt-results panel for manual ID selection. All three time columns are available as filter conditions; a `hltb_min` sort column sorts by the shortest available time, with unscraped games last.
 
 ### Fixes
-- **Startup install status sync** — games uninstalled while PlayDate was closed are now corrected automatically on launch.
+- **Gamepad suppression during gameplay** — gamepad input is now correctly suppressed when a game is launched, preventing unintended inputs in-game and on return to PlayDate. On Linux, a background poller detects when the game process exits and automatically re-enables input; alt-tabbing back also re-enables it. Falls back to click/keypress detection on other platforms.
+- **Startup install status flash** — `sync_local_install_status()` committed the reset-to-zero step as a separate transaction before re-setting installed games, creating a window where the home page could see everything as uninstalled. Both steps now run in a single transaction.
+- **State file concurrent write corruption** — concurrent Waitress threads could corrupt `state.json` on simultaneous writes. All reads/writes are now guarded with a threading lock and use atomic temp-file replacement.
 
 ### Changes
-- **Filter conditions** — artwork source filters moved to the bottom of the condition list. ProtonDB tier and confidence added.
-- **Artwork cache busting** — library grid cards and home page shelf capsules update immediately after any artwork save without requiring a page reload.
-- **Art source backfill** — games with art marked as fetched but missing source columns are now backfilled on startup.
-- **Initial config modal** — renamed to "Configuration"; API key label updated from "Optional" to "Recommended" with an explanation of what each mode provides.
-- **Account settings** — Steam API key "(recommended)" label now shows a tooltip describing what the key enables.
-- **PAGYWOSG filter performance** — large appid pools use a dedicated node type instead of raw SQL, significantly improving filter build and apply speed for events with thousands of verified games.
-- **PAGYWOSG filter builder** — duplicate filter name check on save prompts Replace or Rename. Self-verifier label shown in qualifications panel.
+- **Bulk Operations** — button renamed from "BULK EDIT" to "BULK OPS"; tab strip spreads evenly across the header; modal widened to 720px.
+- **SQL indexes** — indexes added on `installed`, `completion_status`, `last_played`, and `playtime_forever` for faster filter and sort queries on large libraries. Created automatically on startup.
+- **Static asset cache busting** — `style.css`, `playdate.js`, and `input.js` now include the app version as a cache-busting query parameter, ensuring fresh assets are loaded after an upgrade.
+
 
