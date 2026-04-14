@@ -16,6 +16,7 @@ SAFE_COLUMNS = {
     'genres', 'categories', 'is_free',
     'protondb_tier', 'protondb_confidence',
     'hltb_main', 'hltb_extras', 'hltb_completionist',
+    'platform', 'platform_id', 'duplicate_of',
 }
 
 # Virtual sort columns: names that expand to SQL expressions.
@@ -200,7 +201,7 @@ def build_tree_sql(node, params):
 
     if node_type == 'appid_list':
         raw = node.get('appids', [])
-        safe = [a for a in raw if isinstance(a, int) and a > 0]
+        safe = [a for a in raw if isinstance(a, int)]
         if not safe:
             return '1=1'
         return f"appid IN ({','.join(str(a) for a in safe)})"
@@ -270,6 +271,10 @@ def library():
             if tree_sql and tree_sql != '1=1':
                 where = tree_sql
 
+    if state.get('hide_duplicates', True):
+        dup_cond = "(duplicate_of IS NULL OR duplicate_of = '')"
+        where = dup_cond if where == '1=1' else f"({where}) AND {dup_cond}"
+
     query = f"SELECT * FROM games WHERE {where} ORDER BY {sort_col} {sort_ord}"
 
     sql_error = None
@@ -298,13 +303,16 @@ def library():
     tags   = get_all_unique_tags()
 
     total_db = get_db()
-    total_games = total_db.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+    total_games    = total_db.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+    hidden_dupes   = total_db.execute(
+        "SELECT COUNT(*) FROM games WHERE duplicate_of IS NOT NULL AND duplicate_of != ''"
+    ).fetchone()[0]
     total_db.close()
 
     return render_template('library.html', games=games, state=state,
                            unique_tags=tags, unique_groups=groups,
                            sql_error=sql_error, builtin_filters=BUILTIN_FILTERS,
-                           total_games=total_games)
+                           total_games=total_games, hidden_dupes=hidden_dupes)
 
 
 @library_bp.route('/update_game', methods=['POST'])

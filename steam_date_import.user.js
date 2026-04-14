@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         PlayDate Date Importer
 // @namespace    playdate
-// @version      2.0
-// @description  Imports Steam activation dates into PlayDate — bulk mode fetches pages in the background without tab switching
+// @version      2.4
+// @description  Imports Steam activation dates and GOG purchase dates into PlayDate
 // @match        https://help.steampowered.com/*
+// @match        https://www.gog.com/en/account/settings/orders*
 // @updateURL    https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js
 // @downloadURL  https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js
 // @license      MIT
@@ -16,6 +17,14 @@
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('ref') !== 'playdate') return;
+
+    // =========================================================================
+    // GOG Orders page — scrape purchase dates from all order history pages
+    // =========================================================================
+    if (window.location.hostname === 'www.gog.com') {
+        runGog();
+        return;
+    }
 
     const PLAYDATE = 'http://localhost:5000';
     const isBulk   = params.get('bulk') === '1';
@@ -260,4 +269,178 @@
     }
 
     runBulk();
+
+    // =========================================================================
+    // GOG — scrape all order history pages and send purchase dates to PlayDate
+    // =========================================================================
+    async function runGog() {
+        // ── Overlay ───────────────────────────────────────────────────────────
+        const gogOverlay = document.createElement('div');
+        Object.assign(gogOverlay.style, {
+            position: 'fixed', inset: '0', background: 'rgba(10,15,25,0.93)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', zIndex: '99999', color: '#c7d5e0',
+            fontFamily: "'Segoe UI', sans-serif", gap: '12px',
+        });
+        gogOverlay.innerHTML = `
+            <div style="font-size:1.05rem;font-weight:600;color:#66c0f4;letter-spacing:0.02em;">
+                PlayDate — Importing GOG Dates
+            </div>
+            <div id="pd-gog-status" style="font-size:0.85rem;color:#8f98a0;max-width:420px;text-align:center;">
+                Reading order history…
+            </div>
+            <div style="width:320px;background:#1a2332;border-radius:4px;height:6px;overflow:hidden;">
+                <div id="pd-gog-bar" style="background:#66c0f4;height:100%;width:0%;transition:width 0.35s;"></div>
+            </div>
+            <div id="pd-gog-label" style="font-size:0.78rem;color:#8f98a0;"></div>
+        `;
+        document.body.appendChild(gogOverlay);
+
+        const setStatus = (msg, pct, label) => {
+            document.getElementById('pd-gog-status').textContent = msg;
+            if (pct !== undefined) document.getElementById('pd-gog-bar').style.width = pct + '%';
+            if (label !== undefined) document.getElementById('pd-gog-label').textContent = label;
+        };
+        const setError = (msg) => {
+            const el = document.getElementById('pd-gog-status');
+            el.textContent = msg;
+            el.style.color = '#ff4d4d';
+        };
+
+        // ── Parse gogData JSON from an HTML/script string ─────────────────────
+        // gogData ends with "};\nvar " or "};\n</", so }; is unique as a terminator.
+        function parseGogData(src) {
+            const m = src.match(/var gogData = (\{[\s\S]*?\});\s*(?:var |<\/)/);
+            if (!m) return null;
+            try { return JSON.parse(m[1]); } catch (e) { return null; }
+        }
+        function ordersFromData(data) {
+            return data && data.ordersLog && data.ordersLog.orders
+                ? data.ordersLog.orders
+                : null;
+        }
+
+        // ── Page 1: parse gogData from inline <script> tags ───────────────────
+        let totalPages = 1;
+        let gogOrdersData = null;
+        const dateMap = {};   // gog_id (string) → earliest Unix timestamp
+
+        function processOrders(orders) {
+            for (const order of orders) {
+                const ts = order.date;
+                if (!ts || order.status === 'refund') continue;
+                for (const product of (order.products || [])) {
+                    const id = String(product.id);
+                    if (!dateMap[id] || ts < dateMap[id]) dateMap[id] = ts;
+                }
+            }
+        }
+
+        try {
+            for (const s of document.querySelectorAll('script:not([src])')) {
+                const d = parseGogData(s.textContent);
+                if (d) { gogOrdersData = ordersFromData(d); break; }
+            }
+            // Fallback: parse from full page HTML (handles minified/inline cases)
+            if (!gogOrdersData) {
+                const d = parseGogData(document.documentElement.innerHTML);
+                if (d) gogOrdersData = ordersFromData(d);
+            }
+            if (!gogOrdersData) {
+                setError('Could not read GOG order data. Make sure you are logged in and on the orders page.');
+                return;
+            }
+            totalPages = gogOrdersData.totalPages || 1;
+            processOrders(gogOrdersData.orders || []);
+        } catch (e) {
+            setError('Error reading page 1 order data: ' + e.message);
+            return;
+        }
+
+        // ── Pages 2-N: use the JSON /data endpoint that Angular calls ────────
+        // GOG's UI fetches paginated orders from /account/settings/orders/data
+        // with the default filter params.  This returns JSON directly.
+        function fetchOrderPageJson(page) {
+            const url = `https://www.gog.com/account/settings/orders/data`
+                      + `?canceled=0&completed=1&in_progress=1&not_redeemed=1`
+                      + `&page=${page}&pending=1&redeemed=1`;
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method:  'GET',
+                    url,
+                    headers: { 'Accept': 'application/json, text/plain, */*' },
+                    onload:  r => {
+                        try { resolve(JSON.parse(r.responseText)); }
+                        catch (e) { reject(new Error(`page ${page}: invalid JSON — ${r.responseText.slice(0, 120)}`)); }
+                    },
+                    onerror: reject, ontimeout: reject,
+                });
+            });
+        }
+
+        // Normalise the /data response: accepts {orders:[...]}, {orders:{orders:[...]}},
+        // or a bare array — returns the flat orders array or null.
+        function extractOrders(data) {
+            if (!data) return null;
+            if (Array.isArray(data)) return data;
+            const inner = data.orders;
+            if (Array.isArray(inner)) return inner;
+            if (inner && Array.isArray(inner.orders)) return inner.orders;
+            return null;
+        }
+
+        let totalOrdersFound = (gogOrdersData.orders || []).length;
+
+        for (let page = 2; page <= totalPages; page++) {
+            setStatus(`Reading order history…`, Math.round((page - 1) / totalPages * 80), `Page ${page - 1} / ${totalPages} — ${totalOrdersFound} orders so far`);
+            try {
+                const data   = await fetchOrderPageJson(page);
+                const orders = extractOrders(data);
+                if (orders && orders.length > 0) {
+                    processOrders(orders);
+                    totalOrdersFound += orders.length;
+                } else {
+                    console.warn(`[PlayDate] GOG orders page ${page}: empty or unrecognised response`, data);
+                }
+            } catch (e) {
+                setError(`Failed to fetch page ${page}: ${e.message}`);
+                return;
+            }
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        const total = Object.keys(dateMap).length;
+        if (total === 0) {
+            setError('No purchase dates found in order history.');
+            return;
+        }
+
+        setStatus(`Sending ${total} dates to PlayDate…`, 90, '');
+
+        // ── POST all dates to PlayDate ─────────────────────────────────────────
+        try {
+            const res  = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: 'http://localhost:5000/api/gog/bulk-date-import',
+                    headers: { 'Content-Type': 'application/json' },
+                    data: JSON.stringify({ dates: dateMap }),
+                    onload: resolve, onerror: reject, ontimeout: reject,
+                });
+            });
+            const data = JSON.parse(res.responseText);
+            if (data.status === 'success') {
+                setStatus(
+                    `Done — ${data.updated} date${data.updated !== 1 ? 's' : ''} imported, ${data.not_found} product${data.not_found !== 1 ? 's' : ''} not in library`,
+                    100, ''
+                );
+                document.getElementById('pd-gog-status').style.color = '#66c0f4';
+            } else {
+                setError('PlayDate error: ' + (data.message || 'unknown'));
+            }
+        } catch (e) {
+            setError('Could not reach PlayDate. Make sure it is running.');
+        }
+    }
+
 })();

@@ -15,9 +15,12 @@ def date_to_ts(date_str):
 
 
 def ts_to_date(ts):
-    """Unix timestamp int → 'YYYY-MM-DD' string, or None."""
+    """Unix timestamp int → 'YYYY-MM-DD' string, or None.
+    If already a 'YYYY-MM-DD' string, returns it as-is (handles GOG date strings)."""
     if not ts:
         return None
+    if isinstance(ts, str) and len(ts) >= 10 and ts[4:5] == '-':
+        return ts[:10]
     try:
         return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime('%Y-%m-%d')
     except (ValueError, OSError, TypeError):
@@ -107,6 +110,15 @@ def init_db():
         'hltb_matched_name': 'TEXT',     # HLTB game name as returned by search
         'hltb_match_score': 'INT',       # 0-100 name similarity score
         'hltb_fetched': 'TEXT',          # '0' = pending, YYYY-MM-DD = confirmed, 'unconfirmed' = below threshold
+        'platform': 'TEXT',              # 'steam' (default), 'gog', 'egs', 'ea_app', 'ubisoft'
+        'platform_id': 'TEXT',           # Service-native ID used for launching (GOG ID, EGS appName, etc.)
+        'platform_slug': 'TEXT',         # Platform store slug for building store URLs (e.g. GOG slug 'the_witcher_3_wild_hunt')
+        'steam_appid': 'INTEGER',        # Steam AppID resolved via PCGW for non-Steam games (NULL = not yet looked up)
+        'install_path': 'TEXT',          # Local install directory (non-Steam games)
+        'wine_prefix': 'TEXT',           # Path to Wine/Proton prefix (Windows games)
+        'runner_path': 'TEXT',           # Path to Proton binary used for this game
+        'platform_executable': 'TEXT',   # Relative path to main exe within install_path
+        'duplicate_of': 'TEXT',          # appid of preferred version of this game (e.g. Steam appid for a GOG duplicate); NULL = canonical
     }
 
     for column_name, column_type in required_columns.items():
@@ -240,6 +252,9 @@ def init_db():
         " WHERE protondb_fetched != '0' AND protondb_tier IS NULL"
     )
 
+    # Backfill platform = 'steam' for all pre-existing rows
+    cursor.execute("UPDATE games SET platform = 'steam' WHERE platform IS NULL")
+
     # ── Backfill art source columns for games stuck with art_fetched set but ──
     # all three source columns NULL.  This happens when the art worker took the
     # "files already exist on disk" shortcut without recording sources (fixed in
@@ -266,15 +281,23 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_completion_status ON games(completion_status)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_last_played       ON games(last_played)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_playtime_forever  ON games(playtime_forever)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_platform          ON games(platform)")
 
-    # Blacklist table — appids that should be skipped by Populate
+    # Blacklist table — appids that should be skipped by Populate / sync
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS blacklist (
             appid INTEGER PRIMARY KEY,
             name TEXT,
-            date_blacklisted TEXT
+            date_blacklisted TEXT,
+            platform_id TEXT
         )
     """)
+    # Migrate: add platform_id if an older DB doesn't have it
+    try:
+        cursor.execute("ALTER TABLE blacklist ADD COLUMN platform_id TEXT")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
 
     conn.commit()
     conn.close()
@@ -385,13 +408,14 @@ def get_blacklist():
     conn.close()
     return [dict(r) for r in rows]
 
-def add_to_blacklist(appid, name):
-    """Add an appid to the blacklist. Safe to call if already present."""
+def add_to_blacklist(appid, name, platform_id=None):
+    """Add an appid to the blacklist. Safe to call if already present.
+    Pass platform_id for non-Steam games so re-sync skips them."""
     from datetime import datetime
     conn = sqlite3.connect(_db(), timeout=10)
     conn.execute(
-        "INSERT OR REPLACE INTO blacklist (appid, name, date_blacklisted) VALUES (?, ?, ?)",
-        (int(appid), name, datetime.now().strftime('%Y-%m-%d'))
+        "INSERT OR REPLACE INTO blacklist (appid, name, date_blacklisted, platform_id) VALUES (?, ?, ?, ?)",
+        (int(appid), name, datetime.now().strftime('%Y-%m-%d'), platform_id)
     )
     conn.commit()
     conn.close()

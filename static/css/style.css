@@ -26,10 +26,6 @@ html {
 
 body {
     background-color: var(--bg-page);
-    background-image: url('/static/img//backgrounds/background.jpg');
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
     color: var(--text-primary);
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
@@ -40,6 +36,18 @@ body {
 
 body.loaded {
     opacity: 1;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: url('/static/img/backgrounds/background.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    opacity: var(--bg-image-opacity, 1);
 }
 
 /* pywebview/WebKit has user-select:none globally by default.

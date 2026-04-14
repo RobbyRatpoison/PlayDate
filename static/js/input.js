@@ -87,6 +87,11 @@
             _clearGamepadState();
             _watchForGameClose();
         },
+        clearSuppression() {
+            _gameSuppressed = false;
+            sessionStorage.removeItem('pd_game_running');
+            _clearGamepadState();
+        },
         unsuppressGamepad() {
             _unsuppressGamepad();
         },

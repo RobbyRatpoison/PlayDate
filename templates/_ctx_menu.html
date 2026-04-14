@@ -1,0 +1,551 @@
+<!-- ── Custom context menu ───────────────────────────────────────────────── -->
+<style>
+    #ctx-menu {
+        position: fixed;
+        z-index: 9999;
+        background: #1a2332;
+        border: 1px solid #2a475e;
+        border-radius: 8px;
+        padding: 4px 0;
+        min-width: 210px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+        display: none;
+        user-select: none;
+    }
+    #ctx-menu.visible { display: block; }
+
+    .ctx-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        color: #c7d5e0;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: background 0.1s;
+        white-space: nowrap;
+        position: relative;
+    }
+    .ctx-item:hover { background: #243447; }
+    .ctx-item.disabled {
+        color: #4a5a6a;
+        cursor: default;
+        pointer-events: none;
+    }
+    .ctx-item .ctx-icon {
+        width: 16px;
+        text-align: center;
+        flex-shrink: 0;
+        font-style: normal;
+    }
+    .ctx-sep {
+        height: 1px;
+        background: #2a3f55;
+        margin: 4px 0;
+    }
+    .ctx-section-label {
+        padding: 6px 16px 2px;
+        font-size: 0.7rem;
+        color: #4a6a8a;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        cursor: default;
+    }
+
+    /* Submenu */
+    .ctx-item.has-sub::after {
+        content: '▸';
+        margin-left: auto;
+        padding-left: 12px;
+        color: #4a6a8a;
+        font-size: 0.75rem;
+    }
+    .ctx-sub {
+        position: absolute;
+        left: 100%;
+        top: -4px;
+        background: #1a2332;
+        border: 1px solid #2a475e;
+        border-radius: 8px;
+        padding: 4px 0;
+        min-width: 160px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+        display: none;
+    }
+    .ctx-item.has-sub:hover .ctx-sub { display: block; }
+    .ctx-sub .ctx-item { padding: 7px 16px; font-size: 0.83rem; }
+    .ctx-sub .ctx-item.current-status {
+        color: var(--accent);
+    }
+    .ctx-sub .ctx-item.current-status::before {
+        content: '✓ ';
+    }
+</style>
+
+<div id="ctx-menu">
+    <!-- Clipboard section — shown/hidden per target -->
+    <div id="ctx-clipboard-section">
+        <div class="ctx-item" id="ctx-cut"        data-action="cut">
+            <i class="ctx-icon">✂</i> Cut
+        </div>
+        <div class="ctx-item" id="ctx-copy"       data-action="copy">
+            <i class="ctx-icon">⧉</i> Copy
+        </div>
+        <div class="ctx-item" id="ctx-paste"      data-action="paste">
+            <i class="ctx-icon">📋</i> Paste
+        </div>
+        <div class="ctx-item" id="ctx-selectall"  data-action="selectall">
+            <i class="ctx-icon">▦</i> Select All
+        </div>
+    </div>
+
+    <!-- Game section — shown only when right-clicking a game card -->
+    <div id="ctx-game-section" style="display:none;">
+        <div class="ctx-sep" id="ctx-game-sep"></div>
+        <div class="ctx-section-label" id="ctx-game-name"></div>
+        <div class="ctx-item" id="ctx-launch" data-action="launch" style="display:none;">
+            <i class="ctx-icon">▶</i> Launch Game
+        </div>
+        <div class="ctx-item" id="ctx-install" data-action="install" style="display:none;">
+            <i class="ctx-icon">⬇</i> Install Game
+        </div>
+        <div class="ctx-item" id="ctx-store" data-action="store">
+            <i class="ctx-icon">🌐</i> Open Store Page
+        </div>
+        <div class="ctx-item has-sub" id="ctx-completion" data-action="completion">
+            <i class="ctx-icon">🏆</i> Completion Status
+            <div class="ctx-sub" id="ctx-completion-sub">
+                <div class="ctx-item" data-action="setstatus" data-status="Never Played">Never Played</div>
+                <div class="ctx-item" data-action="setstatus" data-status="Unfinished">Unfinished</div>
+                <div class="ctx-item" data-action="setstatus" data-status="Beaten">Beaten</div>
+                <div class="ctx-item" data-action="setstatus" data-status="Completed">Completed</div>
+                <div class="ctx-item" data-action="setstatus" data-status="Won't Play">Won't Play</div>
+            </div>
+        </div>
+        <div class="ctx-item" id="ctx-edit" data-action="edit">
+            <i class="ctx-icon">✎</i> Edit Game
+        </div>
+        <div class="ctx-item" id="ctx-uninstall" data-action="uninstall" style="display:none; color:#ff8080;">
+            <i class="ctx-icon">🗑</i> Uninstall Game
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Context menu system ──────────────────────────────────────────────────
+(function () {
+    const menu     = document.getElementById('ctx-menu');
+    const STATUSES = ['Never Played', 'Unfinished', 'Beaten', 'Completed'];
+
+    let _appid        = null;   // appid of game being right-clicked, or null
+    let _currentStatus = null;  // current completion_status of that game
+    let _installed     = false; // whether the right-clicked game is installed
+    let _platform      = 'steam'; // platform of the right-clicked game
+    let _activeEl      = null;  // element that was focused at right-click time
+    let _selText       = '';    // selected text at right-click time
+    let _selStart      = 0;     // selection start index at right-click time
+    let _selEnd        = 0;     // selection end index at right-click time
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    function openUrl(url) {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.open_url) {
+            window.pywebview.api.open_url(url);
+        } else {
+            fetch('/api/open-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+        }
+    }
+
+    // GOG uninstall: called from .then() chain to avoid async/await issues in event listeners
+    async function doGogUninstall(appid) {
+        try {
+            const r = await fetch(`/api/gog/uninstall/${appid}`, { method: 'POST' });
+            const d = await r.json();
+            if (d.status === 'success') {
+                showLaunchToast('Game uninstalled');
+                location.reload();
+            } else {
+                showLaunchToast(d.message || 'Uninstall failed');
+            }
+        } catch (e) {
+            showLaunchToast('Uninstall failed');
+        }
+    }
+
+    function isEditable(el) {
+        if (!el) return false;
+        const tag = el.tagName;
+        return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+    }
+
+    // Walk up from event target to find a game appid, installed status, and name from DOM
+    function findGameAppid(el) {
+        while (el && el !== document.body) {
+            // Library page: .game-card[data-appid]
+            if (el.classList && el.classList.contains('game-card') && el.dataset.appid)
+                return el.dataset.appid;
+            // Home page: .shelf-capsule-wrap[data-appid]
+            if (el.classList && el.classList.contains('shelf-capsule-wrap') && el.dataset.appid)
+                return el.dataset.appid;
+            // Pick page: .result-card[data-appid]
+            if (el.classList && el.classList.contains('result-card') && el.dataset.appid)
+                return el.dataset.appid;
+            el = el.parentElement;
+        }
+        return null;
+    }
+
+    // Read installed, name, and status directly from DOM data attributes if available
+    function findGameDataFromDom(el) {
+        while (el && el !== document.body) {
+            if (el.dataset && el.dataset.appid) {
+                return {
+                    installed: el.dataset.installed !== undefined ? parseInt(el.dataset.installed) : null,
+                    name:      el.dataset.name   || null,
+                    status:    el.dataset.status || null,
+                    platform:  el.dataset.platform || 'steam'
+                };
+            }
+            el = el.parentElement;
+        }
+        return { installed: null, name: null, status: null, platform: 'steam' };
+    }
+
+    // ── Position & show ───────────────────────────────────────────────────
+
+    function showMenu(x, y) {
+        menu.classList.add('visible');
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const mw = menu.offsetWidth  || 220;
+        const mh = menu.offsetHeight || 160;
+        menu.style.left = (x + mw > vw ? vw - mw - 6 : x) + 'px';
+        menu.style.top  = (y + mh > vh ? vh - mh - 6 : y) + 'px';
+    }
+
+    function hideMenu() {
+        menu.classList.remove('visible');
+        _appid = null;
+        _currentStatus = null;
+        _installed = false;
+        _activeEl  = null;
+        _selText   = '';
+        _selStart  = 0;
+        _selEnd    = 0;
+    }
+
+    // ── Build menu state before showing ──────────────────────────────────
+
+    async function buildAndShow(e) {
+        e.preventDefault();
+        const target    = e.target;
+
+        // Capture focused element and selection NOW — before menu appears and focus shifts
+        _activeEl  = document.activeElement;
+        _selText   = (window.getSelection() || '').toString();
+        _selStart  = (_activeEl && _activeEl.selectionStart != null) ? _activeEl.selectionStart : 0;
+        _selEnd    = (_activeEl && _activeEl.selectionEnd   != null) ? _activeEl.selectionEnd   : 0;
+
+        const editable  = isEditable(target) || isEditable(_activeEl);
+        const selection = _selText.length > 0;
+        const appid     = findGameAppid(target);
+
+        // ── Clipboard section ────────────────────────────────────────────
+        const cutEl  = document.getElementById('ctx-cut');
+        const cpyEl  = document.getElementById('ctx-copy');
+        const pstEl  = document.getElementById('ctx-paste');
+        const selEl  = document.getElementById('ctx-selectall');
+
+        // Cut: only if editable and something selected
+        cutEl.classList.toggle('disabled', !(editable && selection));
+        // Copy: any selection
+        cpyEl.classList.toggle('disabled', !selection);
+        // Paste: only in editable fields
+        pstEl.classList.toggle('disabled', !editable);
+        // Select All: only in editable fields
+        selEl.classList.toggle('disabled', !editable);
+
+        // Hide clipboard section entirely if nothing is relevant
+        const anyClipboard = editable || selection;
+        document.getElementById('ctx-clipboard-section').style.display =
+            anyClipboard ? '' : 'none';
+
+        // ── Game section ─────────────────────────────────────────────────
+        const gameSection = document.getElementById('ctx-game-section');
+        if (appid) {
+            _appid = appid;
+            gameSection.style.display = '';
+
+            // Hide the separator if clipboard section is hidden
+            document.getElementById('ctx-game-sep').style.display =
+                anyClipboard ? '' : 'none';
+
+            // Fetch current status for checkmark — use in-memory data if available
+            let status = null;
+            let installed = false;
+            let platform = 'steam';
+            let _fetchedGame = null;
+
+            // First try DOM data attributes (home page has these, avoids a server fetch)
+            const domData = findGameDataFromDom(target);
+            if (domData.installed !== null) installed = !!domData.installed;
+            if (domData.status)             status    = domData.status;
+            if (domData.platform)           platform  = domData.platform;
+
+            if (typeof GAMES !== 'undefined') {
+                const g = GAMES.find(g => String(g.appid) === String(appid));
+                if (g) { status = g.completion_status; installed = !!g.installed; platform = g.platform || 'steam'; }
+            } else if (typeof _games !== 'undefined') {
+                const g = _games.find(g => String(g.appid) === String(appid));
+                if (g) { status = g.completion_status; installed = !!g.installed; platform = g.platform || 'steam'; }
+            }
+            // Only fetch from server if we still don't have status
+            if (status === null) {
+                try {
+                    const res  = await fetch(`/api/game/${appid}`);
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        status    = data.game.completion_status;
+                        installed = !!data.game.installed;
+                        platform  = data.game.platform || 'steam';
+                        _fetchedGame = data.game;
+                    }
+                } catch (_) {}
+            }
+            _currentStatus = status;
+            _installed     = installed;
+            _platform      = platform;
+
+            // Show launch/install/uninstall based on installed status
+            const isNonSteam = parseInt(appid) < 0;
+            document.getElementById('ctx-launch').style.display    = installed ? '' : 'none';
+            document.getElementById('ctx-install').style.display   = installed ? 'none' : '';
+            document.getElementById('ctx-uninstall').style.display = installed ? '' : 'none';
+            // Store page is Steam-only
+            document.getElementById('ctx-store').style.display     = isNonSteam ? 'none' : '';
+
+            // Truncate long game names for the section label
+            let gameName = domData.name || '';
+            if (!gameName && typeof GAMES !== 'undefined') {
+                const g = GAMES.find(g => String(g.appid) === String(appid));
+                if (g) gameName = g.name;
+            }
+            if (!gameName && typeof _games !== 'undefined') {
+                const g = _games.find(g => String(g.appid) === String(appid));
+                if (g) gameName = g.name;
+            }
+            if (!gameName && _fetchedGame) {
+                gameName = _fetchedGame.name || '';
+            }
+            // Last resort: read from the img alt/title in the DOM
+            if (!gameName) {
+                const img = e.target.closest('[data-appid]')?.querySelector('img');
+                if (img) gameName = img.alt || img.title || '';
+            }
+            const nameEl = document.getElementById('ctx-game-name');
+            nameEl.textContent = gameName
+                ? (gameName.length > 28 ? gameName.slice(0, 26) + '…' : gameName)
+                : `App ${appid}`;
+
+            // Mark current status in submenu
+            document.querySelectorAll('#ctx-completion-sub .ctx-item').forEach(item => {
+                item.classList.toggle('current-status', item.dataset.status === status);
+            });
+        } else {
+            gameSection.style.display = 'none';
+        }
+
+        // Don't show menu at all if there's nothing to offer
+        if (!anyClipboard && !appid) return;
+
+        showMenu(e.clientX, e.clientY);
+    }
+
+    // ── Action handler ────────────────────────────────────────────────────
+
+    menu.addEventListener('click', async function (e) {
+        // Stop the document-level click→hideMenu from firing before we handle the action
+        e.stopPropagation();
+
+        const item = e.target.closest('.ctx-item[data-action]');
+        if (!item || item.classList.contains('disabled')) return;
+        // Ignore clicks on the parent completion-status row — it only opens the submenu
+        if (item.id === 'ctx-completion') return;
+        // Ignore clicks that originated inside the submenu but bubbled to has-sub
+        if (item.classList.contains('has-sub') && e.target.closest('.ctx-sub')) return;
+
+        const action = item.dataset.action;
+        // Capture _appid now before hideMenu nulls it
+        const appid  = _appid;
+
+        switch (action) {
+
+            case 'cut': {
+                const el   = _activeEl;
+                const s    = _selStart;
+                const end  = _selEnd;
+                const text = _selText;
+                try {
+                    await navigator.clipboard.writeText(text);
+                } catch (_) {}
+                hideMenu();
+                if (el && text && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                    el.focus();
+                    el.value = el.value.slice(0, s) + el.value.slice(end);
+                    el.selectionStart = el.selectionEnd = s;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                break;
+            }
+
+            case 'copy': {
+                const text = _selText;
+                hideMenu();
+                try {
+                    await navigator.clipboard.writeText(text);
+                } catch (_) {}
+                break;
+            }
+
+            case 'paste': {
+                const el = _activeEl;
+                const s  = _selStart;
+                const end = _selEnd;
+                hideMenu();
+                if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                    el.focus();
+                    el.setSelectionRange(s, end);
+                    let text = null;
+                    // Prefer Python API — reads OS clipboard without browser permission restrictions
+                    if (window.pywebview?.api?.read_clipboard) {
+                        try { text = await window.pywebview.api.read_clipboard(); } catch (_) {}
+                    }
+                    // Fall back to JS Clipboard API (works in browser mode)
+                    if (text === null) {
+                        try { text = await navigator.clipboard.readText(); } catch (_) {}
+                    }
+                    if (text !== null) {
+                        el.value = el.value.slice(0, s) + text + el.value.slice(end);
+                        el.selectionStart = el.selectionEnd = s + text.length;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                    } else {
+                        document.execCommand('paste');
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
+                break;
+            }
+
+            case 'selectall': {
+                const el = _activeEl;
+                hideMenu();
+                if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+                    el.focus();
+                    el.select();
+                } else {
+                    document.execCommand('selectAll');
+                }
+                break;
+            }
+
+            case 'launch':
+            case 'install':
+                hideMenu();
+                if (!appid) break;
+                launchGame(parseInt(appid));
+                break;
+
+            case 'uninstall':
+                hideMenu();
+                if (!appid) break;
+                if (parseInt(appid) >= 0) {
+                    // Steam: use steam:// URI
+                    openUrl(`steam://uninstall/${appid}`);
+                } else if (_platform === 'gog') {
+                    // GOG: server-side delete of install folder + set installed=0
+                    const appidForUninstall = appid; // capture before async flow
+                    confirm('Uninstall this GOG game?\n\nThis will delete the game files from disk.')
+                        .then(confirmed => {
+                            if (!confirmed) return;
+                            doGogUninstall(appidForUninstall);
+                        });
+                }
+                break;
+
+            case 'store':
+                hideMenu();
+                if (appid) openUrl(`https://store.steampowered.com/app/${appid}`);
+                break;
+
+            case 'edit':
+                hideMenu();
+                if (!appid) break;
+                if (typeof openEditModalById === 'function') {
+                    openEditModalById(parseInt(appid));
+                } else {
+                    try {
+                        const res  = await fetch(`/api/game/${appid}`);
+                        const data = await res.json();
+                        if (data.status === 'success' && typeof openEditModal === 'function') {
+                            openEditModal(data.game);
+                        }
+                    } catch (_) {}
+                }
+                break;
+
+        }
+    });
+
+    // ── Submenu: handle setstatus directly to avoid bubbling issues ─────────
+    // Uses capture phase so it fires before the document bubble-phase hideMenu listener
+    document.getElementById('ctx-completion-sub').addEventListener('click', async function(e) {
+        e.stopPropagation();
+        const item = e.target.closest('.ctx-item[data-action="setstatus"]');
+        if (!item) return;
+        const newStatus = item.dataset.status;
+        const appid = _appid;
+        hideMenu();
+        if (!appid || !newStatus) return;
+        try {
+            const res  = await fetch(`/api/set-completion/${appid}`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ status: newStatus })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const aid = String(appid);
+                if (typeof GAMES !== 'undefined') {
+                    const g = GAMES.find(g => String(g.appid) === aid);
+                    if (g) g.completion_status = newStatus;
+                }
+                if (typeof _games !== 'undefined') {
+                    const g = _games.find(g => String(g.appid) === aid);
+                    if (g) g.completion_status = newStatus;
+                }
+                document.querySelectorAll(`[data-appid="${aid}"]`).forEach(el => {
+                    el.dataset.status = newStatus;
+                });
+                const card  = document.querySelector(`.game-card[data-appid="${aid}"]`);
+                const badge = card && card.querySelector('.completion-badge');
+                if (badge) badge.textContent = newStatus;
+            }
+        } catch (_) {}
+    }, true);
+
+    // ── Event listeners ───────────────────────────────────────────────────
+    document.addEventListener('contextmenu', buildAndShow);
+    document.addEventListener('click', (e) => {
+        // Don't hide if the click was inside the context menu itself
+        if (menu.contains(e.target)) return;
+        hideMenu();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') hideMenu(); });
+    // Prevent the menu itself from closing when clicking inside it (handled above)
+    menu.addEventListener('contextmenu', e => e.preventDefault());
+
+})();
+</script>

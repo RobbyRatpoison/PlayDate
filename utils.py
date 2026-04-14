@@ -91,6 +91,7 @@ def stop_steamapps_watcher():
             log.warning(f"Steamapps watcher stop error: {e}")
         _watcher_observer = None
 
+
 def find_steam_path():
     """Attempts to locate the Steam installation path, prioritizing Linux."""
 
@@ -351,9 +352,10 @@ def sync_local_install_status():
     local_ids = get_locally_installed_appids()
 
     # Reset and re-set in a single transaction so there is no window
-    # where the DB shows everything as uninstalled
+    # where the DB shows everything as uninstalled.
+    # Scope to Steam games only — non-Steam install state is managed separately.
     db = get_db()
-    db.execute("UPDATE games SET installed = 0")
+    db.execute("UPDATE games SET installed = 0 WHERE platform = 'steam' OR platform IS NULL")
     if local_ids:
         db.executemany("UPDATE games SET installed = 1 WHERE appid = ?",
                        [(a,) for a in local_ids])

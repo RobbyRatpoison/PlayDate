@@ -16,11 +16,22 @@
     </style>
     {% endif %}
     {% if background_ts %}
-    <style>body { background-image: url('/static/img/backgrounds/background.jpg?v={{ background_ts }}'); }</style>
+    <style>body::before { background-image: url('/static/img/backgrounds/background.jpg?v={{ background_ts }}'); }</style>
     {% endif %}
     <script src="{{ url_for('static', filename='js/playdate.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/input.js') }}?v={{ app_version }}"></script>
     <style>
+    /* ── Launch toast ────────────────────────────────────────────────── */
+    #launch-toast {
+        position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+        background: var(--bg-raised); color: var(--text-primary);
+        border: 1px solid var(--border); border-radius: 6px;
+        padding: .6rem 1.2rem; font-size: .9rem; z-index: 9999;
+        max-width: 480px; text-align: center;
+        opacity: 0; pointer-events: none;
+        transition: opacity .2s ease;
+    }
+    #launch-toast.visible { opacity: 1; pointer-events: auto; }
     /* ── SQL syntax highlighter overlay ─────────────────────────────── */
     .sql-hl-wrap { position: relative; display: block; }
     .sql-hl-pre {
@@ -131,7 +142,7 @@
     <script>
     // Seed sessionStorage with server-side fullscreen state so isFullscreen()
     // is correct on first load (e.g. when the app starts in fullscreen mode).
-    sessionStorage.setItem('_playdateFullscreen', {{ "'1'" if initial_fullscreen else "'0'" }});
+    sessionStorage.setItem('_playdateFullscreen', '{{ "1" if initial_fullscreen else "0" }}');
     </script>
     <script>
     // Reveal the body as soon as the DOM is ready
@@ -177,651 +188,27 @@
         {% block content %}{% endblock %}
     </div>
 
-    <!-- ── Custom alert / confirm dialogs ──────────────────────────────────── -->
-    <style>
-        #pd-dialog-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.7);
-            z-index: 99999;
-            align-items: center;
-            justify-content: center;
-        }
-        #pd-dialog-overlay.visible { display: flex; }
-        #pd-dialog-box {
-            background: #1a2332;
-            border: 1px solid #2a475e;
-            border-radius: 10px;
-            padding: 28px 32px 24px;
-            max-width: 440px;
-            width: 90vw;
-            box-shadow: 0 12px 40px rgba(0,0,0,0.6);
-        }
-        #pd-dialog-msg {
-            color: #c7d5e0;
-            font-size: 0.9rem;
-            line-height: 1.6;
-            margin: 0 0 22px;
-            white-space: pre-wrap;
-            -webkit-user-select: text;
-            user-select: text;
-        }
-        #pd-dialog-btns {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
-        #pd-dialog-btns button {
-            padding: 8px 22px;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            font-weight: bold;
-            cursor: pointer;
-            letter-spacing: 0.04em;
-            border: 1px solid #2a475e;
-            transition: opacity 0.15s;
-        }
-        #pd-dialog-btns button:hover { opacity: 0.85; }
-        #pd-btn-ok    { background: var(--accent); color: #0e1621; border-color: var(--accent); }
-        #pd-btn-cancel { background: transparent; color: #c7d5e0; }
-    </style>
-
-    <div id="pd-dialog-overlay">
-        <div id="pd-dialog-box">
-            <div id="pd-dialog-msg"></div>
-            <div id="pd-dialog-btns">
-                <button id="pd-btn-cancel" data-modal-row="0">Cancel</button>
-                <button id="pd-btn-ok"     data-modal-row="0">OK</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    // ── Override window.alert and window.confirm with styled dialogs ──────────
-    (function () {
-        const overlay  = document.getElementById('pd-dialog-overlay');
-        const msgEl    = document.getElementById('pd-dialog-msg');
-        const btnOk     = document.getElementById('pd-btn-ok');
-        const btnCancel = document.getElementById('pd-btn-cancel');
-
-        let _resolve = null;
-        let _hiddenModal = null; // track any modal hidden while dialog is open
-
-        function _show(message, isConfirm, okLabel, cancelLabel) {
-            msgEl.textContent = message;
-            btnCancel.style.display = isConfirm ? '' : 'none';
-            btnOk.textContent     = okLabel     || 'OK';
-            btnCancel.textContent = cancelLabel || 'Cancel';
-            // Hide any open modal so its scrollbars don't show through the overlay
-            _hiddenModal = null;
-            const editModal = document.getElementById('editModal');
-            if (editModal && editModal.style.display !== 'none') {
-                editModal.style.visibility = 'hidden';
-                _hiddenModal = editModal;
-            }
-            overlay.classList.add('visible');
-            setTimeout(() => btnOk.focus(), 50);
-            return new Promise(resolve => { _resolve = resolve; });
-        }
-
-        function _close(result) {
-            overlay.classList.remove('visible');
-            if (_hiddenModal) {
-                _hiddenModal.style.visibility = '';
-                _hiddenModal = null;
-            }
-            if (_resolve) { _resolve(result); _resolve = null; }
-        }
-
-        btnOk.addEventListener('click',     () => _close(true));
-        btnCancel.addEventListener('click', () => _close(false));
-        overlay.addEventListener('click', e => {
-            if (e.target === overlay) _close(false);
-        });
-        document.addEventListener('keydown', e => {
-            if (!overlay.classList.contains('visible')) return;
-            if (e.key === 'Enter')  { e.preventDefault(); _close(true); }
-            if (e.key === 'Escape') { e.preventDefault(); _close(false); }
-        });
-
-        // Override native dialogs — these return Promises but existing code uses
-        // them synchronously. We patch them to work with async/await callers.
-        // Synchronous callers (rare) will receive a Promise object which is truthy
-        // — acceptable since all our confirm() calls are already in async functions.
-        window.alert         = (msg) => _show(msg, false);
-        window.confirm       = (msg) => _show(msg, true);
-        window.confirmCustom = (msg, okLabel, cancelLabel) => _show(msg, true, okLabel, cancelLabel);
-    })();
-    </script>
+    {% include '_dialog.html' %}
 
     {% include 'modal_edit.html' %}
     {% include 'modal_filters.html' %}
     {% include 'modal_tools.html' %}
 
-    <!-- ── Custom context menu ───────────────────────────────────────────────── -->
-    <style>
-        #ctx-menu {
-            position: fixed;
-            z-index: 9999;
-            background: #1a2332;
-            border: 1px solid #2a475e;
-            border-radius: 8px;
-            padding: 4px 0;
-            min-width: 210px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.55);
-            display: none;
-            user-select: none;
-        }
-        #ctx-menu.visible { display: block; }
-
-        .ctx-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 16px;
-            color: #c7d5e0;
-            font-size: 0.85rem;
-            cursor: pointer;
-            transition: background 0.1s;
-            white-space: nowrap;
-            position: relative;
-        }
-        .ctx-item:hover { background: #243447; }
-        .ctx-item.disabled {
-            color: #4a5a6a;
-            cursor: default;
-            pointer-events: none;
-        }
-        .ctx-item .ctx-icon {
-            width: 16px;
-            text-align: center;
-            flex-shrink: 0;
-            font-style: normal;
-        }
-        .ctx-sep {
-            height: 1px;
-            background: #2a3f55;
-            margin: 4px 0;
-        }
-        .ctx-section-label {
-            padding: 6px 16px 2px;
-            font-size: 0.7rem;
-            color: #4a6a8a;
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-            cursor: default;
-        }
-
-        /* Submenu */
-        .ctx-item.has-sub::after {
-            content: '▸';
-            margin-left: auto;
-            padding-left: 12px;
-            color: #4a6a8a;
-            font-size: 0.75rem;
-        }
-        .ctx-sub {
-            position: absolute;
-            left: 100%;
-            top: -4px;
-            background: #1a2332;
-            border: 1px solid #2a475e;
-            border-radius: 8px;
-            padding: 4px 0;
-            min-width: 160px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.55);
-            display: none;
-        }
-        .ctx-item.has-sub:hover .ctx-sub { display: block; }
-        .ctx-sub .ctx-item { padding: 7px 16px; font-size: 0.83rem; }
-        .ctx-sub .ctx-item.current-status {
-            color: var(--accent);
-        }
-        .ctx-sub .ctx-item.current-status::before {
-            content: '✓ ';
-        }
-    </style>
-
-    <div id="ctx-menu">
-        <!-- Clipboard section — shown/hidden per target -->
-        <div id="ctx-clipboard-section">
-            <div class="ctx-item" id="ctx-cut"        data-action="cut">
-                <i class="ctx-icon">✂</i> Cut
-            </div>
-            <div class="ctx-item" id="ctx-copy"       data-action="copy">
-                <i class="ctx-icon">⧉</i> Copy
-            </div>
-            <div class="ctx-item" id="ctx-paste"      data-action="paste">
-                <i class="ctx-icon">📋</i> Paste
-            </div>
-            <div class="ctx-item" id="ctx-selectall"  data-action="selectall">
-                <i class="ctx-icon">▦</i> Select All
-            </div>
-        </div>
-
-        <!-- Game section — shown only when right-clicking a game card -->
-        <div id="ctx-game-section" style="display:none;">
-            <div class="ctx-sep" id="ctx-game-sep"></div>
-            <div class="ctx-section-label" id="ctx-game-name"></div>
-            <div class="ctx-item" id="ctx-launch" data-action="launch" style="display:none;">
-                <i class="ctx-icon">▶</i> Launch Game
-            </div>
-            <div class="ctx-item" id="ctx-install" data-action="install" style="display:none;">
-                <i class="ctx-icon">⬇</i> Install Game
-            </div>
-            <div class="ctx-item" id="ctx-store" data-action="store">
-                <i class="ctx-icon">🌐</i> Open Store Page
-            </div>
-            <div class="ctx-item has-sub" id="ctx-completion" data-action="completion">
-                <i class="ctx-icon">🏆</i> Completion Status
-                <div class="ctx-sub" id="ctx-completion-sub">
-                    <div class="ctx-item" data-action="setstatus" data-status="Never Played">Never Played</div>
-                    <div class="ctx-item" data-action="setstatus" data-status="Unfinished">Unfinished</div>
-                    <div class="ctx-item" data-action="setstatus" data-status="Beaten">Beaten</div>
-                    <div class="ctx-item" data-action="setstatus" data-status="Completed">Completed</div>
-                    <div class="ctx-item" data-action="setstatus" data-status="Won't Play">Won't Play</div>
-                </div>
-            </div>
-            <div class="ctx-item" id="ctx-edit" data-action="edit">
-                <i class="ctx-icon">✎</i> Edit Game
-            </div>
-            <div class="ctx-item" id="ctx-uninstall" data-action="uninstall" style="display:none; color:#ff8080;">
-                <i class="ctx-icon">🗑</i> Uninstall Game
-            </div>
-        </div>
-    </div>
-
-    <script>
-    // ── Context menu system ──────────────────────────────────────────────────
-    (function () {
-        const menu     = document.getElementById('ctx-menu');
-        const STATUSES = ['Never Played', 'Unfinished', 'Beaten', 'Completed'];
-
-        let _appid        = null;   // appid of game being right-clicked, or null
-        let _currentStatus = null;  // current completion_status of that game
-        let _installed     = false; // whether the right-clicked game is installed
-        let _activeEl      = null;  // element that was focused at right-click time
-        let _selText       = '';    // selected text at right-click time
-        let _selStart      = 0;     // selection start index at right-click time
-        let _selEnd        = 0;     // selection end index at right-click time
-
-        // ── Helpers ───────────────────────────────────────────────────────────
-
-        function openUrl(url) {
-            if (window.pywebview && window.pywebview.api && window.pywebview.api.open_url) {
-                window.pywebview.api.open_url(url);
-            } else {
-                fetch('/api/open-url', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url })
-                });
-            }
-        }
-
-        function isEditable(el) {
-            if (!el) return false;
-            const tag = el.tagName;
-            return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
-        }
-
-        // Walk up from event target to find a game appid, installed status, and name from DOM
-        function findGameAppid(el) {
-            while (el && el !== document.body) {
-                // Library page: .game-card[data-appid]
-                if (el.classList && el.classList.contains('game-card') && el.dataset.appid)
-                    return el.dataset.appid;
-                // Home page: .shelf-capsule-wrap[data-appid]
-                if (el.classList && el.classList.contains('shelf-capsule-wrap') && el.dataset.appid)
-                    return el.dataset.appid;
-                // Pick page: .result-card[data-appid]
-                if (el.classList && el.classList.contains('result-card') && el.dataset.appid)
-                    return el.dataset.appid;
-                el = el.parentElement;
-            }
-            return null;
-        }
-
-        // Read installed, name, and status directly from DOM data attributes if available
-        function findGameDataFromDom(el) {
-            while (el && el !== document.body) {
-                if (el.dataset && el.dataset.appid) {
-                    return {
-                        installed: el.dataset.installed !== undefined ? parseInt(el.dataset.installed) : null,
-                        name:      el.dataset.name   || null,
-                        status:    el.dataset.status || null
-                    };
-                }
-                el = el.parentElement;
-            }
-            return { installed: null, name: null, status: null };
-        }
-
-        // ── Position & show ───────────────────────────────────────────────────
-
-        function showMenu(x, y) {
-            menu.classList.add('visible');
-            const vw = window.innerWidth, vh = window.innerHeight;
-            const mw = menu.offsetWidth  || 220;
-            const mh = menu.offsetHeight || 160;
-            menu.style.left = (x + mw > vw ? vw - mw - 6 : x) + 'px';
-            menu.style.top  = (y + mh > vh ? vh - mh - 6 : y) + 'px';
-        }
-
-        function hideMenu() {
-            menu.classList.remove('visible');
-            _appid = null;
-            _currentStatus = null;
-            _installed = false;
-            _activeEl  = null;
-            _selText   = '';
-            _selStart  = 0;
-            _selEnd    = 0;
-        }
-
-        // ── Build menu state before showing ──────────────────────────────────
-
-        async function buildAndShow(e) {
-            e.preventDefault();
-            const target    = e.target;
-
-            // Capture focused element and selection NOW — before menu appears and focus shifts
-            _activeEl  = document.activeElement;
-            _selText   = (window.getSelection() || '').toString();
-            _selStart  = (_activeEl && _activeEl.selectionStart != null) ? _activeEl.selectionStart : 0;
-            _selEnd    = (_activeEl && _activeEl.selectionEnd   != null) ? _activeEl.selectionEnd   : 0;
-
-            const editable  = isEditable(target) || isEditable(_activeEl);
-            const selection = _selText.length > 0;
-            const appid     = findGameAppid(target);
-
-            // ── Clipboard section ────────────────────────────────────────────
-            const cutEl  = document.getElementById('ctx-cut');
-            const cpyEl  = document.getElementById('ctx-copy');
-            const pstEl  = document.getElementById('ctx-paste');
-            const selEl  = document.getElementById('ctx-selectall');
-
-            // Cut: only if editable and something selected
-            cutEl.classList.toggle('disabled', !(editable && selection));
-            // Copy: any selection
-            cpyEl.classList.toggle('disabled', !selection);
-            // Paste: only in editable fields
-            pstEl.classList.toggle('disabled', !editable);
-            // Select All: only in editable fields
-            selEl.classList.toggle('disabled', !editable);
-
-            // Hide clipboard section entirely if nothing is relevant
-            const anyClipboard = editable || selection;
-            document.getElementById('ctx-clipboard-section').style.display =
-                anyClipboard ? '' : 'none';
-
-            // ── Game section ─────────────────────────────────────────────────
-            const gameSection = document.getElementById('ctx-game-section');
-            if (appid) {
-                _appid = appid;
-                gameSection.style.display = '';
-
-                // Hide the separator if clipboard section is hidden
-                document.getElementById('ctx-game-sep').style.display =
-                    anyClipboard ? '' : 'none';
-
-                // Fetch current status for checkmark — use in-memory data if available
-                let status = null;
-                let installed = false;
-                let _fetchedGame = null;
-
-                // First try DOM data attributes (home page has these, avoids a server fetch)
-                const domData = findGameDataFromDom(target);
-                if (domData.installed !== null) installed = !!domData.installed;
-                if (domData.status)             status    = domData.status;
-
-                if (typeof GAMES !== 'undefined') {
-                    const g = GAMES.find(g => String(g.appid) === String(appid));
-                    if (g) { status = g.completion_status; installed = !!g.installed; }
-                } else if (typeof _games !== 'undefined') {
-                    const g = _games.find(g => String(g.appid) === String(appid));
-                    if (g) { status = g.completion_status; installed = !!g.installed; }
-                }
-                // Only fetch from server if we still don't have status
-                if (status === null) {
-                    try {
-                        const res  = await fetch(`/api/game/${appid}`);
-                        const data = await res.json();
-                        if (data.status === 'success') {
-                            status    = data.game.completion_status;
-                            installed = !!data.game.installed;
-                            _fetchedGame = data.game;
-                        }
-                    } catch (_) {}
-                }
-                _currentStatus = status;
-                _installed     = installed;
-
-                // Show launch/install/uninstall based on installed status
-                document.getElementById('ctx-launch').style.display    = installed ? '' : 'none';
-                document.getElementById('ctx-install').style.display   = installed ? 'none' : '';
-                document.getElementById('ctx-uninstall').style.display = installed ? '' : 'none';
-
-                // Truncate long game names for the section label
-                let gameName = domData.name || '';
-                if (!gameName && typeof GAMES !== 'undefined') {
-                    const g = GAMES.find(g => String(g.appid) === String(appid));
-                    if (g) gameName = g.name;
-                }
-                if (!gameName && typeof _games !== 'undefined') {
-                    const g = _games.find(g => String(g.appid) === String(appid));
-                    if (g) gameName = g.name;
-                }
-                if (!gameName && _fetchedGame) {
-                    gameName = _fetchedGame.name || '';
-                }
-                // Last resort: read from the img alt/title in the DOM
-                if (!gameName) {
-                    const img = e.target.closest('[data-appid]')?.querySelector('img');
-                    if (img) gameName = img.alt || img.title || '';
-                }
-                const nameEl = document.getElementById('ctx-game-name');
-                nameEl.textContent = gameName
-                    ? (gameName.length > 28 ? gameName.slice(0, 26) + '…' : gameName)
-                    : `App ${appid}`;
-
-                // Mark current status in submenu
-                document.querySelectorAll('#ctx-completion-sub .ctx-item').forEach(item => {
-                    item.classList.toggle('current-status', item.dataset.status === status);
-                });
-            } else {
-                gameSection.style.display = 'none';
-            }
-
-            // Don't show menu at all if there's nothing to offer
-            if (!anyClipboard && !appid) return;
-
-            showMenu(e.clientX, e.clientY);
-        }
-
-        // ── Action handler ────────────────────────────────────────────────────
-
-        menu.addEventListener('click', async function (e) {
-            // Stop the document-level click→hideMenu from firing before we handle the action
-            e.stopPropagation();
-
-            const item = e.target.closest('.ctx-item[data-action]');
-            if (!item || item.classList.contains('disabled')) return;
-            // Ignore clicks on the parent completion-status row — it only opens the submenu
-            if (item.id === 'ctx-completion') return;
-            // Ignore clicks that originated inside the submenu but bubbled to has-sub
-            if (item.classList.contains('has-sub') && e.target.closest('.ctx-sub')) return;
-
-            const action = item.dataset.action;
-            // Capture _appid now before hideMenu nulls it
-            const appid  = _appid;
-
-            switch (action) {
-
-                case 'cut': {
-                    const el   = _activeEl;
-                    const s    = _selStart;
-                    const end  = _selEnd;
-                    const text = _selText;
-                    try {
-                        await navigator.clipboard.writeText(text);
-                    } catch (_) {}
-                    hideMenu();
-                    if (el && text && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-                        el.focus();
-                        el.value = el.value.slice(0, s) + el.value.slice(end);
-                        el.selectionStart = el.selectionEnd = s;
-                        el.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                    break;
-                }
-
-                case 'copy': {
-                    const text = _selText;
-                    hideMenu();
-                    try {
-                        await navigator.clipboard.writeText(text);
-                    } catch (_) {}
-                    break;
-                }
-
-                case 'paste': {
-                    const el = _activeEl;
-                    const s  = _selStart;
-                    const end = _selEnd;
-                    hideMenu();
-                    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-                        el.focus();
-                        el.setSelectionRange(s, end);
-                        let text = null;
-                        // Prefer Python API — reads OS clipboard without browser permission restrictions
-                        if (window.pywebview?.api?.read_clipboard) {
-                            try { text = await window.pywebview.api.read_clipboard(); } catch (_) {}
-                        }
-                        // Fall back to JS Clipboard API (works in browser mode)
-                        if (text === null) {
-                            try { text = await navigator.clipboard.readText(); } catch (_) {}
-                        }
-                        if (text !== null) {
-                            el.value = el.value.slice(0, s) + text + el.value.slice(end);
-                            el.selectionStart = el.selectionEnd = s + text.length;
-                            el.dispatchEvent(new Event('input', { bubbles: true }));
-                        } else {
-                            document.execCommand('paste');
-                            el.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
-                    }
-                    break;
-                }
-
-                case 'selectall': {
-                    const active = document.activeElement;
-                    hideMenu();
-                    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-                        active.focus();
-                        active.select();
-                    } else {
-                        document.execCommand('selectAll');
-                    }
-                    break;
-                }
-
-                case 'launch':
-                    hideMenu();
-                    if (!appid) break;
-                    fetch(`/api/launch/${appid}`, { method: 'POST' }).catch(() => {});
-                    setTimeout(() => window.location.reload(), 1500);
-                    break;
-
-                case 'install':
-                    hideMenu();
-                    if (appid) openUrl(`steam://install/${appid}`);
-                    break;
-
-                case 'uninstall':
-                    hideMenu();
-                    if (appid) openUrl(`steam://uninstall/${appid}`);
-                    break;
-
-                case 'store':
-                    hideMenu();
-                    if (appid) openUrl(`https://store.steampowered.com/app/${appid}`);
-                    break;
-
-                case 'edit':
-                    hideMenu();
-                    if (!appid) break;
-                    if (typeof openEditModalById === 'function') {
-                        openEditModalById(parseInt(appid));
-                    } else {
-                        try {
-                            const res  = await fetch(`/api/game/${appid}`);
-                            const data = await res.json();
-                            if (data.status === 'success' && typeof openEditModal === 'function') {
-                                openEditModal(data.game);
-                            }
-                        } catch (_) {}
-                    }
-                    break;
-
-            }
-        });
-
-        // ── Submenu: handle setstatus directly to avoid bubbling issues ─────────
-        // Uses capture phase so it fires before the document bubble-phase hideMenu listener
-        document.getElementById('ctx-completion-sub').addEventListener('click', async function(e) {
-            e.stopPropagation();
-            const item = e.target.closest('.ctx-item[data-action="setstatus"]');
-            if (!item) return;
-            const newStatus = item.dataset.status;
-            const appid = _appid;
-            hideMenu();
-            if (!appid || !newStatus) return;
-            try {
-                const res  = await fetch(`/api/set-completion/${appid}`, {
-                    method:  'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body:    JSON.stringify({ status: newStatus })
-                });
-                const data = await res.json();
-                if (data.status === 'success') {
-                    const aid = String(appid);
-                    if (typeof GAMES !== 'undefined') {
-                        const g = GAMES.find(g => String(g.appid) === aid);
-                        if (g) g.completion_status = newStatus;
-                    }
-                    if (typeof _games !== 'undefined') {
-                        const g = _games.find(g => String(g.appid) === aid);
-                        if (g) g.completion_status = newStatus;
-                    }
-                    document.querySelectorAll(`[data-appid="${aid}"]`).forEach(el => {
-                        el.dataset.status = newStatus;
-                    });
-                    const card  = document.querySelector(`.game-card[data-appid="${aid}"]`);
-                    const badge = card && card.querySelector('.completion-badge');
-                    if (badge) badge.textContent = newStatus;
-                }
-            } catch (_) {}
-        }, true);
-
-        // ── Event listeners ───────────────────────────────────────────────────
-        document.addEventListener('contextmenu', buildAndShow);
-        document.addEventListener('click', (e) => {
-            // Don't hide if the click was inside the context menu itself
-            if (menu.contains(e.target)) return;
-            hideMenu();
-        });
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') hideMenu(); });
-        // Prevent the menu itself from closing when clicking inside it (handled above)
-        menu.addEventListener('contextmenu', e => e.preventDefault());
-
-    })();
-    </script>
+    {% include '_ctx_menu.html' %}
+    <div id="launch-toast"></div>
 
     <script>
         // Filter modal functions (openFilterModal, applyFilters, closeFilterModal, clearAllFilters)
         // are defined in modals.html which is included above.
+
+        function showLaunchToast(msg) {
+            let toast = document.getElementById('launch-toast');
+            if (!toast) return;
+            toast.textContent = msg;
+            toast.classList.add('visible');
+            clearTimeout(toast._hideTimer);
+            toast._hideTimer = setTimeout(() => toast.classList.remove('visible'), 5000);
+        }
 
         async function launchGame(appid) {
             // Don't launch if in select mode or edit mode
@@ -831,19 +218,52 @@
             if (document.body.classList.contains('edit-mode')) {
                 return;
             }
-            
-            // Suppress gamepad input while the game is running.
-            // Persists across the page reload below via sessionStorage.
-            // Cleared only when the user clicks or types in PlayDate.
+
             if (window._inputMgr) window._inputMgr.suppressForGame();
 
-            // Steam is launched server-side via subprocess — pywebview blocks steam:// protocol
-            fetch(`/api/launch/${appid}`, { method: 'POST' }).catch(() => {});
+            let data = {};
+            try {
+                const resp = await fetch(`/api/launch/${appid}`, { method: 'POST' });
+                data = await resp.json().catch(() => ({}));
+            } catch (e) {}
 
-            // Refresh UI after a delay to show the new "Last Played" date
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            // Non-launch outcomes — show a message, do not reload
+            if (data.status === 'installing' || data.status === 'not_installed' || data.status === 'error') {
+                if (window._inputMgr) window._inputMgr.clearSuppression();
+                if (data.message) showLaunchToast(data.message);
+                // GOG install started — poll for download progress
+                if (data.gog_install) _pollGogInstall(appid);
+                return;
+            }
+
+            // Successful launch — refresh UI after a delay to show new Last Played date
+            setTimeout(() => window.location.reload(), 1500);
+        }
+
+        // Poll GOG install progress and update the launch toast.
+        // When the install finishes, shows a toast but does NOT auto-launch.
+        function _pollGogInstall(appid) {
+            let _poller = setInterval(async () => {
+                try {
+                    const r = await fetch(`/api/gog/install-status/${appid}`);
+                    const d = await r.json();
+                    if (d.status === 'running') {
+                        const pct  = d.total > 0 ? Math.round(d.done / d.total * 100) : 0;
+                        const done = (d.done  / 1e6).toFixed(0);
+                        const tot  = (d.total / 1e6).toFixed(0);
+                        showLaunchToast(`Installing: ${done} / ${tot} MB (${pct}%)`);
+                    } else if (d.status === 'success') {
+                        clearInterval(_poller);
+                        showLaunchToast('Install complete');
+                        // Reload to show the installed state
+                        location.reload();
+                    } else if (d.status === 'error' || d.status === 'cancelled') {
+                        clearInterval(_poller);
+                        showLaunchToast(d.message || 'Install failed');
+                        if (window._inputMgr) window._inputMgr.clearSuppression();
+                    }
+                } catch (_) {}
+            }, 2000);
         }
 
         let _populating = false;

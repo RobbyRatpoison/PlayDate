@@ -434,7 +434,7 @@
     }
     [data-tooltip]:hover::after { opacity: 1; }
 
-    .hltb-slider {
+    .hltb-slider, #bg-opacity-slider {
         flex: 1;
         min-width: 0;
         cursor: pointer;
@@ -445,12 +445,12 @@
         background: transparent;
         outline: none;
     }
-    .hltb-slider::-webkit-slider-runnable-track {
+    .hltb-slider::-webkit-slider-runnable-track, #bg-opacity-slider::-webkit-slider-runnable-track {
         height: 4px;
         border-radius: 2px;
         background: linear-gradient(to right, var(--accent) var(--slider-pct, 75%), var(--bg-raised, #555) var(--slider-pct, 75%));
     }
-    .hltb-slider::-webkit-slider-thumb {
+    .hltb-slider::-webkit-slider-thumb, #bg-opacity-slider::-webkit-slider-thumb {
         -webkit-appearance: none;
         width: 14px; height: 14px;
         margin-top: -5px;
@@ -496,8 +496,58 @@
         </div>
 
         <div class="hub-section">
+            <div class="hub-section-label">GOG</div>
+            <div style="padding:8px 10px;">
+                <div id="gog-disconnected-ui">
+                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:8px;">Connect your GOG account to import your library.</div>
+                    <button class="nav-btn" onclick="gogStartConnect()">Connect GOG Account</button>
+                </div>
+                <div id="gog-connected-ui" style="display:none;">
+                    <div style="font-size:0.85rem; color:var(--text-primary); margin-bottom:8px;">
+                        Connected as <span id="gog-username-label" style="color:var(--accent);"></span>
+                    </div>
+                    <div id="gog-proton-label" style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:8px;"></div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                        <button class="nav-btn" onclick="gogSync()">Sync Library</button>
+                        <button class="nav-btn" onclick="gogImportDates()">Import Purchase Dates</button>
+                        <button class="nav-btn" onclick="gogDetectDuplicates()">Detect Duplicates</button>
+                        <button class="nav-btn" style="color:var(--text-secondary);" onclick="gogDisconnect()">Disconnect</button>
+                    </div>
+                    <div id="gog-sync-status" class="tool-status"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="hub-section">
             <div class="hub-section-label">Updates</div>
             <button id="autoupdate-toggle-btn" class="settings-item" data-modal-row="2" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── GOG CONNECT MODAL ── -->
+<div id="gog-connect-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeGogConnectModal();">
+    <div class="modal-content" style="width:420px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h2 style="margin:0; color:var(--text-primary);">Connect GOG Account</h2>
+            <button onclick="closeGogConnectModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
+        </div>
+        <ol style="font-size:0.85rem; color:var(--text-secondary); padding-left:1.2em; margin:0 0 14px; line-height:1.7;">
+            <li>Click <strong style="color:var(--text-primary);">Open GOG Login</strong> — your browser opens the GOG login page.</li>
+            <li>Log in to your GOG account.</li>
+            <li>You'll land on a blank page — copy the full URL from the address bar and paste it below.</li>
+        </ol>
+        <button class="nav-btn" style="margin-bottom:14px;" onclick="gogOpenAuthUrl()">Open GOG Login</button>
+        <div style="margin-bottom:8px;">
+            <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:3px;">Paste the URL from the address bar</label>
+            <input id="gog-auth-code" type="text" placeholder="https://embed.gog.com/on_login_success?origin=client&code=…"
+                style="width:100%; box-sizing:border-box; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+                onkeydown="if(event.key==='Enter') gogSubmitCode()">
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <button class="nav-btn" onclick="gogSubmitCode()">Connect</button>
+            <div id="gog-connect-status" class="tool-status" style="margin:0;"></div>
         </div>
     </div>
 </div>
@@ -671,8 +721,15 @@
         </div>
         <input type="file" id="bg-file-input" accept=".jpg,.jpeg,.png,.webp" style="display:none" onchange="bgFileSelected(this)">
 
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <label for="bg-opacity-slider" style="font-size:0.85rem; color:var(--text-secondary); white-space:nowrap;">Opacity</label>
+            <input type="range" id="bg-opacity-slider" min="0" max="1" step="0.05"
+                style="flex:1;" oninput="_bgOpacityInput(this.value)">
+            <span id="bg-opacity-val" style="font-size:0.85rem; color:var(--text-primary); min-width:36px; text-align:right;"></span>
+        </div>
+
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-            <button class="nav-btn" id="bg-upload-btn" data-modal-row="0" onclick="runSetBackground()" disabled style="opacity:0.4; cursor:not-allowed;">Apply Background</button>
+            <button class="nav-btn" id="bg-upload-btn" data-modal-row="0" onclick="runSetBackground()">Save</button>
             <button class="nav-btn" id="bg-reset-btn" data-modal-row="0" onclick="runResetBackground()">Reset to Default</button>
             <button class="nav-btn" data-modal-row="0" onclick="closeBgModal()">Cancel</button>
         </div>
@@ -1215,8 +1272,21 @@
 
 <script>
 // ── MODAL HELPERS ───────────────────────────────────────────────────────────
+function _bgOpacityInput(val) {
+    const num = parseFloat(val);
+    document.documentElement.style.setProperty('--bg-image-opacity', num);
+    document.getElementById('bg-opacity-val').textContent = Math.round(num * 100) + '%';
+    const slider = document.getElementById('bg-opacity-slider');
+    slider.style.setProperty('--slider-pct', (num * 100) + '%');
+}
+
 function openBgModal() {
     document.getElementById('bg-modal').style.display = 'flex';
+    const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bg-image-opacity')) || 1;
+    const slider = document.getElementById('bg-opacity-slider');
+    slider.value = cur;
+    slider.style.setProperty('--slider-pct', (cur * 100) + '%');
+    document.getElementById('bg-opacity-val').textContent = Math.round(cur * 100) + '%';
 }
 function closeBgModal() {
     document.getElementById('bg-modal').style.display = 'none';
@@ -1224,7 +1294,7 @@ function closeBgModal() {
     document.getElementById('bg-filename').style.display = 'none';
     document.getElementById('bg-filename').textContent = '';
     const btn = document.getElementById('bg-upload-btn');
-    btn.disabled = true; btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
+    btn.textContent = 'Save';
     document.getElementById('bg-file-input').value = '';
     _bgFile = null;
 }
@@ -1690,6 +1760,9 @@ function pagBuildTree() {
         rootItems.push(compItems.length === 1 ? compItems[0] : { type: 'group', logic: 'OR', items: compItems });
     }
 
+    // PAGYWOSG is Steam-only
+    rootItems.unshift({ type: 'condition', column: 'platform', operator: '=', value: 'steam' });
+
     return { type: 'group', logic: 'AND', items: rootItems };
 }
 
@@ -1736,10 +1809,11 @@ function pagBuildWhere() {
         parts.push(`(','||groups||',' LIKE '%,${sgEsc},%'\n    AND (${winsConds.join('\n    OR ')}))`);
     }
 
-    if (!parts.length) return compClause || '1=1';
+    if (!parts.length && !compClause) return '1=1';
     let where = parts.join('\nOR ');
-    if (compClause) where = `(\n${where}\n)\nAND ${compClause}`;
-    return where;
+    if (parts.length && compClause) where = `(\n${where}\n)\nAND ${compClause}`;
+    else if (compClause)            where = compClause;
+    return `platform = 'steam'\nAND (\n${where}\n)`;
 }
 
 function pagUpdateSql() {
@@ -2379,40 +2453,49 @@ function setBgFile(file) {
     const label = document.getElementById('bg-filename');
     label.textContent = `Selected: ${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
     label.style.display = 'block';
-    const btn = document.getElementById('bg-upload-btn');
-    btn.disabled = false;
-    btn.style.opacity = '1';
-    btn.style.cursor  = 'pointer';
     status.textContent = '';
 }
 
 async function runSetBackground() {
-    if (!_bgFile) return;
     const btn    = document.getElementById('bg-upload-btn');
     const status = document.getElementById('bg-status');
-    btn.disabled    = true;
-    btn.textContent = 'Applying…';
-    status.className   = 'tool-status info';
-    status.textContent = 'Uploading…';
+    const opacity = parseFloat(document.getElementById('bg-opacity-slider').value);
 
-    const formData = new FormData();
-    formData.append('background', _bgFile);
+    btn.disabled    = true;
+    btn.textContent = 'Saving…';
+    status.className   = 'tool-status info';
+    status.textContent = 'Saving…';
 
     try {
-        const res  = await fetch('/api/set-background', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.status === 'success') {
+        // Always save opacity
+        await fetch('/api/theme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: { '--bg-image-opacity': String(opacity) } })
+        });
+
+        // Upload new image if one was selected
+        if (_bgFile) {
+            const formData = new FormData();
+            formData.append('background', _bgFile);
+            const res  = await fetch('/api/set-background', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.status !== 'success') throw new Error(data.message || 'Upload failed');
             status.className   = 'tool-status success';
             status.textContent = '✔ Background updated. Reloading…';
             setTimeout(() => window.location.reload(), 800);
         } else {
-            throw new Error(data.message || 'Unknown error');
+            status.className   = 'tool-status success';
+            status.textContent = '✔ Saved.';
+            btn.disabled    = false;
+            btn.textContent = 'Save';
+            setTimeout(() => { status.textContent = ''; status.className = 'tool-status'; }, 2000);
         }
     } catch (e) {
         status.className   = 'tool-status error';
         status.textContent = '✘ ' + e.message;
         btn.disabled    = false;
-        btn.textContent = 'Apply Background';
+        btn.textContent = 'Save';
     }
 }
 
@@ -3408,9 +3491,217 @@ function saveHltbThreshold() {
 
 function openSettingsModal() {
     document.getElementById('settings-modal').style.display = 'flex';
+    _gogRefreshStatus();
 }
 function closeSettingsModal() {
     document.getElementById('settings-modal').style.display = 'none';
+}
+
+// ── GOG ────────────────────────────────────────────────────────────────────
+
+async function _gogRefreshStatus() {
+    try {
+        const r = await fetch('/api/gog/status');
+        const d = await r.json();
+        document.getElementById('gog-disconnected-ui').style.display = d.connected ? 'none' : '';
+        document.getElementById('gog-connected-ui').style.display    = d.connected ? ''     : 'none';
+        if (d.connected) {
+            document.getElementById('gog-username-label').textContent = d.username || '(unknown)';
+            // Resume polling if a metadata sync is already in progress
+            const st = document.getElementById('gog-sync-status');
+            try {
+                const sr = await fetch('/api/gog/sync-metadata/status');
+                const sd = await sr.json();
+                if (sd.running) {
+                    st.style.color = 'var(--text-secondary)';
+                    st.textContent = _gogMetaStatusText(sd);
+                    _gogStartMetaPoll(st, (fd) => {
+                        if (fd.updated > 0 || fd.deleted > 0) setTimeout(() => location.reload(), 2000);
+                    });
+                } else {
+                    st.textContent = '';
+                }
+            } catch (_) { st.textContent = ''; }
+            // Show which runner will be used for Windows games
+            try {
+                const pr = await fetch('/api/gog/proton-versions');
+                const pd = await pr.json();
+                const lbl = document.getElementById('gog-proton-label');
+                lbl.style.color = '';
+                if (pd.platform === 'Windows') {
+                    lbl.textContent = 'Windows games run natively';
+                } else if (pd.versions && pd.versions.length > 0) {
+                    lbl.textContent = `Runner: ${pd.versions[0].name}`;
+                } else {
+                    lbl.textContent = 'No Proton found — Windows games will not run';
+                    lbl.style.color = 'var(--text-danger)';
+                }
+            } catch (_) {}
+        }
+    } catch (_) {}
+}
+
+async function gogStartConnect() {
+    closeSettingsModal();
+    document.getElementById('gog-auth-code').value = '';
+    document.getElementById('gog-connect-status').textContent = '';
+    document.getElementById('gog-connect-modal').style.display = 'flex';
+}
+
+function closeGogConnectModal() {
+    document.getElementById('gog-connect-modal').style.display = 'none';
+}
+
+async function gogOpenAuthUrl() {
+    try {
+        const r = await fetch('/api/gog/auth-url');
+        const d = await r.json();
+        // Open in system browser via pywebview API, same pattern as other external links
+        const a = document.createElement('a');
+        a.href = d.url; a.target = '_blank';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch (e) {
+        document.getElementById('gog-connect-status').textContent = 'Failed to get auth URL';
+    }
+}
+
+async function gogSubmitCode() {
+    const code = document.getElementById('gog-auth-code').value.trim();
+    if (!code) return;
+    const st = document.getElementById('gog-connect-status');
+    st.textContent = 'Connecting...';
+    st.style.color = 'var(--text-secondary)';
+    try {
+        const r = await fetch('/api/gog/callback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+        });
+        const d = await r.json();
+        if (d.status === 'success') {
+            st.style.color = 'var(--accent-positive, #5c7e10)';
+            st.textContent = `Connected as ${d.username || 'unknown'}`;
+            setTimeout(() => {
+                closeGogConnectModal();
+                openSettingsModal();
+            }, 1200);
+        } else {
+            st.style.color = 'var(--text-danger)';
+            st.textContent = d.message || 'Connection failed';
+        }
+    } catch (e) {
+        st.style.color = 'var(--text-danger)';
+        st.textContent = 'Network error';
+    }
+}
+
+let _gogMetaPollInterval = null;
+
+function _gogMetaStatusText(d, prefix) {
+    if (d.running) {
+        const pct = d.total > 0 ? ` (${d.done}/${d.total})` : '';
+        return `${prefix || 'Fetching metadata...'}${pct}`;
+    }
+    const parts = [`${d.updated} updated`];
+    if (d.deleted > 0) parts.push(`${d.deleted} non-game${d.deleted !== 1 ? 's' : ''} removed`);
+    if (d.errors  > 0) parts.push(`${d.errors} error${d.errors !== 1 ? 's' : ''}`);
+    return `Done — ${parts.join(', ')}`;
+}
+
+function _gogStartMetaPoll(st, onDone) {
+    if (_gogMetaPollInterval) return;
+    _gogMetaPollInterval = setInterval(async () => {
+        try {
+            const r = await fetch('/api/gog/sync-metadata/status');
+            const d = await r.json();
+            if (st) {
+                st.style.color = d.running ? 'var(--text-secondary)' : 'var(--accent-positive, #5c7e10)';
+                st.textContent  = _gogMetaStatusText(d);
+            }
+            if (!d.running) {
+                clearInterval(_gogMetaPollInterval);
+                _gogMetaPollInterval = null;
+                if (onDone) onDone(d);
+            }
+        } catch (_) {}
+    }, 1000);
+}
+
+async function gogSync() {
+    const st = document.getElementById('gog-sync-status');
+    st.style.color = 'var(--text-secondary)';
+    st.textContent = 'Syncing library...';
+    let newGames = 0, totalGames = 0, newDupes = 0;
+    try {
+        const r = await fetch('/api/gog/sync', { method: 'POST' });
+        const d = await r.json();
+        if (d.status !== 'success') {
+            st.style.color = 'var(--text-danger)';
+            st.textContent = d.message || 'Sync failed';
+            return;
+        }
+        newGames   = d.new_games;
+        totalGames = d.total_games;
+        newDupes   = d.duplicates_detected || 0;
+    } catch (e) {
+        st.style.color = 'var(--text-danger)';
+        st.textContent = 'Network error';
+        return;
+    }
+
+    st.style.color = 'var(--text-secondary)';
+    st.textContent = `Library synced (${newGames} new). Fetching metadata...`;
+    const _jsonHdr = { 'Content-Type': 'application/json' };
+    await fetch('/api/gog/sync-metadata', { method: 'POST', headers: _jsonHdr, body: JSON.stringify({ force: false }) });
+    _gogStartMetaPoll(st, (d) => {
+        const parts = [`${newGames} new game${newGames !== 1 ? 's' : ''} (${totalGames} total)`, `${d.updated} metadata updated`];
+        if (d.deleted > 0) parts.push(`${d.deleted} non-game${d.deleted !== 1 ? 's' : ''} removed`);
+        if (newDupes > 0) parts.push(`${newDupes} duplicate${newDupes !== 1 ? 's' : ''} detected`);
+        st.textContent = `Done — ${parts.join(', ')}`;
+        if (newGames > 0 || d.updated > 0 || d.deleted > 0) setTimeout(() => location.reload(), 2000);
+    });
+}
+
+async function gogSyncMetadata() {
+    const st = document.getElementById('gog-sync-status');
+    st.style.color = 'var(--text-secondary)';
+    st.textContent = 'Fetching metadata...';
+    await fetch('/api/gog/sync-metadata', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }) });
+    _gogStartMetaPoll(st, (d) => {
+        if (d.updated > 0 || d.deleted > 0) setTimeout(() => location.reload(), 2000);
+    });
+}
+
+function gogImportDates() {
+    // Open the GOG orders page with ?ref=playdate — the Tampermonkey script
+    // activates there, scrapes all order history, and POSTs dates to PlayDate.
+    const a = document.createElement('a');
+    a.href   = 'https://www.gog.com/en/account/settings/orders?ref=playdate';
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+async function gogDetectDuplicates() {
+    const status = document.getElementById('gog-sync-status');
+    if (status) status.textContent = 'Detecting duplicates…';
+    try {
+        const r = await fetch('/api/gog/detect-duplicates', { method: 'POST' });
+        const d = await r.json();
+        if (status) {
+            status.textContent = d.status === 'ok'
+                ? `Done — ${d.detected} duplicate${d.detected !== 1 ? 's' : ''} detected`
+                : `Error: ${d.message}`;
+        }
+    } catch (e) {
+        if (status) status.textContent = `Error: ${e.message}`;
+    }
+}
+
+async function gogDisconnect() {
+    await fetch('/api/gog/disconnect', { method: 'POST' });
+    _gogRefreshStatus();
 }
 function openToolsModal() {
     document.getElementById('tools-modal').style.display = 'flex';
@@ -3627,536 +3918,5 @@ async function _saveImportedFilter(name, tree) {
 }
 </script>
 
-<!-- ── HLTB MODAL ── -->
-<div id="hltb-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeHltbModal();">
-    <div class="modal-content" style="width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-shrink:0;">
-            <h2 style="margin:0; color:var(--text-primary);">HLTB Data</h2>
-            <button onclick="closeHltbModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-        </div>
+{% include '_modal_hltb.html' %}
 
-        <!-- Controls bar -->
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-shrink:0;">
-            <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0;">Auto-confirm threshold</span>
-            <input type="range" id="hltb-review-slider" min="0" max="100"
-                value="{{ hltb_match_threshold }}"
-                oninput="_onHltbReviewSlider(this)"
-                class="hltb-review-slider">
-            <span id="hltb-review-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
-        </div>
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-shrink:0;">
-            <button class="nav-btn" style="font-size:0.78rem;" onclick="_hltbConfirmAllAbove()">Confirm all above</button>
-            <button id="hltb-scrape-btn" class="nav-btn" style="font-size:0.78rem;" onclick="_hltbScrapeNoMatch()">Re-scrape unmatched</button>
-            <button id="hltb-stop-btn" class="nav-btn" style="font-size:0.78rem; display:none; color:var(--color-danger);" onclick="_hltbStopScrape()">Stop</button>
-        </div>
-        <div id="hltb-scrape-status" style="font-size:0.78rem; color:#8f98a0; min-height:1.1rem; margin-bottom:4px; flex-shrink:0;"></div>
-        <div id="hltb-review-stats" style="font-size:0.78rem; color:#8f98a0; margin-bottom:10px; flex-shrink:0;"></div>
-
-        <!-- Match list -->
-        <div id="hltb-review-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
-    </div>
-</div>
-
-<style>
-.hltb-review-slider {
-    flex: 1; min-width: 0; cursor: pointer;
-    -webkit-appearance: none; appearance: none;
-    height: 4px; border-radius: 2px;
-    background: transparent; outline: none;
-}
-.hltb-review-slider::-webkit-slider-runnable-track {
-    height: 4px; border-radius: 2px;
-    background: linear-gradient(to right, var(--accent) var(--slider-pct, 75%), var(--bg-raised, #555) var(--slider-pct, 75%));
-}
-.hltb-review-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px; height: 14px; margin-top: -5px;
-    border-radius: 50%; background: var(--accent); cursor: pointer;
-}
-.hltb-match-row {
-    padding: 8px 10px; border-radius: 5px;
-    border: 1px solid #2a475e; background: var(--bg-input);
-    font-size: 0.8rem;
-}
-.hltb-match-row.above { border-color: #2a475e; }
-.hltb-match-row.below { opacity: 0.55; border-color: #1e2e3a; }
-.hltb-match-row.no-match { opacity: 0.7; border-color: #1e2e3a; }
-.hltb-match-row .game-name { color: #c2c8cc; font-weight: 600; }
-.hltb-match-row .match-name { color: #8f98a0; }
-.hltb-match-row .score-badge {
-    display: inline-block; font-size: 0.72rem; font-weight: bold;
-    padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
-}
-.hltb-match-row .score-badge.above { background: rgba(92,126,16,0.25); color: #8bc34a; }
-.hltb-match-row .score-badge.below { background: rgba(180,80,50,0.2); color: #e06c4a; }
-.hltb-match-row .score-badge.no-match-badge { background: rgba(100,100,100,0.2); color: #6a7a86; }
-.hltb-match-row .times { color: #8f98a0; font-size: 0.75rem; }
-.hltb-match-row .row-btns { display: flex; gap: 6px; flex-shrink: 0; }
-.hltb-alt-results { display: none; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #2a475e; }
-.hltb-alt-results.open { display: flex; }
-.hltb-alt-result-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; background: rgba(255,255,255,0.03); font-size: 0.78rem; color: #c2c8cc; }
-.hltb-alt-result-row:hover { background: rgba(255,255,255,0.07); }
-.hltb-section-header {
-    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
-    color: #4a5e6e; text-transform: uppercase;
-    padding: 6px 2px 4px; margin-top: 4px;
-    border-top: 1px solid #1e2e3a;
-    cursor: pointer; user-select: none;
-    display: flex; align-items: center; gap: 5px;
-}
-.hltb-section-header:first-child { margin-top: 0; border-top: none; }
-.hltb-section-header:hover { color: #6a7a86; }
-.hltb-chevron { font-size: 0.6rem; flex-shrink: 0; }
-</style>
-
-<script>
-// ── HLTB MODAL ───────────────────────────────────────────────────────────────
-let _hltbMatches          = [];
-let _hltbNoMatchGames     = [];
-let _hltbUnfetchedCount   = 0;
-let _hltbSectionCollapsed = {};
-
-function openHltbModal() {
-    _hltbSectionCollapsed = { nomatch: true, confirmed: true };
-    document.getElementById('hltb-modal').style.display = 'flex';
-    _hltbLoadMatches();
-}
-
-function closeHltbModal() {
-    if (_hltbScrapeInterval) { clearInterval(_hltbScrapeInterval); _hltbScrapeInterval = null; }
-    document.getElementById('hltb-modal').style.display = 'none';
-}
-
-document.addEventListener('populate:hltb_done', () => {
-    if (document.getElementById('hltb-modal')?.style.display === 'flex') {
-        _hltbLoadMatches(true);
-    }
-});
-
-function _hltbStatsText() {
-    const confirmed = _hltbMatches.filter(r => r.hltb_fetched !== 'unconfirmed').length;
-    const parts = [`${confirmed} confirmed`];
-    if (_hltbUnfetchedCount) parts.push(`${_hltbUnfetchedCount} pending`);
-    return parts.join(' · ');
-}
-
-function _onHltbReviewSlider(el) {
-    document.getElementById('hltb-review-threshold-val').textContent = el.value;
-    const pct = (el.value - el.min) / (el.max - el.min) * 100;
-    el.style.setProperty('--slider-pct', pct + '%');
-    _hltbRenderList();
-}
-
-function _hltbGetThreshold() {
-    return parseInt(document.getElementById('hltb-review-slider').value, 10);
-}
-
-function _fmtMinsHltb(mins) {
-    if (mins == null) return null;
-    const h = Math.floor(mins / 60), m = mins % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
-
-function _hltbTimesStr(row) {
-    const parts = [];
-    if (row.hltb_main          != null) parts.push(`Main: ${_fmtMinsHltb(row.hltb_main)}`);
-    if (row.hltb_extras        != null) parts.push(`+Extras: ${_fmtMinsHltb(row.hltb_extras)}`);
-    if (row.hltb_completionist != null) parts.push(`Compl: ${_fmtMinsHltb(row.hltb_completionist)}`);
-    return parts.join(' · ');
-}
-
-async function _hltbLoadMatches(live = false) {
-    const list  = document.getElementById('hltb-review-list');
-    const stats = document.getElementById('hltb-review-stats');
-    if (!live) {
-        list.innerHTML    = '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">Loading...</div>';
-        stats.textContent = '';
-    }
-    try {
-        const data = await fetch('/api/hltb/matches').then(r => r.json());
-        if (!live) {
-            _hltbMatches        = data.matches;
-            _hltbNoMatchGames   = data.no_match_games || [];
-            _hltbUnfetchedCount = data.unfetched_count;
-            const slider = document.getElementById('hltb-review-slider');
-            const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
-            slider.style.setProperty('--slider-pct', pct + '%');
-            _hltbRenderList();
-        } else {
-            _hltbMergeLive(data.matches, data.no_match_games || [], data.unfetched_count);
-        }
-    } catch(e) {
-        if (!live) list.innerHTML = '<div style="color:#ff6b6b; font-size:0.8rem; padding:8px;">Failed to load matches.</div>';
-    }
-}
-
-function _hltbMergeLive(incoming, incomingNoMatch, unfetchedCount) {
-    if (unfetchedCount != null) _hltbUnfetchedCount = unfetchedCount;
-
-    const knownMatchIds   = new Set(_hltbMatches.map(r => r.appid));
-    const addedMatches    = incoming.filter(r => !knownMatchIds.has(r.appid));
-    if (addedMatches.length) _hltbMatches = _hltbMatches.concat(addedMatches);
-
-    const knownNoMatchIds = new Set(_hltbNoMatchGames.map(r => r.appid));
-    const addedNoMatch    = incomingNoMatch.filter(r => !knownNoMatchIds.has(r.appid));
-    if (addedNoMatch.length) _hltbNoMatchGames = _hltbNoMatchGames.concat(addedNoMatch);
-
-    if (addedMatches.length || addedNoMatch.length) {
-        _hltbRenderList();
-    } else {
-        const stats = document.getElementById('hltb-review-stats');
-        if (stats) stats.textContent = _hltbStatsText();
-    }
-}
-
-function _hltbToggleSection(key) {
-    _hltbSectionCollapsed[key] = !_hltbSectionCollapsed[key];
-    const rows    = document.querySelector(`.hltb-section-rows[data-section="${key}"]`);
-    const header  = document.querySelector(`.hltb-section-header[data-section="${key}"]`);
-    const chevron = header?.querySelector('.hltb-chevron');
-    if (rows)    rows.style.display    = _hltbSectionCollapsed[key] ? 'none' : '';
-    if (chevron) chevron.textContent   = _hltbSectionCollapsed[key] ? '▶' : '▼';
-}
-
-function _hltbRenderList() {
-    const threshold      = _hltbGetThreshold();
-    const list           = document.getElementById('hltb-review-list');
-    const stats          = document.getElementById('hltb-review-stats');
-    const aboveUnconf    = _hltbMatches
-        .filter(r => r.hltb_fetched === 'unconfirmed' && (r.hltb_match_score ?? 0) >= threshold)
-        .sort((a, b) => b.hltb_match_score - a.hltb_match_score);
-    const belowUnconf    = _hltbMatches
-        .filter(r => r.hltb_fetched === 'unconfirmed' && (r.hltb_match_score ?? 0) < threshold)
-        .sort((a, b) => b.hltb_match_score - a.hltb_match_score);
-    const confirmedBelow = _hltbMatches
-        .filter(r => r.hltb_fetched !== 'unconfirmed' && r.hltb_match_score != null && r.hltb_match_score < threshold)
-        .sort((a, b) => b.hltb_match_score - a.hltb_match_score);
-
-    stats.textContent = _hltbStatsText();
-
-    const hasContent = aboveUnconf.length || belowUnconf.length || _hltbNoMatchGames.length || confirmedBelow.length;
-    if (!hasContent) {
-        const confirmed = _hltbMatches.filter(r => r.hltb_fetched !== 'unconfirmed').length;
-        list.innerHTML = confirmed
-            ? '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">All matches confirmed.</div>'
-            : '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">No HLTB data yet — fetch will run automatically on next launch.</div>';
-        return;
-    }
-
-    function plMatch(n) { return `${n} unconfirmed match${n !== 1 ? 'es' : ''}`; }
-
-    function section(key, label, rowsHtml) {
-        const collapsed = !!_hltbSectionCollapsed[key];
-        return `<div class="hltb-section-header" data-section="${key}" onclick="_hltbToggleSection('${key}')">
-            <span class="hltb-chevron">${collapsed ? '▶' : '▼'}</span>${label}
-        </div>
-        <div class="hltb-section-rows" data-section="${key}" style="${collapsed ? 'display:none' : ''}">
-            ${rowsHtml}
-        </div>`;
-    }
-
-    function matchRowHtml(row) {
-        const isConfirmed = row.hltb_fetched !== 'unconfirmed';
-        const cls   = (row.hltb_match_score ?? 0) >= threshold ? 'above' : 'below';
-        const times = _hltbTimesStr(row);
-        return `<div class="hltb-match-row ${cls}" id="hltb-row-${row.appid}">
-            <div style="display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
-                <div style="flex:1; min-width:0;">
-                    <span class="game-name">${_escHtml(row.name)}</span>
-                    <span style="color:#4a5e6e; margin:0 4px;">→</span>
-                    <span class="match-name">${_escHtml(row.hltb_matched_name || '?')}</span>
-                    <span class="score-badge ${cls}" style="margin-left:6px;">${row.hltb_match_score ?? '?'}</span>
-                    ${isConfirmed ? '<span style="font-size:0.72rem; color:#8f98a0; margin-left:4px;">confirmed</span>' : ''}
-                </div>
-                <div class="row-btns">
-                    ${!isConfirmed ? `<button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbRowConfirm(${row.appid})">Confirm</button>` : ''}
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbRowOtherMatch(${row.appid}, this)">Other match</button>
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; color:var(--text-secondary);" onclick="_hltbRowClear(${row.appid})">Clear</button>
-                </div>
-            </div>
-            ${times ? `<div class="times" style="margin-top:3px;">${times}</div>` : ''}
-            <div class="hltb-alt-results" id="hltb-alt-${row.appid}"></div>
-        </div>`;
-    }
-
-    function noMatchRowHtml(row) {
-        return `<div class="hltb-match-row no-match" id="hltb-row-${row.appid}">
-            <div style="display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
-                <div style="flex:1; min-width:0;">
-                    <span class="game-name">${_escHtml(row.name)}</span>
-                    <span class="score-badge no-match-badge" style="margin-left:8px;">no match found</span>
-                </div>
-                <div class="row-btns">
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbNoMatchSearch(${row.appid}, this)">Search</button>
-                </div>
-            </div>
-            <div class="hltb-alt-results" id="hltb-alt-${row.appid}"></div>
-        </div>`;
-    }
-
-    let html = '';
-    if (aboveUnconf.length)
-        html += section('above', `${plMatch(aboveUnconf.length)} above threshold`, aboveUnconf.map(matchRowHtml).join(''));
-    if (belowUnconf.length)
-        html += section('below', `${plMatch(belowUnconf.length)} below threshold`, belowUnconf.map(matchRowHtml).join(''));
-    if (_hltbNoMatchGames.length)
-        html += section('nomatch', `${_hltbNoMatchGames.length} game${_hltbNoMatchGames.length !== 1 ? 's' : ''} with no match found`, _hltbNoMatchGames.map(noMatchRowHtml).join(''));
-    if (confirmedBelow.length)
-        html += section('confirmed', `${confirmedBelow.length} confirmed match${confirmedBelow.length !== 1 ? 'es' : ''} below threshold`, confirmedBelow.map(matchRowHtml).join(''));
-    list.innerHTML = html;
-}
-
-function _escHtml(s) {
-    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-async function _hltbRowConfirm(appid) {
-    const rowEl = document.getElementById(`hltb-row-${appid}`);
-    const btn   = rowEl?.querySelector('button');
-    if (btn) { btn.textContent = '...'; btn.disabled = true; }
-    try {
-        const data = await fetch(`/api/hltb/${appid}/confirm`, {method:'POST'}).then(r=>r.json());
-        if (data.status === 'success') {
-            const idx = _hltbMatches.findIndex(r => r.appid === appid);
-            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data);
-            _hltbRenderList();
-        }
-    } catch(e) { if (btn) { btn.textContent = 'Confirm'; btn.disabled = false; } }
-}
-
-async function _hltbRowClear(appid) {
-    await fetch(`/api/hltb/${appid}`, {method:'DELETE'});
-    _hltbMatches = _hltbMatches.filter(r => r.appid !== appid);
-    _hltbUnfetchedCount++;
-    _hltbRenderList();
-}
-
-async function _hltbRowOtherMatch(appid, btn) {
-    const altEl = document.getElementById(`hltb-alt-${appid}`);
-    if (altEl.classList.contains('open')) {
-        altEl.classList.remove('open');
-        btn.textContent = 'Other match';
-        return;
-    }
-    btn.textContent = '...';
-    btn.disabled = true;
-    const rowData = _hltbMatches.find(r => r.appid === appid);
-    await _hltbRowRunSearch(appid, rowData?.name || '');
-    btn.textContent = 'Other match';
-    btn.disabled = false;
-}
-
-async function _hltbNoMatchSearch(appid, btn) {
-    const altEl = document.getElementById(`hltb-alt-${appid}`);
-    if (altEl.classList.contains('open')) {
-        altEl.classList.remove('open');
-        btn.textContent = 'Search';
-        return;
-    }
-    btn.textContent = '...';
-    btn.disabled = true;
-    const rowData = _hltbNoMatchGames.find(r => r.appid === appid);
-    await _hltbRowRunSearch(appid, rowData?.name || '');
-    btn.textContent = 'Search';
-    btn.disabled = false;
-}
-
-function _hltbSetupAltDelegation(appid, altEl) {
-    if (altEl._hltbDelegated) return;
-    altEl._hltbDelegated = true;
-    altEl.addEventListener('click', function(e) {
-        const sel = e.target.closest('[data-hltb-select]');
-        if (sel) { _hltbRowSelect(appid, parseInt(sel.dataset.hltbId), sel.dataset.hltbScore ? parseInt(sel.dataset.hltbScore) : null, sel.dataset.hltbName); return; }
-        if (e.target.closest('[data-hltb-apply]')) { _hltbRowSelectById(appid); return; }
-        if (e.target.closest('[data-hltb-research]')) {
-            const input = altEl.querySelector('.hltb-row-search-query');
-            if (input) _hltbRowRunSearch(appid, input.value.trim());
-        }
-    });
-    altEl.addEventListener('keydown', function(e) {
-        if (e.key !== 'Enter') return;
-        if (e.target.classList.contains('hltb-row-search-query')) { e.preventDefault(); _hltbRowRunSearch(appid, e.target.value.trim()); }
-        else if (e.target.classList.contains('hltb-row-manual-id')) { _hltbRowSelectById(appid); }
-    });
-}
-
-async function _hltbRowRunSearch(appid, query) {
-    let altEl = document.getElementById(`hltb-alt-${appid}`);
-    if (!altEl) return;
-    _hltbSetupAltDelegation(appid, altEl);
-    try {
-        const url = `/api/hltb/${appid}/search` + (query ? `?q=${encodeURIComponent(query)}` : '');
-        const data = await fetch(url).then(r => r.json());
-        altEl = document.getElementById(`hltb-alt-${appid}`);
-        if (!altEl) return;
-        _hltbSetupAltDelegation(appid, altEl);
-        const results = data.results || [];
-        const titleRowHtml = `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-            <input class="hltb-row-search-query" type="text" value="${_escHtml(query)}"
-                style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);">
-            <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
-                data-hltb-research="1">Search</button>
-        </div>`;
-        const manualHtml = `<div style="display:flex; align-items:center; gap:6px; padding:6px 0 2px; border-top:1px solid #2a475e; margin-top:4px;">
-            <input class="hltb-row-manual-id" id="hltb-manual-id-${appid}" type="text" placeholder="Paste HLTB URL or game ID…"
-                style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);">
-            <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
-                data-hltb-apply="1">Apply</button>
-        </div>`;
-        const resultsHtml = results.length
-            ? results.map(r => {
-                const times = [];
-                if (r.hltb_main          != null) times.push(`Main: ${_fmtMinsHltb(r.hltb_main)}`);
-                if (r.hltb_extras        != null) times.push(`+Extras: ${_fmtMinsHltb(r.hltb_extras)}`);
-                if (r.hltb_completionist != null) times.push(`Compl: ${_fmtMinsHltb(r.hltb_completionist)}`);
-                return `<div class="hltb-alt-result-row">
-                    <span style="flex:1; min-width:0;">${_escHtml(r.hltb_matched_name)}</span>
-                    <span style="color:#8f98a0; font-size:0.72rem; flex-shrink:0;">${r.hltb_match_score}</span>
-                    <span style="color:#8f98a0; font-size:0.72rem; flex:1;">${times.join(' · ')}</span>
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
-                        data-hltb-select="1" data-hltb-id="${r.hltb_id}"
-                        data-hltb-score="${r.hltb_match_score ?? ''}"
-                        data-hltb-name="${_escHtml(r.hltb_matched_name)}">Select</button>
-                </div>`;
-            }).join('')
-            : '<div style="color:#8f98a0; font-size:0.78rem; padding-bottom:4px;">No results found.</div>';
-        altEl.innerHTML = titleRowHtml + resultsHtml + manualHtml;
-        altEl.classList.add('open');
-    } catch(e) {
-        altEl = document.getElementById(`hltb-alt-${appid}`) || altEl;
-        altEl.innerHTML = '<div style="color:#ff6b6b; font-size:0.78rem;">Search failed.</div>';
-        altEl.classList.add('open');
-    }
-}
-
-async function _hltbRowSelect(appid, hltbId, score, matchedName) {
-    try {
-        const data = await fetch(`/api/hltb/${appid}/select`, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: score})
-        }).then(r=>r.json());
-        if (data.status === 'success') {
-            const nmIdx = _hltbNoMatchGames.findIndex(r => r.appid === appid);
-            if (nmIdx !== -1) {
-                const nmGame = _hltbNoMatchGames.splice(nmIdx, 1)[0];
-                _hltbMatches.push({...data.data, appid, name: nmGame.name, hltb_matched_name: matchedName, hltb_id: hltbId});
-            } else {
-                const idx = _hltbMatches.findIndex(r => r.appid === appid);
-                if (idx !== -1) Object.assign(_hltbMatches[idx], data.data, {hltb_matched_name: matchedName, hltb_id: hltbId});
-            }
-            _hltbRenderList();
-        }
-    } catch(e) {}
-}
-
-async function _hltbRowSelectById(appid) {
-    const input = document.getElementById(`hltb-manual-id-${appid}`);
-    if (!input) return;
-    const raw = input.value.trim();
-    if (!raw) return;
-    const match = raw.match(/(?:game\/)?(\d+)/);
-    if (!match) { input.style.borderColor = 'var(--color-danger)'; return; }
-    input.style.borderColor = '';
-    const hltbId = parseInt(match[1], 10);
-    input.disabled = true;
-    try {
-        const data = await fetch(`/api/hltb/${appid}/select`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: null})
-        }).then(r => r.json());
-        if (data.status === 'success') {
-            const nmIdx = _hltbNoMatchGames.findIndex(r => r.appid === appid);
-            if (nmIdx !== -1) {
-                const nmGame = _hltbNoMatchGames.splice(nmIdx, 1)[0];
-                _hltbMatches.push({...data.data, appid, name: nmGame.name, hltb_id: hltbId});
-            } else {
-                const idx = _hltbMatches.findIndex(r => r.appid === appid);
-                if (idx !== -1) {
-                    Object.assign(_hltbMatches[idx], data.data, {hltb_id: hltbId});
-                    if (!data.times_available) _hltbMatches = _hltbMatches.filter(r => r.appid !== appid);
-                }
-            }
-            _hltbRenderList();
-        } else {
-            input.style.borderColor = 'var(--color-danger)';
-        }
-    } catch(e) {
-        input.style.borderColor = 'var(--color-danger)';
-    }
-    input.disabled = false;
-}
-
-async function _hltbConfirmAllAbove() {
-    const threshold = _hltbGetThreshold();
-    const targets   = _hltbMatches.filter(r => r.hltb_fetched === 'unconfirmed' && (r.hltb_match_score ?? 0) >= threshold);
-    if (!targets.length) return;
-    if (!await confirm(`Confirm ${targets.length} unconfirmed match${targets.length !== 1 ? 'es' : ''} above threshold ${threshold}?`)) return;
-    const stats = document.getElementById('hltb-review-stats');
-    stats.textContent = `Confirming 0 / ${targets.length}...`;
-    let done = 0;
-    for (const row of targets) {
-        const data = await fetch(`/api/hltb/${row.appid}/confirm`, {method:'POST'}).then(r=>r.json()).catch(()=>null);
-        if (data?.status === 'success') {
-            const idx = _hltbMatches.findIndex(r => r.appid === row.appid);
-            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data);
-        }
-        done++;
-        stats.textContent = `Confirming ${done} / ${targets.length}...`;
-    }
-    _hltbRenderList();
-}
-
-let _hltbScrapeInterval = null;
-
-async function _hltbScrapeNoMatch() {
-    const scrapeBtn = document.getElementById('hltb-scrape-btn');
-    const stopBtn   = document.getElementById('hltb-stop-btn');
-    const statusEl  = document.getElementById('hltb-scrape-status');
-
-    scrapeBtn.disabled = true;
-    statusEl.textContent = 'Starting…';
-
-    const res = await fetch('/api/bulk-op/start', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({op: 'hltb', scope: 'no_match'})
-    }).then(r => r.json()).catch(() => null);
-
-    if (!res || res.status !== 'success') {
-        statusEl.textContent = res?.message ? '✘ ' + res.message : '✘ Failed to start.';
-        scrapeBtn.disabled = false;
-        return;
-    }
-
-    scrapeBtn.style.display = 'none';
-    stopBtn.style.display   = '';
-    statusEl.textContent    = `0 / ${res.total}`;
-
-    _hltbScrapeInterval = setInterval(async () => {
-        try {
-            const d = await fetch('/api/bulk-op/status').then(r => r.json());
-            const done = d.done + d.failed;
-            statusEl.textContent = `${done} / ${d.total}${d.failed ? ` (${d.failed} failed)` : ''}`;
-            if (d.done > 0) _hltbLoadMatches(true);
-            if (!d.running) {
-                clearInterval(_hltbScrapeInterval);
-                _hltbScrapeInterval = null;
-                scrapeBtn.style.display = '';
-                scrapeBtn.disabled = false;
-                stopBtn.style.display = 'none';
-                statusEl.textContent = d.result?.error
-                    ? '✘ ' + d.result.error
-                    : `Done — ${d.done} fetched${d.failed ? ', ' + d.failed + ' failed' : ''}.`;
-                _hltbLoadMatches(false);
-            }
-        } catch(e) {}
-    }, 1000);
-}
-
-async function _hltbStopScrape() {
-    document.getElementById('hltb-stop-btn').disabled = true;
-    await fetch('/api/bulk-op/cancel', {method: 'POST'}).catch(() => {});
-}
-</script>

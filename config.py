@@ -9,7 +9,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -57,6 +57,8 @@ DEFAULT_THEME = {
     "--color-danger":     "#a32a2a",
     "--text-danger":      "#ff8080",
     "--color-warning":    "#c97c00",
+    # Background
+    "--bg-image-opacity": "1",
 }
 
 def load_theme():
@@ -490,6 +492,9 @@ def _load_state_unlocked():
     if 'card_height' not in state:
         state['card_height'] = 200
         dirty = True
+    if 'hide_duplicates' not in state:
+        state['hide_duplicates'] = True
+        dirty = True
     if dirty:
         _write_state_atomic(state)
     return state
@@ -515,6 +520,7 @@ def save_state(updates):
         if "fullscreen" in updates: state["fullscreen"] = updates["fullscreen"]
         if "hltb_match_threshold" in updates: state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
         if "pagywosg_sg_group" in updates: state["pagywosg_sg_group"] = updates["pagywosg_sg_group"]
+        if "hide_duplicates" in updates: state["hide_duplicates"] = bool(updates["hide_duplicates"])
 
         if "shelves" in updates:
             state["shelves"] = updates["shelves"]

@@ -345,6 +345,10 @@
         <button onclick="openFilterModal()">FILTERS</button>
         <button onclick="openBulkEditModal()">BULK OPS</button>
         <button id="select-mode-btn" class="select-mode-btn" onclick="toggleSelectMode()">SELECT</button>
+        <button id="dup-toggle-btn" onclick="toggleHideDuplicates()"
+                title="Show or hide duplicate entries (e.g. GOG version when Steam version exists)">
+            {{ 'DUPES: OFF' if state.get('hide_duplicates', True) else 'DUPES: ON' }}
+        </button>
         <button id="art-orient-btn" onclick="toggleArtOrientation()" title="Toggle vertical/horizontal images">⬜ Vertical</button>
         <input type="range" id="card-size-slider" min="120" max="400" step="10"
                value="{{ state.get('card_height', 200) }}"
@@ -360,7 +364,8 @@
     </div>
 
     <div class="library-header">
-        <p>Showing {{ games|length }} games in your collection</p>
+        <p>Showing {{ games|length }} games in your collection
+        {%- if state.get('hide_duplicates', True) and hidden_dupes > 0 %} — {{ hidden_dupes }} duplicate{{ 's' if hidden_dupes != 1 else '' }} hidden{% endif %}</p>
     </div>
 
     <div class="game-grid" id="game-grid"></div>
@@ -412,6 +417,11 @@
         }
     })();
 
+    function toggleHideDuplicates() {
+        const current = {{ 'true' if state.get('hide_duplicates', True) else 'false' }};
+        sendStateUpdate({ hide_duplicates: !current });
+    }
+
     function toggleArtOrientation() {
         _artOrientation = _artOrientation === 'vertical' ? 'horizontal' : 'vertical';
         const grid = document.getElementById('game-grid');
@@ -446,30 +456,24 @@
     // ── Current filter tree from server (may already contain a name condition) ──
     const _serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
 
-    // Strip the name LIKE condition added by search, unwrapping the preserved base if present.
+    // Strip the search quick-filter (name LIKE) from the top level of the active tree,
+    // unwrapping a single wrapped base group if that's all that remains.
     function _baseTree(tree) {
         if (!tree || !tree.items) return tree;
-        const items = tree.items.filter(
-            item => !(item.type === 'condition' && item.column === 'name' && item.operator === 'LIKE')
+        const items = tree.items.filter(item =>
+            !(item.type === 'condition' && item.column === 'name' && item.operator === 'LIKE')
         );
-        // If only one group child remains it was our wrapped base — unwrap it.
         if (items.length === 1 && items[0].type === 'group') return items[0];
         return { ...tree, items };
     }
 
-    // ── Build a search-narrowed tree: name LIKE %q% AND (existing tree) ──
     function buildSearchTree(query) {
         const base = _baseTree(_serverFilterTree);
-        const nameCond = { type: 'condition', column: 'name', operator: 'LIKE', value: query };
-        if (!query.trim()) {
-            return base || { type: 'group', logic: 'AND', items: [] };
-        }
         const hasBase = base && (base.custom_sql || (base.items && base.items.length > 0));
-        if (!hasBase) {
-            return { type: 'group', logic: 'AND', items: [nameCond] };
-        }
-        // Wrap base as a child so custom_sql and nested structure are preserved.
-        return { type: 'group', logic: 'AND', items: [nameCond, base] };
+        if (!query || !query.trim()) return base || { type: 'group', logic: 'AND', items: [] };
+        const nameNode = { type: 'condition', column: 'name', operator: 'LIKE', value: query };
+        if (!hasBase) return { type: 'group', logic: 'AND', items: [nameNode] };
+        return { type: 'group', logic: 'AND', items: [nameNode, base] };
     }
 
     function handleSearch(event, query) {
@@ -481,7 +485,20 @@
         sendStateUpdate({ filter_tree: buildSearchTree(query) });
     }
 
-    function updateSort(column) { sendStateUpdate({ sort: column }); }
+    const _sortDefaultOrder = {
+        name:                'ASC',
+        playtime_forever:    'DESC',
+        release_date:        'DESC',
+        last_played:         'DESC',
+        date_added:          'DESC',
+        review_percentage:   'DESC',
+        weighted_percentage: 'DESC',
+        hltb_min:            'ASC',
+    };
+    function updateSort(column) {
+        const order = _sortDefaultOrder[column] ?? 'ASC';
+        sendStateUpdate({ sort: column, order });
+    }
 
     async function clearAndReload() {
         const emptyTree = { type: 'group', logic: 'AND', items: [] };
@@ -566,6 +583,7 @@
             card.className = 'game-card';
             card.id = `card-${game.appid}`;
             card.dataset.appid = game.appid;
+            card.dataset.platform = game.platform || 'steam';
             // Start as empty placeholder — observer populates on scroll-in
             fragment.appendChild(card);
         });
@@ -658,6 +676,7 @@
             card.className    = 'game-card';
             card.id           = `card-${appid}`;
             card.dataset.appid = appid;
+            card.dataset.platform = g.platform || 'steam';
             fragment.appendChild(card);
         }
         grid.appendChild(fragment);
@@ -1097,7 +1116,7 @@ async function startBulkOp(op) {
         payload.source = document.querySelector('input[name="brs-source"]:checked')?.value || 'auto';
     }
 
-    const opLabel = op === 'rescrape' ? 'Re-scrape Steam data' : op === 'protondb' ? 'Fetch ProtonDB data' : op === 'hltb' ? 'Fetch HLTB data' : 'Scrape artwork';
+    const opLabel = op === 'rescrape' ? 'Re-scrape store data' : op === 'protondb' ? 'Fetch ProtonDB data' : op === 'hltb' ? 'Fetch HLTB data' : 'Scrape artwork';
     const suffix  = scope === 'all' ? '\n\nThis will process your entire library and may take a long time.' : '';
     if (!await confirm(`${opLabel} for ${displayCount} game${displayCount !== 1 ? 's' : ''}?${suffix}`)) return;
 
@@ -1364,20 +1383,42 @@ async function startBulkDateImport() {
         return;
     }
 
-    if (data.total === 0) {
+    if (data.total === 0 && !data.has_gog) {
         status.className = 'bulk-status-success';
         status.textContent = 'No games to process.';
         startBtn.disabled = false;
         return;
     }
 
-    const _a = document.createElement('a');
-    _a.href = `https://help.steampowered.com/en/wizard/HelpWithGame/?appid=${data.first_appid}&ref=playdate&bulk=1`;
-    _a.target = '_blank';
-    _a.rel = 'noopener';
-    document.body.appendChild(_a);
-    _a.click();
-    document.body.removeChild(_a);
+    // Open GOG orders page if any GOG games are in scope
+    if (data.has_gog) {
+        const _g = document.createElement('a');
+        _g.href = 'https://www.gog.com/en/account/settings/orders?ref=playdate';
+        _g.target = '_blank';
+        _g.rel = 'noopener';
+        document.body.appendChild(_g);
+        _g.click();
+        document.body.removeChild(_g);
+    }
+
+    // Open Steam Help page if any Steam games are in scope
+    if (data.total > 0) {
+        const _a = document.createElement('a');
+        _a.href = `https://help.steampowered.com/en/wizard/HelpWithGame/?appid=${data.first_appid}&ref=playdate&bulk=1`;
+        _a.target = '_blank';
+        _a.rel = 'noopener';
+        document.body.appendChild(_a);
+        _a.click();
+        document.body.removeChild(_a);
+    }
+
+    // If only GOG games, re-enable the button and show a status
+    if (data.total === 0) {
+        status.className = 'bulk-status-success';
+        status.textContent = 'GOG orders page opened — check that tab for results.';
+        startBtn.disabled = false;
+        return;
+    }
 
     status.textContent = '';
     const logEl = document.getElementById('bdi-log');
@@ -1738,9 +1779,9 @@ async function stopBulkDateImport() {
                 </label>
             </div>
 
-            <!-- Steam Data subsection -->
+            <!-- Store Data subsection -->
             <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:10px;">
-                <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">STEAM DATA</div>
+                <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">STORE DATA</div>
                 <div style="display:flex; gap:16px; margin-bottom:10px; flex-wrap:wrap;">
                     <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.85rem;">
                         <input type="checkbox" id="brs-do-meta" checked style="width:auto; margin:0;"> Store info &amp; reviews
@@ -1751,7 +1792,7 @@ async function stopBulkDateImport() {
                 </div>
                 <button id="brs-start-meta-btn" data-modal-row="0" onclick="startBulkOp('rescrape')"
                     style="width:100%; padding:9px; font-size:0.85rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:5px; cursor:pointer;">
-                    Re-scrape Steam Data
+                    Re-scrape Store Data
                 </button>
             </div>
 
@@ -1791,6 +1832,16 @@ async function stopBulkDateImport() {
                 </button>
             </div>
 
+            <!-- HLTB subsection -->
+            <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:10px;">
+                <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">HLTB</div>
+                <p style="font-size:0.78rem; color:#8f98a0; margin:0 0 10px;">Fetches completion times from HowLongToBeat by game name.</p>
+                <button id="brs-start-hltb-btn" data-modal-row="2" onclick="startBulkOp('hltb')"
+                    style="width:100%; padding:9px; font-size:0.85rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:5px; cursor:pointer;">
+                    Fetch HLTB Data
+                </button>
+            </div>
+
             {% if not is_windows %}
             <!-- ProtonDB subsection -->
             <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:10px;">
@@ -1802,16 +1853,6 @@ async function stopBulkDateImport() {
                 </button>
             </div>
             {% endif %}
-
-            <!-- HLTB subsection -->
-            <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:10px;">
-                <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">HLTB</div>
-                <p style="font-size:0.78rem; color:#8f98a0; margin:0 0 10px;">Fetches completion times from HowLongToBeat by game name.</p>
-                <button id="brs-start-hltb-btn" data-modal-row="2" onclick="startBulkOp('hltb')"
-                    style="width:100%; padding:9px; font-size:0.85rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:5px; cursor:pointer;">
-                    Fetch HLTB Data
-                </button>
-            </div>
 
             <!-- Shared progress + status -->
             <div id="brs-progress" style="display:none; margin-bottom:10px;">

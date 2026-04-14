@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.WARNING, handlers=[_handler_file, _handler_str
 
 # PlayDate modules at INFO
 for _name in ('__main__', 'app', 'config', 'database', 'library', 'index',
-              'scrapers', 'utils', 'images', 'imports'):
+              'scrapers', 'utils', 'images', 'imports', 'gog', 'runners.proton'):
     logging.getLogger(_name).setLevel(logging.INFO)
 
 log = logging.getLogger(__name__)
@@ -140,6 +140,12 @@ def create_app(template_folder=None, static_folder=None):
         kwargs['static_folder'] = static_folder
 
     app = Flask(__name__, **kwargs)
+
+    # Register a signed-int converter so routes like /api/game/-1 work for GOG games
+    from werkzeug.routing.converters import IntegerConverter
+    class SignedIntConverter(IntegerConverter):
+        regex = r'-?\d+'
+    app.url_map.converters['int'] = SignedIntConverter
 
     app.register_blueprint(config_bp)
     app.register_blueprint(index_bp)
@@ -609,25 +615,61 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
-    @app.route('/api/launch/<int:appid>', methods=['POST'])
+    @app.route('/api/launch/<appid>', methods=['POST'])
     def launch_game(appid):
         import subprocess
-        import platform
+        import platform as _platform
 
-        # Always attempt to open the game via Steam
         try:
-            if platform.system() == 'Darwin':
-                subprocess.Popen(['open', f'steam://run/{appid}'])
-            elif platform.system() == 'Linux':
-                subprocess.Popen(['xdg-open', f'steam://run/{appid}'])
-            elif platform.system() == 'Windows':
-                subprocess.Popen(['cmd', '/c', f'start steam://run/{appid}'])
-            print(f"Launched AppID: {appid}")
-        except Exception as e:
-            print(f"Failed to launch AppID {appid}: {e}")
+            appid_int = int(appid)
+        except ValueError:
+            return jsonify({"status": "error", "message": "Invalid appid"}), 400
+
+        os_name = _platform.system()
+
+        # Look up platform and install status for this game
+        db = get_db()
+        row = db.execute(
+            "SELECT name, platform, platform_id, installed FROM games WHERE appid = ?", (appid_int,)
+        ).fetchone()
+        db.close()
+        game_name     = row['name'] if row else ''
+        game_platform = (row['platform'] or 'steam') if row else 'steam'
+        platform_id   = row['platform_id'] if row else None
+        is_installed  = bool(row['installed']) if row else False
+
+        if game_platform == 'steam':
+            # Steam launch via steam:// URI (handles install too if not installed)
+            url = f'steam://run/{appid_int}'
+            try:
+                if os_name == 'Darwin':
+                    subprocess.Popen(['open', url])
+                elif os_name == 'Linux':
+                    subprocess.Popen(['xdg-open', url])
+                elif os_name == 'Windows':
+                    subprocess.Popen(['cmd', '/c', f'start {url}'])
+                log.info(f"Launched Steam appid {appid_int}")
+            except Exception as e:
+                log.error(f"Failed to launch Steam appid {appid_int}: {e}")
+        elif game_platform == 'gog':
+            from gog import launch_gog_game, start_install, get_install_state
+            if is_installed:
+                result = launch_gog_game(appid_int)
+                return jsonify(result)
+            else:
+                # Start download in background; tell frontend to poll
+                start_install(appid_int)
+                return jsonify({
+                    'status':      'installing',
+                    'gog_install': True,
+                    'message':     f'Installing {game_name}\u2026',
+                })
+        else:
+            return jsonify({"status": "not_supported",
+                            "message": "Launch not yet supported for this platform"}), 501
 
         # Record the launch date only if the game is marked installed
-        new_ts = record_launch(appid)
+        new_ts = record_launch(appid_int)
         if new_ts:
             from database import ts_to_date
             return jsonify({"status": "success", "last_played": ts_to_date(new_ts)})
@@ -1049,24 +1091,35 @@ def create_app(template_folder=None, static_folder=None):
         appids = data.get('appids', [])
         db  = get_db()
         if scope == 'all':
-            rows = db.execute('SELECT appid, name FROM games ORDER BY name').fetchall()
+            rows = db.execute('SELECT appid, name, platform FROM games ORDER BY name').fetchall()
         elif appids:
             ph   = ','.join('?' * len(appids))
-            rows = db.execute(f'SELECT appid, name FROM games WHERE appid IN ({ph})', appids).fetchall()
+            rows = db.execute(f'SELECT appid, name, platform FROM games WHERE appid IN ({ph})', appids).fetchall()
         else:
             db.close()
             return jsonify({'status': 'error', 'message': 'No games provided.'}), 400
         db.close()
-        queue = [{'appid': r['appid'], 'name': r['name']} for r in rows]
-        if not queue:
-            return jsonify({'status': 'ok', 'total': 0, 'first_appid': None})
-        _bulk_date_state.update({'queue': queue[1:], 'current': queue[0],
-                                 'done': 0, 'failed': 0, 'total': len(queue),
-                                 'active': True, 'script_connected': False,
-                                 'results': []})
-        log.info(f"Bulk date import started: {len(queue)} games queued")
-        return jsonify({'status': 'ok', 'first_appid': queue[0]['appid'],
-                        'first_name': queue[0]['name'], 'total': len(queue)})
+
+        # Split by platform: Steam games go through the per-page Help flow;
+        # GOG games are handled separately via the orders page Tampermonkey script.
+        has_gog   = any((r['platform'] or 'steam') == 'gog' for r in rows)
+        steam_rows = [r for r in rows if (r['platform'] or 'steam') == 'steam']
+
+        queue = [{'appid': r['appid'], 'name': r['name']} for r in steam_rows]
+        if queue:
+            _bulk_date_state.update({'queue': queue[1:], 'current': queue[0],
+                                     'done': 0, 'failed': 0, 'total': len(queue),
+                                     'active': True, 'script_connected': False,
+                                     'results': []})
+            log.info(f"Bulk date import started: {len(queue)} Steam games queued")
+
+        return jsonify({
+            'status':      'ok',
+            'first_appid': queue[0]['appid'] if queue else None,
+            'first_name':  queue[0]['name']  if queue else None,
+            'total':       len(queue),
+            'has_gog':     has_gog,
+        })
 
     def _bulk_date_advance():
         if _bulk_date_state['queue']:
@@ -1128,6 +1181,281 @@ def create_app(template_folder=None, static_folder=None):
         _bulk_date_state.update({'queue': [], 'active': False, 'current': None, 'script_connected': False})
         log.info("Bulk date import cancelled")
         return jsonify({'status': 'ok'})
+
+    # ── GOG ──────────────────────────────────────────────────────────────────
+
+    @app.route('/api/gog/status')
+    def gog_status():
+        """Return GOG connection status and username."""
+        from gog import is_connected, get_username
+        if not is_connected():
+            return jsonify({'connected': False, 'username': None})
+        username = get_username()
+        return jsonify({'connected': True, 'username': username})
+
+    @app.route('/api/gog/auth-url')
+    def gog_auth_url():
+        """Return the GOG OAuth2 authorization URL."""
+        from gog import get_auth_url
+        return jsonify({'url': get_auth_url()})
+
+    @app.route('/api/gog/callback', methods=['POST'])
+    def gog_callback():
+        """Exchange an authorization code (or full redirect URL) for GOG tokens."""
+        raw = ((request.json or {}).get('code') or '').strip()
+        if not raw:
+            return jsonify({'status': 'error', 'message': 'code is required'}), 400
+        # Accept the full redirect URL and extract just the code parameter
+        from urllib.parse import urlparse, parse_qs
+        if raw.startswith('http'):
+            qs   = parse_qs(urlparse(raw).query)
+            code = (qs.get('code') or [''])[0].strip()
+            if not code:
+                return jsonify({'status': 'error', 'message': 'No code= found in that URL'}), 400
+        else:
+            code = raw
+        from gog import exchange_code
+        ok, result = exchange_code(code)
+        if ok:
+            return jsonify({'status': 'success', 'username': result})
+        return jsonify({'status': 'error', 'message': result}), 400
+
+    @app.route('/api/gog/disconnect', methods=['POST'])
+    def gog_disconnect():
+        """Remove stored GOG tokens."""
+        from gog import clear_gog_tokens
+        clear_gog_tokens()
+        return jsonify({'status': 'success'})
+
+    @app.route('/api/gog/sync', methods=['POST'])
+    def gog_sync():
+        """Sync GOG library. Returns immediately with job result (sync is fast)."""
+        from gog import sync_library
+        result = sync_library()
+        if 'error' in result:
+            return jsonify({'status': 'error', 'message': result['error']}), 400
+        return jsonify({
+            'status':               'success',
+            'new_games':            result['new_games'],
+            'total_games':          result['total_games'],
+            'errors':               result.get('errors', []),
+            'duplicates_detected':  result.get('duplicates_detected', 0),
+        })
+
+    @app.route('/api/gog/sync-metadata', methods=['POST'])
+    def gog_sync_metadata():
+        """Start GOG metadata sync in a background thread.
+        Pass {force: true} in the request body to re-fetch all games; omit for new-only."""
+        from gog import start_meta_sync
+        force  = (request.json or {}).get('force', False)
+        result = start_meta_sync(force=force)
+        return jsonify(result)
+
+    @app.route('/api/gog/sync-metadata/status')
+    def gog_sync_metadata_status():
+        """Return current GOG metadata sync state."""
+        from gog import get_meta_sync_state
+        return jsonify(get_meta_sync_state())
+
+    @app.route('/api/gog/bulk-date-import', methods=['POST'])
+    def gog_bulk_date_import():
+        """Receive a {gog_id: unix_timestamp} map from the Tampermonkey script
+        and update date_added for matching GOG games in the library."""
+        dates = (request.json or {}).get('dates', {})
+        if not dates:
+            return jsonify({'status': 'error', 'message': 'No dates provided'}), 400
+
+        db = get_db()
+        rows = db.execute(
+            "SELECT appid, platform_id FROM games WHERE platform = 'gog'"
+        ).fetchall()
+        db.close()
+
+        # Build platform_id → appid map
+        gog_map = {row['platform_id']: row['appid'] for row in rows}
+
+        updated   = 0
+        not_found = 0
+        for gog_id, ts in dates.items():
+            appid = gog_map.get(str(gog_id))
+            if appid is None:
+                not_found += 1
+                continue
+            try:
+                update_game_data(appid, date_added=int(ts))
+                updated += 1
+            except Exception as e:
+                log.warning(f'GOG bulk-date-import: failed for gog_id={gog_id}: {e}')
+
+        return jsonify({'status': 'success', 'updated': updated, 'not_found': not_found})
+
+    @app.route('/api/gog/scrape-single/<int:appid>', methods=['POST'])
+    def gog_scrape_single(appid):
+        """Fetch and save GOG metadata + achievements for a single game."""
+        from gog import fetch_gog_metadata, fetch_gog_achievements, get_valid_session, get_galaxy_user_id
+        from database import ts_to_date
+        from datetime import date
+
+        db  = get_db()
+        row = db.execute(
+            "SELECT platform_id FROM games WHERE appid = ? AND platform = 'gog'", (appid,)
+        ).fetchone()
+        db.close()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'GOG game not found'}), 404
+
+        gog_id = row['platform_id']
+        meta   = fetch_gog_metadata(gog_id)
+        if meta is None:
+            return jsonify({'status': 'error', 'message': 'Metadata fetch failed'}), 502
+
+        meta.pop('_category', None)
+        today          = date.today().isoformat()
+        meta['meta_fetched'] = today
+
+        session        = get_valid_session()
+        galaxy_user_id = get_galaxy_user_id()
+        if session and galaxy_user_id:
+            ach = fetch_gog_achievements(gog_id, galaxy_user_id, session)
+            if ach is not None:
+                meta.update(ach)
+                meta['cheevos_fetched'] = today
+
+        update_game_data(appid, **meta)
+
+        # Return the fields the modal cares about, with dates as strings
+        data_out = dict(meta)
+        if data_out.get('release_date'):
+            data_out['release_date'] = ts_to_date(data_out['release_date']) or ''
+        return jsonify({'status': 'success', 'data': data_out})
+
+    @app.route('/api/gog/install/<int:appid>', methods=['POST'])
+    def gog_install(appid):
+        """Start a GOG game install in the background."""
+        from gog import start_install
+        os_pref = (request.json or {}).get('os', 'auto')
+        result  = start_install(appid, os_pref=os_pref)
+        return jsonify(result)
+
+    @app.route('/api/gog/install-status/<int:appid>')
+    def gog_install_status(appid):
+        """Poll GOG install progress for a given appid."""
+        from gog import get_install_state
+        return jsonify(get_install_state(appid))
+
+    @app.route('/api/gog/install/<int:appid>/cancel', methods=['POST'])
+    def gog_install_cancel(appid):
+        """Cancel an in-progress GOG install."""
+        from gog import cancel_install
+        cancel_install(appid)
+        return jsonify({'status': 'ok'})
+
+    @app.route('/api/gog/uninstall/<int:appid>', methods=['POST'])
+    def gog_uninstall(appid):
+        """Delete a GOG game's install folder and set installed=0."""
+        import shutil
+        from database import get_db, update_game_data
+        from gog import GOG_INSTALL_BASE
+
+        db = get_db()
+        row = db.execute(
+            'SELECT name, install_path FROM games WHERE appid = ? AND platform = ?',
+            (appid, 'gog')
+        ).fetchone()
+        db.close()
+
+        if not row:
+            return jsonify({'status': 'error', 'message': 'GOG game not found'})
+
+        game_name = row['name']
+        install_path = row['install_path']
+
+        # Delete install directory if it exists
+        if install_path and os.path.isdir(install_path):
+            try:
+                shutil.rmtree(install_path)
+                log.info(f'GOG uninstall: deleted {install_path}')
+            except Exception as e:
+                log.error(f'GOG uninstall: delete failed for {install_path} — {e}')
+                return jsonify({'status': 'error', 'message': f'Failed to delete game files: {e}'})
+
+        # Clear install metadata
+        update_game_data(
+            appid,
+            installed           = 0,
+            install_path        = None,
+            platform_executable = None,
+            runner_path         = None,
+            wine_prefix         = None,
+        )
+
+        log.info(f'GOG uninstall: {game_name!r} uninstalled')
+        return jsonify({'status': 'success'})
+
+    @app.route('/api/gog/proton-versions')
+    def gog_proton_versions():
+        """Return detected Proton installations and the host platform."""
+        import platform as _plat
+        try:
+            from runners.proton import find_proton_versions
+            return jsonify({
+                'status':   'ok',
+                'platform': _plat.system(),
+                'versions': find_proton_versions(),
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/games/search')
+    def search_games():
+        q        = request.args.get('q', '').strip()
+        platform = request.args.get('platform', '')
+        if not q:
+            return jsonify([])
+        try:
+            db = get_db()
+            if platform:
+                rows = db.execute(
+                    "SELECT appid, name, platform FROM games WHERE name LIKE ? AND platform = ? "
+                    "ORDER BY name LIMIT 20",
+                    (f'%{q}%', platform)
+                ).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT appid, name, platform FROM games WHERE name LIKE ? ORDER BY name LIMIT 20",
+                    (f'%{q}%',)
+                ).fetchall()
+            db.close()
+            return jsonify([dict(r) for r in rows])
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/game/<int:appid>/set-duplicate', methods=['POST'])
+    def set_duplicate(appid):
+        """Set or clear the duplicate_of field for a game."""
+        data         = request.json or {}
+        duplicate_of = data.get('duplicate_of')   # appid string, or null/'' to clear
+        try:
+            db = get_db()
+            db.execute(
+                "UPDATE games SET duplicate_of = ? WHERE appid = ?",
+                (str(duplicate_of) if duplicate_of else None, appid)
+            )
+            db.commit()
+            db.close()
+            return jsonify({'status': 'ok'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/gog/detect-duplicates', methods=['POST'])
+    def gog_detect_duplicates():
+        """Re-run duplicate auto-detection for all GOG games."""
+        try:
+            from gog import auto_detect_duplicates
+            count = auto_detect_duplicates()
+            return jsonify({'status': 'ok', 'detected': count})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
 
     @app.route('/api/game/<int:appid>')
     def get_game(appid):
@@ -1415,8 +1743,14 @@ def create_app(template_folder=None, static_folder=None):
         blacklist = data.get('blacklist', False)
         name      = data.get('name', '')
         try:
-            # Delete DB entry
+            # Look up platform_id before deleting (needed for non-Steam blacklist)
             db = get_db()
+            row = db.execute(
+                "SELECT platform_id FROM games WHERE appid = ?", (appid,)
+            ).fetchone()
+            platform_id = row['platform_id'] if row else None
+
+            # Delete DB entry
             db.execute("DELETE FROM games WHERE appid = ?", (appid,))
             db.commit()
             db.close()
@@ -1429,7 +1763,7 @@ def create_app(template_folder=None, static_folder=None):
 
             # Optionally blacklist
             if blacklist:
-                add_to_blacklist(appid, name)
+                add_to_blacklist(appid, name, platform_id=platform_id)
 
             return jsonify({"status": "success"})
         except Exception as e:

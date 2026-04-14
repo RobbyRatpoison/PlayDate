@@ -456,6 +456,8 @@ const FM_FILTER_CONFIG = {
                                options: ['header','sgdb_grid_wide','custom','missing'] },
     'icon_source':           { label: 'Icon Source',           type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                                options: ['steam','sgdb_icon','custom','missing'] },
+    'platform':              { label: 'Platform',              type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+                               options: {'steam':'Steam','gog':'GOG','egs':'Epic Games','ea_app':'EA App','ubisoft':'Ubisoft'} },
 };
 
 // Operators that need no value input
@@ -554,6 +556,9 @@ function openFilterModal() {
     const tree = {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
 
     if (tree) {
+        // If the active filter is a PAGYWOSG filter and we haven't loaded a saved tree
+        // this session, seed _loadedSavedTree so editing and re-applying preserves quals.
+        if (tree.pagywosg && !_loadedSavedTree) _loadedSavedTree = tree;
         populateModalFromTree(tree);
     } else {
         // No active filters — start clean, wait for user to add

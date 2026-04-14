@@ -11,8 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, wait as futures_wait
 
 log = logging.getLogger(__name__)
 from bs4 import BeautifulSoup
-from images import download_vertical, download_horizontal, download_icon, _get_steam_assets, VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR
-from datetime import datetime
+from images import download_vertical, download_horizontal, download_icon, _get_steam_assets, _sgdb_search_game_id, VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR
+from datetime import datetime, timezone
 from config import load_config, get_active_account
 from database import add_new_game, batch_insert_placeholder_games, update_game_data, get_db, add_to_blacklist
 from utils import get_locally_installed_appids, sync_local_install_status, fetch_local_library, get_acf_names, parse_appinfo
@@ -1289,13 +1289,29 @@ def sync_recent_playtime():
 def bulk_rescrape_games(appids, cancel_event, progress_cb):
     """
     Concurrent metadata re-scrape for a list of appids.
-    Uses _PoolBackoff for rate limiting; respects cancel_event.
-    3 concurrent workers with 1s inter-game delay.
+    Routes GOG games to the GOG metadata API; Steam games use the Steam scrapers.
+    Uses _PoolBackoff for rate limiting on Steam games; respects cancel_event.
+    3 concurrent workers with 0.5s inter-game delay.
     """
+    from gog import fetch_gog_metadata, fetch_gog_achievements, get_valid_session, get_galaxy_user_id
+
     backoff  = _PoolBackoff('bulk_rescrape')
     today    = datetime.now().strftime('%Y-%m-%d')
     _account = get_active_account() or {}
     has_key  = bool(_account.get('api_key'))
+
+    # Look up platform info for all appids upfront
+    db = get_db()
+    rows = db.execute(
+        f"SELECT appid, platform, platform_id FROM games WHERE appid IN ({','.join('?' * len(appids))})",
+        appids,
+    ).fetchall()
+    db.close()
+    gog_info = {row['appid']: row['platform_id'] for row in rows if row['platform'] == 'gog'}
+
+    # GOG session + galaxy user ID (fetched once, shared across workers)
+    gog_session        = get_valid_session()
+    gog_galaxy_user_id = get_galaxy_user_id()
 
     q = queue.Queue()
     for appid in appids:
@@ -1309,41 +1325,73 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
         while True:
             if cancel_event and cancel_event.is_set():
                 return
-            if not backoff.wait_ready(cancel_event):
-                return
             try:
                 appid = q.get_nowait()
             except queue.Empty:
                 return
+
             try:
-                store_data  = fetch_store_data(appid)  or {}
-                store_data.pop('name', None)
-                store_data.pop('type', None)
-                review_data = fetch_review_data(appid) or {}
-                tag_data    = fetch_tag_data(appid)    or {}
-                cheevo_data = fetch_cheevo_data(appid) or {} if has_key else {}
+                if appid in gog_info:
+                    # ── GOG game ──────────────────────────────────────────────
+                    gog_id = gog_info[appid]
+                    meta   = fetch_gog_metadata(gog_id)
+                    if meta is None:
+                        with lock:
+                            counts['failed'] += 1
+                        if progress_cb:
+                            progress_cb('failed', appid, total)
+                        time.sleep(0.5)
+                        continue
 
-                game_data = {}
-                game_data.update(store_data)
-                game_data.update(review_data)
-                game_data.update(tag_data)
-                game_data.update(cheevo_data)
-                if store_data or review_data or tag_data:
-                    game_data['meta_fetched'] = today
-                if cheevo_data:
-                    game_data['cheevos_fetched'] = today
+                    meta.pop('_category', None)
+                    meta['meta_fetched'] = today
 
-                if game_data:
-                    update_game_data(appid, **game_data)
+                    if gog_session and gog_galaxy_user_id:
+                        ach = fetch_gog_achievements(gog_id, gog_galaxy_user_id, gog_session)
+                        if ach is not None:
+                            meta.update(ach)
+                            meta['cheevos_fetched'] = today
+
+                    update_game_data(appid, **meta)
                     with lock:
                         counts['done'] += 1
-                else:
-                    with lock:
-                        counts['failed'] += 1
+                    if progress_cb:
+                        progress_cb('done', appid, total)
+                    time.sleep(0.5)
 
-                if progress_cb:
-                    progress_cb('done', appid, total)
-                time.sleep(0.5)
+                else:
+                    # ── Steam game ────────────────────────────────────────────
+                    if not backoff.wait_ready(cancel_event):
+                        return
+
+                    store_data  = fetch_store_data(appid)  or {}
+                    store_data.pop('name', None)
+                    store_data.pop('type', None)
+                    review_data = fetch_review_data(appid) or {}
+                    tag_data    = fetch_tag_data(appid)    or {}
+                    cheevo_data = fetch_cheevo_data(appid) or {} if has_key else {}
+
+                    game_data = {}
+                    game_data.update(store_data)
+                    game_data.update(review_data)
+                    game_data.update(tag_data)
+                    game_data.update(cheevo_data)
+                    if store_data or review_data or tag_data:
+                        game_data['meta_fetched'] = today
+                    if cheevo_data:
+                        game_data['cheevos_fetched'] = today
+
+                    if game_data:
+                        update_game_data(appid, **game_data)
+                        with lock:
+                            counts['done'] += 1
+                    else:
+                        with lock:
+                            counts['failed'] += 1
+
+                    if progress_cb:
+                        progress_cb('done', appid, total)
+                    time.sleep(0.5)
 
             except RateLimitedError:
                 q.put(appid)   # re-queue for retry after backoff
@@ -1614,3 +1662,4 @@ def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
         futures_wait([pool.submit(worker) for _ in range(2)])
 
     return counts
+

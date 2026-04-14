@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > When a TODO item is completed, move it here immediately. When releasing, use this section to write release notes, then clear it. Old release notes are deleted from `RELEASE_NOTES.md` on each publish — only the current version's notes are kept.
 
-*(none)*
+(none)
 
 ## Populate Speed Overhaul — Notes
 
@@ -32,11 +32,11 @@ The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the mo
 
 **Pool determination:** categories with both `(win)` and `(backlog)` suffix variants go in the "all" pool; categories with no suffix go in the "wins" pool (wins-only).
 
-**Filter tree structure:** root AND containing an OR of [all-pool branch, AND[steamgifts-won condition, wins-pool branch]], plus completion status exclusions. Also includes `appid IN (...)` for mod-verified games.
+**Filter tree structure:** root AND with `platform = 'steam'` first, then an OR of [all-pool branch, AND[steamgifts-won condition, wins-pool branch]], plus completion status exclusions. Also includes `appid IN (...)` for mod-verified games.
 
 **Auto-fill appids response:** `_serialise_pool(pool_dict, tags, conds)` in `pagywosg_auto` returns each game with `in_library: bool` and `redundant: bool`. `in_library` is set via a bulk `SELECT appid FROM games WHERE appid IN (...)`. `redundant` is set via `_redundant_set()`, which checks whether the game would already be caught by the pool's tag conditions (`',' || tags || ','  LIKE ?`) or condition rows (`month_is`, `year_is`, `day_is`, `contains` on comma-separated or text columns). The "additional games" collapsible in `pagUpdateAppidsInfo` filters to `g.in_library && !g.redundant` so only genuinely extra library games are shown.
 
-**Saved filter keys:** PAGYWOSG filters are stamped with extra keys on save: `pagywosg: true`, `pagywosg_event: {id, name}`, `pagywosg_verified: {appid: [{cat, pool, verifier?, auto?}]}`. These are preserved when applying a saved filter via `modal_filters.html` using `_loadedSavedTree`. `verifier` is the SteamGifts username of the person who submitted the game for mod verification (cited as proof by others); `auto: true` marks entries sourced from the scraper rather than a human submission.
+**Saved filter keys:** PAGYWOSG filters are stamped with extra keys on save: `pagywosg: true`, `pagywosg_event: {id, name}`, `pagywosg_verified: {appid: [{cat, pool, verifier?, auto?}]}`. These are preserved when applying a saved filter via `modal_filters.html` using `_loadedSavedTree`. `verifier` is the SteamGifts username of the person who submitted the game for mod verification (cited as proof by others); `auto: true` marks entries sourced from the scraper rather than a human submission. `openFilterModal()` also seeds `_loadedSavedTree` from the server tree when `pagywosg: true` and `_loadedSavedTree` is not already set -- this means editing an already-active PAGYWOSG filter (e.g. temporarily removing a completion-status restriction to see beaten games) and re-applying preserves all three pagywosg keys on the resulting tree.
 
 **Qualifications panel:** `modal_edit.html` shows a `#pag-quals-section` when `_serverFilterTree.pagywosg` is true. `_pagRenderQuals(game)` walks the filter tree via `_pagExtractConds()` (detects wins branch by presence of a `groups` condition in any AND group) and checks each condition against the game. Pool labels: `(win)` for wins pool (only shown if game has the configured SG wins group), `(win)` or `(backlog)` for all pool based on groups. Mod-verified entries show "mod verified — see [username]'s entry"; entries with `auto: true` show no verification label.
 
@@ -143,8 +143,10 @@ main.py → starts Flask (background thread) + pywebview window
 | `utils.py` | Steam path detection, install status sync, filesystem watcher, local Steam file parsing |
 | `images.py` | Cover art download: vertical capsule, horizontal header, and icon — each with Steam asset manifest → CDN → SteamGridDB fallback chain |
 | `imports.py` | Data import tools: generic SQLite column mapping (`inspect_database`, `execute_import`) and Playnite backup import (`parse_playnite_dates`) |
+| `gog.py` | GOG Galaxy integration: OAuth2 auth, library sync, metadata/achievement scraping, content-system v2 install/download/launch, duplicate detection |
+| `runners/proton.py` | Proton detection and game launching: finds GE-Proton/official Proton, sets compat env vars, spawns `proton run` |
 | `install.py` / `uninstall.py` | Cross-platform GUI installer/uninstaller (tkinter) |
-| `steam_date_import.user.js` | Tampermonkey userscript — scrapes activation dates from Steam help pages and sends them to PlayDate |
+| `steam_date_import.user.js` | Tampermonkey userscript — scrapes activation dates from Steam help pages and GOG orders page, sends them to PlayDate |
 
 **Frontend:** Vanilla JS + CSS3 in `static/`, Jinja2 templates in `templates/`. No build step, no framework.
 
@@ -155,9 +157,9 @@ All user data lives next to the executable (or project root when running from so
 | File | Contents |
 |------|----------|
 | `games.db` | SQLite — `games` and `blacklist` tables |
-| `config.json` | Multi-account config: `active_account` (steam_id key), `sgdb_key`, `accounts` dict (`steam_id → {steam_id, api_key, label}`). Use `get_active_account()` from `config.py` to get the active account's API key. |
-| `state.json` | Active filters, shelf layout, sort order, saved filters, artwork orientation, card height |
-| `theme.json` | CSS variable overrides (only non-default keys stored) |
+| `config.json` | Multi-account config: `active_account` (steam_id key), `sgdb_key`, `accounts` dict (`steam_id → {steam_id, api_key, label}`). Also stores GOG OAuth2 tokens under `"gog"` key (`access_token`, `refresh_token`, `expires_at`, `username`, `galaxy_user_id`). Use `get_active_account()` from `config.py` to get the active account's API key. |
+| `state.json` | Active filters, shelf layout, sort order, saved filters, artwork orientation, card height, `hide_duplicates` (bool, default `true`), `pagywosg_sg_group` (chosen SG wins group name) |
+| `theme.json` | CSS variable overrides (only non-default keys stored), including `--bg-image-opacity` (default `"1"`) |
 | `playdate.log` | Application logs (RotatingFileHandler, 1MB cap, no backup copies) |
 | `static/img/library/vertical/{appid}.jpg` | Cached vertical capsule art |
 | `static/img/library/horizontal/{appid}.jpg` | Cached horizontal header art |
@@ -180,6 +182,7 @@ Filters are a recursive JSON tree of AND/OR groups with conditions. They get com
 
 - **Node types**: `'condition'` (column op value), `'group'` (AND/OR container), `'custom_expr'` (raw SQL)
 - **Comma-separated fields** (tags, groups, genres, categories): use `',' || column || ',' LIKE ?` wrapping to prevent partial matches
+- **Platform filter**: `platform` is a select-type condition with options `steam`, `gog`, `epic_games`, `ea_app`, `ubisoft`. Stored as plain string comparison. PAGYWOSG filters always prepend `platform = 'steam'` as the first AND condition.
 - **Date operators**: `STRFTIME_MONTH`, `STRFTIME_DAY`, `STRFTIME_YEAR` compile to `strftime('%m'/'%d'/'%Y', col) = ?`; value is zero-padded for month/day
 - **SQL safety:** All user-supplied SQL passes through `is_safe_sql()` in `library.py`, which uses column/keyword/function whitelists and rejects all DML/DDL. Whitelisted columns include `appid`; whitelisted functions include `strftime`, `cast`; whitelisted keywords include `as`, `text`, `integer`, `real`, `blob`, `numeric`. Parameterized queries are used everywhere else.
 - **PAGYWOSG filters** are saved as proper tree structures (not raw `custom_sql`) via `pagBuildTree()` in `modal_tools.html`, so they are editable in the filter builder. When `populateModalFromTree` loads a tree without `custom_sql`, it explicitly clears the custom SQL textbox to prevent stale SQL from bleeding into the applied filter.
@@ -191,9 +194,11 @@ Filters are a recursive JSON tree of AND/OR groups with conditions. They get com
 Long-running operations (library import, BLAEO sync) run in daemon threads with `threading.Event` for cancellation (`_populate_cancel` in `app.py`). Progress is tracked in a shared dict (`_populate_state`) polled by the frontend via `/api/populate-status` every second.
 
 ### Scrapers
-`scrapers.py` pulls from multiple Steam endpoints per game: `GetOwnedGames` (playtime), Store API (metadata), `appreviews` (review stats), BeautifulSoup tag scraping (birthtime cookie bypasses age gate), and `GetPlayerAchievements`. There is a **0.5s delay** between games in the populate loop.
+`scrapers.py` pulls from multiple Steam endpoints per game: `GetOwnedGames` (playtime), Store API (metadata), `appreviews` (review stats), BeautifulSoup tag scraping (birthtime cookie bypasses age gate), and `GetPlayerAchievements`. There is a **0.5s delay** between games in the populate loop. GOG games are routed through `fetch_gog_metadata()` and `fetch_gog_achievements()` in `gog.py` during bulk rescrape; rate limiting only applies to Steam workers.
 
 **Startup playtime sync:** `sync_recent_playtime()` runs in a background thread on launch. It reads `localconfig.vdf` directly (no API key needed) and updates `playtime_forever` and `last_played` in the DB for all games that exist in the library. For games where `playtime_forever` changed, it also fetches achievements via `fetch_cheevo_data()` (skipped if no API key) and updates `completion_status`: `'Never Played'` → `'Unfinished'` if playtime > 0; any status → `'Completed'` if 100% achievements unlocked. `'Beaten'` is never downgraded; `"Won't Play"` is only changed if 100% achievements.
+
+**Startup HLTB catch-up:** `sync_hltb_unfetched()` runs after `sync_recent_playtime()` in `_run_playtime_sync` (`main.py`). Fetches only `hltb_fetched = '0' OR NULL` — does not retry `no_match` games automatically.
 
 **Rate limiting:** Each fetch function raises `RateLimitedError` on HTTP 429. The populate loop catches it, pauses 15 seconds, and retries the current game once. If the retry is also rate limited, populate aborts immediately and surfaces an error to the user. `RateLimitedError` is defined in `scrapers.py`.
 
@@ -206,7 +211,7 @@ Long-running operations (library import, BLAEO sync) run in daemon threads with 
 **Review confidence weighting:** continuous confidence-interval formula: `weighted = round((p - (p - 0.5) × 2^(-log₁₀(total + 1))) × 100)` where `p = percent / 100`. Low review counts are pulled toward 50 (neutral); at ~10 reviews roughly half the gap is closed; at ~1000 reviews the score is nearly raw. Stored as `weighted_percentage`.
 
 ### Cover Art Pipeline
-`images.py` handles three image types separately — vertical capsule, horizontal header, and icon. For each, `_get_steam_assets(appid)` fetches the full asset manifest from `IStoreBrowseService/GetItems`, which returns content-hash URLs for newer games. During populate, assets are fetched once and passed to all three download functions to avoid redundant API calls.
+`images.py` handles three image types separately — vertical capsule, horizontal header, and icon. For each, `_get_steam_assets(appid)` fetches the full asset manifest from `IStoreBrowseService/GetItems`, which returns content-hash URLs for newer games. During populate, assets are fetched once and passed to all three download functions to avoid redundant API calls. For non-Steam games, `_sgdb_search_game_id(name)` searches SteamGridDB by game name and returns the SGDB internal game ID, which is passed as `sgdb_id` to skip Steam CDN and query `grids/game/{sgdb_id}` directly.
 
 - **Vertical**: `library_capsule_2x` → `library_capsule` (manifest) → `library_600x900_2x.jpg` / `library_600x900.jpg` (CDN) → SteamGridDB grid (600x900 or 1200x1800)
 - **Horizontal**: `header_image` / `main_capsule` (manifest) → `header.jpg` (CDN) → SteamGridDB wide grid (460x215 or 920x430)
@@ -218,11 +223,15 @@ All saved as JPEG 95 quality; RGBA/PNG/WEBP converted to RGB first. Once cached 
 No API key → reads library from local Steam files (`localconfig.vdf`, ACF manifests, `appinfo.vdf`). No SteamGridDB key → Steam covers; edit modal shows a "Browse SGDB ↗" link to the game's SGDB page so users can paste a direct image URL manually. Missing watchdog → continues without filesystem watcher. All external calls have try/except returning None/empty on failure.
 
 ### Filesystem Watcher
-`utils.py` watches the steamapps folder for `appmanifest_*.acf` changes. On trigger, `sync_local_install_status()` resets all `installed` flags to 0 then bulk-sets found appids to 1. Proton, SteamLinuxRuntime, and Steamworks Shared entries are filtered out by reading .acf content.
+`utils.py` watches the steamapps folder for `appmanifest_*.acf` changes. On trigger, `sync_local_install_status()` resets all `installed` flags to 0 for Steam games only (`WHERE platform = 'steam' OR platform IS NULL`) then bulk-sets found appids to 1. Proton, SteamLinuxRuntime, and Steamworks Shared entries are filtered out by reading .acf content. Non-Steam install state is managed separately by each platform.
 
-### Steam Help Page Date Import
+### Steam/GOG Date Import
 
-`steam_date_import.user.js` is a Tampermonkey userscript that runs on `help.steampowered.com/*` pages. It only activates when the URL contains `?ref=playdate`. It scrapes the earliest activation date from `.LineItemRow` spans (or `.account_details` fallback) using `DOMParser` on fetched HTML. All PlayDate API calls use `GM_xmlhttpRequest` (bypasses Steam's CSP, which blocks `fetch()` to localhost); same-origin Steam Help page fetches use regular `fetch()`.
+`steam_date_import.user.js` (v2.4) is a Tampermonkey userscript that runs on `help.steampowered.com/*` and `www.gog.com/en/account/settings/orders*` pages.
+
+**Steam mode:** activates when the URL contains `?ref=playdate`. Scrapes the earliest activation date from `.LineItemRow` spans (or `.account_details` fallback) using `DOMParser` on fetched HTML. All PlayDate API calls use `GM_xmlhttpRequest` (bypasses Steam's CSP, which blocks `fetch()` to localhost); same-origin Steam Help page fetches use regular `fetch()`.
+
+**GOG mode:** page 1 parsed from inline `gogData` (`ordersLog.orders.{orders:[...], totalPages:N}`, doubly-nested); pages 2-N fetched from JSON endpoint `GET /account/settings/orders/data?canceled=0&completed=1&in_progress=1&not_redeemed=1&page=N&pending=1&redeemed=1` (the actual XHR API Angular uses — SSR URL `?page=N` just returns page 1 HTML for all N). `extractOrders()` normalises response shape. Posts `{gog_id: unix_timestamp}` map to `POST /api/gog/bulk-date-import`.
 
 **Single-game mode** (edit modal ↗ link): parses date from the current page DOM → POSTs to `POST /api/pending-date` → stored in `_pending_dates` dict → edit modal polls `GET /api/pending-date/<appid>` every 250ms for up to 3 seconds after the link is clicked → on receipt, populates the Date Added field with an accent highlight. After sending, userscript polls `GET /api/pending-date/<appid>/peek` (non-destructive) until the modal consumes the date, then closes the tab.
 
@@ -257,6 +266,10 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - `_initialLoad` flag is true until first scroll event; on initial load images are applied immediately
 - When `_patchGameCard` updates a card after an edit, it evicts the card from `CARD_HTML_CACHE` so the next repopulation picks up fresh data
 - `.game-grid` has `contain: layout style paint` for paint performance
+- Cards carry `data-platform` attribute (`steam`, `gog`, etc.) for platform-aware context menus and launch behavior
+- Duplicate hiding: library query excludes `duplicate_of IS NOT NULL` when `state.hide_duplicates` is true (default); "DUPES: OFF/ON" toggle calls `toggleHideDuplicates()` → `sendStateUpdate({hide_duplicates})`; header shows "N duplicates hidden"
+- Sort direction auto-set: `updateSort()` auto-sets direction per column — name ASC; playtime/release date/date added/review scores DESC; HLTB ASC
+- `_pollGogInstall()` polls `/api/gog/install-status/{appid}` every 2s for installing GOG games, updates launch toast with MB progress, auto-launches on completion
 
 ## Frontend JS
 
@@ -266,10 +279,17 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - Repeat timing: 400ms initial delay, 150ms repeat; stick dead zone: 0.35
 - Modal buttons must have `data-modal-row` attribute for grid-based row grouping
 - Home page split-row shelves require X-proximity matching when navigating between sides
+- `clearSuppression()` method clears `_gameSuppressed`, removes `pd_game_running` from sessionStorage, and resets gamepad state
 
 **`static/js/playdate.js`** — shared utilities: SQL syntax highlighter overlay (`sqlHighlightInit()`), state update helper (`sendStateUpdate(payload, reload=true)`), fire-and-forget preference save (`savePreference(payload)` — uses `fetch` with `keepalive:true`, no page reload), 8-second auto-hide error banners, and `initCustomSelect(nativeSelect)` — the custom dropdown widget (see below).
 
 **Custom dropdowns — `initCustomSelect()`:** All `<select>` elements must be replaced with custom div-based dropdowns using `initCustomSelect()`. Native selects create OS-level popups that stay visible when the pywebview window loses focus. `initCustomSelect()` reads the native select, replaces it in the DOM with a `.custom-select` div, and exposes `.value`, `.selectedIndex`, `.options`, `._setOptions(html)`, `._addOption()`, `._clearOptions()`, `._getOption()`, and fires `change` events. If the native select had a `name` attribute, a hidden `<input>` is automatically inserted so `FormData` still works. Panels use `position:fixed` with coordinates from `getBoundingClientRect()` to escape `overflow:hidden` ancestors. Never add a new native `<select>` without immediately passing it to `initCustomSelect()`.
+
+### Custom Dialog System (`_dialog.html`)
+`window.confirm()` and `window.alert()` are overridden by styled dialog overlays. The custom `confirm()` returns a **Promise** — callers must use `await` or `.then()`. In async DOM event listeners, prefer `.then()` chains over `await` to avoid issues with pywebview's Promise handling (the event dispatch doesn't wait for async handlers). `_close()` resolves the Promise and sets `_resolve = null` to prevent double resolution. Overlay click or Escape key resolves to `false`; OK button or Enter resolves to `true`.
+
+### Context Menu (`_ctx_menu.html`)
+Right-click context menu extracted from `base.html`. "Select All" scopes to the right-clicked input field. GOG uninstall uses `confirm().then()` pattern (not `await`) to ensure the dialog waits for user response before deleting files. Menu items use `data-action` attributes; click handler is async but uses `.then()` for confirm dialogs.
 
 ## Database Schema Notes
 
@@ -277,7 +297,17 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - Comma-separated string columns: `tags`, `groups`, `developers`, `publishers` — no spaces after commas
 - Dates stored as `'YYYY-MM-DD'` strings, not Unix timestamps
 - `installed`: 0/1 integer
+- `platform`: `'steam'`, `'gog'`, `'epic_games'`, `'ea_app'`, `'ubisoft'` — backfilled to `'steam'` on migration
+- `platform_id`: platform-native game ID (GOG ID as string, Steam appid as integer)
+- `platform_slug`: GOG store URL slug (e.g. `the_witcher_3_wild_hunt`)
+- `steam_appid`: PCGW-resolved Steam AppID for non-Steam games (integer, nullable)
+- `install_path`: GOG install directory path
+- `wine_prefix`: Proton wine prefix path
+- `runner_path`: Proton runner executable path
+- `platform_executable`: path to the game's primary executable
+- `duplicate_of`: TEXT — appid of the preferred (canonical) version; games with `duplicate_of IS NOT NULL` are excluded from library by default
 - `vertical_art_source`: `'capsule_2x'`, `'capsule'`, `'sgdb_grid'`, `'custom'`, `'missing'`
 - `horizontal_art_source`: `'header'`, `'sgdb_grid_wide'`, `'custom'`, `'missing'`
 - `icon_source`: `'sgdb_icon'`, `'steam'`, `'custom'`, `'missing'`
 - `blacklist` table prevents repopulation of removed games
+- **GOG appids are negative integers** (e.g. `-1`, `-2`). Flask uses a `SignedIntConverter` (regex `r'-?\d+'`) so routes like `/api/game/-1` work. `appid_list` validation allows zero/negative values.

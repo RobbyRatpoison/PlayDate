@@ -1,0 +1,533 @@
+<!-- ── HLTB MODAL ── -->
+<div id="hltb-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeHltbModal();">
+    <div class="modal-content" style="width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-shrink:0;">
+            <h2 style="margin:0; color:var(--text-primary);">HLTB Data</h2>
+            <button onclick="closeHltbModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <!-- Controls bar -->
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-shrink:0;">
+            <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0;">Auto-confirm threshold</span>
+            <input type="range" id="hltb-review-slider" min="0" max="100"
+                value="{{ hltb_match_threshold }}"
+                oninput="_onHltbReviewSlider(this)"
+                class="hltb-review-slider">
+            <span id="hltb-review-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-shrink:0;">
+            <button class="nav-btn" style="font-size:0.78rem;" onclick="_hltbConfirmAllAbove()">Confirm all above</button>
+            <button id="hltb-scrape-btn" class="nav-btn" style="font-size:0.78rem;" onclick="_hltbScrapeNoMatch()">Re-scrape unmatched</button>
+            <button id="hltb-stop-btn" class="nav-btn" style="font-size:0.78rem; display:none; color:var(--color-danger);" onclick="_hltbStopScrape()">Stop</button>
+        </div>
+        <div id="hltb-scrape-status" style="font-size:0.78rem; color:#8f98a0; min-height:1.1rem; margin-bottom:4px; flex-shrink:0;"></div>
+        <div id="hltb-review-stats" style="font-size:0.78rem; color:#8f98a0; margin-bottom:10px; flex-shrink:0;"></div>
+
+        <!-- Match list -->
+        <div id="hltb-review-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+</div>
+
+<style>
+.hltb-review-slider {
+    flex: 1; min-width: 0; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 2px;
+    background: transparent; outline: none;
+}
+.hltb-review-slider::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 2px;
+    background: linear-gradient(to right, var(--accent) var(--slider-pct, 75%), var(--bg-raised, #555) var(--slider-pct, 75%));
+}
+.hltb-review-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px; margin-top: -5px;
+    border-radius: 50%; background: var(--accent); cursor: pointer;
+}
+.hltb-match-row {
+    padding: 8px 10px; border-radius: 5px;
+    border: 1px solid #2a475e; background: var(--bg-input);
+    font-size: 0.8rem;
+}
+.hltb-match-row.above { border-color: #2a475e; }
+.hltb-match-row.below { opacity: 0.55; border-color: #1e2e3a; }
+.hltb-match-row.no-match { opacity: 0.7; border-color: #1e2e3a; }
+.hltb-match-row .game-name { color: #c2c8cc; font-weight: 600; }
+.hltb-match-row .match-name { color: #8f98a0; }
+.hltb-match-row .score-badge {
+    display: inline-block; font-size: 0.72rem; font-weight: bold;
+    padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
+}
+.hltb-match-row .score-badge.above { background: rgba(92,126,16,0.25); color: #8bc34a; }
+.hltb-match-row .score-badge.below { background: rgba(180,80,50,0.2); color: #e06c4a; }
+.hltb-match-row .score-badge.no-match-badge { background: rgba(100,100,100,0.2); color: #6a7a86; }
+.hltb-match-row .times { color: #8f98a0; font-size: 0.75rem; }
+.hltb-match-row .row-btns { display: flex; gap: 6px; flex-shrink: 0; }
+.hltb-alt-results { display: none; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #2a475e; }
+.hltb-alt-results.open { display: flex; }
+.hltb-alt-result-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; background: rgba(255,255,255,0.03); font-size: 0.78rem; color: #c2c8cc; }
+.hltb-alt-result-row:hover { background: rgba(255,255,255,0.07); }
+.hltb-section-header {
+    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
+    color: #4a5e6e; text-transform: uppercase;
+    padding: 6px 2px 4px; margin-top: 4px;
+    border-top: 1px solid #1e2e3a;
+    cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 5px;
+}
+.hltb-section-header:first-child { margin-top: 0; border-top: none; }
+.hltb-section-header:hover { color: #6a7a86; }
+.hltb-chevron { font-size: 0.6rem; flex-shrink: 0; }
+</style>
+
+<script>
+// ── HLTB MODAL ───────────────────────────────────────────────────────────────
+let _hltbMatches          = [];
+let _hltbNoMatchGames     = [];
+let _hltbUnfetchedCount   = 0;
+let _hltbSectionCollapsed = {};
+
+function openHltbModal() {
+    _hltbSectionCollapsed = { nomatch: true, confirmed: true };
+    document.getElementById('hltb-modal').style.display = 'flex';
+    _hltbLoadMatches();
+}
+
+function closeHltbModal() {
+    if (_hltbScrapeInterval) { clearInterval(_hltbScrapeInterval); _hltbScrapeInterval = null; }
+    document.getElementById('hltb-modal').style.display = 'none';
+}
+
+document.addEventListener('populate:hltb_done', () => {
+    if (document.getElementById('hltb-modal')?.style.display === 'flex') {
+        _hltbLoadMatches(true);
+    }
+});
+
+function _hltbStatsText() {
+    const confirmed = _hltbMatches.filter(r => r.hltb_fetched !== 'unconfirmed').length;
+    const parts = [`${confirmed} confirmed`];
+    if (_hltbUnfetchedCount) parts.push(`${_hltbUnfetchedCount} pending`);
+    return parts.join(' · ');
+}
+
+function _onHltbReviewSlider(el) {
+    document.getElementById('hltb-review-threshold-val').textContent = el.value;
+    const pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--slider-pct', pct + '%');
+    _hltbRenderList();
+}
+
+function _hltbGetThreshold() {
+    return parseInt(document.getElementById('hltb-review-slider').value, 10);
+}
+
+function _fmtMinsHltb(mins) {
+    if (mins == null) return null;
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function _hltbTimesStr(row) {
+    const parts = [];
+    if (row.hltb_main          != null) parts.push(`Main: ${_fmtMinsHltb(row.hltb_main)}`);
+    if (row.hltb_extras        != null) parts.push(`+Extras: ${_fmtMinsHltb(row.hltb_extras)}`);
+    if (row.hltb_completionist != null) parts.push(`Compl: ${_fmtMinsHltb(row.hltb_completionist)}`);
+    return parts.join(' · ');
+}
+
+async function _hltbLoadMatches(live = false) {
+    const list  = document.getElementById('hltb-review-list');
+    const stats = document.getElementById('hltb-review-stats');
+    if (!live) {
+        list.innerHTML    = '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">Loading...</div>';
+        stats.textContent = '';
+    }
+    try {
+        const data = await fetch('/api/hltb/matches').then(r => r.json());
+        if (!live) {
+            _hltbMatches        = data.matches;
+            _hltbNoMatchGames   = data.no_match_games || [];
+            _hltbUnfetchedCount = data.unfetched_count;
+            const slider = document.getElementById('hltb-review-slider');
+            const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+            slider.style.setProperty('--slider-pct', pct + '%');
+            _hltbRenderList();
+        } else {
+            _hltbMergeLive(data.matches, data.no_match_games || [], data.unfetched_count);
+        }
+    } catch(e) {
+        if (!live) list.innerHTML = '<div style="color:#ff6b6b; font-size:0.8rem; padding:8px;">Failed to load matches.</div>';
+    }
+}
+
+function _hltbMergeLive(incoming, incomingNoMatch, unfetchedCount) {
+    if (unfetchedCount != null) _hltbUnfetchedCount = unfetchedCount;
+
+    const knownMatchIds   = new Set(_hltbMatches.map(r => r.appid));
+    const addedMatches    = incoming.filter(r => !knownMatchIds.has(r.appid));
+    if (addedMatches.length) _hltbMatches = _hltbMatches.concat(addedMatches);
+
+    const knownNoMatchIds = new Set(_hltbNoMatchGames.map(r => r.appid));
+    const addedNoMatch    = incomingNoMatch.filter(r => !knownNoMatchIds.has(r.appid));
+    if (addedNoMatch.length) _hltbNoMatchGames = _hltbNoMatchGames.concat(addedNoMatch);
+
+    if (addedMatches.length || addedNoMatch.length) {
+        _hltbRenderList();
+    } else {
+        const stats = document.getElementById('hltb-review-stats');
+        if (stats) stats.textContent = _hltbStatsText();
+    }
+}
+
+function _hltbToggleSection(key) {
+    _hltbSectionCollapsed[key] = !_hltbSectionCollapsed[key];
+    const rows    = document.querySelector(`.hltb-section-rows[data-section="${key}"]`);
+    const header  = document.querySelector(`.hltb-section-header[data-section="${key}"]`);
+    const chevron = header?.querySelector('.hltb-chevron');
+    if (rows)    rows.style.display    = _hltbSectionCollapsed[key] ? 'none' : '';
+    if (chevron) chevron.textContent   = _hltbSectionCollapsed[key] ? '▶' : '▼';
+}
+
+function _hltbRenderList() {
+    const threshold      = _hltbGetThreshold();
+    const list           = document.getElementById('hltb-review-list');
+    const stats          = document.getElementById('hltb-review-stats');
+    const aboveUnconf    = _hltbMatches
+        .filter(r => r.hltb_fetched === 'unconfirmed' && (r.hltb_match_score ?? 0) >= threshold)
+        .sort((a, b) => b.hltb_match_score - a.hltb_match_score);
+    const belowUnconf    = _hltbMatches
+        .filter(r => r.hltb_fetched === 'unconfirmed' && (r.hltb_match_score ?? 0) < threshold)
+        .sort((a, b) => b.hltb_match_score - a.hltb_match_score);
+    const confirmedBelow = _hltbMatches
+        .filter(r => r.hltb_fetched !== 'unconfirmed' && r.hltb_match_score != null && r.hltb_match_score < threshold)
+        .sort((a, b) => b.hltb_match_score - a.hltb_match_score);
+
+    stats.textContent = _hltbStatsText();
+
+    const hasContent = aboveUnconf.length || belowUnconf.length || _hltbNoMatchGames.length || confirmedBelow.length;
+    if (!hasContent) {
+        const confirmed = _hltbMatches.filter(r => r.hltb_fetched !== 'unconfirmed').length;
+        list.innerHTML = confirmed
+            ? '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">All matches confirmed.</div>'
+            : '<div style="color:#8f98a0; font-size:0.8rem; padding:8px;">No HLTB data yet — fetch will run automatically on next launch.</div>';
+        return;
+    }
+
+    function plMatch(n) { return `${n} unconfirmed match${n !== 1 ? 'es' : ''}`; }
+
+    function section(key, label, rowsHtml) {
+        const collapsed = !!_hltbSectionCollapsed[key];
+        return `<div class="hltb-section-header" data-section="${key}" onclick="_hltbToggleSection('${key}')">
+            <span class="hltb-chevron">${collapsed ? '▶' : '▼'}</span>${label}
+        </div>
+        <div class="hltb-section-rows" data-section="${key}" style="${collapsed ? 'display:none' : ''}">
+            ${rowsHtml}
+        </div>`;
+    }
+
+    function matchRowHtml(row) {
+        const isConfirmed = row.hltb_fetched !== 'unconfirmed';
+        const cls   = (row.hltb_match_score ?? 0) >= threshold ? 'above' : 'below';
+        const times = _hltbTimesStr(row);
+        return `<div class="hltb-match-row ${cls}" id="hltb-row-${row.appid}">
+            <div style="display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:0;">
+                    <span class="game-name">${_escHtml(row.name)}</span>
+                    <span style="color:#4a5e6e; margin:0 4px;">→</span>
+                    <span class="match-name">${_escHtml(row.hltb_matched_name || '?')}</span>
+                    <span class="score-badge ${cls}" style="margin-left:6px;">${row.hltb_match_score ?? '?'}</span>
+                    ${isConfirmed ? '<span style="font-size:0.72rem; color:#8f98a0; margin-left:4px;">confirmed</span>' : ''}
+                </div>
+                <div class="row-btns">
+                    ${!isConfirmed ? `<button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbRowConfirm(${row.appid})">Confirm</button>` : ''}
+                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbRowOtherMatch(${row.appid}, this)">Other match</button>
+                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; color:var(--text-secondary);" onclick="_hltbRowClear(${row.appid})">Clear</button>
+                </div>
+            </div>
+            ${times ? `<div class="times" style="margin-top:3px;">${times}</div>` : ''}
+            <div class="hltb-alt-results" id="hltb-alt-${row.appid}"></div>
+        </div>`;
+    }
+
+    function noMatchRowHtml(row) {
+        return `<div class="hltb-match-row no-match" id="hltb-row-${row.appid}">
+            <div style="display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:0;">
+                    <span class="game-name">${_escHtml(row.name)}</span>
+                    <span class="score-badge no-match-badge" style="margin-left:8px;">no match found</span>
+                </div>
+                <div class="row-btns">
+                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" onclick="_hltbNoMatchSearch(${row.appid}, this)">Search</button>
+                </div>
+            </div>
+            <div class="hltb-alt-results" id="hltb-alt-${row.appid}"></div>
+        </div>`;
+    }
+
+    let html = '';
+    if (aboveUnconf.length)
+        html += section('above', `${plMatch(aboveUnconf.length)} above threshold`, aboveUnconf.map(matchRowHtml).join(''));
+    if (belowUnconf.length)
+        html += section('below', `${plMatch(belowUnconf.length)} below threshold`, belowUnconf.map(matchRowHtml).join(''));
+    if (_hltbNoMatchGames.length)
+        html += section('nomatch', `${_hltbNoMatchGames.length} game${_hltbNoMatchGames.length !== 1 ? 's' : ''} with no match found`, _hltbNoMatchGames.map(noMatchRowHtml).join(''));
+    if (confirmedBelow.length)
+        html += section('confirmed', `${confirmedBelow.length} confirmed match${confirmedBelow.length !== 1 ? 'es' : ''} below threshold`, confirmedBelow.map(matchRowHtml).join(''));
+    list.innerHTML = html;
+}
+
+function _escHtml(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function _hltbRowConfirm(appid) {
+    const rowEl = document.getElementById(`hltb-row-${appid}`);
+    const btn   = rowEl?.querySelector('button');
+    if (btn) { btn.textContent = '...'; btn.disabled = true; }
+    try {
+        const data = await fetch(`/api/hltb/${appid}/confirm`, {method:'POST'}).then(r=>r.json());
+        if (data.status === 'success') {
+            const idx = _hltbMatches.findIndex(r => r.appid === appid);
+            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data);
+            _hltbRenderList();
+        }
+    } catch(e) { if (btn) { btn.textContent = 'Confirm'; btn.disabled = false; } }
+}
+
+async function _hltbRowClear(appid) {
+    await fetch(`/api/hltb/${appid}`, {method:'DELETE'});
+    _hltbMatches = _hltbMatches.filter(r => r.appid !== appid);
+    _hltbUnfetchedCount++;
+    _hltbRenderList();
+}
+
+async function _hltbRowOtherMatch(appid, btn) {
+    const altEl = document.getElementById(`hltb-alt-${appid}`);
+    if (altEl.classList.contains('open')) {
+        altEl.classList.remove('open');
+        btn.textContent = 'Other match';
+        return;
+    }
+    btn.textContent = '...';
+    btn.disabled = true;
+    const rowData = _hltbMatches.find(r => r.appid === appid);
+    await _hltbRowRunSearch(appid, rowData?.name || '');
+    btn.textContent = 'Other match';
+    btn.disabled = false;
+}
+
+async function _hltbNoMatchSearch(appid, btn) {
+    const altEl = document.getElementById(`hltb-alt-${appid}`);
+    if (altEl.classList.contains('open')) {
+        altEl.classList.remove('open');
+        btn.textContent = 'Search';
+        return;
+    }
+    btn.textContent = '...';
+    btn.disabled = true;
+    const rowData = _hltbNoMatchGames.find(r => r.appid === appid);
+    await _hltbRowRunSearch(appid, rowData?.name || '');
+    btn.textContent = 'Search';
+    btn.disabled = false;
+}
+
+function _hltbSetupAltDelegation(appid, altEl) {
+    if (altEl._hltbDelegated) return;
+    altEl._hltbDelegated = true;
+    altEl.addEventListener('click', function(e) {
+        const sel = e.target.closest('[data-hltb-select]');
+        if (sel) { _hltbRowSelect(appid, parseInt(sel.dataset.hltbId), sel.dataset.hltbScore ? parseInt(sel.dataset.hltbScore) : null, sel.dataset.hltbName); return; }
+        if (e.target.closest('[data-hltb-apply]')) { _hltbRowSelectById(appid); return; }
+        if (e.target.closest('[data-hltb-research]')) {
+            const input = altEl.querySelector('.hltb-row-search-query');
+            if (input) _hltbRowRunSearch(appid, input.value.trim());
+        }
+    });
+    altEl.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+        if (e.target.classList.contains('hltb-row-search-query')) { e.preventDefault(); _hltbRowRunSearch(appid, e.target.value.trim()); }
+        else if (e.target.classList.contains('hltb-row-manual-id')) { _hltbRowSelectById(appid); }
+    });
+}
+
+async function _hltbRowRunSearch(appid, query) {
+    let altEl = document.getElementById(`hltb-alt-${appid}`);
+    if (!altEl) return;
+    _hltbSetupAltDelegation(appid, altEl);
+    try {
+        const url = `/api/hltb/${appid}/search` + (query ? `?q=${encodeURIComponent(query)}` : '');
+        const data = await fetch(url).then(r => r.json());
+        altEl = document.getElementById(`hltb-alt-${appid}`);
+        if (!altEl) return;
+        _hltbSetupAltDelegation(appid, altEl);
+        const results = data.results || [];
+        const titleRowHtml = `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+            <input class="hltb-row-search-query" type="text" value="${_escHtml(query)}"
+                style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);">
+            <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                data-hltb-research="1">Search</button>
+        </div>`;
+        const manualHtml = `<div style="display:flex; align-items:center; gap:6px; padding:6px 0 2px; border-top:1px solid #2a475e; margin-top:4px;">
+            <input class="hltb-row-manual-id" id="hltb-manual-id-${appid}" type="text" placeholder="Paste HLTB URL or game ID…"
+                style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);">
+            <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                data-hltb-apply="1">Apply</button>
+        </div>`;
+        const resultsHtml = results.length
+            ? results.map(r => {
+                const times = [];
+                if (r.hltb_main          != null) times.push(`Main: ${_fmtMinsHltb(r.hltb_main)}`);
+                if (r.hltb_extras        != null) times.push(`+Extras: ${_fmtMinsHltb(r.hltb_extras)}`);
+                if (r.hltb_completionist != null) times.push(`Compl: ${_fmtMinsHltb(r.hltb_completionist)}`);
+                return `<div class="hltb-alt-result-row">
+                    <span style="flex:1; min-width:0;">${_escHtml(r.hltb_matched_name)}</span>
+                    <span style="color:#8f98a0; font-size:0.72rem; flex-shrink:0;">${r.hltb_match_score}</span>
+                    <span style="color:#8f98a0; font-size:0.72rem; flex:1;">${times.join(' · ')}</span>
+                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                        data-hltb-select="1" data-hltb-id="${r.hltb_id}"
+                        data-hltb-score="${r.hltb_match_score ?? ''}"
+                        data-hltb-name="${_escHtml(r.hltb_matched_name)}">Select</button>
+                </div>`;
+            }).join('')
+            : '<div style="color:#8f98a0; font-size:0.78rem; padding-bottom:4px;">No results found.</div>';
+        altEl.innerHTML = titleRowHtml + resultsHtml + manualHtml;
+        altEl.classList.add('open');
+    } catch(e) {
+        altEl = document.getElementById(`hltb-alt-${appid}`) || altEl;
+        altEl.innerHTML = '<div style="color:#ff6b6b; font-size:0.78rem;">Search failed.</div>';
+        altEl.classList.add('open');
+    }
+}
+
+async function _hltbRowSelect(appid, hltbId, score, matchedName) {
+    try {
+        const data = await fetch(`/api/hltb/${appid}/select`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: score})
+        }).then(r=>r.json());
+        if (data.status === 'success') {
+            const nmIdx = _hltbNoMatchGames.findIndex(r => r.appid === appid);
+            if (nmIdx !== -1) {
+                const nmGame = _hltbNoMatchGames.splice(nmIdx, 1)[0];
+                _hltbMatches.push({...data.data, appid, name: nmGame.name, hltb_matched_name: matchedName, hltb_id: hltbId});
+            } else {
+                const idx = _hltbMatches.findIndex(r => r.appid === appid);
+                if (idx !== -1) Object.assign(_hltbMatches[idx], data.data, {hltb_matched_name: matchedName, hltb_id: hltbId});
+            }
+            _hltbRenderList();
+        }
+    } catch(e) {}
+}
+
+async function _hltbRowSelectById(appid) {
+    const input = document.getElementById(`hltb-manual-id-${appid}`);
+    if (!input) return;
+    const raw = input.value.trim();
+    if (!raw) return;
+    const match = raw.match(/(?:game\/)?(\d+)/);
+    if (!match) { input.style.borderColor = 'var(--color-danger)'; return; }
+    input.style.borderColor = '';
+    const hltbId = parseInt(match[1], 10);
+    input.disabled = true;
+    try {
+        const data = await fetch(`/api/hltb/${appid}/select`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: null})
+        }).then(r => r.json());
+        if (data.status === 'success') {
+            const nmIdx = _hltbNoMatchGames.findIndex(r => r.appid === appid);
+            if (nmIdx !== -1) {
+                const nmGame = _hltbNoMatchGames.splice(nmIdx, 1)[0];
+                _hltbMatches.push({...data.data, appid, name: nmGame.name, hltb_id: hltbId});
+            } else {
+                const idx = _hltbMatches.findIndex(r => r.appid === appid);
+                if (idx !== -1) {
+                    Object.assign(_hltbMatches[idx], data.data, {hltb_id: hltbId});
+                    if (!data.times_available) _hltbMatches = _hltbMatches.filter(r => r.appid !== appid);
+                }
+            }
+            _hltbRenderList();
+        } else {
+            input.style.borderColor = 'var(--color-danger)';
+        }
+    } catch(e) {
+        input.style.borderColor = 'var(--color-danger)';
+    }
+    input.disabled = false;
+}
+
+async function _hltbConfirmAllAbove() {
+    const threshold = _hltbGetThreshold();
+    const targets   = _hltbMatches.filter(r => r.hltb_fetched === 'unconfirmed' && (r.hltb_match_score ?? 0) >= threshold);
+    if (!targets.length) return;
+    if (!await confirm(`Confirm ${targets.length} unconfirmed match${targets.length !== 1 ? 'es' : ''} above threshold ${threshold}?`)) return;
+    const stats = document.getElementById('hltb-review-stats');
+    stats.textContent = `Confirming 0 / ${targets.length}...`;
+    let done = 0;
+    for (const row of targets) {
+        const data = await fetch(`/api/hltb/${row.appid}/confirm`, {method:'POST'}).then(r=>r.json()).catch(()=>null);
+        if (data?.status === 'success') {
+            const idx = _hltbMatches.findIndex(r => r.appid === row.appid);
+            if (idx !== -1) Object.assign(_hltbMatches[idx], data.data);
+        }
+        done++;
+        stats.textContent = `Confirming ${done} / ${targets.length}...`;
+    }
+    _hltbRenderList();
+}
+
+let _hltbScrapeInterval = null;
+
+async function _hltbScrapeNoMatch() {
+    const scrapeBtn = document.getElementById('hltb-scrape-btn');
+    const stopBtn   = document.getElementById('hltb-stop-btn');
+    const statusEl  = document.getElementById('hltb-scrape-status');
+
+    scrapeBtn.disabled = true;
+    statusEl.textContent = 'Starting…';
+
+    const res = await fetch('/api/bulk-op/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({op: 'hltb', scope: 'no_match'})
+    }).then(r => r.json()).catch(() => null);
+
+    if (!res || res.status !== 'success') {
+        statusEl.textContent = res?.message ? '✘ ' + res.message : '✘ Failed to start.';
+        scrapeBtn.disabled = false;
+        return;
+    }
+
+    scrapeBtn.style.display = 'none';
+    stopBtn.style.display   = '';
+    statusEl.textContent    = `0 / ${res.total}`;
+
+    _hltbScrapeInterval = setInterval(async () => {
+        try {
+            const d = await fetch('/api/bulk-op/status').then(r => r.json());
+            const done = d.done + d.failed;
+            statusEl.textContent = `${done} / ${d.total}${d.failed ? ` (${d.failed} failed)` : ''}`;
+            if (d.done > 0) _hltbLoadMatches(true);
+            if (!d.running) {
+                clearInterval(_hltbScrapeInterval);
+                _hltbScrapeInterval = null;
+                scrapeBtn.style.display = '';
+                scrapeBtn.disabled = false;
+                stopBtn.style.display = 'none';
+                statusEl.textContent = d.result?.error
+                    ? '✘ ' + d.result.error
+                    : `Done — ${d.done} fetched${d.failed ? ', ' + d.failed + ' failed' : ''}.`;
+                _hltbLoadMatches(false);
+            }
+        } catch(e) {}
+    }, 1000);
+}
+
+async function _hltbStopScrape() {
+    document.getElementById('hltb-stop-btn').disabled = true;
+    await fetch('/api/bulk-op/cancel', {method: 'POST'}).catch(() => {});
+}
+</script>

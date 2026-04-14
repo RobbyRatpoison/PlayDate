@@ -153,7 +153,7 @@
             <h2 style="margin: 0; color: #ffffff;">Edit Game Details</h2>
             <div style="display: flex; gap: 10px; align-items: center;">
                 <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--accent);">
-                    Sync Steam Data
+                    Sync Data
                 </button>
                 <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--color-danger); background: var(--color-danger); color: var(--text-bright);">
                     Delete Game
@@ -162,13 +162,33 @@
             </div>
         </div>
 
-        <p style="margin-bottom: 12px; color: #8f98a0; font-size: 0.85rem; border-bottom: 1px solid #2a475e; padding-bottom: 10px;">
-            AppID: <span id="display-appid"></span>
+        <p id="steam-appid-row" style="margin-bottom: 8px; color: #8f98a0; font-size: 0.85rem;">
+            <span id="display-appid-label">AppID:</span> <span id="display-appid"></span>
             <a id="steam-store-link" href="#" target="_blank"
                style="color: var(--accent); font-size: 0.8rem; text-decoration: none; margin-left: 12px;">
                 View on Steam Store ↗
             </a>
+            <a id="gog-store-link" href="#" target="_blank"
+               style="display:none; color: var(--accent); font-size: 0.8rem; text-decoration: none; margin-left: 12px;">
+                View on GOG Store ↗
+            </a>
         </p>
+
+        <!-- Duplicate linking row (non-Steam games only) -->
+        <div id="duplicate-row" style="display:none; margin-bottom: 12px; font-size: 0.85rem; color: #8f98a0; border-bottom: 1px solid #2a475e; padding-bottom: 10px;">
+            <span style="margin-right: 8px;">Duplicate of:</span>
+            <span id="dup-linked-name" style="display:none; color: var(--text-bright); margin-right: 8px;"></span>
+            <button type="button" id="dup-unlink-btn" onclick="setDuplicate(null)"
+                    style="display:none; font-size:0.75rem; padding:2px 8px; background:transparent; border:1px solid #8f98a0; color:#8f98a0; border-radius:3px; cursor:pointer; margin-right: 12px;">
+                Unlink
+            </button>
+            <span id="dup-search-wrap" style="display:inline-block; position:relative;">
+                <input id="dup-search" type="text" placeholder="Search Steam library…"
+                       style="font-size:0.8rem; padding:3px 8px; width:220px; background:#1b2838; border:1px solid #2a475e; color:var(--text-bright); border-radius:3px;"
+                       autocomplete="off" oninput="dupSearchInput(this.value)">
+                <div id="dup-results" style="display:none; position:absolute; left:0; top:100%; z-index:9999; background:#1b2838; border:1px solid #2a475e; border-radius:3px; min-width:260px; max-height:180px; overflow-y:auto;"></div>
+            </span>
+        </div>
 
         <form id="edit-game-form">
             <input type="hidden" name="edit-appid" id="edit-appid">
@@ -746,7 +766,7 @@
     function openEditModal(game) {
         switchEditTab('info');
         safeSet('edit-appid', game.appid);
-        safeSet('display-appid', game.appid, 'textContent');
+        safeSet('display-appid', (game.platform === 'gog' && game.platform_id) ? game.platform_id : game.appid, 'textContent');
         safeSet('edit-name', game.name);
         safeSet('edit-dev', game.developers);
         safeSet('edit-pub', game.publishers);
@@ -776,8 +796,23 @@
         _loadArtPanel('icon',       `/static/img/library/icons/${game.appid}.jpg`,      game.icon_source);
         openArtTab('vertical');
 
-        const storeLink = document.getElementById('steam-store-link');
-        if (storeLink) storeLink.href = `https://store.steampowered.com/app/${game.appid}/`;
+        const storeLink    = document.getElementById('steam-store-link');
+        const gogStoreLink = document.getElementById('gog-store-link');
+        const appidLabel   = document.getElementById('display-appid-label');
+        const isGog        = game.platform === 'gog';
+        if (appidLabel) appidLabel.textContent = isGog ? 'GOG ID:' : 'AppID:';
+        if (storeLink) {
+            storeLink.href         = `https://store.steampowered.com/app/${game.appid}/`;
+            storeLink.style.display = isGog ? 'none' : '';
+        }
+        if (gogStoreLink) {
+            if (isGog && game.platform_slug) {
+                gogStoreLink.href         = `https://www.gog.com/en/game/${game.platform_slug}`;
+                gogStoreLink.style.display = '';
+            } else {
+                gogStoreLink.style.display = 'none';
+            }
+        }
 
 const achLink = document.getElementById('achievements-link');
         if (achLink && _serverSteamId) {
@@ -802,11 +837,137 @@ const achLink = document.getElementById('achievements-link');
         });
 
         _pagRenderQuals(game);
-        _renderProtonDB(game);
         _renderHLTB(game);
+
+        // Show/hide platform-specific fields; update sync button label
+        const isSteam = game.platform === 'steam' || (!game.platform && game.appid >= 0);
+        const metaBtn = document.getElementById('meta-btn');
+        if (metaBtn) {
+            metaBtn.style.display        = '';
+            metaBtn.textContent          = isGog ? 'Sync GOG Data' : 'Sync Steam Data';
+            metaBtn.dataset.platform     = game.platform || 'steam';
+        }
+        ['steam-help-link', 'achievements-link'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = isSteam ? '' : 'none';
+        });
+        if (isSteam) {
+            _renderProtonDB(game);
+        } else {
+            const pdb = document.getElementById('protondb-row');
+            if (pdb) pdb.style.display = 'none';
+        }
+
+        // Duplicate row: only for non-Steam games
+        _initDupRow(game);
 
         const modal = document.getElementById('editModal');
         modal.style.display = 'flex';
+    }
+
+    // ── Duplicate linking ────────────────────────────────────────────────────
+    let _dupSearchTimer = null;
+
+    function _initDupRow(game) {
+        const row = document.getElementById('duplicate-row');
+        if (!row) return;
+        if (game.platform === 'steam') { row.style.display = 'none'; return; }
+        row.style.display = '';
+
+        const linkedName  = document.getElementById('dup-linked-name');
+        const unlinkBtn   = document.getElementById('dup-unlink-btn');
+        const searchWrap  = document.getElementById('dup-search-wrap');
+        const searchInput = document.getElementById('dup-search');
+        const results     = document.getElementById('dup-results');
+
+        if (results) { results.style.display = 'none'; results.innerHTML = ''; }
+        if (searchInput) searchInput.value = '';
+
+        if (game.duplicate_of) {
+            // Fetch the linked game's name to display
+            fetch(`/api/game/${game.duplicate_of}`)
+                .then(r => r.json())
+                .then(d => {
+                    const name = d.game ? d.game.name : game.duplicate_of;
+                    if (linkedName) {
+                        linkedName.textContent = `${name} (${game.duplicate_of})`;
+                        linkedName.style.display = '';
+                    }
+                })
+                .catch(() => {
+                    if (linkedName) {
+                        linkedName.textContent = `appid ${game.duplicate_of}`;
+                        linkedName.style.display = '';
+                    }
+                });
+            if (unlinkBtn)  unlinkBtn.style.display  = '';
+            if (searchWrap) searchWrap.style.display  = 'none';
+        } else {
+            if (linkedName) { linkedName.textContent = ''; linkedName.style.display = 'none'; }
+            if (unlinkBtn)  unlinkBtn.style.display   = 'none';
+            if (searchWrap) searchWrap.style.display  = '';
+        }
+    }
+
+    function dupSearchInput(q) {
+        clearTimeout(_dupSearchTimer);
+        const results = document.getElementById('dup-results');
+        if (!q.trim()) { if (results) results.style.display = 'none'; return; }
+        _dupSearchTimer = setTimeout(async () => {
+            try {
+                const data = await fetch(`/api/games/search?q=${encodeURIComponent(q)}&platform=steam`).then(r => r.json());
+                if (!results) return;
+                results.innerHTML = '';
+                if (!data.length) {
+                    results.innerHTML = '<div style="padding:6px 10px; color:#8f98a0; font-size:0.8rem;">No matches</div>';
+                } else {
+                    data.forEach(g => {
+                        const item = document.createElement('div');
+                        item.textContent = g.name;
+                        Object.assign(item.style, { padding:'5px 10px', cursor:'pointer', fontSize:'0.82rem', color:'var(--text-bright)' });
+                        item.onmouseenter = () => item.style.background = '#2a475e';
+                        item.onmouseleave = () => item.style.background = '';
+                        item.onclick = () => setDuplicate(g.appid, g.name);
+                        results.appendChild(item);
+                    });
+                }
+                results.style.display = '';
+            } catch (e) { /* ignore */ }
+        }, 250);
+    }
+
+    async function setDuplicate(targetAppid, targetName) {
+        const appid = document.getElementById('edit-appid')?.value;
+        if (!appid) return;
+        try {
+            await fetch(`/api/game/${appid}/set-duplicate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ duplicate_of: targetAppid || null }),
+            });
+            // Update UI
+            const linkedName  = document.getElementById('dup-linked-name');
+            const unlinkBtn   = document.getElementById('dup-unlink-btn');
+            const searchWrap  = document.getElementById('dup-search-wrap');
+            const results     = document.getElementById('dup-results');
+            const searchInput = document.getElementById('dup-search');
+            if (targetAppid) {
+                if (linkedName) { linkedName.textContent = `${targetName || targetAppid} (${targetAppid})`; linkedName.style.display = ''; }
+                if (unlinkBtn)  unlinkBtn.style.display  = '';
+                if (searchWrap) searchWrap.style.display  = 'none';
+                if (results)    results.style.display     = 'none';
+            } else {
+                if (linkedName) { linkedName.textContent = ''; linkedName.style.display = 'none'; }
+                if (unlinkBtn)  unlinkBtn.style.display   = 'none';
+                if (searchWrap) { searchWrap.style.display = ''; if (searchInput) searchInput.value = ''; }
+                if (results)    results.style.display      = 'none';
+            }
+            // Refresh the card if library is open
+            if (typeof _patchGameCard === 'function') {
+                const r = await fetch(`/api/game/${appid}`).then(r => r.json());
+                if (r.game) _patchGameCard(r.game);
+            }
+        } catch (e) { alert('Failed to update duplicate link: ' + e.message); }
     }
 
     let _pendingDatePoll = null;
@@ -1011,8 +1172,12 @@ const achLink = document.getElementById('achievements-link');
         const originalText = btn.textContent;
         btn.textContent = "Syncing...";
         btn.disabled = true;
+        const isGogGame = btn.dataset.platform === 'gog';
+        const url = isGogGame
+            ? `/api/gog/scrape-single/${appid}`
+            : `/api/scrape_single/${appid}`;
         try {
-            const response = await fetch(`/api/scrape_single/${appid}`);
+            const response = await fetch(url, { method: isGogGame ? 'POST' : 'GET' });
             const data = await response.json();
             if (data.status === 'success') {
                 const game = data.data;

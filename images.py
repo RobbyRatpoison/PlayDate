@@ -92,17 +92,32 @@ def _sgdb_get(endpoint, sgdb_key):
     return None
 
 
-def download_vertical(appid, assets=None, source='auto'):
+def _sgdb_search_game_id(name):
+    """Search SteamGridDB for a game by name. Returns SGDB game ID (int) or None."""
+    sgdb_key = _get_sgdb_key()
+    if not sgdb_key or not name:
+        return None
+    try:
+        data = _sgdb_get(f'search/autocomplete/{url_quote(name)}', sgdb_key)
+        if data and data.get('success') and data.get('data'):
+            return data['data'][0]['id']
+    except Exception as e:
+        print(f"[_sgdb_search_game_id] {name!r}: {e}")
+    return None
+
+
+def download_vertical(appid, assets=None, source='auto', sgdb_id=None):
     """
     Downloads vertical capsule art for a game.
     source: 'auto' (Steam → SGDB fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     Pass pre-fetched assets dict to avoid a redundant API call.
+    Pass sgdb_id for non-Steam games to query SGDB by its game ID instead of Steam appid.
     """
     _ensure_dirs()
     save_path = os.path.join(VERTICAL_DIR, f'{appid}.jpg')
     sgdb_key  = _get_sgdb_key()
 
-    if source != 'sgdb':
+    if source != 'sgdb' and not sgdb_id:
         # 1. Asset manifest (covers new games with content-hash URLs)
         if assets is None:
             assets = _get_steam_assets(appid)
@@ -132,7 +147,8 @@ def download_vertical(appid, assets=None, source='auto'):
         # 3. SteamGridDB grid — fetch all, filter to portrait orientation client-side
         # (SGDB returns 400 for ?dimensions=600x900,1200x1800)
         if sgdb_key:
-            data = _sgdb_get(f'grids/steam/{appid}', sgdb_key)
+            endpoint = f'grids/game/{sgdb_id}' if sgdb_id else f'grids/steam/{appid}'
+            data = _sgdb_get(endpoint, sgdb_key)
             if data and data.get('success') and data.get('data'):
                 for item in data['data']:
                     if item.get('animated'):
@@ -151,17 +167,18 @@ def download_vertical(appid, assets=None, source='auto'):
     return 'missing'
 
 
-def download_horizontal(appid, assets=None, source='auto'):
+def download_horizontal(appid, assets=None, source='auto', sgdb_id=None):
     """
     Downloads horizontal header art for a game.
     source: 'auto' (Steam → SGDB fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     Pass pre-fetched assets dict to avoid a redundant API call.
+    Pass sgdb_id for non-Steam games to query SGDB by its game ID instead of Steam appid.
     """
     _ensure_dirs()
     save_path = os.path.join(HORIZONTAL_DIR, f'{appid}.jpg')
     sgdb_key  = _get_sgdb_key()
 
-    if source != 'sgdb':
+    if source != 'sgdb' and not sgdb_id:
         # 1. Asset manifest (covers new games with content-hash URLs)
         if assets is None:
             assets = _get_steam_assets(appid)
@@ -188,7 +205,9 @@ def download_horizontal(appid, assets=None, source='auto'):
     if source != 'steam':
         # 3. SteamGridDB wide grid (header style, non-animated)
         if sgdb_key:
-            data = _sgdb_get(f'grids/steam/{appid}?dimensions=460x215,920x430', sgdb_key)
+            endpoint = (f'grids/game/{sgdb_id}?dimensions=460x215,920x430'
+                        if sgdb_id else f'grids/steam/{appid}?dimensions=460x215,920x430')
+            data = _sgdb_get(endpoint, sgdb_key)
             if data and data.get('success') and data.get('data'):
                 for item in data['data']:
                     if item.get('animated'):
@@ -204,11 +223,12 @@ def download_horizontal(appid, assets=None, source='auto'):
     return 'missing'
 
 
-def download_icon(appid, icon_hash, source='auto'):
+def download_icon(appid, icon_hash, source='auto', sgdb_id=None):
     """
     Downloads the game icon.
     source: 'auto' (SGDB first, then Steam fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     icon_hash is required for Steam source; ignored for SGDB-only.
+    Pass sgdb_id for non-Steam games to query SGDB by its game ID instead of Steam appid.
     """
     _ensure_dirs()
     save_path = os.path.join(ICONS_DIR, f'{appid}.jpg')
@@ -217,7 +237,8 @@ def download_icon(appid, icon_hash, source='auto'):
     if source != 'steam':
         # 1. SteamGridDB icon (higher quality, non-animated)
         if sgdb_key:
-            data = _sgdb_get(f'icons/steam/{appid}', sgdb_key)
+            endpoint = f'icons/game/{sgdb_id}' if sgdb_id else f'icons/steam/{appid}'
+            data = _sgdb_get(endpoint, sgdb_key)
             if data and data.get('success') and data.get('data'):
                 for item in data['data']:
                     if item.get('animated'):

@@ -1,0 +1,117 @@
+<!-- ── Custom alert / confirm dialogs ──────────────────────────────────── -->
+<style>
+    #pd-dialog-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 99999;
+        align-items: center;
+        justify-content: center;
+    }
+    #pd-dialog-overlay.visible { display: flex; }
+    #pd-dialog-box {
+        background: #1a2332;
+        border: 1px solid #2a475e;
+        border-radius: 10px;
+        padding: 28px 32px 24px;
+        max-width: 440px;
+        width: 90vw;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    #pd-dialog-msg {
+        color: #c7d5e0;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        margin: 0 0 22px;
+        white-space: pre-wrap;
+        -webkit-user-select: text;
+        user-select: text;
+    }
+    #pd-dialog-btns {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+    }
+    #pd-dialog-btns button {
+        padding: 8px 22px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: bold;
+        cursor: pointer;
+        letter-spacing: 0.04em;
+        border: 1px solid #2a475e;
+        transition: opacity 0.15s;
+    }
+    #pd-dialog-btns button:hover { opacity: 0.85; }
+    #pd-btn-ok    { background: var(--accent); color: #0e1621; border-color: var(--accent); }
+    #pd-btn-cancel { background: transparent; color: #c7d5e0; }
+</style>
+
+<div id="pd-dialog-overlay">
+    <div id="pd-dialog-box">
+        <div id="pd-dialog-msg"></div>
+        <div id="pd-dialog-btns">
+            <button id="pd-btn-cancel" data-modal-row="0">Cancel</button>
+            <button id="pd-btn-ok"     data-modal-row="0">OK</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Override window.alert and window.confirm with styled dialogs ──────────
+(function () {
+    const overlay  = document.getElementById('pd-dialog-overlay');
+    const msgEl    = document.getElementById('pd-dialog-msg');
+    const btnOk     = document.getElementById('pd-btn-ok');
+    const btnCancel = document.getElementById('pd-btn-cancel');
+
+    let _resolve = null;
+    let _hiddenModal = null; // track any modal hidden while dialog is open
+
+    function _show(message, isConfirm, okLabel, cancelLabel) {
+        msgEl.textContent = message;
+        btnCancel.style.display = isConfirm ? '' : 'none';
+        btnOk.textContent     = okLabel     || 'OK';
+        btnCancel.textContent = cancelLabel || 'Cancel';
+        // Hide any open modal so its scrollbars don't show through the overlay
+        _hiddenModal = null;
+        const editModal = document.getElementById('editModal');
+        if (editModal && editModal.style.display !== 'none') {
+            editModal.style.visibility = 'hidden';
+            _hiddenModal = editModal;
+        }
+        overlay.classList.add('visible');
+        setTimeout(() => btnOk.focus(), 50);
+        return new Promise(resolve => { _resolve = resolve; });
+    }
+
+    function _close(result) {
+        overlay.classList.remove('visible');
+        if (_hiddenModal) {
+            _hiddenModal.style.visibility = '';
+            _hiddenModal = null;
+        }
+        if (_resolve) { _resolve(result); _resolve = null; }
+    }
+
+    btnOk.addEventListener('click',     () => _close(true));
+    btnCancel.addEventListener('click', () => _close(false));
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay) _close(false);
+    });
+    document.addEventListener('keydown', e => {
+        if (!overlay.classList.contains('visible')) return;
+        if (e.key === 'Enter')  { e.preventDefault(); _close(true); }
+        if (e.key === 'Escape') { e.preventDefault(); _close(false); }
+    });
+
+    // Override native dialogs — these return Promises but existing code uses
+    // them synchronously. We patch them to work with async/await callers.
+    // Synchronous callers (rare) will receive a Promise object which is truthy
+    // — acceptable since all our confirm() calls are already in async functions.
+    window.alert         = (msg) => _show(msg, false);
+    window.confirm       = (msg) => _show(msg, true);
+    window.confirmCustom = (msg, okLabel, cancelLabel) => _show(msg, true, okLabel, cancelLabel);
+})();
+</script>
