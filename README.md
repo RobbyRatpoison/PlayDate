@@ -9,7 +9,7 @@ A local Steam library manager for people who take their backlog seriously.
 
 ## What it does
 
-PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, achievements, cover art), and gives you a clean interface for browsing, filtering, tracking completion, and deciding what to play next. Runs entirely locally as a standalone desktop app — no browser, no cloud, no account required beyond your Steam credentials.
+PlayDate pulls your Steam and GOG libraries, enriches them with metadata (tags, reviews, achievements, cover art, HowLongToBeat times), and gives you a clean interface for browsing, filtering, tracking completion, and deciding what to play next. Runs entirely locally as a standalone desktop app — no browser, no cloud, no account required beyond your Steam credentials.
 
 ---
 
@@ -34,24 +34,30 @@ PlayDate pulls your Steam library, enriches it with metadata (tags, reviews, ach
 - **Smart mode** — builds a taste profile from your beaten games using tag cosine similarity, then scores candidates by review quality, staleness, playtime, and release recency
 - **Weighted mode** — tune six scoring signals with sliders; toggle individual games in or out of the pool
 
+### Non-Steam Libraries
+- **GOG integration** — connect your GOG account via OAuth2 to sync your library, metadata, achievements, and cover art; install and launch GOG games directly from PlayDate (Windows games via Proton on Linux); purchase date import via Tampermonkey on the GOG orders page
+- **Duplicate detection** — GOG games are automatically matched to their Steam counterparts by normalized name and hidden by default; manual linking available in the edit modal; "DUPES: OFF/ON" toggle in the library header
+
 ### Metadata & Artwork
 - **Steam scraper** — imports playtime, tags, review scores, achievement counts, release dates, developers, publishers, and genres from Steam's API and store pages; runs concurrent worker pools for art, metadata, and achievements so cards populate live as each phase completes
+- **HowLongToBeat** — scrapes main story, completionist, and all-styles times for every game; sortable from the library; HLTB Review tool in the Tools menu for managing unmatched and unconfirmed entries
 - **Startup sync** — on every launch, PlayDate reads your local Steam files to update playtime and last-played dates; if playtime changed, it fetches fresh achievement data and promotes completion status (`Never Played` → `Unfinished`, 100% achievements → `Completed`); also sweeps the library for any games already at 100% that weren't marked Completed
-- **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB
+- **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB; non-Steam games go straight to SteamGridDB name search
 - **SteamGridDB browser** — search and apply custom artwork for any game from directly within PlayDate
 - **BLAEO sync** — imports completion statuses, list tags, and achievement counts from your BLAEO backlog profile
 
 ### Import Tools
-- **Steam date importer** — a Tampermonkey userscript (`steam_date_import.user.js`) that scrapes activation dates from Steam help pages and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (fetches each game's date in the background without tab switching, with a live per-game log). Compatible with current Tampermonkey versions
+- **Date importer** — a Tampermonkey userscript (`steam_date_import.user.js`) that scrapes activation dates from Steam help pages and GOG orders page and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (fetches each game's date in the background without tab switching, with a live per-game log)
 - **Playnite import** — import `date added` values from a Playnite backup ZIP
 - **Database import** — migrate columns from an older PlayDate database into your current one, with column mapping and type-mismatch warnings
 
 ### Tools
 - **PAGYWOSG filter builder** — construct an eligible game pool from the monthly community post criteria and save it as a reusable library filter
+- **HLTB Review** — manage HowLongToBeat matches: confirm or reassign unconfirmed entries, review no-match games, and handle confirmed-below-threshold cases
 - **Theme editor** — customize PlayDate's color scheme with a live preview; save and restore named themes
 - **Backup & restore** — export a timestamped zip of your library data and settings (optionally including cover art); restore from any previous backup
-- **Account manager** — add, switch between, and remove Steam accounts; each account has its own Steam ID, API key, and label
-- **Bulk re-scrape** — refresh Steam metadata for any selection of games
+- **Account manager** — add, switch between, and remove Steam accounts; each account has its own Steam ID, API key, and label; also manages GOG connection
+- **Bulk re-scrape** — refresh metadata for any selection of games (Steam or GOG)
 
 ### Other
 - **Gamepad & keyboard navigation** — full controller support across all pages with 2D spatial grid navigation, modal zone handling, and a HUD that appears on first input
@@ -116,7 +122,7 @@ On first launch you'll be prompted for:
 
 Then hit **Populate PlayDate** in the navbar to import your library and fetch metadata. Game cards appear immediately as placeholders and fill in live as art, metadata, and achievements are fetched in parallel. First-run time depends on library size and Steam's API rate limits.
 
-Additional Steam accounts can be added at any time via **Tools → Account**.
+Additional Steam accounts can be added at any time via **Tools → Account**. To connect your GOG library, go to **Settings → GOG** and click **Connect GOG Account**.
 
 ---
 
@@ -146,7 +152,7 @@ All user data lives next to the executable (or in the project folder when runnin
 | File / Folder | Contents |
 |---|---|
 | `games.db` | SQLite database — your game library and blacklist |
-| `config.json` | Steam accounts (`active_account`, per-account Steam ID and API key), SteamGridDB key |
+| `config.json` | Steam accounts (`active_account`, per-account Steam ID and API key), SteamGridDB key, GOG OAuth2 tokens |
 | `state.json` | Active filters, sort order, shelf layout, saved filters, artwork orientation, card size |
 | `theme.json` | CSS variable overrides for custom theming |
 | `playdate.log` | Application log (1MB cap, auto-rotated) |
@@ -168,7 +174,9 @@ Data files survive upgrades — they are never overwritten by the installer.
 | SQLite | Local game database |
 | Jinja2 | Server-side HTML templating |
 | Vanilla JS / CSS3 | All frontend logic — no frameworks, no build step |
-| requests + BeautifulSoup | Steam metadata, tag scraping, and BLAEO sync |
+| requests + BeautifulSoup | Steam/GOG metadata, tag scraping, and BLAEO sync |
+| Selenium + Chrome | BLAEO sync (headless scroll-load) |
+| howlongtobeatpy | HowLongToBeat scraping |
 
 ---
 

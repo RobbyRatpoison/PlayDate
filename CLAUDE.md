@@ -4,9 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Pending (next release)
 
-> When a TODO item is completed, move it here immediately. When releasing, use this section to write release notes, then clear it. Old release notes are deleted from `RELEASE_NOTES.md` on each publish — only the current version's notes are kept.
+> When a TODO item is completed, move it here immediately. Entries here are developer notes — include implementation detail freely. When releasing, distill this section into user-facing release notes: only include changes the end user will notice, written in plain language without code references, technical jargon, or implementation detail. Then clear this section. Old release notes are deleted from `RELEASE_NOTES.md` on each publish — only the current version's notes are kept.
 
-(none)
 
 ## Populate Speed Overhaul — Notes
 
@@ -64,7 +63,7 @@ See [TODO.md](TODO.md).
 
 ## What This Project Is
 
-PlayDate is a local Steam library manager. It runs as a Flask web server wrapped in a native OS window via pywebview (no Electron). Users browse their Steam library, apply filters, track completion, and use a "Pick 6" feature to discover what to play next.
+PlayDate is a local game library manager. It runs as a Flask web server wrapped in a native OS window via pywebview (no Electron). Users browse their Steam and GOG libraries, apply filters, track completion, and use a "Pick 6" feature to discover what to play next. Non-Steam games use negative integer appids; GOG integration includes OAuth2 auth, library sync, metadata/achievement scraping, content-system v2 install/download, and Proton-based launch.
 
 ## Planned: Project Rename + Install Folder Migration
 
@@ -267,7 +266,7 @@ Shelves are defined in `state.json` and rendered by `index.py`. Key fields per s
 - When `_patchGameCard` updates a card after an edit, it evicts the card from `CARD_HTML_CACHE` so the next repopulation picks up fresh data
 - `.game-grid` has `contain: layout style paint` for paint performance
 - Cards carry `data-platform` attribute (`steam`, `gog`, etc.) for platform-aware context menus and launch behavior
-- Duplicate hiding: library query excludes `duplicate_of IS NOT NULL` when `state.hide_duplicates` is true (default); "DUPES: OFF/ON" toggle calls `toggleHideDuplicates()` → `sendStateUpdate({hide_duplicates})`; header shows "N duplicates hidden"
+- Duplicate hiding: library query excludes `duplicate_of IS NOT NULL` when `state.hide_duplicates` is true (default); checkbox in Settings modal calls `sendStateUpdate({hide_duplicates})`; header shows "N duplicates hidden"
 - Sort direction auto-set: `updateSort()` auto-sets direction per column — name ASC; playtime/release date/date added/review scores DESC; HLTB ASC
 - `_pollGogInstall()` polls `/api/gog/install-status/{appid}` every 2s for installing GOG games, updates launch toast with MB progress, auto-launches on completion
 
@@ -295,7 +294,7 @@ Right-click context menu extracted from `base.html`. "Select All" scopes to the 
 
 - `completion_status` values: `'Never Played'`, `'Unfinished'`, `'Beaten'`, `'Completed'`, `"Won't Play"`
 - Comma-separated string columns: `tags`, `groups`, `developers`, `publishers` — no spaces after commas
-- Dates stored as `'YYYY-MM-DD'` strings, not Unix timestamps
+- Dates stored as Unix timestamps (INTEGER): `date_added`, `last_played`, `release_date` — converted at boundaries via `date_to_ts()` / `ts_to_date()` in `database.py`
 - `installed`: 0/1 integer
 - `platform`: `'steam'`, `'gog'`, `'epic_games'`, `'ea_app'`, `'ubisoft'` — backfilled to `'steam'` on migration
 - `platform_id`: platform-native game ID (GOG ID as string, Steam appid as integer)

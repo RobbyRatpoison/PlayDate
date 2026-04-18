@@ -1,19 +1,21 @@
 # TODO
 
+## User requests and other things that need sorting
+
+- none
+
 ## Known Bugs
 
-- **GOG install: executable not found after install** — `_find_gog_executable` fails to locate the primary executable, resulting in a "Cannot find executable for '{game name}' — Please set it manually" toast. Likely causes: (1) `goggame-{product_id}.info` is absent or has no `playTasks` of type `FileTask`; (2) the `.info` file uses a `WorkingDir`-relative path that doesn't resolve correctly; (3) Linux native builds don't follow the `goggame-*.info` convention and none of the fallback shell script names (`start.sh`, `game.sh`, etc.) match. Fix: surface the install path in the toast so the user can browse to it; improve the Linux fallback to scan for any executable file in the install root.
-- **GOG install: meta manifest decompression fails** — `_fetch_manifest(build['link'], session)` raises "Could not decompress data (tried zlib/deflate/gzip)". Likely causes: (1) `build['link']` is now a pre-signed CDN URL that returns uncompressed JSON rather than zlib-wrapped data, so `_zlib_decomp` has nothing to do; or (2) the URL requires CDN auth (the secure_link `cdn_urls`) not just Bearer session auth, so the response is an error page rather than the manifest. Fix: try `json.loads(resp.content)` first and fall back to decompression; and if 403, try constructing the manifest URL via `_build_chunk_url`/secure_link. This surfaces after the CDN token fix (switched from deprecated `/token` endpoint to `secure_link`).
-- **GOG install: partial install directory left on failure** — When a chunk download fails (e.g. 403), the install aborts immediately but leaves the `~/Games/GOG/{game}/` directory behind with whatever files were opened before the failure. Files are created with `open(dest_path, 'wb')` before the chunk fetch, so they exist on disk as 0-byte stubs (observed: only `goggame-{id}.script` files present after a failed install — these happen to be the first files processed). Fix: on any non-cancelled error return, delete the install directory (or at minimum log its path so the user knows to clean it up manually).
-- **Cross-platform duplicate hiding** — `duplicate_of` column exists and GOG↔Steam auto-detection works by normalized name, but the implementation is limited to GOG. Epic/EA/Ubisoft integration (when added) will need the same matching logic. Manual linking via the edit modal works for any non-Steam game.
-- **Non-Steam metadata limited to PCGW-matched games** — `sync_lutris_meta` resolves a Steam AppID via PCGamingWiki and then uses the existing Steam scrape pipeline. Games with no PCGW entry (niche or unlisted titles) get `meta_fetched = 'no_match'` and remain without tags, genres, or review scores.
+- **Ghost tooltip circle on secondary monitor** — a gray circle appears in the top-left corner of the secondary monitor. When hovering over elements in PlayDate, the tooltip renders at the circle's position first before snapping into the window. Likely caused by the tooltip div being positioned relative to a wrong coordinate origin on multi-monitor setups. Potentially fixed but I am leaving it here until I feel confident that the fix worked.
+- **PlayDate on Steam Deck** — controller support is completely broken
+- **Store Release Date** — currently we scrape Steam release date, but we should probably be scraping Store release date instead. Or in addition. Either way PAGYWOSG has issues with Steam release date because the game's store page sometimes does not match the Steam release date and we need to fix that.
 
 ---
 
 ## Improvements
 
 - **Gamepad support** — home page editor buttons, bulk edit modal navigation, text input focus, disable RB/LB while in modals *(partial: `clearSuppression()` added; remaining: modal navigation, text input focus)*
-- **Pick 6 factor range limits** — allow optional min/max hard limits on each scoring factor, hard-excluding games outside the range before scoring. Factors: HLTB length (min/max hours), playtime (min/max hours recorded), review score (min/max %), staleness (min/max days since last played), release recency (earliest/latest year). Limits apply before the scoring pool is built, so weights still operate on a clean candidate set. Open questions: UI placement (inline with weights, or a separate "filters" row); whether to enforce a minimum pool size and warn/relax when limits are too tight; how to handle games with missing data for a limited factor (exclude vs treat as unconstrained).
+- **Pick 6 factor range limits** — enforce a minimum pool size and warn/relax when limits are too tight; determine how to handle games with missing data
 
 ---
 
@@ -21,6 +23,8 @@
 
 - **Library group-by** — sort games into sections by a chosen field (e.g. installed status, completion status, ProtonDB tier); each section sorted by the active sort column and direction. Implementation approach for non-obvious grouping fields TBD. Group-by installed (installed games first) is the most-wanted specific case.
 - **PAGYWOSG Snowballs / Secret Santa support** — Snowballs and Secret Santa are PAGYWOSG/POP gift events. The filter builder and quals panel should recognise their pool/criteria structure the same way the main PAGYWOSG event does.
+- **Cross-platform duplicate priority order** — when a game is owned on multiple platforms, the duplicate hider should show the version from whichever platform ranks highest in a user-configurable priority list. Currently it always prefers Steam (GOG copies are hidden if the same game exists on Steam). Should support drag-to-reorder platform priority in Settings.
+- **Arch Install Instructions** — plus extra instructions specifically for Steam Deck installation.
 
 ---
 
@@ -35,7 +39,6 @@
 
 ## Potential / Under Consideration
 
-- **BLAEO sync downgrade prevention** — BLAEO sync unconditionally overwrites `completion_status` with whatever BLAEO reports, which can downgrade e.g. `Beaten` → `Unfinished`. Options: a hard guard matching `sync_recent_playtime` logic (never downgrade Beaten/Completed), a per-direction setting (e.g. "allow BLAEO to downgrade from Beaten"), or a setting toggle for each status transition. Direction of travel: probably a settings option since some users may want BLAEO to be authoritative.
 - **Sort by total reviews** — sort by `total_reviews` to surface popular games or find obscure ones. Already in `SAFE_COLUMNS`, just needs a dropdown option.
 - **Extend Playnite import** — also import completion status
 
@@ -59,6 +62,8 @@ Add games from other launchers and eventually DRM-free/emulated titles alongside
 - `platform_executable` TEXT — path to primary executable
 - `duplicate_of` TEXT — appid of the canonical (preferred) version; games with `duplicate_of IS NOT NULL` are hidden from library by default; toggle via "DUPES: OFF/ON"
 - `meta_fetched`, `cheevos_fetched` — per-phase completion tracking
+
+**Filesystem watching (per-platform install status):** Each platform needs equivalent watching to Steam's `appmanifest_*.acf` watcher. Pattern: watch the platform's games root for directory creates/deletes/moves, sync `installed` flags on change. GOG done (`start_gog_watcher` / `sync_gog_install_status` in `utils.py`). Other platforms: implement when integrated.
 
 **GOG integration (done — v1.4.0):**
 - OAuth2 auth (auth-code flow, public GOG client credentials)
@@ -84,17 +89,18 @@ Add games from other launchers and eventually DRM-free/emulated titles alongside
 
 **Phase 1 — Remaining launchers (not yet started):**
 
-*Linux:* Import from Lutris (`~/.local/share/lutris/pga.db` — SQLite). Launch via `lutris lutris:rungameid/{id}`. Lutris covers native, Wine, GOG, and Epic games in one integration.
-
 *Windows/Mac:* Read each launcher's install manifests to detect installed games:
 - **GOG:** `%PROGRAMDATA%\GOG.com\Galaxy\storage\` (SQLite) — *partially superseded by direct GOG API integration*
 - **Epic:** `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests\*.item` (JSON)
 - **EA App:** `%PROGRAMDATA%\EA Desktop\EA Desktop\` manifests
 - **Ubisoft:** Registry + `%PROGRAMFILES%\Ubisoft\Ubisoft Game Launcher\games\`
+- **Rockstar:** `%PROGRAMFILES%\Rockstar Games\Launcher\` + registry entries under `HKLM\SOFTWARE\WOW6432Node\Rockstar Games\`; launch via `rockstar://` URI scheme or direct exe
 
-Launch via OS-registered URI schemes: `goggalaxy://openGame/{id}`, `com.epicgames.launcher://apps/{name}?action=launch`, `uplay://launch/{id}/0`, `origin://LaunchGame/{id}`. Use `webbrowser.open()` or `subprocess` depending on OS.
+Launch via OS-registered URI schemes: `goggalaxy://openGame/{id}`, `com.epicgames.launcher://apps/{name}?action=launch`, `uplay://launch/{id}/0`, `origin://LaunchGame/{id}`, `rockstar://`. Use `webbrowser.open()` or `subprocess` depending on OS.
 
 **Phase 2 — DRM-free + emulated:** Manual "Add game" dialog (Name, Type, Path via `pywebview.api.pick_open_path`). Install status checked by whether `game_path` file exists on disk.
+
+**Phase 3 — itch.io:** Import from itch.io desktop app database (`%APPDATA%\itch\db\butler.db` on Windows, `~/.config/itch/db/butler.db` on Linux — SQLite). Tables: `games` (id, title, cover_url, url), `caves` (game_id, install_folder_path, installed). Launch via `itch://games/{id}` URI scheme or directly via `butler` daemon. itch.io has no DRM layer so games can also be launched directly from `install_folder_path`. API: `https://itch.io/api/1/{api_key}/...` (optional, for metadata enrichment). Note: itch.io game IDs are integers; art fetched from `cover_url` stored in game record.
 
 ### Card Badges
 
