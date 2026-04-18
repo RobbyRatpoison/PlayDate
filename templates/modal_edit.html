@@ -1,6 +1,6 @@
 {% if needs_config %}
 <div id="config-modal" class="modal-overlay">
-    <div class="modal-content" style="width: 480px;">
+    <div class="modal-content" style="width: 30rem;">
         <h2 style="color: var(--accent); margin-top: 0;">Configuration</h2>
         <p style="font-size: 0.9rem; color: #8f98a0; margin-bottom: 20px;">Connect your Steam account to start syncing your library.</p>
 
@@ -17,7 +17,7 @@
             <small style="display:block; color: #8f98a0; margin-bottom: 8px; font-size: 0.75rem;">
                 Get your free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color: var(--accent);">steamcommunity.com/dev/apikey</a> — takes about 2 minutes.
             </small>
-            <div style="background: #1a2233; border: 1px solid #3a4a5c; border-radius: 6px; padding: 10px 14px; margin-bottom: 15px; font-size: 0.8rem; color: #8f98a0; line-height: 1.5;">
+            <div style="background: #1a2233; border: 1px solid #3a4a5c; border-radius: 0.375rem; padding: 0.625rem 0.875rem; margin-bottom: 0.9375rem; font-size: 0.8rem; color: #8f98a0; line-height: 1.5;">
                 <strong style="color: #c8d0d8;">With an API key:</strong> achievement tracking, accurate completion status, and games you own but have never launched are all included in your library import.<br>
                 <strong style="color: #c8d0d8;">Without:</strong> your library is read from local Steam files — launched games only, no achievement data.
             </div>
@@ -28,14 +28,14 @@
                 Get yours at <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" style="color: var(--accent);">steamgriddb.com/profile/preferences/api</a>
             </small>
 
-            <div style="margin-top: 20px;">
+            <div style="margin-top: 1.25rem;">
                 <button type="submit" id="save-config-btn" class="btn-save" style="width: 100%; margin: 0;">SAVE & CONNECT</button>
             </div>
         </form>
 
-        <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);">
+        <div style="margin-top: 1.5rem; padding-top: 1.125rem; border-top: 1px solid var(--border);">
             <p style="font-size: 0.85rem; color: #8f98a0; margin: 0 0 10px;">Already have a backup? Restore it to skip setup entirely.</p>
-            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;">
                 <button type="button" class="nav-btn" onclick="document.getElementById('config-restore-input').click()">Restore from Backup</button>
                 <input type="file" id="config-restore-input" accept=".zip" style="display:none" onchange="configRunRestore(this)">
                 <span id="config-restore-status" style="font-size:0.85rem; color: var(--text-secondary);"></span>
@@ -147,18 +147,18 @@
 {% endif %}
 
 <div id="editModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="width: 1080px; max-width: 96vw; max-height: 95vh; overflow-y: auto; position: relative;">
+    <div class="modal-content" style="width: 67.5rem; max-width: 96vw; max-height: 95vh; overflow-y: auto; position: relative;">
 
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.9375rem; margin-bottom: 0.75rem;">
             <h2 style="margin: 0; color: #ffffff;">Edit Game Details</h2>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--accent);">
+            <div style="display: flex; gap: 0.625rem; align-items: center;">
+                <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--accent);">
                     Sync Data
                 </button>
-                <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 8px 16px; border: 1px solid var(--color-danger); background: var(--color-danger); color: var(--text-bright);">
+                <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--color-danger); background: var(--color-danger); color: var(--text-bright);">
                     Delete Game
                 </button>
-                <button type="button" onclick="closeModal()" data-modal-row="0" style="background:none; border:none; color:var(--text-secondary); font-size:1.3rem; cursor:pointer; padding:4px 8px; line-height:1;">✕</button>
+                <button type="button" onclick="closeModal()" data-modal-row="0" style="background:none; border:none; color:var(--text-secondary); font-size:1.3rem; cursor:pointer; padding:0.25rem 0.5rem; line-height:1;">✕</button>
             </div>
         </div>
 
@@ -193,7 +193,7 @@
         <form id="edit-game-form">
             <input type="hidden" name="edit-appid" id="edit-appid">
 
-            <div style="display: grid; grid-template-columns: 1fr 350px; column-gap: 20px; align-items: start;">
+            <div style="display: grid; grid-template-columns: 1fr 21.875rem; column-gap: 1.25rem; align-items: start;">
 
                 <!-- LEFT: tabbed content area -->
                 <div>
@@ -1294,7 +1294,10 @@ const achLink = document.getElementById('achievements-link');
         const img = card.querySelector('.game-capsule');
         if (img) {
             const orient = (typeof _artOrientation !== 'undefined' && _artOrientation === 'horizontal') ? 'horizontal' : 'vertical';
-            img.src = `/static/img/library/${orient}/${appid}.jpg?v=` + Date.now();
+            const v = Date.now();
+            img.src = `/static/img/library/${orient}/${appid}.jpg?v=` + v;
+            // Store per-game version so cardInnerHTML rebuilds with the right URL after scroll eviction
+            if (typeof _imgVersions !== 'undefined') _imgVersions.set(parseInt(appid), v);
         }
 
         // Evict from the HTML cache so the next virtual-scroll repopulation
@@ -1345,6 +1348,19 @@ const achLink = document.getElementById('achievements-link');
     }
 
     function _pagExtractConds(tree) {
+        // Strip search quick-filter: name LIKE added by buildSearchTree sits as a direct
+        // child of the root AND. Real PAGYWOSG name conditions are always inside nested OR
+        // branches, so removing it here only affects the search term.
+        if (tree && tree.type === 'group' && tree.logic === 'AND') {
+            const stripped = (tree.items || []).filter(item =>
+                !(item.type === 'condition' && item.column === 'name' && item.operator === 'LIKE')
+            );
+            if (stripped.length !== (tree.items || []).length) {
+                tree = stripped.length === 1 && stripped[0].type === 'group'
+                    ? stripped[0]
+                    : { ...tree, items: stripped };
+            }
+        }
         const conds = [];
         function walk(node, pool) {
             if (!node) return;

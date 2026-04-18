@@ -1,13 +1,13 @@
 <!-- ── HLTB MODAL ── -->
 <div id="hltb-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeHltbModal();">
-    <div class="modal-content" style="width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-shrink:0;">
+    <div class="modal-content" style="width:min(43.75rem,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-shrink:0;">
             <h2 style="margin:0; color:var(--text-primary);">HLTB Data</h2>
             <button onclick="closeHltbModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
 
         <!-- Controls bar -->
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-shrink:0;">
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem; flex-shrink:0;">
             <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0;">Auto-confirm threshold</span>
             <input type="range" id="hltb-review-slider" min="0" max="100"
                 value="{{ hltb_match_threshold }}"
@@ -15,16 +15,16 @@
                 class="hltb-review-slider">
             <span id="hltb-review-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
         </div>
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-shrink:0;">
+        <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.375rem; flex-shrink:0;">
             <button class="nav-btn" style="font-size:0.78rem;" onclick="_hltbConfirmAllAbove()">Confirm all above</button>
             <button id="hltb-scrape-btn" class="nav-btn" style="font-size:0.78rem;" onclick="_hltbScrapeNoMatch()">Re-scrape unmatched</button>
             <button id="hltb-stop-btn" class="nav-btn" style="font-size:0.78rem; display:none; color:var(--color-danger);" onclick="_hltbStopScrape()">Stop</button>
         </div>
-        <div id="hltb-scrape-status" style="font-size:0.78rem; color:#8f98a0; min-height:1.1rem; margin-bottom:4px; flex-shrink:0;"></div>
-        <div id="hltb-review-stats" style="font-size:0.78rem; color:#8f98a0; margin-bottom:10px; flex-shrink:0;"></div>
+        <div id="hltb-scrape-status" style="font-size:0.78rem; color:#8f98a0; min-height:1.1rem; margin-bottom:0.25rem; flex-shrink:0;"></div>
+        <div id="hltb-review-stats" style="font-size:0.78rem; color:#8f98a0; margin-bottom:0.625rem; flex-shrink:0;"></div>
 
         <!-- Match list -->
-        <div id="hltb-review-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+        <div id="hltb-review-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:0.375rem;"></div>
     </div>
 </div>
 
@@ -41,11 +41,11 @@
 }
 .hltb-review-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 14px; height: 14px; margin-top: -5px;
+    width: 0.875rem; height: 0.875rem; margin-top: -0.3125rem;
     border-radius: 50%; background: var(--accent); cursor: pointer;
 }
 .hltb-match-row {
-    padding: 8px 10px; border-radius: 5px;
+    padding: 0.5rem 0.625rem; border-radius: 0.3125rem;
     border: 1px solid #2a475e; background: var(--bg-input);
     font-size: 0.8rem;
 }
@@ -56,21 +56,21 @@
 .hltb-match-row .match-name { color: #8f98a0; }
 .hltb-match-row .score-badge {
     display: inline-block; font-size: 0.72rem; font-weight: bold;
-    padding: 1px 6px; border-radius: 3px; flex-shrink: 0;
+    padding: 0.0625rem 0.375rem; border-radius: 0.1875rem; flex-shrink: 0;
 }
 .hltb-match-row .score-badge.above { background: rgba(92,126,16,0.25); color: #8bc34a; }
 .hltb-match-row .score-badge.below { background: rgba(180,80,50,0.2); color: #e06c4a; }
 .hltb-match-row .score-badge.no-match-badge { background: rgba(100,100,100,0.2); color: #6a7a86; }
 .hltb-match-row .times { color: #8f98a0; font-size: 0.75rem; }
 .hltb-match-row .row-btns { display: flex; gap: 6px; flex-shrink: 0; }
-.hltb-alt-results { display: none; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #2a475e; }
+.hltb-alt-results { display: none; flex-direction: column; gap: 0.25rem; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #2a475e; }
 .hltb-alt-results.open { display: flex; }
-.hltb-alt-result-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; background: rgba(255,255,255,0.03); font-size: 0.78rem; color: #c2c8cc; }
+.hltb-alt-result-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.375rem; border-radius: 0.25rem; background: rgba(255,255,255,0.03); font-size: 0.78rem; color: #c2c8cc; }
 .hltb-alt-result-row:hover { background: rgba(255,255,255,0.07); }
 .hltb-section-header {
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em;
     color: #4a5e6e; text-transform: uppercase;
-    padding: 6px 2px 4px; margin-top: 4px;
+    padding: 0.375rem 0.125rem 0.25rem; margin-top: 0.25rem;
     border-top: 1px solid #1e2e3a;
     cursor: pointer; user-select: none;
     display: flex; align-items: center; gap: 5px;

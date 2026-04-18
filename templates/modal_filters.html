@@ -1,17 +1,17 @@
 <div id="filterModal" class="modal-overlay" style="display:none;">
-<div class="modal-content" style="width:780px; max-height:82vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+<div class="modal-content" style="width:48.75rem; max-height:82vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
 
     <!-- Header -->
-    <div style="padding:20px 24px 14px; border-bottom:1px solid #2a3f55; flex-shrink:0;">
+    <div style="padding:1.25rem 1.5rem 0.875rem; border-bottom:1px solid #2a3f55; flex-shrink:0;">
         <div style="display:flex; align-items:center; justify-content:space-between;">
             <h2 style="margin:0; color:#fff; font-size:1.1rem;">Library Filters</h2>
             <div style="display:flex; align-items:center; gap:10px;">
                 <!-- Mode toggle -->
-                <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:6px; overflow:hidden; font-size:0.8rem;">
+                <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:0.375rem; overflow:hidden; font-size:0.8rem;">
                     <button id="fm-simple-tab" onclick="setFilterMode('simple')" data-modal-row="0"
-                        style="padding:5px 14px; border:none; cursor:pointer; background:var(--accent); color:#0e1923; font-weight:bold; transition:all 0.15s;">Simple</button>
+                        style="padding:0.3125rem 0.875rem; border:none; cursor:pointer; background:var(--accent); color:#0e1923; font-weight:bold; transition:all 0.15s;">Simple</button>
                     <button id="fm-advanced-tab" onclick="setFilterMode('advanced')" data-modal-row="0"
-                        style="padding:5px 14px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">Advanced</button>
+                        style="padding:0.3125rem 0.875rem; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">Advanced</button>
                 </div>
                 <button onclick="closeFilterModal()" data-modal-row="0" style="background:none;border:none;color:#8f98a0;font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
             </div>
@@ -19,24 +19,24 @@
     </div>
 
     <!-- Body (scrollable) -->
-    <div style="flex:1; min-height:0; overflow-y:auto; padding:18px 24px;">
+    <div style="flex:1; min-height:0; overflow-y:auto; padding:1.125rem 1.5rem;">
 
         <!-- ── SIMPLE MODE ── -->
         <div id="fm-simple-body">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
+            <div style="display:flex; align-items:center; gap:0.625rem; margin-bottom:0.875rem;">
                 <span style="color:#8f98a0; font-size:0.82rem;">Combine filters with</span>
-                <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:5px; overflow:hidden; font-size:0.8rem;">
+                <div style="display:flex; background:#0e1923; border:1px solid #2a3f55; border-radius:0.3125rem; overflow:hidden; font-size:0.8rem;">
                     <button id="fm-simple-and" onclick="setSimpleLogic('AND')" data-modal-row="1"
-                        style="padding:4px 12px; border:none; cursor:pointer; background:var(--accent); color:#0e1923; font-weight:bold; transition:all 0.15s;">AND</button>
+                        style="padding:0.25rem 0.75rem; border:none; cursor:pointer; background:var(--accent); color:#0e1923; font-weight:bold; transition:all 0.15s;">AND</button>
                     <button id="fm-simple-or" onclick="setSimpleLogic('OR')" data-modal-row="1"
-                        style="padding:4px 12px; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">OR</button>
+                        style="padding:0.25rem 0.75rem; border:none; cursor:pointer; background:transparent; color:#8f98a0; transition:all 0.15s;">OR</button>
                 </div>
                 <span id="fm-simple-logic-desc" style="color:#666; font-size:0.78rem; font-style:italic;">All conditions must match</span>
             </div>
 
             <div id="fm-simple-rows"></div>
 
-            <button onclick="addSimpleRow()" style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:6px 16px;border-radius:5px;cursor:pointer;font-size:0.85rem;margin-top:4px;transition:all 0.2s;"
+            <button onclick="addSimpleRow()" style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:0.375rem 1rem;border-radius:0.3125rem;cursor:pointer;font-size:0.85rem;margin-top:4px;transition:all 0.2s;"
                 onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                 onmouseout="this.style.borderColor='#3a5570';this.style.color='#8f98a0'">
                 + Add Filter
@@ -66,13 +66,13 @@
             <!-- Custom SQL toggle -->
             <div style="margin-top:12px;">
                 <button id="fm-custom-sql-toggle" onclick="toggleCustomSql()"
-                    style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:5px 14px;border-radius:5px;cursor:pointer;font-size:0.82rem;transition:all 0.2s;"
+                    style="background:none;border:1px dashed #3a5570;color:#8f98a0;padding:0.3125rem 0.875rem;border-radius:0.3125rem;cursor:pointer;font-size:0.82rem;transition:all 0.2s;"
                     onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                     onmouseout="if(!_customSqlActive){this.style.borderColor='#3a5570';this.style.color='#8f98a0';}">
                     ⌨ Custom SQL WHERE Clause
                 </button>
                 <div id="fm-custom-sql-panel" style="display:none; margin-top:10px;">
-                    <div style="background:#0b1520;border:1px solid #2a3f55;border-radius:6px;padding:12px;">
+                    <div style="background:#0b1520;border:1px solid #2a3f55;border-radius:0.375rem;padding:0.75rem;">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                             <span style="color:#c2c8cc;font-size:0.85rem;font-weight:bold;">Custom WHERE clause</span>
                             <span style="color:#666;font-size:0.75rem;">overrides the group builder above when not empty</span>
@@ -82,14 +82,14 @@
                         </div>
                         <textarea id="fm-custom-sql-input"
                             placeholder="e.g. (completion_status = 'Never Played' OR completion_status = 'Unfinished') AND playtime_forever > 60"
-                            style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:8px 10px;border-radius:5px;resize:vertical;min-height:70px;outline:none;"
+                            style="width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:0.5rem 0.625rem;border-radius:0.3125rem;resize:vertical;min-height:4.375rem;outline:none;"
                             oninput="onCustomSqlInput()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='#2a3f55'"></textarea>
                         <div id="fm-custom-sql-hint" style="font-size:0.75rem;color:#666;margin-top:4px;">
                             Use standard SQLite syntax. Column names: appid, name, completion_status, tags, groups, genres, categories, is_free, installed, release_date, date_added, last_played, playtime_forever, review_percentage, weighted_percentage, review_score, total_reviews, positive_reviews, unlocked_achievements, total_achievements, developers, publishers, protondb_tier, protondb_confidence, hltb_main, hltb_extras, hltb_completionist.
                         </div>
                         <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
                             <button type="button" onclick="parseSqlToTree()"
-                                style="background:#1b3a52; border:1px solid #2a5a7a; color:var(--accent); padding:5px 14px; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap; transition:background 0.15s;"
+                                style="background:#1b3a52; border:1px solid #2a5a7a; color:var(--accent); padding:0.3125rem 0.875rem; border-radius:0.25rem; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap; transition:background 0.15s;"
                                 onmouseover="this.style.background='#243f5e'" onmouseout="this.style.background='#1b3a52'">
                                 ↑ Parse into builder
                             </button>
@@ -108,22 +108,22 @@
     <!-- SQL Preview (collapsible) -->
     <div id="fm-sql-section" style="border-top:1px solid #1a2d3f; flex-shrink:0;">
         <button onclick="toggleSqlPreview()"
-            style="width:100%;background:none;border:none;color:#8f98a0;padding:8px 24px;text-align:left;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:6px;">
+            style="width:100%;background:none;border:none;color:#8f98a0;padding:0.5rem 1.5rem;text-align:left;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:6px;">
             <span id="fm-sql-chevron">▶</span> Show SQL Preview
         </button>
-        <div id="fm-sql-box" style="display:none; padding:0 24px 12px;">
-            <pre id="fm-sql-text" style="margin:0;padding:10px 14px;background:#0b1520;border:1px solid #1e3348;border-radius:5px;color:#66c0f4;font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
+        <div id="fm-sql-box" style="display:none; padding:0 1.5rem 0.75rem;">
+            <pre id="fm-sql-text" style="margin:0;padding:0.625rem 0.875rem;background:#0b1520;border:1px solid #1e3348;border-radius:0.3125rem;color:#66c0f4;font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:7.5rem;overflow-y:auto;"></pre>
         </div>
     </div>
 
     <!-- Footer -->
-    <div style="padding:14px 24px; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:10px; flex-shrink:0;">
+    <div style="padding:0.875rem 1.5rem; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:0.625rem; flex-shrink:0;">
         <!-- Quick filters (built-in presets) -->
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="color:#4a6a8a; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;">Quick:</span>
             {% for key, f in builtin_filters.items() if f.where is not none %}
             <button onclick="applyBuiltinFilter('{{ key }}')" data-modal-row="2"
-                style="background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:20px; padding:3px 12px; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
+                style="background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:1.25rem; padding:0.1875rem 0.75rem; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
                 onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                 onmouseout="this.style.borderColor='#2a3f55';this.style.color='#8f98a0'">
                 {{ f.label }}
@@ -134,7 +134,7 @@
         <div style="display:flex; gap:8px; align-items:center;">
             <select id="saved-filters-select" onchange="loadSavedFilterFromModal(this)"
                     data-modal-row="3"
-                    style="flex:1; height:36px; font-size:0.85rem;"
+                    style="flex:1; height:2.25rem; font-size:0.85rem;"
                     title="Load a saved filter"
                     data-picker-title="Load saved filter">
                 <option value="">Saved filters…</option>
@@ -143,20 +143,20 @@
                 {% endfor %}
             </select>
             <button onclick="renameSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
-                    style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
+                    style="height:2.25rem; padding:0 0.75rem; font-size:0.8rem; white-space:nowrap;">
                 ✎ RENAME
             </button>
             <button onclick="deleteSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
-                    style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
+                    style="height:2.25rem; padding:0 0.75rem; font-size:0.8rem; white-space:nowrap;">
                 ✕ DELETE
             </button>
             <button onclick="saveCurrentFilter()" class="nav-btn" data-modal-row="3"
-                    style="height:36px; padding:0 12px; font-size:0.8rem; white-space:nowrap;">
+                    style="height:2.25rem; padding:0 0.75rem; font-size:0.8rem; white-space:nowrap;">
                 ⭐ SAVE CURRENT
             </button>
         </div>
         <!-- Action row -->
-        <div style="display:flex; gap:10px;">
+        <div style="display:flex; gap:0.625rem;">
             <button onclick="applyFilters()" class="btn-save" data-modal-row="4" style="flex:2;margin:0;">APPLY</button>
             <button onclick="clearAllFilters()" class="nav-btn" data-modal-row="4" style="flex:1;">CLEAR ALL</button>
             <button onclick="closeFilterModal()" class="nav-btn" data-modal-row="4" style="flex:1;">CLOSE</button>
@@ -165,12 +165,12 @@
 
     <!-- Save / Rename / Delete sub-dialog -->
     <div id="fm-subdialog" style="display:none; position:fixed; inset:0; z-index:1001; background:rgba(0,0,0,0.55); align-items:center; justify-content:center;">
-        <div style="background:var(--bg-modal,#1a2535); border:1px solid var(--border,#2a3f55); border-radius:10px; padding:24px 28px; width:340px; max-width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+        <div style="background:var(--bg-modal,#1a2535); border:1px solid var(--border,#2a3f55); border-radius:0.625rem; padding:1.5rem 1.75rem; width:21.25rem; max-width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
             <h3 id="fm-sd-title" style="margin:0 0 14px; color:#fff; font-size:1rem;"></h3>
             <div id="fm-sd-body"></div>
-            <div style="display:flex; gap:10px; margin-top:18px;">
-                <button id="fm-sd-confirm" onclick="confirmFmDialog()" class="btn-save" style="flex:2; margin:0; height:38px;"></button>
-                <button onclick="closeFmDialog()" class="nav-btn" style="flex:1; height:38px;">Cancel</button>
+            <div style="display:flex; gap:0.625rem; margin-top:1.125rem;">
+                <button id="fm-sd-confirm" onclick="confirmFmDialog()" class="btn-save" style="flex:2; margin:0; height:2.375rem;"></button>
+                <button onclick="closeFmDialog()" class="nav-btn" style="flex:1; height:2.375rem;">Cancel</button>
             </div>
         </div>
     </div>
@@ -205,23 +205,23 @@ select.nav-dropdown:hover {
 
 .fm-row {
     display: grid;
-    grid-template-columns: 1fr 130px 1fr 30px;
-    gap: 7px;
+    grid-template-columns: 1fr 8.125rem 1fr 1.875rem;
+    gap: 0.4375rem;
     align-items: center;
-    margin-bottom: 7px;
+    margin-bottom: 0.4375rem;
 }
 .fm-row select, .fm-row input {
-    padding: 6px 9px;
+    padding: 0.375rem 0.5625rem;
     background-color: #0e1923;
     border: 1px solid #2a3f55;
     color: #c2c8cc;
-    border-radius: 5px;
+    border-radius: 0.3125rem;
     font-size: 0.85rem;
     width: 100%;
     box-sizing: border-box;
 }
 .fm-row select {
-    padding-right: 28px;
+    padding-right: 1.75rem;
 }
 .fm-row select:focus, .fm-row input:focus {
     outline: none;
@@ -241,27 +241,27 @@ select.nav-dropdown:hover {
 /* Groups (advanced) */
 .fmg-container {
     border: 1px solid #2a3f55;
-    border-radius: 7px;
-    padding: 10px 12px 8px;
-    margin-bottom: 10px;
+    border-radius: 0.4375rem;
+    padding: 0.625rem 0.75rem 0.5rem;
+    margin-bottom: 0.625rem;
     background: rgba(14,25,35,0.6);
     position: relative;
 }
 .fmg-container .fmg-container {
     border-color: #1e3a50;
     background: rgba(10,18,28,0.7);
-    margin-top: 8px;
+    margin-top: 0.5rem;
 }
 .fmg-header {
     display: flex;
     align-items: center;
-    margin-bottom: 8px;
-    gap: 6px;
+    margin-bottom: 0.5rem;
+    gap: 0.375rem;
 }
 .fmg-logic-toggle {
     display: inline-block;
-    padding: 2px 10px;
-    border-radius: 4px;
+    padding: 0.125rem 0.625rem;
+    border-radius: 0.25rem;
     background: #1b3a52;
     color: var(--accent);
     font-size: 0.78rem;
@@ -280,15 +280,15 @@ select.nav-dropdown:hover {
 }
 .fmg-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 8px;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
 }
 .fmg-add-cond, .fmg-add-group {
     background: none;
     border: 1px dashed #2a3f55;
     color: #8f98a0;
-    padding: 4px 12px;
-    border-radius: 4px;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.25rem;
     cursor: pointer;
     font-size: 0.78rem;
     transition: all 0.15s;
@@ -331,9 +331,9 @@ select.nav-dropdown:hover {
     font-size: 0.7rem;
     font-weight: bold;
     letter-spacing: 0.05em;
-    padding: 1px 7px;
-    border-radius: 3px;
-    margin: 3px 0 3px 4px;
+    padding: 0.0625rem 0.4375rem;
+    border-radius: 0.1875rem;
+    margin: 0.1875rem 0 0.1875rem 0.25rem;
     display: inline-block;
     user-select: none;
 }
@@ -361,12 +361,12 @@ select.nav-dropdown:hover {
 .fm-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 0.3125rem;
     background: #1b3a52;
     border: 1px solid #2a5a7a;
     color: #c2c8cc;
-    border-radius: 20px;
-    padding: 2px 10px;
+    border-radius: 1.25rem;
+    padding: 0.125rem 0.625rem;
     font-size: 0.75rem;
 }
 .fm-pill-remove {
@@ -384,8 +384,8 @@ select.nav-dropdown:hover {
 .fm-expr-row {
     display: flex;
     align-items: flex-start;
-    gap: 7px;
-    margin-bottom: 7px;
+    gap: 0.4375rem;
+    margin-bottom: 0.4375rem;
 }
 .fm-expr-row .fm-remove { align-self: flex-start; margin-top: 2px; }
 
@@ -394,10 +394,10 @@ select.nav-dropdown:hover {
     background-color: var(--bg-surface);
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    height: 36px;
+    border-radius: 0.375rem;
+    height: 2.25rem;
     font-size: 0.85rem;
-    padding: 0 32px 0 12px;
+    padding: 0 2rem 0 0.75rem;
 }
 #saved-filters-select .custom-select-btn:hover {
     background-color: var(--accent);
@@ -863,7 +863,7 @@ function updateValueField(cfg, opSel, valContainer, initVal, colName = '', initV
         toggleBtn.type = 'button';
         toggleBtn.title = 'Toggle column comparison';
         toggleBtn.textContent = '⇄';
-        toggleBtn.style.cssText = 'flex-shrink:0;border-radius:4px;padding:3px 7px;font-size:0.85rem;cursor:pointer;border:1px solid;transition:all 0.15s;';
+        toggleBtn.style.cssText = 'flex-shrink:0;border-radius:0.25rem;padding:0.1875rem 0.4375rem;font-size:0.85rem;cursor:pointer;border:1px solid;transition:all 0.15s;';
 
         function applyToggleStyle(colMode) {
             if (colMode) {
@@ -1090,7 +1090,7 @@ function removeGroupPromoteChildren(groupEl) {
 
 // ── Custom Expression Row ───────────────────────────────────────
 
-const _EXPR_STYLE = 'width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:6px 10px;border-radius:5px;resize:vertical;min-height:42px;outline:none;';
+const _EXPR_STYLE = 'width:100%;box-sizing:border-box;background:#0e1923;border:1px solid #2a3f55;color:#c2c8cc;font-family:monospace;font-size:0.82rem;padding:0.375rem 0.625rem;border-radius:0.3125rem;resize:vertical;min-height:2.625rem;outline:none;';
 
 function addAppidListRow(groupEl, data) {
     const rowsEl = groupEl.querySelector(':scope > .fmg-rows');
@@ -1102,11 +1102,11 @@ function addAppidListRow(groupEl, data) {
     row.dataset.appids = JSON.stringify(data.appids || []);
     if (data.label) row.dataset.label = data.label;
     if (data.auto !== undefined) row.dataset.auto = String(data.auto);
-    row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:4px 0;';
+    row.style.cssText = 'display:flex; align-items:center; gap:0.5rem; padding:0.25rem 0;';
 
     const badge = document.createElement('span');
     badge.textContent = 'APPIDS';
-    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--accent);border-radius:4px;padding:3px 7px;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;';
+    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--accent);border-radius:0.25rem;padding:0.1875rem 0.4375rem;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;';
 
     const label = document.createElement('span');
     const n = (data.appids || []).length;
@@ -1144,7 +1144,7 @@ function addAdvancedExprRow(groupEl, data = null) {
 
     const badge = document.createElement('span');
     badge.textContent = 'EXPR';
-    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--accent);border-radius:4px;padding:3px 7px;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;align-self:flex-start;margin-top:1px;';
+    badge.style.cssText = 'flex-shrink:0;background:#1b3a52;border:1px solid #2a5a7a;color:var(--accent);border-radius:0.25rem;padding:0.1875rem 0.4375rem;font-size:0.72rem;font-weight:bold;letter-spacing:.04em;align-self:flex-start;margin-top:1px;';
 
     const ta = document.createElement('textarea');
     ta.className = 'fm-expr-input';
@@ -1733,7 +1733,7 @@ function openFmDialog(mode, oldName) {
     const btn   = document.getElementById('fm-sd-confirm');
     body.innerHTML = '';
     btn.className  = 'btn-save';
-    btn.style.cssText = 'flex:2; margin:0; height:38px;';
+    btn.style.cssText = 'flex:2; margin:0; height:2.375rem;';
 
     if (mode === 'save' || mode === 'rename') {
         title.textContent = mode === 'save' ? 'Save Filter' : 'Rename Filter';
@@ -1741,7 +1741,7 @@ function openFmDialog(mode, oldName) {
         inp.type = 'text';
         inp.id   = 'fm-sd-input';
         inp.placeholder = mode === 'save' ? 'Filter name…' : 'New name…';
-        inp.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;background:var(--bg-input,#0e1923);border:1px solid var(--border,#2a3f55);border-radius:5px;color:#fff;font-size:0.9rem;outline:none;';
+        inp.style.cssText = 'width:100%;box-sizing:border-box;padding:0.5rem 0.625rem;background:var(--bg-input,#0e1923);border:1px solid var(--border,#2a3f55);border-radius:0.3125rem;color:#fff;font-size:0.9rem;outline:none;';
         if (mode === 'rename') inp.value = oldName;
         inp.addEventListener('focus', () => inp.style.borderColor = 'var(--accent)');
         inp.addEventListener('blur',  () => inp.style.borderColor = 'var(--border,#2a3f55)');
@@ -1794,12 +1794,12 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <div id="importModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="width: 480px;">
+    <div class="modal-content" style="width: 30rem;">
         <h2 style="color: var(--accent); margin-top: 0;">Import External Data</h2>
-        <p style="color: #8f98a0; font-size: 0.9rem; margin-bottom: 20px;">
+        <p style="color: #8f98a0; font-size: 0.9rem; margin-bottom: 1.25rem;">
             The full database importer has moved to the <strong style="color:white;">Tools</strong> page. It supports choosing tables, mapping any columns, date normalization, and type checking.
         </p>
-        <div style="display:flex; gap:10px;">
+        <div style="display:flex; gap:0.625rem;">
             <a href="/tools" class="btn-save" data-modal-row="0" style="flex:2; margin:0; text-align:center; text-decoration:none; display:flex; align-items:center; justify-content:center;">Go to Tools</a>
             <button onclick="document.getElementById('importModal').style.display='none'" class="nav-btn" data-modal-row="0" style="flex:1;">Cancel</button>
         </div>

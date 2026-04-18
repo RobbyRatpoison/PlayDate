@@ -1049,6 +1049,7 @@ def scrape_blaeo_games(today=None):
         "Beaten": "Beaten",
         "Completed": "Completed"
     }
+    status_rank = {"Never Played": 0, "Unfinished": 1, "Beaten": 2, "Completed": 3}
 
     try:
         session = req.Session()
@@ -1128,7 +1129,7 @@ def scrape_blaeo_games(today=None):
                             total_ach    = int(ach_match.group(2))
 
                 # Match against the DB
-                cursor.execute("SELECT groups FROM games WHERE appid = ?", (appid,))
+                cursor.execute("SELECT groups, completion_status FROM games WHERE appid = ?", (appid,))
                 db_row = cursor.fetchone()
 
                 if db_row:
@@ -1138,15 +1139,24 @@ def scrape_blaeo_games(today=None):
                     updated_groups_set = existing_groups_set.union(set(blaeo_groups))
                     new_groups_str = ",".join(sorted(updated_groups_set))
 
+                    # Don't downgrade: keep the higher status, and never touch "Won't Play"
+                    current_status = db_row['completion_status'] or 'Never Played'
+                    if current_status == "Won't Play":
+                        effective_status = current_status
+                    else:
+                        effective_status = clean_status if (
+                            status_rank.get(clean_status, -1) >= status_rank.get(current_status, 0)
+                        ) else current_status
+
                     if unlocked_ach is not None:
                         cursor.execute(
                             "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? WHERE appid = ?",
-                            (clean_status, new_groups_str, unlocked_ach, total_ach, today, appid)
+                            (effective_status, new_groups_str, unlocked_ach, total_ach, today, appid)
                         )
                     else:
                         cursor.execute(
                             "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
-                            (clean_status, new_groups_str, appid)
+                            (effective_status, new_groups_str, appid)
                         )
                     updated_count += 1
                 else:

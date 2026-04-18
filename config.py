@@ -9,7 +9,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.4.0"
+__version__ = "1.4.1"
 
 # ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
 #
@@ -308,6 +308,7 @@ def inject_config_status():
         active_steam_id=active_id or '',
         initial_fullscreen=state.get('fullscreen', False),
         hltb_match_threshold=state.get('hltb_match_threshold', 99),
+        hide_duplicates=state.get('hide_duplicates', True),
         app_version=__version__,
     )
 
@@ -521,6 +522,9 @@ def save_state(updates):
         if "hltb_match_threshold" in updates: state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
         if "pagywosg_sg_group" in updates: state["pagywosg_sg_group"] = updates["pagywosg_sg_group"]
         if "hide_duplicates" in updates: state["hide_duplicates"] = bool(updates["hide_duplicates"])
+        if "hidden_platforms" in updates:
+            safe = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
+            state["hidden_platforms"] = [p for p in (updates["hidden_platforms"] or []) if p in safe]
 
         if "shelves" in updates:
             state["shelves"] = updates["shelves"]

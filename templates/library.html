@@ -165,20 +165,20 @@
 
         .search-nav-bar {
             display: flex;
-            gap: 15px;
+            gap: 0.9rem;
             align-items: center;
-            margin-bottom: 20px;
-            padding: 0 10vw;
+            margin-bottom: 1.2rem;
+            padding: 0 clamp(1rem, 5vw, 8rem);
         }
 
         #library-search {
             flex-grow: 1;
-            height: 50px; /* Adjust this to your preferred height */
-            padding: 0 20px;
+            height: 3rem;
+            padding: 0 1.25rem;
             font-size: 1.1rem;
             background-color: #1a1a1a;
             border: 1px solid #333;
-            border-radius: 8px;
+            border-radius: 0.5rem;
             color: white;
             outline: none;
             transition: border-color 0.2s, box-shadow 0.2s;
@@ -191,14 +191,15 @@
 
         /* Make the filter button match the height */
         .search-nav-bar button:not(.custom-select-btn) {
-            height: 50px;
-            padding: 0 25px;
-            border-radius: 8px;
+            height: 3rem;
+            padding: 0 1.5rem;
+            border-radius: 0.5rem;
             background: #333;
             color: white;
             border: 1px solid #444;
             cursor: pointer;
             font-weight: bold;
+            white-space: nowrap;
             transition: background 0.2s;
         }
 
@@ -213,14 +214,13 @@
 
         #library-search {
             width: 100%;
-            height: 50px;
-            padding: 0 45px 0 20px; /* Extra right padding for the X button */
-            /* ... rest of your existing search bar CSS ... */
+            height: 3rem;
+            padding: 0 2.75rem 0 1.25rem;
         }
 
         .clear-btn {
             position: static !important;
-            padding: 0 25px !important;
+            padding: 0 1.5rem !important;
             background: #3d1a1a !important;
             border: 1px solid #a32a2a !important;
             color: #ff8080 !important;
@@ -230,19 +230,55 @@
 
         .clear-btn:hover { background: #5a2020 !important; color: white !important; }
 
+        #plat-panel {
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+            gap: 0.375rem;
+        }
+
+        #plat-panel .plat-toggle {
+            height: 2.25rem !important;
+            padding: 0 0.875rem !important;
+            font-size: 0.82rem !important;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-radius: 0.375rem !important;
+            width: 100%;
+        }
+
+        #plat-panel .plat-check {
+            width: 14px;
+            display: inline-block;
+            color: var(--accent);
+            font-size: 0.9rem;
+        }
+
+        #plat-panel .plat-toggle.plat-off {
+            background: #222 !important;
+            color: #555 !important;
+            border-color: #333 !important;
+        }
+
+        #plat-panel .plat-toggle.plat-off:hover {
+            background: #2a2a2a !important;
+            color: #888 !important;
+        }
+
         .search-btn {
             background: var(--accent) !important; /* Make it stand out */
             border-color: #66c0e8 !important;
         }
 
         select.nav-dropdown, .order-btn {
-            height: 50px;
+            height: 3rem;
             width: auto;
             background-color: #333;
             color: white;
             border: 1px solid #444;
-            border-radius: 8px;
-            padding: 0 15px;
+            border-radius: 0.5rem;
+            padding: 0 1rem;
             cursor: pointer;
             font-weight: bold;
         }
@@ -250,17 +286,17 @@
         /* Custom-select replacement for .nav-dropdown */
         div.nav-dropdown {
             width: auto;
-            min-width: 160px;
+            min-width: 10rem;
             flex-shrink: 0;
         }
 
         div.nav-dropdown .custom-select-btn {
-            height: 50px;
+            height: 3rem;
             background-color: #333;
             color: white;
             border: 1px solid #444;
-            border-radius: 8px;
-            padding: 0 35px 0 15px;
+            border-radius: 0.5rem;
+            padding: 0 2.2rem 0 1rem;
             font-weight: bold;
         }
 
@@ -270,7 +306,7 @@
 
         .order-btn {
             font-size: 1.2rem;
-            min-width: 50px;
+            min-width: 3rem;
         }
 
         select.nav-dropdown:hover, .order-btn:hover {
@@ -278,10 +314,12 @@
         }
 
         /* ── Select mode ── */
-        .select-mode-btn.active {
+        #select-badge {
             background: var(--accent) !important;
             color: #1b2838 !important;
             border-color: var(--accent) !important;
+            font-size: 0.78rem;
+            padding: 0 10px;
         }
 
         body.select-mode .game-card {
@@ -315,6 +353,23 @@
 
         /* make .game-card position:relative so ::after works */
         .game-card { position: relative; }
+
+        @keyframes dice-flash {
+            0%    { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
+            9.9%  { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
+            10%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
+            19.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
+            20%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
+            29.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
+            30%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
+            39.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
+            40%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
+            49.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
+            50%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
+            100%  { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
+        }
+        .game-card.dice-picked { outline: 3px solid #333; }
+        .game-card.dice-picked { animation: dice-flash 7s ease-out forwards; z-index: 2; }
     </style>
     <div class="search-nav-bar">
         <div class="search-container">
@@ -324,8 +379,8 @@
                 onkeyup="handleSearch(event, this.value)"
                 value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% endif %}">
         </div>
-        <button onclick="triggerSearch()">SEARCH</button>
-        <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' data-picker-title="Sort by" style="min-width:160px;">
+        <button onclick="triggerSearch()" title="Search" style="padding:0 0.75rem;">🔍</button>
+        <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' data-picker-title="Sort by">
             <option value="name" {{ 'selected' if state.sort == 'name' }}>Alphabetical</option>
             <option value="playtime_forever" {{ 'selected' if state.sort == 'playtime_forever' }}>Hours Played</option>
             <option value="release_date" {{ 'selected' if state.sort == 'release_date' }}>Release Date</option>
@@ -338,18 +393,32 @@
         <button class="order-btn" onclick="toggleOrder()" title='Toggle Ascending or Descending'>
             {{ '▲' if state.order == 'ASC' else '▼' }}
         </button>
+        {% if available_platforms | length > 1 %}
+        {% set _plat_labels = {'steam': 'Steam', 'gog': 'GOG', 'epic_games': 'Epic', 'ea_app': 'EA', 'ubisoft': 'Ubisoft'} %}
+        <div id="plat-wrap" style="position:relative;">
+            <button id="plat-btn" onclick="togglePlatDropdown(event)" title="Filter by platform">PLATFORMS</button>
+            <div id="plat-panel" style="display:none;position:fixed;z-index:500;background:#2a2a2a;border:1px solid #444;flex-direction:column;min-width:7.5rem;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+                {% for plat in available_platforms %}
+                <button class="plat-toggle{% if plat in hidden_platforms %} plat-off{% endif %}"
+                        onclick="togglePlatform('{{ plat }}')">
+                    <span class="plat-check">{{ '✓' if plat not in hidden_platforms else '' }}</span>
+                    {{ _plat_labels.get(plat, plat) }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         {% set has_filters = state.filter_tree and (state.filter_tree.get('items') or state.filter_tree.get('custom_sql')) %}
         {% if has_filters %}
         <button onclick="clearAndReload()" class="clear-btn">✕ CLEAR FILTERS</button>
         {% endif %}
         <button onclick="openFilterModal()">FILTERS</button>
         <button onclick="openBulkEditModal()">BULK OPS</button>
-        <button id="select-mode-btn" class="select-mode-btn" onclick="toggleSelectMode()">SELECT</button>
-        <button id="dup-toggle-btn" onclick="toggleHideDuplicates()"
-                title="Show or hide duplicate entries (e.g. GOG version when Steam version exists)">
-            {{ 'DUPES: OFF' if state.get('hide_duplicates', True) else 'DUPES: ON' }}
+        <button onclick="pickRandomGame()" title="Pick a random game">🎲</button>
+        <button id="select-badge" style="display:none;" onclick="_exitSelectMode()" title="Cancel selection">
+            <span id="select-badge-count">0</span> selected ✕
         </button>
-        <button id="art-orient-btn" onclick="toggleArtOrientation()" title="Toggle vertical/horizontal images">⬜ Vertical</button>
+<button id="art-orient-btn" onclick="toggleArtOrientation()" title="Toggle vertical/horizontal images">⬜ Vertical</button>
         <input type="range" id="card-size-slider" min="120" max="400" step="10"
                value="{{ state.get('card_height', 200) }}"
                oninput="onCardSizeSlider(this.value)"
@@ -364,8 +433,7 @@
     </div>
 
     <div class="library-header">
-        <p>Showing {{ games|length }} games in your collection
-        {%- if state.get('hide_duplicates', True) and hidden_dupes > 0 %} — {{ hidden_dupes }} duplicate{{ 's' if hidden_dupes != 1 else '' }} hidden{% endif %}</p>
+        <p>Showing {{ games|length }} games in your collection</p>
     </div>
 
     <div class="game-grid" id="game-grid"></div>
@@ -387,6 +455,7 @@
 
     // ── Artwork orientation + card size (restored from state) ────────────────
     const _imgV = Date.now(); // cache-buster: prevents stale 404s from browser negative cache
+    const _imgVersions = new Map(); // appid (int) → per-game version after image change
     let _artOrientation = '{{ state.get("artwork_orientation", "vertical") }}';
     let _cardSizeTimeout = null;
 
@@ -417,10 +486,6 @@
         }
     })();
 
-    function toggleHideDuplicates() {
-        const current = {{ 'true' if state.get('hide_duplicates', True) else 'false' }};
-        sendStateUpdate({ hide_duplicates: !current });
-    }
 
     function toggleArtOrientation() {
         _artOrientation = _artOrientation === 'vertical' ? 'horizontal' : 'vertical';
@@ -470,10 +535,23 @@
     function buildSearchTree(query) {
         const base = _baseTree(_serverFilterTree);
         const hasBase = base && (base.custom_sql || (base.items && base.items.length > 0));
-        if (!query || !query.trim()) return base || { type: 'group', logic: 'AND', items: [] };
-        const nameNode = { type: 'condition', column: 'name', operator: 'LIKE', value: query };
-        if (!hasBase) return { type: 'group', logic: 'AND', items: [nameNode] };
-        return { type: 'group', logic: 'AND', items: [nameNode, base] };
+        let result;
+        if (!query || !query.trim()) {
+            result = base || { type: 'group', logic: 'AND', items: [] };
+        } else {
+            const nameNode = { type: 'condition', column: 'name', operator: 'LIKE', value: query };
+            result = !hasBase
+                ? { type: 'group', logic: 'AND', items: [nameNode] }
+                : { type: 'group', logic: 'AND', items: [nameNode, base] };
+        }
+        if (_serverFilterTree?.pagywosg && !result.pagywosg) {
+            result = { ...result,
+                pagywosg:          _serverFilterTree.pagywosg,
+                pagywosg_event:    _serverFilterTree.pagywosg_event,
+                pagywosg_verified: _serverFilterTree.pagywosg_verified,
+            };
+        }
+        return result;
     }
 
     function handleSearch(event, query) {
@@ -505,6 +583,31 @@
         await sendStateUpdate({ filter_tree: emptyTree });
     }
 
+    const _hiddenPlatforms = new Set({{ hidden_platforms | tojson }});
+
+    function togglePlatDropdown(e) {
+        e.stopPropagation();
+        const panel = document.getElementById('plat-panel');
+        if (!panel) return;
+        if (panel.style.display === 'flex') { panel.style.display = 'none'; return; }
+        const rect = document.getElementById('plat-btn').getBoundingClientRect();
+        panel.style.top  = (rect.bottom + 4) + 'px';
+        panel.style.left = rect.left + 'px';
+        panel.style.display = 'flex';
+    }
+
+    document.addEventListener('click', e => {
+        const panel = document.getElementById('plat-panel');
+        if (panel && !document.getElementById('plat-wrap')?.contains(e.target))
+            panel.style.display = 'none';
+    });
+
+    function togglePlatform(platform) {
+        if (_hiddenPlatforms.has(platform)) _hiddenPlatforms.delete(platform);
+        else _hiddenPlatforms.add(platform);
+        sendStateUpdate({ hidden_platforms: [..._hiddenPlatforms] });
+    }
+
     function toggleOrder() {
         const currentOrder = "{{ state.order }}";
         sendStateUpdate({ order: currentOrder === 'ASC' ? 'DESC' : 'ASC' });
@@ -527,11 +630,12 @@
         if (CARD_HTML_CACHE.has(game.appid)) return CARD_HTML_CACHE.get(game.appid);
         const escaped  = (game.name || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const isHoriz  = _artOrientation === 'horizontal';
+        const v        = _imgVersions.has(game.appid) ? _imgVersions.get(game.appid) : _imgV;
         const src      = isHoriz
-            ? `/static/img/library/horizontal/${game.appid}.jpg?v=${_imgV}`
-            : `/static/img/library/vertical/${game.appid}.jpg?v=${_imgV}`;
+            ? `/static/img/library/horizontal/${game.appid}.jpg?v=${v}`
+            : `/static/img/library/vertical/${game.appid}.jpg?v=${v}`;
         const fallback = isHoriz
-            ? `/static/img/library/vertical/${game.appid}.jpg?v=${_imgV}`
+            ? `/static/img/library/vertical/${game.appid}.jpg?v=${v}`
             : '';
         // src is intentionally omitted here — set after a scroll-idle delay
         // by scheduleImgLoad() so fast-scrolling cards never trigger a fetch.
@@ -784,30 +888,41 @@
 let _selectMode = false;
 let _selectedIds = new Set();
 
-function toggleSelectMode() {
-    _selectMode = !_selectMode;
-    document.body.classList.toggle('select-mode', _selectMode);
-    const btn = document.getElementById('select-mode-btn');
-    btn.classList.toggle('active', _selectMode);
-    btn.textContent = _selectMode ? `SELECT (${_selectedIds.size})` : 'SELECT';
+function _updateSelectBadge() {
+    const badge = document.getElementById('select-badge');
+    const count = document.getElementById('select-badge-count');
+    const n = _selectedIds.size;
+    badge.style.display = _selectMode ? '' : 'none';
+    count.textContent = n;
+}
 
-    if (!_selectMode) {
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-    }
-
-    // Only wire populated cards; unpopulated ones get wired when they load (in observeCards)
+function _enterSelectMode() {
+    if (_selectMode) return;
+    _selectMode = true;
+    document.body.classList.add('select-mode');
+    _updateSelectBadge();
     document.querySelectorAll('.game-card[data-populated]').forEach(card => {
-        if (_selectMode) {
-            card.addEventListener('click', onCardClick);
-        } else {
-            card.removeEventListener('click', onCardClick);
-        }
+        card.addEventListener('click', onCardClick);
     });
 }
 
+function _exitSelectMode() {
+    if (!_selectMode) return;
+    _selectMode = false;
+    document.body.classList.remove('select-mode');
+    _selectedIds.clear();
+    document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+    _updateSelectBadge();
+    document.querySelectorAll('.game-card[data-populated]').forEach(card => {
+        card.removeEventListener('click', onCardClick);
+    });
+}
+
+function toggleSelectMode() {
+    if (_selectMode) _exitSelectMode(); else _enterSelectMode();
+}
+
 function onCardClick(e) {
-    // Don't intercept the ✎ edit button
     const card = e.currentTarget;
     const appid = parseInt(card.id.replace('card-', ''));
     if (_selectedIds.has(appid)) {
@@ -817,9 +932,7 @@ function onCardClick(e) {
         _selectedIds.add(appid);
         card.classList.add('selected');
     }
-    // Update button label
-    const btn = document.getElementById('select-mode-btn');
-    btn.textContent = `SELECT (${_selectedIds.size})`;
+    _updateSelectBadge();
 }
 
 // ── BULK EDIT ──────────────────────────────────────────────────
@@ -904,19 +1017,21 @@ function openBulkDateImportModal() { openBulkEditModal('dates'); }
 function onBulkScopeChange() {
     const scope = document.querySelector('input[name="bulk-scope"]:checked')?.value;
     if (!scope) return;
+    if (scope === 'selected' && _selectedIds.size === 0) {
+        document.getElementById('scope-filtered').checked = true;
+        closeBulkEditModal();
+        _enterSelectMode();
+        return;
+    }
     document.getElementById('bulk-all-info').style.display      = scope === 'all'      ? 'block' : 'none';
     document.getElementById('bulk-filtered-info').style.display = scope === 'filtered' ? 'block' : 'none';
     document.getElementById('bulk-selected-info').style.display = scope === 'selected' ? 'block' : 'none';
     if (scope === 'all') {
         document.getElementById('bulk-all-info').textContent = `${ALL_GAME_COUNT} game${ALL_GAME_COUNT !== 1 ? 's' : ''} in library`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        _exitSelectMode();
     } else if (scope === 'filtered') {
         document.getElementById('bulk-filtered-info').textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        _exitSelectMode();
     } else {
         document.getElementById('bulk-selected-info').textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
     }
@@ -950,6 +1065,9 @@ function onBulkColumnChange() {
         _pillSync('bulk-pills-hidden', []);
         _pillRender('bulk-pills-hidden', 'bulk-pills-box');
     }
+
+    const isDate = ['date_added', 'release_date', 'last_played'].includes(col);
+    document.getElementById('bulk-value-text').placeholder = isDate ? 'YYYY-MM-DD' : 'Enter value…';
 
     onBulkModeChange();
 }
@@ -1042,9 +1160,7 @@ async function runBulkEdit() {
         if (data.status === 'success') {
             status.className = 'bulk-status-success';
             status.textContent = `✔ Updated ${data.updated} game${data.updated !== 1 ? 's' : ''}.`;
-            // Exit select mode and clear selection after successful apply
-            if (_selectMode) toggleSelectMode();
-            else { _selectedIds.clear(); document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected')); }
+            _exitSelectMode();
             setTimeout(() => { closeBulkEditModal(); window.location.reload(); }, 900);
         } else {
             status.className = 'bulk-status-error';
@@ -1062,19 +1178,21 @@ async function runBulkEdit() {
 function onBulkRescrapeScopeChange() {
     const scope = document.querySelector('input[name="brs-scope"]:checked')?.value;
     if (!scope) return;
+    if (scope === 'selected' && _selectedIds.size === 0) {
+        document.getElementById('brs-scope-filtered').checked = true;
+        closeBulkEditModal();
+        _enterSelectMode();
+        return;
+    }
     document.getElementById('brs-all-info').style.display      = scope === 'all'      ? 'block' : 'none';
     document.getElementById('brs-filtered-info').style.display = scope === 'filtered' ? 'block' : 'none';
     document.getElementById('brs-selected-info').style.display = scope === 'selected' ? 'block' : 'none';
     if (scope === 'all') {
         document.getElementById('brs-all-info').textContent = `${ALL_GAME_COUNT} game${ALL_GAME_COUNT !== 1 ? 's' : ''} in library`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        _exitSelectMode();
     } else if (scope === 'filtered') {
         document.getElementById('brs-filtered-info').textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        _exitSelectMode();
     } else {
         document.getElementById('brs-selected-info').textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
     }
@@ -1236,6 +1354,12 @@ function onBulkDeleteScopeChange() {
     const filtInfo = document.getElementById('bd-filtered-info');
     const warning  = document.getElementById('bd-warning');
     if (scope === 'selected') {
+        if (_selectedIds.size === 0) {
+            document.getElementById('bd-scope-filtered').checked = true;
+            closeBulkDeleteModal();
+            _enterSelectMode();
+            return;
+        }
         filtInfo.style.display = 'none';
         selInfo.style.display  = 'block';
         selInfo.textContent    = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
@@ -1245,10 +1369,7 @@ function onBulkDeleteScopeChange() {
         filtInfo.style.display = 'block';
         filtInfo.textContent   = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
         warning.innerHTML = `⚠ <strong>${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''}</strong> will be permanently removed from your library. Cover images will also be deleted. This cannot be undone.`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        const btn = document.getElementById('select-mode-btn');
-        btn.textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        _exitSelectMode();
     }
 }
 
@@ -1285,8 +1406,7 @@ async function runBulkDelete() {
         if (data.status === 'success') {
             status.className = 'bulk-status-success';
             status.textContent = `✔ Deleted ${data.deleted} game${data.deleted !== 1 ? 's' : ''}.`;
-            if (_selectMode) toggleSelectMode();
-            else { _selectedIds.clear(); document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected')); }
+            _exitSelectMode();
             setTimeout(() => { closeBulkDeleteModal(); window.location.reload(); }, 900);
         } else {
             status.className = 'bulk-status-error';
@@ -1316,19 +1436,21 @@ function closeBulkDateImportModal() {
 function onBulkDateImportScopeChange() {
     const scope = document.querySelector('input[name="bdi-scope"]:checked')?.value;
     if (!scope) return;
+    if (scope === 'selected' && _selectedIds.size === 0) {
+        document.getElementById('bdi-scope-filtered').checked = true;
+        closeBulkEditModal();
+        _enterSelectMode();
+        return;
+    }
     document.getElementById('bdi-all-info').style.display      = scope === 'all'      ? 'block' : 'none';
     document.getElementById('bdi-filtered-info').style.display = scope === 'filtered' ? 'block' : 'none';
     document.getElementById('bdi-selected-info').style.display = scope === 'selected' ? 'block' : 'none';
     if (scope === 'all') {
         document.getElementById('bdi-all-info').textContent = `${ALL_GAME_COUNT} game${ALL_GAME_COUNT !== 1 ? 's' : ''} in library`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        _exitSelectMode();
     } else if (scope === 'filtered') {
         document.getElementById('bdi-filtered-info').textContent = `${BULK_GAME_COUNT} game${BULK_GAME_COUNT !== 1 ? 's' : ''} currently shown`;
-        _selectedIds.clear();
-        document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
-        document.getElementById('select-mode-btn').textContent = _selectMode ? 'SELECT (0)' : 'SELECT';
+        _exitSelectMode();
     } else {
         document.getElementById('bdi-selected-info').textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
     }
@@ -1551,14 +1673,17 @@ async function stopBulkDateImport() {
         const card = e.target.closest('.game-card[data-appid]');
         const appid = card ? parseInt(card.dataset.appid) : null;
         if (appid === _hoveredAppid) return;
+        clearTimeout(_hideOnStopTimer);
         _hoveredAppid = appid;
-        if (!appid || !card.dataset.populated) { tooltip.style.display = 'none'; return; }
+        if (!appid || !card.dataset.populated) { tooltip.style.display = 'none'; tooltip.innerHTML = ''; return; }
         const game = _GAME_MAP.get(appid);
-        if (!game) { tooltip.style.display = 'none'; return; }
+        if (!game) { tooltip.style.display = 'none'; tooltip.innerHTML = ''; return; }
         const html = _buildTooltip(game);
-        if (!html) { tooltip.style.display = 'none'; return; }
+        if (!html) { tooltip.style.display = 'none'; tooltip.innerHTML = ''; return; }
+        // Set content but keep hidden — mousemove positions it before making it visible
+        // so it never flashes at (0,0) on a secondary monitor.
         tooltip.innerHTML = html;
-        tooltip.style.display = 'block';
+        tooltip.style.display = 'none';
     });
 
     grid.addEventListener('mouseleave', () => {
@@ -1566,16 +1691,114 @@ async function stopBulkDateImport() {
         tooltip.style.display = 'none';
     });
 
+    let _lastMouseY = 0;
+    let _hideOnStopTimer = null;
+
+    document.addEventListener('pointerleave', () => {
+        _hoveredAppid = null;
+        tooltip.style.display = 'none';
+    });
+
     document.addEventListener('mousemove', e => {
-        if (tooltip.style.display === 'none') return;
-        const pad = 14, tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+        _lastMouseY = e.clientY;
+        clearTimeout(_hideOnStopTimer);
+        if (e.clientY >= window.innerHeight - 4) {
+            _hideOnStopTimer = setTimeout(() => {
+                _hoveredAppid = null;
+                tooltip.style.display = 'none';
+            }, 150);
+        }
+        if (!_hoveredAppid || !tooltip.innerHTML) { tooltip.style.display = 'none'; return; }
+        const pad = 14;
         let x = e.clientX + pad, y = e.clientY + pad;
-        if (x + tw > window.innerWidth  - pad) x = e.clientX - tw - pad;
-        if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
+        // Only do bounds-clamping once the tooltip is visible and has known dimensions.
+        if (tooltip.style.display === 'block') {
+            const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+            if (x + tw > window.innerWidth  - pad) x = e.clientX - tw - pad;
+            if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
+        }
         tooltip.style.left = x + 'px';
         tooltip.style.top  = y + 'px';
+        tooltip.style.display = 'block';
     });
 })();
+
+function _preloadCardsInArea(scrollTop) {
+    const vh = window.innerHeight;
+    const lo = scrollTop - 175;
+    const hi = scrollTop + vh + 100;
+    document.querySelectorAll('.game-card:not([data-populated])').forEach(card => {
+        if (card.offsetTop < lo || card.offsetTop > hi) return;
+        const appid = parseInt(card.dataset.appid);
+        const game  = GAMES.find(g => g.appid === appid);
+        if (!game) return;
+        card.innerHTML = cardInnerHTML(game);
+        card.dataset.populated = '1';
+        const img = card.querySelector('img[data-src]');
+        if (!img) return;
+        const fallback = img.dataset.fallback;
+        if (fallback) img.onerror = () => { img.onerror = null; img.src = fallback; };
+        else          img.onerror = () => { img.onerror = null; };
+        img.src = img.dataset.src;
+    });
+}
+
+function pickRandomGame() {
+    if (!GAMES.length) return;
+    const game = GAMES[Math.floor(Math.random() * GAMES.length)];
+    const card = document.querySelector(`.game-card[data-appid="${game.appid}"]`);
+    if (!card) return;
+
+    document.querySelectorAll('.game-card.dice-picked').forEach(c => c.classList.remove('dice-picked'));
+
+    const startGlow = () => {
+        card.classList.remove('dice-picked');
+        void card.offsetWidth;
+        card.classList.add('dice-picked');
+        card.addEventListener('animationend', () => card.classList.remove('dice-picked'), { once: true });
+    };
+
+    const rect = card.getBoundingClientRect();
+    if (rect.top >= 0 && rect.bottom <= window.innerHeight) {
+        startGlow();
+        return;
+    }
+
+    const vh = window.innerHeight;
+    const cardTop = card.getBoundingClientRect().top + window.scrollY;
+    const targetScroll = Math.max(0, cardTop - vh / 2 + card.offsetHeight / 2);
+    const direction = targetScroll > window.scrollY ? 1 : -1;
+    const maxScroll = document.documentElement.scrollHeight - vh;
+    const jumpTo = Math.max(0, Math.min(maxScroll, targetScroll - direction * 2 * vh));
+
+    _preloadCardsInArea(jumpTo);
+    _preloadCardsInArea(targetScroll);
+
+    window.scrollTo({ top: jumpTo, behavior: 'instant' });
+
+    // Manual slow scroll — browser smooth is too fast to control
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        const scrollStart = window.scrollY;
+        const scrollDist  = targetScroll - scrollStart;
+        const duration    = 4000;
+        const t0          = performance.now();
+        const step = (now) => {
+            const p    = Math.min((now - t0) / duration, 1);
+            const ease = 1 - Math.pow(1 - p, 3); // ease-out cubic
+            window.scrollTo({ top: scrollStart + scrollDist * ease, behavior: 'instant' });
+            if (p < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+    }));
+
+    const observer = new IntersectionObserver((entries, obs) => {
+        if (entries[0].isIntersecting) {
+            obs.disconnect();
+            startGlow();
+        }
+    }, { threshold: 0.3 });
+    observer.observe(card);
+}
 </script>
 
 <!-- Bulk Delete Modal -->
@@ -1601,14 +1824,11 @@ async function stopBulkDateImport() {
                 <input type="radio" name="bd-scope" id="bd-scope-selected" value="selected"
                        onchange="onBulkDeleteScopeChange()" style="width:auto; margin:0;">
                 <span>
-                    <strong style="color:white; font-size:0.85rem;">Selected games</strong><br>
+                    <strong style="color:white; font-size:0.85rem;">Pick games →</strong><br>
                     <small id="bd-selected-info" style="color:#8f98a0; font-size:0.75rem;"></small>
                 </span>
             </label>
         </div>
-        <p style="color:#8f98a0; font-size:0.78rem; margin: -8px 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
-            To delete specific games, close this modal, press <strong style="color:#c2c8cc;">SELECT</strong> in the toolbar, click games to toggle, then reopen Bulk Delete.
-        </p>
 
         <div id="bd-warning" style="background:rgba(163,42,42,0.15); border:1px solid #a32a2a; border-radius:5px; padding:8px 12px; font-size:0.8rem; color:#ff8080; margin-bottom:12px;"></div>
         <div id="bd-status" style="font-size:0.82rem; min-height:1.2rem; margin-bottom:12px;"></div>
@@ -1665,14 +1885,11 @@ async function stopBulkDateImport() {
                     <input type="radio" name="bulk-scope" id="scope-selected" value="selected"
                            onchange="onBulkScopeChange()" style="width:auto; margin:0;">
                     <span>
-                        <strong style="color:white; font-size:0.85rem;">Selected</strong><br>
+                        <strong style="color:white; font-size:0.85rem;">Pick games →</strong><br>
                         <small id="bulk-selected-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
                     </span>
                 </label>
             </div>
-            <p style="color:#8f98a0; font-size:0.78rem; margin: -8px 0 14px; padding-bottom:12px; border-bottom:1px solid #2a475e;">
-                To select specific games, close this modal, press <strong style="color:#c2c8cc;">SELECT</strong> in the toolbar, click games to toggle, then reopen Bulk Edit.
-            </p>
 
             <label>Column to Edit</label>
             <select id="bulk-column" style="margin-bottom:12px;" onchange="onBulkColumnChange()">
@@ -1773,7 +1990,7 @@ async function stopBulkDateImport() {
                     <input type="radio" name="brs-scope" id="brs-scope-selected" value="selected"
                            onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
                     <span>
-                        <strong style="color:white; font-size:0.85rem;">Selected</strong><br>
+                        <strong style="color:white; font-size:0.85rem;">Pick games →</strong><br>
                         <small id="brs-selected-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
                     </span>
                 </label>
@@ -1902,7 +2119,7 @@ async function stopBulkDateImport() {
                     <input type="radio" name="bdi-scope" id="bdi-scope-selected" value="selected"
                            onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
                     <span>
-                        <strong style="color:white; font-size:0.85rem;">Selected</strong><br>
+                        <strong style="color:white; font-size:0.85rem;">Pick games →</strong><br>
                         <small id="bdi-selected-info" style="color:#8f98a0; font-size:0.75rem; display:none;"></small>
                     </span>
                 </label>

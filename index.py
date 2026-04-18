@@ -61,6 +61,20 @@ def _build_shelf_query(shelf, saved_filters):
     else:
         where = '1=1'
 
+    # Platform filter — values are whitelisted so safe to inline
+    _safe_platforms = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
+    shelf_hidden = [p for p in (shelf.get('hidden_platforms') or []) if p in _safe_platforms]
+    if shelf_hidden:
+        plat_conds = []
+        if 'steam' in shelf_hidden:
+            plat_conds.append("NOT (platform IS NULL OR platform = '' OR platform = 'steam')")
+        non_steam = [p for p in shelf_hidden if p != 'steam']
+        if non_steam:
+            inlist = ','.join(f"'{p}'" for p in non_steam)
+            plat_conds.append(f"platform NOT IN ({inlist})")
+        plat_sql = ' AND '.join(plat_conds)
+        where = plat_sql if where == '1=1' else f"({where}) AND ({plat_sql})"
+
     # Sort order
     sort_col = shelf.get('sort_col')
     sort_dir = shelf.get('sort_dir') or 'DESC'
@@ -142,6 +156,21 @@ def index():
         pass
     db2.close()
 
+    db3 = get_db()
+    db3.row_factory = sqlite3.Row
+    _plat_order = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']
+    try:
+        _plat_rows = db3.execute(
+            "SELECT DISTINCT COALESCE(NULLIF(platform,''),'steam') as p FROM games ORDER BY p"
+        ).fetchall()
+        available_platforms = sorted(
+            {r['p'] for r in _plat_rows},
+            key=lambda p: _plat_order.index(p) if p in _plat_order else 99
+        )
+    except Exception:
+        available_platforms = ['steam']
+    db3.close()
+
     # Restore display order and attach games
     ordered_shelves = [
         {**s, 'games': shelf_games.get(s['id'], [])}
@@ -175,4 +204,5 @@ def index():
         sort_columns=SORT_COLUMNS,
         completion_counts=completion_counts,
         edit_mode=edit_mode,
+        available_platforms=available_platforms,
     )

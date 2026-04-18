@@ -261,6 +261,15 @@ def create_app(template_folder=None, static_folder=None):
         w_recency   = float(data.get('w_recency',    0))
         w_hltb      = float(data.get('w_hltb',       0))
 
+        def _parse_bound(key):
+            v = data.get(key)
+            return float(v) if v is not None else None
+
+        b_review    = _parse_bound('b_review')
+        b_staleness = _parse_bound('b_staleness')
+        b_recency   = _parse_bound('b_recency')
+        b_hltb      = _parse_bound('b_hltb')
+
         state  = load_state()
         db     = get_db()
         params = []
@@ -281,6 +290,10 @@ def create_app(template_folder=None, static_folder=None):
             placeholders = ','.join('?' * len(statuses))
             where = f"({where}) AND completion_status IN ({placeholders})"
             params = list(params) + list(statuses)
+
+        # Smart mode auto-bounds: apply a minimum review floor automatically.
+        if mode == 'smart' and b_review is None:
+            b_review = 70.0
 
         smart_where = where
         if mode in ('smart', 'weighted'):
@@ -395,6 +408,45 @@ def create_app(template_folder=None, static_folder=None):
                 rec  = recency_score(g)
                 hltb = hltb_length_score(g)
 
+                # Bounds: return None to exclude this game from the candidate pool.
+                # Direction: positive weight → min bound; negative weight → max bound.
+                # Missing data (None score) passes the bound check.
+                w_rev_dir = w_review if mode == 'weighted' else 35.0
+                if b_review is not None and rev is not None:
+                    rev_pct = rev * 100
+                    if w_rev_dir >= 0 and rev_pct < b_review:
+                        return None
+                    elif w_rev_dir < 0 and rev_pct > b_review:
+                        return None
+                if b_staleness is not None:
+                    from datetime import datetime, timezone as _tzb
+                    _now = datetime.now(_tzb.utc).timestamp()
+                    _lp  = g.get('last_played')
+                    _days = (_now - float(_lp)) / 86400 if _lp else 999999.0
+                    if w_staleness >= 0 and _days < b_staleness:
+                        return None
+                    elif w_staleness < 0 and _days > b_staleness:
+                        return None
+                if b_recency is not None:
+                    _rd = g.get('release_date')
+                    if _rd:
+                        try:
+                            from datetime import datetime, timezone as _tzc
+                            _yr = datetime.fromtimestamp(float(_rd), tz=_tzc.utc).year
+                            if w_recency >= 0 and _yr < b_recency:
+                                return None
+                            elif w_recency < 0 and _yr > b_recency:
+                                return None
+                        except Exception:
+                            pass
+                if b_hltb is not None:
+                    _times = [v for v in [g.get('hltb_main'), g.get('hltb_extras'), g.get('hltb_completionist')] if v]
+                    if _times:
+                        if w_hltb >= 0 and max(_times) / 60 < b_hltb:
+                            return None
+                        elif w_hltb < 0 and min(_times) / 60 > b_hltb:
+                            return None
+
                 if mode == 'weighted':
                     total_w = (abs(w_tags) + abs(w_review) + abs(w_staleness) + abs(w_recency) + abs(w_hltb)) or 1.0
                     def sig(w_raw, score, unknown_val=0.5):
@@ -418,11 +470,17 @@ def create_app(template_folder=None, static_folder=None):
 
             remaining = list(games)
             for _ in range(min(NUM_PICKS, len(remaining))):
-                scored = [(score_game(g), g) for g in remaining]
+                scored = []
+                for g in remaining:
+                    result = score_game(g)
+                    if result is not None:
+                        scored.append((result, g))
+                if not scored:
+                    break
                 total  = sum(s[0] for s, _ in scored)
 
                 if total == 0:
-                    game = random.choice(remaining)
+                    game = random.choice([g for _, g in scored])
                     final, sim, matched = 0.0, 0.0, []
                 else:
                     r          = random.random() * total
@@ -439,16 +497,64 @@ def create_app(template_folder=None, static_folder=None):
                 cs  = game.get('completion_status', '')
                 profile_desc = "your most-played games" if using_fallback else "games you've beaten"
 
-                if matched:
-                    top_tags = ", ".join(matched[:3])
-                    if rev is not None and rev >= 0.75:
-                        reason = f"Matches {profile_desc} on {top_tags} — and it's well reviewed."
-                    else:
-                        reason = f"Matches {profile_desc} on {top_tags}."
-                elif rev is not None:
-                    reason = f"No tag overlap found, but solid reviews ({int(rev * 100)}%)."
+                # Determine factor order: weighted mode uses slider values; smart uses fixed weights.
+                if mode == 'weighted':
+                    factor_order = sorted([
+                        ('tags', w_tags), ('review', w_review), ('staleness', w_staleness),
+                        ('recency', w_recency), ('hltb', w_hltb),
+                    ], key=lambda x: abs(x[1]), reverse=True)
                 else:
-                    reason = "Picked based on your library — no tag or review data available."
+                    factor_order = [('tags', 65.0), ('review', 35.0)]
+
+                from datetime import datetime, timezone as _tz
+                phrases = []
+                for _key, _w in factor_order:
+                    if _w == 0 or len(phrases) >= 3:
+                        continue
+                    _p = None
+                    if _key == 'tags':
+                        if _w > 0 and matched:
+                            _p = f"matches {profile_desc} on {', '.join(matched[:3])}"
+                    elif _key == 'review':
+                        if rev is not None:
+                            _pct = int(rev * 100)
+                            _p = f"well reviewed ({_pct}%)" if _w > 0 else f"low-reviewed ({_pct}%)"
+                    elif _key == 'staleness':
+                        _lp = game.get('last_played')
+                        if _lp:
+                            _days = (datetime.now(_tz.utc).timestamp() - float(_lp)) / 86400
+                            if _w > 0:
+                                if _days >= 365:
+                                    _p = f"last played {_days / 365:.0f}yr ago"
+                                elif _days >= 30:
+                                    _p = f"last played {int(_days / 30)}mo ago"
+                                else:
+                                    _p = f"last played {int(_days)}d ago"
+                        elif _w > 0:
+                            _p = "never played"
+                    elif _key == 'recency':
+                        _rd = game.get('release_date')
+                        if _rd:
+                            try:
+                                _year = datetime.fromtimestamp(float(_rd), tz=_tz.utc).year
+                                _p = f"{_year} release"
+                            except Exception:
+                                pass
+                    elif _key == 'hltb':
+                        _times = [v for v in [game.get('hltb_main'), game.get('hltb_extras'),
+                                              game.get('hltb_completionist')] if v]
+                        if _times:
+                            _hrs = round((max(_times) if _w > 0 else min(_times)) / 60)
+                            _p = f"~{_hrs}h to beat"
+                    if _p:
+                        phrases.append(_p)
+
+                if phrases:
+                    reason = '; '.join(phrases).capitalize() + '.'
+                elif rev is not None:
+                    reason = f"Solid reviews ({int(rev * 100)}%)."
+                else:
+                    reason = "Picked based on your library."
 
                 if cs == 'Unfinished':
                     reason += " You've started this one before."
@@ -1343,6 +1449,12 @@ def create_app(template_folder=None, static_folder=None):
         from gog import get_install_state
         return jsonify(get_install_state(appid))
 
+    @app.route('/api/gog/active-install')
+    def gog_active_install():
+        """Return state of any currently running GOG install, or {appid: null}."""
+        from gog import get_active_install
+        return jsonify(get_active_install())
+
     @app.route('/api/gog/install/<int:appid>/cancel', methods=['POST'])
     def gog_install_cancel(appid):
         """Cancel an in-progress GOG install."""
@@ -1634,18 +1746,18 @@ def create_app(template_folder=None, static_folder=None):
             if exclude_appids:
                 placeholders = ','.join('?' * len(exclude_appids))
                 rows = db.execute(
-                    f"SELECT appid, name, installed, completion_status FROM games "
+                    f"SELECT appid, name, installed, completion_status, platform FROM games "
                     f"WHERE ({where}) AND appid NOT IN ({placeholders}) ORDER BY {order} LIMIT ?",
                     (*exclude_appids, limit)
                 ).fetchall()
             else:
                 rows = db.execute(
-                    f"SELECT appid, name, installed, completion_status FROM games "
+                    f"SELECT appid, name, installed, completion_status, platform FROM games "
                     f"WHERE {where} ORDER BY {order} LIMIT ?",
                     (limit,)
                 ).fetchall()
             db.close()
-            games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or ''} for r in rows]
+            games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or '', 'platform': r[4] or 'steam'} for r in rows]
             return jsonify({'status': 'success', 'games': games})
         except Exception as e:
             log.exception(f"refill_shelf error for {shelf_id}: {e}")
@@ -2356,12 +2468,13 @@ def create_app(template_folder=None, static_folder=None):
 
     # ── CSV EXPORT ────────────────────────────────────────────────────────────
 
-    def _build_csv_rows(filter_tree=None):
+    def _build_csv_rows(filter_tree=None, columns=None):
         """
         Query the DB and return (header_list, rows_list) for CSV export.
         Applies filter_tree if provided, otherwise exports all games.
         Playtime is converted from minutes to decimal hours.
         Achievements percentage is computed when both fields are present.
+        columns: optional list of header names to include (None = all).
         """
         import csv, io
         from library import build_tree_sql, _strip_sql_wrapper, is_safe_sql
@@ -2424,6 +2537,12 @@ def create_app(template_folder=None, static_folder=None):
                 total,
                 cheevo_pct,
             ])
+
+        if columns:
+            indices = [i for i, h in enumerate(headers) if h in columns]
+            headers = [headers[i] for i in indices]
+            out     = [[row[i] for i in indices] for row in out]
+
         return headers, out
 
     @app.route('/api/export-csv', methods=['POST'])
@@ -2433,8 +2552,9 @@ def create_app(template_folder=None, static_folder=None):
         from flask import send_file
         data        = request.json or {}
         filter_tree = data.get('filter_tree')
+        columns     = data.get('columns') or None
         try:
-            headers, rows = _build_csv_rows(filter_tree)
+            headers, rows = _build_csv_rows(filter_tree, columns)
             buf = io.StringIO()
             w   = csv.writer(buf)
             w.writerow(headers)
@@ -2455,10 +2575,11 @@ def create_app(template_folder=None, static_folder=None):
         data        = request.json or {}
         save_path   = data.get('path', '').strip()
         filter_tree = data.get('filter_tree')
+        columns     = data.get('columns') or None
         if not save_path:
             return jsonify({"status": "error", "message": "No path provided."}), 400
         try:
-            headers, rows = _build_csv_rows(filter_tree)
+            headers, rows = _build_csv_rows(filter_tree, columns)
             with open(save_path, 'w', newline='', encoding='utf-8-sig') as f:
                 w = csv.writer(f)
                 w.writerow(headers)

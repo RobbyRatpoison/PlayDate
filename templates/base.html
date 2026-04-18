@@ -122,6 +122,13 @@
         font-size: 0.82rem;
         letter-spacing: 0.04em;
     }
+    .hamburger-gog-install {
+        color: var(--accent);
+        font-weight: bold;
+        font-size: 0.82rem;
+        letter-spacing: 0.04em;
+        display: none;
+    }
     .hamburger-sep {
         height: 1px;
         background: #2a3f55;
@@ -164,6 +171,7 @@
                 <button id="hamburger-btn" onclick="toggleHamburger()">☰<span id="update-dot"></span></button>
                 <div id="hamburger-menu">
                     <button id="add-button" class="hamburger-item hamburger-populate">POPULATE PLAYDATE</button>
+                    <button id="gog-install-btn" class="hamburger-item hamburger-gog-install">GOG: INSTALLING...</button>
                     <div class="hamburger-sep"></div>
                     <button class="hamburger-item" onclick="closeHamburger();window.location.href='/?edit=1'">Edit Home Layout</button>
                     <button class="hamburger-item" onclick="closeHamburger();openSettingsModal()">Settings</button>
@@ -180,7 +188,7 @@
             <a class="{{ 'active' if request.path == '/pick' }}" onclick="window.location.href='/pick'">PICK 6</a>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <button id="fullscreen-button" class="nav-btn" title="Toggle fullscreen (F11)" style="min-width:36px;padding:0 10px;font-size:1rem;">⛶</button>
+            <button id="fullscreen-button" class="nav-btn" title="Toggle fullscreen (F11)" style="min-width:2.25rem;padding:0 0.625rem;font-size:1rem;">⛶</button>
             <button id="exit-button" class="nav-btn exit-btn">EXIT</button>
         </div>
     </div>
@@ -231,40 +239,110 @@
             if (data.status === 'installing' || data.status === 'not_installed' || data.status === 'error') {
                 if (window._inputMgr) window._inputMgr.clearSuppression();
                 if (data.message) showLaunchToast(data.message);
-                // GOG install started — poll for download progress
-                if (data.gog_install) _pollGogInstall(appid);
+                // GOG install started — show progress in hamburger menu
+                if (data.gog_install) _startGogInstallPoller(appid);
                 return;
             }
 
-            // Successful launch — refresh UI after a delay to show new Last Played date
-            setTimeout(() => window.location.reload(), 1500);
+            // Successful launch — patch the card (library) and reorder last-played shelves (home)
+            setTimeout(async () => {
+                if (typeof _patchGameCard === 'function') {
+                    try {
+                        const r = await fetch(`/api/game/${appid}`);
+                        const d = await r.json();
+                        if (d.status === 'success') _patchGameCard(d.game);
+                    } catch (_) {}
+                }
+                if (typeof _reloadLastPlayedShelves === 'function') {
+                    _reloadLastPlayedShelves();
+                }
+            }, 1500);
         }
 
-        // Poll GOG install progress and update the launch toast.
-        // When the install finishes, shows a toast but does NOT auto-launch.
-        function _pollGogInstall(appid) {
-            let _poller = setInterval(async () => {
+        // ── GOG install progress (hamburger button) ───────────────────────────
+        let _gogInstallPoller = null;
+        let _gogInstallAppid  = null;
+
+        function _resetGogInstallBtn() {
+            const btn = document.getElementById('gog-install-btn');
+            btn.style.display    = 'none';
+            btn.style.background = '';
+            btn.style.color      = '';
+            btn.disabled         = false;
+            btn.innerText        = 'GOG: INSTALLING...';
+            _gogInstallAppid     = null;
+        }
+
+        function _updateGogInstallBtn(d) {
+            const btn  = document.getElementById('gog-install-btn');
+            const name = d.name || 'GOG Game';
+            if (d.total > 0) {
+                const pct  = Math.round(d.done / d.total * 100);
+                const done = (d.done  / 1e6).toFixed(0);
+                const tot  = (d.total / 1e6).toFixed(0);
+                btn.innerText        = `CANCEL  ${name}  [${done}/${tot} MB]  ${pct}%`;
+                btn.style.background = `linear-gradient(to right, rgba(102,192,244,0.18) ${pct}%, transparent ${pct}%)`;
+            } else {
+                btn.innerText        = `CANCEL  ${name}  —  starting…`;
+                btn.style.background = '';
+            }
+        }
+
+        function _startGogInstallPoller(appid) {
+            _gogInstallAppid = appid;
+            const btn = document.getElementById('gog-install-btn');
+            btn.style.display = 'block';
+            btn.disabled      = false;
+            _gogInstallPoller = setInterval(async () => {
                 try {
                     const r = await fetch(`/api/gog/install-status/${appid}`);
                     const d = await r.json();
                     if (d.status === 'running') {
-                        const pct  = d.total > 0 ? Math.round(d.done / d.total * 100) : 0;
-                        const done = (d.done  / 1e6).toFixed(0);
-                        const tot  = (d.total / 1e6).toFixed(0);
-                        showLaunchToast(`Installing: ${done} / ${tot} MB (${pct}%)`);
-                    } else if (d.status === 'success') {
-                        clearInterval(_poller);
-                        showLaunchToast('Install complete');
-                        // Reload to show the installed state
-                        location.reload();
-                    } else if (d.status === 'error' || d.status === 'cancelled') {
-                        clearInterval(_poller);
-                        showLaunchToast(d.message || 'Install failed');
-                        if (window._inputMgr) window._inputMgr.clearSuppression();
+                        _updateGogInstallBtn(d);
+                    } else {
+                        clearInterval(_gogInstallPoller);
+                        _gogInstallPoller = null;
+                        if (d.status === 'success') {
+                            btn.innerText        = `✔ ${d.name || 'Game'} installed`;
+                            btn.style.background = '';
+                            btn.style.color      = 'var(--accent-positive)';
+                            setTimeout(() => { _resetGogInstallBtn(); location.reload(); }, 2000);
+                        } else if (d.status === 'cancelled') {
+                            btn.innerText        = 'Install cancelled';
+                            btn.style.background = '';
+                            btn.style.color      = 'var(--text-secondary)';
+                            if (window._inputMgr) window._inputMgr.clearSuppression();
+                            setTimeout(() => _resetGogInstallBtn(), 2000);
+                        } else {
+                            btn.innerText        = `✘ Install failed — ${d.message || ''}`;
+                            btn.style.background = '';
+                            btn.style.color      = 'var(--color-danger)';
+                            if (window._inputMgr) window._inputMgr.clearSuppression();
+                            setTimeout(() => _resetGogInstallBtn(), 4000);
+                        }
                     }
                 } catch (_) {}
             }, 2000);
         }
+
+        document.getElementById('gog-install-btn').addEventListener('click', async () => {
+            if (!_gogInstallAppid) return;
+            const btn    = document.getElementById('gog-install-btn');
+            btn.innerText = 'Cancelling…';
+            btn.disabled  = true;
+            await fetch(`/api/gog/install/${_gogInstallAppid}/cancel`, { method: 'POST' });
+        });
+
+        // Resume tracking any in-progress install across page navigations
+        (async () => {
+            try {
+                const r = await fetch('/api/gog/active-install');
+                const d = await r.json();
+                if (d.appid !== null && d.appid !== undefined) {
+                    _startGogInstallPoller(d.appid);
+                }
+            } catch (_) {}
+        })();
 
         let _populating = false;
         let _populatePoller = null;
@@ -668,7 +746,7 @@
     <div id="rate-limit-modal" style="display:none; position:fixed; inset:0; z-index:99999;
          background:rgba(0,0,0,0.7); align-items:center; justify-content:center;">
         <div style="background:var(--bg-raised,#1e2a35); border:1px solid var(--border,#2a3a47);
-                    border-radius:10px; padding:28px 32px; max-width:460px; width:90%;
+                    border-radius:0.625rem; padding:1.75rem 2rem; max-width:28.75rem; width:90%;
                     box-shadow:0 8px 32px rgba(0,0,0,0.5);">
             <h3 style="margin:0 0 14px; color:var(--color-danger,#e05252); font-size:1.1rem;">
                 Steam Rate Limited
@@ -691,7 +769,7 @@
             </p>
             <button onclick="document.getElementById('rate-limit-modal').style.display='none'"
                     style="background:var(--accent,#66c0f4); color:#000; border:none;
-                           border-radius:5px; padding:8px 22px; cursor:pointer; font-weight:bold;">
+                           border-radius:0.3125rem; padding:0.5rem 1.375rem; cursor:pointer; font-weight:bold;">
                 OK
             </button>
         </div>

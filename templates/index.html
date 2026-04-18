@@ -58,11 +58,12 @@
     /* ── Completion pie widget ── */
     .completion-widget {
         display: flex; align-items: center; justify-content: center;
-        height: 100%; flex: 1; padding: 4px;
+        height: 100%; flex: 1; padding: 4px; min-width: 0; overflow: hidden;
+        container-type: size;
     }
     .completion-pie-wrap {
         flex-shrink: 0; position: relative;
-        height: 100%; aspect-ratio: 1/1; max-height: 100%;
+        width: min(100cqw, 100cqh); aspect-ratio: 1/1;
     }
     .completion-pie-wrap canvas { width: 100% !important; height: 100% !important; cursor: default; }
     .pie-tooltip {
@@ -197,6 +198,9 @@
     }
     body.edit-mode .add-shelf-btn { display: block; }
     .add-shelf-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .shelf-edit-mini-btn.plat-on { border-color: var(--accent); color: var(--accent); }
+    .shelf-edit-mini-btn.plat-off { opacity: 0.35; }
 
     .shelf.dragging, .shelf-split-row.dragging { opacity: 0.4; }
     .shelf.drag-over, .shelf-split-row.drag-over {
@@ -424,6 +428,54 @@
 <div id="dedup-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:599;" onclick="closeDedupPanel()"></div>
 
 <script>
+async function _reloadLastPlayedShelves() {
+    const targets = _shelves.filter(s => s.sort_col === 'last_played');
+    for (const shelf of targets) {
+        const shelfEl = document.querySelector(`[data-shelf-id="${shelf.id}"]`);
+        if (!shelfEl) continue;
+        const grid = shelfEl.querySelector('.shelf-grid');
+        if (!grid) continue;
+        try {
+            const res  = await fetch(`/api/refill-shelf/${shelf.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ exclude_appids: [] }),
+            });
+            const data = await res.json();
+            if (data.status !== 'success') continue;
+            grid.innerHTML = data.games.map(g => `
+                <div class="shelf-capsule-wrap"
+                     data-appid="${g.appid}"
+                     data-installed="${g.installed || 0}"
+                     data-name="${g.name.replace(/"/g,'&quot;')}"
+                     data-status="${(g.completion_status||'').replace(/"/g,'&quot;')}"
+                     data-platform="${(g.platform||'steam')}"
+                     onclick="launchGame(${g.appid})">
+                    <img src="/static/img/library/vertical/${g.appid}.jpg"
+                         alt="${g.name.replace(/"/g,'&quot;')}"
+                         class="shelf-capsule" draggable="false"
+                         onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
+                </div>`).join('');
+            requestAnimationFrame(() => trimGrid(grid));
+        } catch (_) {}
+    }
+}
+
+async function toggleShelfPlatform(shelfId, platform) {
+    const shelf = _shelves.find(s => s.id === shelfId);
+    if (!shelf) return;
+    const hp = new Set(shelf.hidden_platforms || []);
+    if (hp.has(platform)) hp.delete(platform);
+    else hp.add(platform);
+    shelf.hidden_platforms = [...hp];
+    await fetch('/api/shelves', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({shelves: _shelves})
+    });
+    window.location.reload();
+}
+
 async function shuffleShelf(shelfId, labelEl) {
     const shelfEl = labelEl.closest('[data-shelf-id]');
     if (!shelfEl) return;
@@ -455,6 +507,7 @@ async function shuffleShelf(shelfId, labelEl) {
 }
 
 let _shelves = {{ all_shelves_config | tojson }};
+const _availablePlatforms = {{ available_platforms | tojson }};
 const _builtinFilters = {{ filter_options | tojson }};
 const _savedFilters   = {{ saved_filters | tojson }};
 // Merged filter list for the dropdown: built-ins first, then saved
@@ -689,11 +742,20 @@ function buildEditBarHTML(shelf, containerEl) {
     const atMax = groupSize >= 3;
     const addColBtn = !atMax ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="openSplitPicker('${sid}')">＋ Column</button>` : '';
 
+    const _platLabels = {steam:'Steam',gog:'GOG',epic_games:'Epic',ea_app:'EA',ubisoft:'Ubisoft'};
+    const platHTML = (!isClock && _availablePlatforms.length > 1) ? `
+        <div class="edit-sep"></div>
+        ${_availablePlatforms.map(p => {
+            const cls = (shelf.hidden_platforms || []).includes(p) ? 'plat-off' : 'plat-on';
+            return `<button draggable="false" class="shelf-edit-mini-btn ${cls}" onclick="toggleShelfPlatform('${sid}','${p}')" title="${_platLabels[p]||p}">${_platLabels[p]||p}</button>`;
+        }).join('')}` : '';
+
     return `
         <span class="shelf-edit-mini-btn drag-handle" title="Drag to reorder">⠿</span>
         ${heightHTML}
         ${colW}
         ${limitHTML}
+        ${platHTML}
         <div class="edit-sep"></div>
         ${addColBtn}
         <button draggable="false" class="shelf-edit-mini-btn" onclick="semOpen('${sid}')">✎ Edit</button>

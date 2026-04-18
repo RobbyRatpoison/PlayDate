@@ -275,6 +275,20 @@ def library():
         dup_cond = "(duplicate_of IS NULL OR duplicate_of = '')"
         where = dup_cond if where == '1=1' else f"({where}) AND {dup_cond}"
 
+    _safe_platforms = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
+    hidden_platforms = [p for p in state.get('hidden_platforms', []) if p in _safe_platforms]
+    if hidden_platforms:
+        plat_conds = []
+        if 'steam' in hidden_platforms:
+            plat_conds.append("NOT (platform IS NULL OR platform = '' OR platform = 'steam')")
+        non_steam = [p for p in hidden_platforms if p != 'steam']
+        if non_steam:
+            placeholders = ','.join('?' for _ in non_steam)
+            plat_conds.append(f"platform NOT IN ({placeholders})")
+            params.extend(non_steam)
+        plat_cond = ' AND '.join(plat_conds)
+        where = plat_cond if where == '1=1' else f"({where}) AND ({plat_cond})"
+
     query = f"SELECT * FROM games WHERE {where} ORDER BY {sort_col} {sort_ord}"
 
     sql_error = None
@@ -307,12 +321,23 @@ def library():
     hidden_dupes   = total_db.execute(
         "SELECT COUNT(*) FROM games WHERE duplicate_of IS NOT NULL AND duplicate_of != ''"
     ).fetchone()[0]
+    _plat_rows = total_db.execute(
+        "SELECT DISTINCT COALESCE(NULLIF(platform,''),'steam') as p FROM games ORDER BY p"
+    ).fetchall()
     total_db.close()
+
+    _plat_order = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']
+    available_platforms = sorted(
+        {r['p'] for r in _plat_rows},
+        key=lambda p: _plat_order.index(p) if p in _plat_order else 99
+    )
 
     return render_template('library.html', games=games, state=state,
                            unique_tags=tags, unique_groups=groups,
                            sql_error=sql_error, builtin_filters=BUILTIN_FILTERS,
-                           total_games=total_games, hidden_dupes=hidden_dupes)
+                           total_games=total_games, hidden_dupes=hidden_dupes,
+                           available_platforms=available_platforms,
+                           hidden_platforms=hidden_platforms)
 
 
 @library_bp.route('/update_game', methods=['POST'])
@@ -385,6 +410,13 @@ def bulk_edit_games(data):
             tree_sql = build_tree_sql(filter_tree, params)
             if tree_sql and tree_sql != '1=1':
                 where = tree_sql
+
+    DATE_COLUMNS = {'date_added', 'last_played', 'release_date'}
+    if column in DATE_COLUMNS and value:
+        from database import date_to_ts
+        value = date_to_ts(value)
+        if value is None:
+            return jsonify({"status": "error", "message": "Invalid date format. Use YYYY-MM-DD."}), 400
 
     try:
         db = get_db()

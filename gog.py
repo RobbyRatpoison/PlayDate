@@ -1092,6 +1092,7 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
     done_bytes = 0
     for file_info in all_files:
         if cancel_ev and cancel_ev.is_set():
+            _cleanup_failed_install(install_path)
             return {'status': 'cancelled', 'message': 'Install cancelled'}
 
         rel_path  = file_info['path'].lstrip('/').replace('\\', '/')
@@ -1118,6 +1119,7 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
                         progress_cb(done_bytes, total_size)
 
         except InterruptedError:
+            _cleanup_failed_install(install_path)
             return {'status': 'cancelled', 'message': 'Install cancelled'}
         except Exception as e:
             log.error(f'GOG install: chunk download failed for {rel_path} — {e}')
@@ -1163,6 +1165,14 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
     )
 
     log.info(f'GOG install complete: {game_name!r} → {install_path}')
+
+    # Ensure the watcher is running — it may not have started if this was the first install
+    try:
+        from utils import start_gog_watcher
+        start_gog_watcher(GOG_INSTALL_BASE)
+    except Exception:
+        pass
+
     return {
         'status':               'success',
         'install_path':         install_path,
@@ -1181,13 +1191,19 @@ def start_install(appid, os_pref='auto'):
     Poll get_install_state(appid) for progress.
     """
     log.info(f'===== start_install called: appid={appid}, os_pref={os_pref} =====')
+    from database import get_db as _get_db
+    _db = _get_db()
+    _row = _db.execute('SELECT name FROM games WHERE appid = ?', (appid,)).fetchone()
+    _db.close()
+    game_name = _row['name'] if _row else 'Unknown'
+
     with _install_lock:
         if _install_states.get(appid, {}).get('status') == 'running':
             return {'status': 'already_running'}
         cancel_ev = threading.Event()
         _install_cancels[appid] = cancel_ev
         _install_states[appid]  = {'status': 'running', 'done': 0, 'total': 0,
-                                    'message': 'Starting download...'}
+                                    'name': game_name, 'message': 'Starting download...'}
 
     def _progress(done, total):
         with _install_lock:
@@ -1198,11 +1214,11 @@ def start_install(appid, os_pref='auto'):
             result = install_game(appid, os_pref=os_pref,
                                   progress_cb=_progress, cancel_ev=cancel_ev)
             with _install_lock:
-                _install_states[appid] = result
+                _install_states[appid] = {**result, 'name': game_name}
         except Exception as e:
             log.error(f'GOG start_install thread: {e}', exc_info=True)
             with _install_lock:
-                _install_states[appid] = {'status': 'error', 'message': str(e)}
+                _install_states[appid] = {'status': 'error', 'message': str(e), 'name': game_name}
         finally:
             _install_cancels.pop(appid, None)
 
@@ -1221,6 +1237,15 @@ def get_install_state(appid):
     """Return current install state dict for appid."""
     with _install_lock:
         return dict(_install_states.get(appid, {'status': 'not_started'}))
+
+
+def get_active_install():
+    """Return state dict (with appid key) for any running install, or {'appid': None}."""
+    with _install_lock:
+        for appid, state in _install_states.items():
+            if state.get('status') == 'running':
+                return {'appid': appid, **state}
+    return {'appid': None}
 
 
 # ── Launch ────────────────────────────────────────────────────────────────────
