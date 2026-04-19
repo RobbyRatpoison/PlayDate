@@ -59,6 +59,8 @@ import scrapers
 import threading
 import json
 import subprocess
+import platform
+import shutil
 
 
 # ── Pending dates (set by browser userscript from Steam help pages) ───────────
@@ -116,7 +118,6 @@ def _do_update_check():
         })
         log.info(f"Update check: latest={latest}, current={__version__}, available={available}")
     except Exception as e:
-        import time
         _update_cache.update({'available': False, 'checked_at': time.time(), 'error': str(e)})
         log.warning(f"Update check failed: {e}")
 
@@ -191,7 +192,6 @@ def create_app(template_folder=None, static_folder=None):
         from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
         bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
         ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
-        import sys as _sys
         return dict(
             background_ts=ts,
             builtin_filters=BUILTIN_FILTERS,
@@ -200,7 +200,7 @@ def create_app(template_folder=None, static_folder=None):
             unique_groups=get_all_unique_groups(),
             unique_genres=get_all_unique_genres(),
             unique_categories=get_all_unique_categories(),
-            is_windows=_sys.platform == 'win32',
+            is_windows=sys.platform == 'win32',
         )
 
     # ── Cancellation + progress state for populate ───────────────────────────
@@ -702,18 +702,16 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/open-url', methods=['POST'])
     def open_url_route():
-        import subprocess, platform
         url = (request.json or {}).get('url', '')
         if not url:
             return jsonify({"status": "error", "message": "No URL provided"}), 400
-        # Only allow http/https/steam schemes
         if not (url.startswith('http://') or url.startswith('https://') or url.startswith('steam://')):
             return jsonify({"status": "error", "message": "Scheme not allowed"}), 400
         try:
-            sys = platform.system()
-            if sys == 'Darwin':
+            os_name = platform.system()
+            if os_name == 'Darwin':
                 subprocess.Popen(['open', url])
-            elif sys == 'Linux':
+            elif os_name == 'Linux':
                 subprocess.Popen(['xdg-open', url])
             else:
                 subprocess.Popen(f'start "" "{url}"', shell=True)
@@ -723,15 +721,12 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/launch/<appid>', methods=['POST'])
     def launch_game(appid):
-        import subprocess
-        import platform as _platform
-
         try:
             appid_int = int(appid)
         except ValueError:
             return jsonify({"status": "error", "message": "Invalid appid"}), 400
 
-        os_name = _platform.system()
+        os_name = platform.system()
 
         # Look up platform and install status for this game
         db = get_db()
@@ -790,11 +785,9 @@ def create_app(template_folder=None, static_folder=None):
         launches on Linux (Proton and native). Returns {'running': bool} on Linux,
         {'running': null} on other platforms (caller should fall back to focus events).
         """
-        import platform as _platform
-        if _platform.system() != 'Linux':
+        if platform.system() != 'Linux':
             return jsonify({'running': None})
         try:
-            import subprocess
             result = subprocess.run(
                 ['pgrep', '-f', 'reaper SteamLaunch'],
                 capture_output=True, timeout=3
@@ -1136,12 +1129,12 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/reset-background', methods=['POST'])
     def reset_background():
         try:
-            bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
-            if os.path.exists(bg_path):
-                os.remove(bg_path)
-            return jsonify({"status": "success"})
+            os.remove(os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg'))
+        except FileNotFoundError:
+            pass
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success"})
 
     @app.route('/api/pending-date', methods=['POST', 'OPTIONS'])
     def pending_date_set():
@@ -1465,8 +1458,6 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/gog/uninstall/<int:appid>', methods=['POST'])
     def gog_uninstall(appid):
         """Delete a GOG game's install folder and set installed=0."""
-        import shutil
-        from database import get_db, update_game_data
         from gog import GOG_INSTALL_BASE
 
         db = get_db()
@@ -1507,12 +1498,11 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/gog/proton-versions')
     def gog_proton_versions():
         """Return detected Proton installations and the host platform."""
-        import platform as _plat
         try:
             from runners.proton import find_proton_versions
             return jsonify({
                 'status':   'ok',
-                'platform': _plat.system(),
+                'platform': platform.system(),
                 'versions': find_proton_versions(),
             })
         except Exception as e:
@@ -1994,8 +1984,6 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/pagywosg-auto')
     def pagywosg_auto():
-        import re
-        import json
         import urllib.request
         from datetime import date
 
@@ -2181,9 +2169,8 @@ def create_app(template_folder=None, static_folder=None):
         supplement_loaded = False
         if _supplement:
             try:
-                supplement = _supplement
                 db = get_db()
-                for _cat_id, sdata in supplement.get(str(event_id), {}).items():
+                for _cat_id, sdata in _supplement.get(str(event_id), {}).items():
                     s_pool    = sdata.get('pool', 'wins')
                     cat_label = sdata.get('id_name', f'Category {_cat_id}')
                     target_conds  = conds_all  if s_pool == 'all' else conds_wins
@@ -2208,10 +2195,8 @@ def create_app(template_folder=None, static_folder=None):
             except Exception:
                 pass
 
-        # Determine which appids are in the user's library.
         # Scan the whole games table once (fast — user's library is small) and
         # intersect in Python, avoiding a huge IN (?, ?, ...) with 5000+ params.
-        from database import get_db
         _lib_db = get_db()
         _all_library_appids = {r['appid'] for r in _lib_db.execute('SELECT appid FROM games').fetchall()}
         all_appids_combined = set(appids_wins.keys()) | set(appids_all.keys())
@@ -2378,51 +2363,38 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": str(e)}), 500
 
     # ── BACKUP ────────────────────────────────────────────────────────────────
+    def _fill_backup_zip(zf, include_art):
+        import glob as _glob
+        for arcname, filepath in {'config.json': os.path.join(BASE_DIR, 'config.json'),
+                                   'state.json':  os.path.join(BASE_DIR, 'state.json')}.items():
+            if os.path.exists(filepath):
+                zf.write(filepath, arcname)
+        for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
+            zf.write(db_path, os.path.basename(db_path))
+        if include_art:
+            art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
+            if os.path.isdir(art_dir):
+                for dirpath, _, filenames in os.walk(art_dir):
+                    for fname in filenames:
+                        if fname.lower().endswith('.jpg'):
+                            full = os.path.join(dirpath, fname)
+                            zf.write(full, os.path.relpath(full, BASE_DIR).replace(os.sep, '/'))
+
     @app.route('/api/backup', methods=['POST'])
     def backup():
-        import zipfile
-        import io
+        import zipfile, io
         from datetime import datetime
         from flask import send_file
 
         data        = request.json or {}
         include_art = data.get('include_art', False)
-
-        buf = io.BytesIO()
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
+        buf         = io.BytesIO()
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # Core data files — always included
-            core_files = {
-                'config.json': os.path.join(BASE_DIR, 'config.json'),
-                'state.json':  os.path.join(BASE_DIR, 'state.json'),
-            }
-            for arcname, filepath in core_files.items():
-                if os.path.exists(filepath):
-                    zf.write(filepath, arcname)
-            # All per-account databases
-            import glob as _glob
-            for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
-                zf.write(db_path, os.path.basename(db_path))
-
-            # Optional: custom artwork (recurse into vertical/, horizontal/, icons/)
-            if include_art:
-                art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
-                if os.path.isdir(art_dir):
-                    for dirpath, _, filenames in os.walk(art_dir):
-                        for fname in filenames:
-                            if fname.lower().endswith('.jpg'):
-                                full = os.path.join(dirpath, fname)
-                                arcname = os.path.relpath(full, BASE_DIR).replace(os.sep, '/')
-                                zf.write(full, arcname)
-
+            _fill_backup_zip(zf, include_art)
         buf.seek(0)
-        return send_file(
-            buf,
-            mimetype='application/zip',
-            as_attachment=True,
-            download_name=f'playdate_backup_{timestamp}.zip'
-        )
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        return send_file(buf, mimetype='application/zip', as_attachment=True,
+                         download_name=f'playdate_backup_{ts}.zip')
 
     @app.route('/api/backup-to-path', methods=['POST'])
     def backup_to_path():
@@ -2435,34 +2407,12 @@ def create_app(template_folder=None, static_folder=None):
         data        = request.json or {}
         save_path   = data.get('path', '').strip()
         include_art = data.get('include_art', False)
-
         if not save_path:
             return jsonify({"status": "error", "message": "No path provided."}), 400
-
         try:
             with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                core_files = {
-                    'config.json': os.path.join(BASE_DIR, 'config.json'),
-                    'state.json':  os.path.join(BASE_DIR, 'state.json'),
-                }
-                for arcname, filepath in core_files.items():
-                    if os.path.exists(filepath):
-                        zf.write(filepath, arcname)
-                import glob as _glob
-                for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
-                    zf.write(db_path, os.path.basename(db_path))
-
-                if include_art:
-                    art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
-                    if os.path.isdir(art_dir):
-                        for dirpath, _, filenames in os.walk(art_dir):
-                            for fname in filenames:
-                                if fname.lower().endswith('.jpg'):
-                                    full = os.path.join(dirpath, fname)
-                                    arcname = os.path.relpath(full, BASE_DIR).replace(os.sep, '/')
-                                    zf.write(full, arcname)
-            size = os.path.getsize(save_path)
-            return jsonify({"status": "success", "path": save_path, "size": size})
+                _fill_backup_zip(zf, include_art)
+            return jsonify({"status": "success", "path": save_path, "size": os.path.getsize(save_path)})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -2486,7 +2436,6 @@ def create_app(template_folder=None, static_folder=None):
             if custom_sql:
                 where = custom_sql if is_safe_sql(custom_sql) else '1=0'
             else:
-                from library import build_tree_sql
                 tree_sql = build_tree_sql(filter_tree, params)
                 if tree_sql and tree_sql != '1=1':
                     where = tree_sql

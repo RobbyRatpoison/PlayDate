@@ -37,7 +37,7 @@ def start_steamapps_watcher(steamapps_path: str):
 
     try:
         from watchdog.observers import Observer
-        from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileDeletedEvent, FileMovedEvent
+        from watchdog.events import FileSystemEventHandler
     except ImportError:
         log.warning("watchdog not installed — filesystem watcher disabled")
         return None
@@ -100,12 +100,11 @@ def sync_gog_install_status():
     """Update installed flags for all GOG games based on whether their install_path exists on disk."""
     global _install_status_dirty
     db = get_db()
-    rows = db.execute(
-        "SELECT appid, install_path FROM games WHERE platform = 'gog'"
-    ).fetchall()
-    for row in rows:
-        installed = 1 if row['install_path'] and os.path.isdir(row['install_path']) else 0
-        db.execute("UPDATE games SET installed = ? WHERE appid = ?", (installed, row['appid']))
+    rows = db.execute("SELECT appid, install_path FROM games WHERE platform = 'gog'").fetchall()
+    installed_ids = [row['appid'] for row in rows if row['install_path'] and os.path.isdir(row['install_path'])]
+    db.execute("UPDATE games SET installed = 0 WHERE platform = 'gog'")
+    if installed_ids:
+        db.executemany("UPDATE games SET installed = 1 WHERE appid = ?", [(a,) for a in installed_ids])
     db.commit()
     db.close()
     _install_status_dirty = True
@@ -175,23 +174,18 @@ def stop_gog_watcher():
 
 def find_steam_path():
     """Attempts to locate the Steam installation path, prioritizing Linux."""
-
-    # 1. LINUX & COMMON DEFAULTS (Priority)
-    # We check the Linux hidden folder first as requested.
     defaults = [
-        os.path.expanduser("~/.steam/steam/steamapps"),             # Standard Linux
-        os.path.expanduser("~/.local/share/Steam/steamapps"),      # Flatpak/Other Linux
-        "C:/Program Files (x86)/Steam/steamapps",                  # Windows Default
-        "C:/Program Files/Steam/steamapps",                        # Windows Alt
-        os.path.expanduser("~/Library/Application Support/Steam/steamapps") # macOS
+        os.path.expanduser("~/.steam/steam/steamapps"),
+        os.path.expanduser("~/.local/share/Steam/steamapps"),
+        "C:/Program Files (x86)/Steam/steamapps",
+        "C:/Program Files/Steam/steamapps",
+        os.path.expanduser("~/Library/Application Support/Steam/steamapps"),
     ]
 
     for path in defaults:
         if os.path.exists(path):
             return path
 
-    # 2. WINDOWS REGISTRY (Secondary Fallback)
-    # If the common paths fail and we are on Windows, ask the OS directly.
     if platform.system() == "Windows":
         try:
             import winreg
@@ -200,7 +194,7 @@ def find_steam_path():
                     path, _ = winreg.QueryValueEx(key, "InstallPath")
                     if path:
                         return os.path.join(path, "steamapps")
-        except:
+        except Exception:
             pass
 
     return None
@@ -368,68 +362,52 @@ def get_acf_names():
     for filename in os.listdir(steam_path):
         if not (filename.startswith('appmanifest_') and filename.endswith('.acf')):
             continue
-        file_path = os.path.join(steam_path, filename)
-        if not is_real_game(file_path):
-            continue
         match = re.search(r'appmanifest_(\d+)\.acf', filename)
         if not match:
             continue
-        appid = int(match.group(1))
+        file_path = os.path.join(steam_path, filename)
         try:
             with open(file_path, encoding='utf-8', errors='ignore') as f:
                 content = f.read()
+            if not is_real_game(file_path, content):
+                continue
             name_match = re.search(r'"name"\s+"([^"]+)"', content)
             if name_match:
-                names[appid] = name_match.group(1)
+                names[int(match.group(1))] = name_match.group(1)
         except Exception:
             pass
 
     return names
 
 def get_locally_installed_appids():
-    """
-    Scans the Steam library for manifest files to find truly installed games.
-    Common path: C:/Program Files (x86)/Steam/steamapps
-    """
-    installed_ids = []
-
-    # Check if the path exists
+    """Scans the Steam library for manifest files to find truly installed games."""
     steam_path = find_steam_path()
     if not steam_path or not os.path.exists(steam_path):
-        print("Steam path not found. Skipping local scan.")
+        log.warning("Steam path not found. Skipping local scan.")
         return []
 
-    # Steam stores every installed game as 'appmanifest_XXXXX.acf'
+    installed_ids = []
     for filename in os.listdir(steam_path):
-        file_path = os.path.join(steam_path, filename)
-        if filename.startswith("appmanifest_") and filename.endswith(".acf"):
-            if is_real_game(file_path):
-                # Extract the ID from the filename using regex
-                match = re.search(r"appmanifest_(\d+)\.acf", filename)
-                if match:
-                    installed_ids.append(int(match.group(1)))
-
-    #total_installed = len(installed_ids)
-    #print(f"There are {total_installed} games installed.")
+        if not (filename.startswith("appmanifest_") and filename.endswith(".acf")):
+            continue
+        match = re.search(r"appmanifest_(\d+)\.acf", filename)
+        if match and is_real_game(os.path.join(steam_path, filename)):
+            installed_ids.append(int(match.group(1)))
     return installed_ids
 
-def is_real_game(file_path):
-    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-        content = f.read()
-
+def is_real_game(file_path, content=None):
+    if content is None:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
     # Check for UserConfig - most tools don't have this
     if '"UserConfig"' not in content:
         return False
-
-    # Check for known non-game directory patterns
     if any(term in content for term in ['Steamworks Shared', 'Proton', 'SteamLinuxRuntime', 'EasyAntiCheat', 'Redistributable']):
         return False
-
     return True
 
 def sync_local_install_status():
     global _install_status_dirty
-    # Fetch IDs from disk first, before touching the DB
     local_ids = get_locally_installed_appids()
 
     # Reset and re-set in a single transaction so there is no window
@@ -456,55 +434,32 @@ def record_launch(appid):
             update_game_data(appid, last_played=now_ts, completion_status="Unfinished")
         else:
             update_game_data(appid, last_played=now_ts)
-        print(f"Recorded launch for Installed AppID: {appid}")
+        log.info(f"Recorded launch for appid {appid}")
         return now_ts
-    print(f"Launch ignored for AppID {appid}: Not marked as installed.")
+    log.debug(f"Launch ignored for appid {appid}: not installed")
     return None
 
-def get_all_unique_groups():
+def _get_unique_csv_column(column):
     db = get_db()
-    rows = db.execute("SELECT groups FROM games WHERE groups IS NOT NULL").fetchall()
+    rows = db.execute(f"SELECT {column} FROM games WHERE {column} IS NOT NULL").fetchall()
     db.close()
-    all_groups = set()
+    values = set()
     for row in rows:
-        if row['groups']:
-            # Split by comma, strip whitespace, and add to set
-            parts = [g.strip() for g in row['groups'].split(',') if g.strip()]
-            all_groups.update(parts)
-    return sorted(all_groups, key=str.casefold)
+        if row[column]:
+            values.update(v.strip() for v in row[column].split(',') if v.strip())
+    return sorted(values, key=str.casefold)
+
+def get_all_unique_groups():
+    return _get_unique_csv_column('groups')
 
 def get_all_unique_tags():
-    db = get_db()
-    rows = db.execute("SELECT tags FROM games WHERE tags IS NOT NULL").fetchall()
-    db.close()
-    all_tags = set()
-    for row in rows:
-        if row['tags']:
-            parts = [g.strip() for g in row['tags'].split(',') if g.strip()]
-            all_tags.update(parts)
-    return sorted(all_tags, key=str.casefold)
+    return _get_unique_csv_column('tags')
 
 def get_all_unique_genres():
-    db = get_db()
-    rows = db.execute("SELECT genres FROM games WHERE genres IS NOT NULL").fetchall()
-    db.close()
-    all_genres = set()
-    for row in rows:
-        if row['genres']:
-            parts = [g.strip() for g in row['genres'].split(',') if g.strip()]
-            all_genres.update(parts)
-    return sorted(all_genres, key=str.casefold)
+    return _get_unique_csv_column('genres')
 
 def get_all_unique_categories():
-    db = get_db()
-    rows = db.execute("SELECT categories FROM games WHERE categories IS NOT NULL").fetchall()
-    db.close()
-    all_categories = set()
-    for row in rows:
-        if row['categories']:
-            parts = [c.strip() for c in row['categories'].split(',') if c.strip()]
-            all_categories.update(parts)
-    return sorted(all_categories, key=str.casefold)
+    return _get_unique_csv_column('categories')
 
 
 def parse_appinfo():
@@ -571,11 +526,15 @@ def parse_appinfo():
     KEY_COMMON  = None
     KEY_NAME    = None
     KEY_TYPE    = None
+    KEY_STEAM_RELEASE_DATE    = None
+    KEY_ORIGINAL_RELEASE_DATE = None
     for kid, kname in keys.items():
-        if kname == 'appinfo': KEY_APPINFO = kid
-        elif kname == 'common': KEY_COMMON = kid
-        elif kname == 'name':   KEY_NAME   = kid
-        elif kname == 'type':   KEY_TYPE   = kid
+        if kname == 'appinfo':                KEY_APPINFO = kid
+        elif kname == 'common':               KEY_COMMON = kid
+        elif kname == 'name':                 KEY_NAME   = kid
+        elif kname == 'type':                 KEY_TYPE   = kid
+        elif kname == 'steam_release_date':   KEY_STEAM_RELEASE_DATE = kid
+        elif kname == 'original_release_date': KEY_ORIGINAL_RELEASE_DATE = kid
 
     VALID_TYPES = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
     max_key = len(keys)
@@ -674,7 +633,12 @@ def parse_appinfo():
                 name   = common.get('name', '')
                 app_type = common.get('type', '')
                 if name or app_type:
-                    result[appid] = {'name': name, 'type': app_type}
+                    result[appid] = {
+                        'name': name,
+                        'type': app_type,
+                        'steam_release_date':    common.get('steam_release_date'),
+                        'original_release_date': common.get('original_release_date'),
+                    }
             except Exception:
                 pass
 

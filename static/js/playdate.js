@@ -241,6 +241,40 @@ function initCustomSelect(nativeSelect) {
     panel.className = 'custom-select-panel';
     panel.style.display = 'none';
 
+    const _hasSearch = _items.filter(i => i.type === 'opt').length > 20;
+    let _searchInput = null;
+    let _searchQuery = '';
+    if (_hasSearch) {
+        _searchInput = document.createElement('input');
+        _searchInput.type = 'text';
+        _searchInput.className = 'custom-select-search';
+        _searchInput.placeholder = 'Search…';
+        _searchInput.addEventListener('input', () => {
+            _searchQuery = _searchInput.value.toLowerCase();
+            renderPanel();
+        });
+        _searchInput.addEventListener('mousedown', e => e.stopPropagation());
+        _searchInput.addEventListener('keydown', e => {
+            if (e.key === 'Escape') { closePanel(); return; }
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const visible = Array.from(panel.querySelectorAll('.custom-select-option:not(.hidden):not(.disabled)'));
+                if (!visible.length) return;
+                const focused = panel.querySelector('.custom-select-option.kb-focus');
+                let idx = focused ? visible.indexOf(focused) : -1;
+                if (focused) focused.classList.remove('kb-focus');
+                idx = e.key === 'ArrowDown' ? Math.min(idx + 1, visible.length - 1) : Math.max(idx - 1, 0);
+                visible[idx].classList.add('kb-focus');
+                visible[idx].scrollIntoView({ block: 'nearest' });
+            }
+            if (e.key === 'Enter') {
+                const focused = panel.querySelector('.custom-select-option.kb-focus');
+                if (focused) focused.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            }
+        });
+        panel.appendChild(_searchInput);
+    }
+
     div.appendChild(btn);
     div.appendChild(panel);
 
@@ -254,7 +288,8 @@ function initCustomSelect(nativeSelect) {
     }
 
     function renderPanel() {
-        panel.innerHTML = '';
+        // Remove all non-search children, keep search input in place
+        Array.from(panel.children).forEach(c => { if (c !== _searchInput) c.remove(); });
         if (_opts().length === 0) {
             const d = document.createElement('div');
             d.className = 'custom-select-option disabled';
@@ -268,16 +303,20 @@ function initCustomSelect(nativeSelect) {
                 g.textContent = item.label;
                 panel.appendChild(g);
             } else {
+                const hidden = _searchQuery && !item.text.toLowerCase().includes(_searchQuery);
                 const d = document.createElement('div');
                 d.className = 'custom-select-option'
                     + (item.value === _value ? ' selected' : '')
-                    + (item.disabled ? ' disabled' : '');
+                    + (item.disabled ? ' disabled' : '')
+                    + (hidden ? ' hidden' : '');
                 d.textContent = item.text;
                 if (item.style) d.setAttribute('style', item.style);
                 if (!item.disabled) {
                     d.addEventListener('mousedown', e => {
                         e.preventDefault();
                         _value = item.value;
+                        _searchQuery = '';
+                        if (_searchInput) _searchInput.value = '';
                         renderBtn();
                         renderPanel();
                         closePanel();
@@ -304,6 +343,12 @@ function initCustomSelect(nativeSelect) {
         panel.style.left = rect.left + 'px';
         panel.style.width = rect.width + 'px';
         panel.style.display = 'block';
+        if (_searchInput) {
+            _searchInput.value = '';
+            _searchQuery = '';
+            renderPanel();
+            requestAnimationFrame(() => _searchInput.focus());
+        }
     }
     function closePanel() {
         div.classList.remove('open');

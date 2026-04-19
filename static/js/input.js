@@ -34,6 +34,12 @@
                 if (typeof closeFilterModal === 'function') closeFilterModal();
                 return;
             }
+            const viewModal = document.getElementById('viewModal');
+            if (viewModal && viewModal.style.display !== 'none') {
+                if (_state.zone === 'modal') _popZone();
+                if (typeof closeViewModal === 'function') closeViewModal();
+                return;
+            }
             // Close any other open modal (tools page, bulk edit, etc.)
             _closeAnyOpenModal();
         }
@@ -1419,6 +1425,14 @@
             return;
         }
 
+        const viewModal = document.getElementById('viewModal');
+        if (viewModal && viewModal.style.display !== 'none') {
+            if (_state.zone === 'modal') _popZone();
+            if (typeof closeViewModal === 'function') closeViewModal();
+            _syncFocus();
+            return;
+        }
+
         // Close any other open modal (bulk edit, tools modals, edit-mode panels)
         if (_closeAnyOpenModal()) return;
 
@@ -1601,11 +1615,13 @@
     }
 
     function _handleLB() {
+        if (document.getElementById('gamepad-diag-modal')?.style.display !== 'none') return;
         const idx = _currentPageIdx();
         if (idx > 0) window.location.href = PAGE_URLS[idx - 1];
     }
 
     function _handleRB() {
+        if (document.getElementById('gamepad-diag-modal')?.style.display !== 'none') return;
         const idx = _currentPageIdx();
         if (idx < PAGE_URLS.length - 1) window.location.href = PAGE_URLS[idx + 1];
     }
@@ -1833,6 +1849,7 @@
         // Edit / filter modals (base.html — present on every page)
         _watchModal('editModal');
         _watchModal('filterModal');
+        _watchModal('viewModal');
 
         // Library bulk modals — full zone push/pop so focus enters and returns correctly
         _watchModal('bulk-edit-modal');
@@ -1840,6 +1857,7 @@
         _watchModal('bulk-delete-modal');
 
         // Tools modals — full zone push/pop so focus enters and returns correctly
+        _watchModal('gamepad-diag-modal');
         _watchModal('backup-modal');
         _watchModal('bg-modal');
         _watchModal('import-modal');

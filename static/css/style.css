@@ -161,6 +161,31 @@ select {
     pointer-events: none;
 }
 
+.custom-select-option.hidden {
+    display: none;
+}
+
+.custom-select-option.kb-focus {
+    background: rgba(102, 192, 244, 0.15);
+    outline: 1px solid var(--accent);
+}
+
+.custom-select-search {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.75rem;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    outline: none;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
 .custom-select-optgroup {
     padding: 0.3125rem 0.75rem 0.1875rem;
     font-size: 0.72rem;

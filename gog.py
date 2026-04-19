@@ -3,10 +3,8 @@ gog.py — GOG Galaxy integration for PlayDate.
 Handles OAuth2 authentication, library sync, content-system install, and launch.
 """
 
-import copy
 import json
 import logging
-import math
 import os
 import re
 import threading
@@ -14,6 +12,7 @@ import time
 import zlib
 import requests
 from config import CONFIG_PATH
+from scrapers import _weighted_score
 
 log = logging.getLogger(__name__)
 
@@ -34,8 +33,6 @@ _HEADERS = {
 # ── Config helpers ────────────────────────────────────────────────────────────
 
 def _load_cfg():
-    if not os.path.exists(CONFIG_PATH):
-        return {}
     try:
         with open(CONFIG_PATH, 'r') as f:
             return json.load(f)
@@ -243,6 +240,34 @@ def get_galaxy_user_id():
 
 # ── Library sync ──────────────────────────────────────────────────────────────
 
+def _fetch_all_products(session):
+    """Fetch all owned GOG products across pages. Returns (products, errors)."""
+    products = []
+    errors   = []
+    page     = 1
+    while True:
+        try:
+            resp = session.get(
+                'https://embed.gog.com/account/getFilteredProducts',
+                params={'mediaType': 1, 'page': page},
+                timeout=20,
+            )
+            if resp.status_code == 401:
+                return None, ['GOG session expired — please reconnect']
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            errors.append(f'Page {page}: {e}')
+            break
+        products.extend(data.get('products', []))
+        log.info(f'GOG library: page {page}/{data.get("totalPages", "?")} — {len(data.get("products", []))} products')
+        if page >= data.get('totalPages', 1):
+            break
+        page += 1
+        time.sleep(0.3)
+    return products, errors
+
+
 def _next_negative_appid(db):
     """Return the next available negative appid."""
     row = db.execute('SELECT MIN(appid) FROM games WHERE appid < 0').fetchone()
@@ -259,34 +284,9 @@ def sync_library():
     if not session:
         return {'error': 'Not connected to GOG — please reconnect'}
 
-    errors       = []
-    all_products = []
-    page         = 1
-
-    # Paginate through all owned products
-    while True:
-        try:
-            resp = session.get(
-                'https://embed.gog.com/account/getFilteredProducts',
-                params={'mediaType': 1, 'page': page},
-                timeout=20,
-            )
-            if resp.status_code == 401:
-                return {'error': 'GOG session expired — please reconnect'}
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            errors.append(f'Page {page}: {e}')
-            break
-
-        products = data.get('products', [])
-        all_products.extend(products)
-        log.info(f'GOG sync: page {page}/{data.get("totalPages", "?")} — {len(products)} products')
-
-        if page >= data.get('totalPages', 1):
-            break
-        page += 1
-        time.sleep(0.3)
+    all_products, errors = _fetch_all_products(session)
+    if all_products is None:
+        return {'error': errors[0]}
 
     # Only real games, not movies or non-game products
     games = [p for p in all_products if p.get('isGame') and not p.get('isMovie')]
@@ -540,14 +540,9 @@ def fetch_gog_metadata(gog_id):
             value   = float(rdata.get('value') or 0)
             count   = int(rdata.get('count') or 0)
             percent = round(value * 20)   # 0-5 stars → 0-100
-            p       = percent / 100.0
-
-            weighted = 0 if count == 0 else round(
-                (p - (p - 0.5) * (2 ** (-math.log10(count + 1)))) * 100
-            )
 
             result['review_percentage']   = percent
-            result['weighted_percentage'] = weighted
+            result['weighted_percentage'] = _weighted_score(percent, count)
             result['total_reviews']       = count
             result['positive_reviews']    = round(p * count)
             result['review_score']        = _gog_review_score(percent, count)
@@ -601,21 +596,11 @@ def sync_gog_metadata(force=False):
     session        = get_valid_session()
     if session:
         try:
-            valid_gog_ids = set()
-            page = 1
-            while True:
-                resp = session.get(
-                    'https://embed.gog.com/account/getFilteredProducts',
-                    params={'mediaType': 1, 'page': page}, timeout=20,
-                )
-                data = resp.json()
-                for p in data.get('products', []):
-                    if p.get('url') and not p.get('isMovie'):
-                        valid_gog_ids.add(str(p['id']))
-                if page >= data.get('totalPages', 1):
-                    break
-                page += 1
-                time.sleep(0.3)
+            all_products, _ = _fetch_all_products(session)
+            valid_gog_ids   = {
+                str(p['id']) for p in (all_products or [])
+                if p.get('url') and not p.get('isMovie')
+            } if all_products is not None else None
         except Exception as e:
             log.warning(f'GOG metadata: library pre-fetch failed — {e}')
             valid_gog_ids = None
@@ -631,83 +616,81 @@ def sync_gog_metadata(force=False):
                 "SELECT appid, platform_id, name FROM games "
                 "WHERE platform = 'gog' AND (meta_fetched IS NULL OR meta_fetched = '0')"
             ).fetchall()
-    finally:
-        db.close()
 
-    updated = 0
-    errors  = 0
-    deleted = 0
-    today   = date.today().isoformat()
+        updated = 0
+        errors  = 0
+        deleted = 0
+        today   = date.today().isoformat()
 
-    if not rows:
-        return {'updated': updated, 'errors': errors, 'deleted': deleted}
-
-    with _meta_lock:
-        _meta_state['total'] = len(rows)
-
-    for row in rows:
-        appid  = row['appid']
-        gog_id = row['platform_id']
-        name   = row['name']
-
-        meta = fetch_gog_metadata(gog_id)
-        if meta is None:
-            # v2 API failed entirely — mark attempted to avoid hammering on next startup sync
-            try:
-                update_game_data(appid, meta_fetched=today)
-            except Exception:
-                pass
-            errors += 1
-            time.sleep(0.5)
-            continue
-
-        # Deletion logic:
-        #   category=None (v2 404) + not in valid_gog_ids (url='') → non-game extra, delete
-        #   category=None + in valid_gog_ids → free/delisted game with no v2 entry, keep
-        #   category='GAME' → real game, update metadata
-        #   category=anything else → DLC/pack/etc., delete
-        category      = meta.pop('_category', None)
-        has_store_url = (valid_gog_ids is None or
-                         str(row['platform_id']) in valid_gog_ids)
-        is_non_game   = (category is None and not has_store_url) or \
-                        (category is not None and category != 'GAME')
-        if is_non_game:
-            try:
-                db = get_db()
-                db.execute('DELETE FROM games WHERE appid = ?', (appid,))
-                db.commit()
-                db.close()
-                from database import add_to_blacklist
-                add_to_blacklist(appid, name, platform_id=gog_id)
-                log.info(f'GOG metadata: deleted + blacklisted non-game {name!r} (category={category})')
-                deleted += 1
-            except Exception as e:
-                log.error(f'GOG metadata: delete failed for {name!r}: {e}')
-                errors += 1
-            time.sleep(0.5)
-            continue
-
-        meta['meta_fetched'] = today
-
-        # Fetch achievements if we have a valid session and galaxy user ID
-        if session and galaxy_user_id:
-            ach = fetch_gog_achievements(gog_id, galaxy_user_id, session)
-            if ach is not None:
-                meta.update(ach)
-                meta['cheevos_fetched'] = today
-
-        try:
-            update_game_data(appid, **meta)
-            log.info(f'GOG metadata: updated {name!r} (appid {appid})')
-            updated += 1
-        except Exception as e:
-            log.error(f'GOG metadata: DB update failed for {name!r}: {e}')
-            errors += 1
+        if not rows:
+            return {'updated': updated, 'errors': errors, 'deleted': deleted}
 
         with _meta_lock:
-            _meta_state.update({'done': _meta_state['done'] + 1,
-                                'updated': updated, 'deleted': deleted, 'errors': errors})
-        time.sleep(0.5)
+            _meta_state['total'] = len(rows)
+
+        from database import add_to_blacklist
+        for row in rows:
+            appid  = row['appid']
+            gog_id = row['platform_id']
+            name   = row['name']
+
+            meta = fetch_gog_metadata(gog_id)
+            if meta is None:
+                # v2 API failed entirely — mark attempted to avoid hammering on next startup sync
+                try:
+                    update_game_data(appid, meta_fetched=today)
+                except Exception:
+                    pass
+                errors += 1
+                time.sleep(0.5)
+                continue
+
+            # Deletion logic:
+            #   category=None (v2 404) + not in valid_gog_ids (url='') → non-game extra, delete
+            #   category=None + in valid_gog_ids → free/delisted game with no v2 entry, keep
+            #   category='GAME' → real game, update metadata
+            #   category=anything else → DLC/pack/etc., delete
+            category      = meta.pop('_category', None)
+            has_store_url = (valid_gog_ids is None or str(gog_id) in valid_gog_ids)
+            is_non_game   = (category is None and not has_store_url) or \
+                            (category is not None and category != 'GAME')
+            if is_non_game:
+                try:
+                    db.execute('DELETE FROM games WHERE appid = ?', (appid,))
+                    db.commit()
+                    add_to_blacklist(appid, name, platform_id=gog_id)
+                    log.info(f'GOG metadata: deleted + blacklisted non-game {name!r} (category={category})')
+                    deleted += 1
+                except Exception as e:
+                    log.error(f'GOG metadata: delete failed for {name!r}: {e}')
+                    errors += 1
+                time.sleep(0.5)
+                continue
+
+            meta['meta_fetched'] = today
+
+            # Fetch achievements if we have a valid session and galaxy user ID
+            if session and galaxy_user_id:
+                ach = fetch_gog_achievements(gog_id, galaxy_user_id, session)
+                if ach is not None:
+                    meta.update(ach)
+                    meta['cheevos_fetched'] = today
+
+            try:
+                update_game_data(appid, **meta)
+                log.info(f'GOG metadata: updated {name!r} (appid {appid})')
+                updated += 1
+            except Exception as e:
+                log.error(f'GOG metadata: DB update failed for {name!r}: {e}')
+                errors += 1
+
+            with _meta_lock:
+                _meta_state.update({'done': _meta_state['done'] + 1,
+                                    'updated': updated, 'deleted': deleted, 'errors': errors})
+            time.sleep(0.5)
+
+    finally:
+        db.close()
 
     log.info(f'GOG metadata sync complete: {updated} updated, {deleted} deleted, {errors} errors')
     return {'updated': updated, 'errors': errors, 'deleted': deleted}
@@ -796,12 +779,10 @@ def _build_cdn_url(cdn_urls, rel_path):
     Works for both depot manifests and chunk files — appends the given path to
     the secure_link ``parameters['path']`` and substitutes all placeholders.
     """
-    endpoint = copy.deepcopy(cdn_urls[0])
-    endpoint['parameters']['path'] = (
-        endpoint['parameters'].get('path', '').rstrip('/') + '/' + rel_path
-    )
-    url = endpoint['url_format']
-    for key, value in endpoint['parameters'].items():
+    src    = cdn_urls[0]
+    params = {**src['parameters'], 'path': src['parameters'].get('path', '').rstrip('/') + '/' + rel_path}
+    url    = src['url_format']
+    for key, value in params.items():
         url = url.replace('{' + key + '}', str(value))
     return url
 
@@ -947,12 +928,10 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
     """
     from database import get_db, update_game_data
 
-    log.info(f'===== GOG install_game called: appid={appid} =====')
+    log.info(f'GOG install started: appid={appid}')
     session = get_valid_session()
     if not session:
-        log.info('GOG install: session is None')
         return {'status': 'error', 'message': 'Not connected to GOG — please reconnect'}
-    log.info('GOG install: session OK')
 
     db  = get_db()
     row = db.execute(
@@ -960,9 +939,8 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
     ).fetchone()
     db.close()
     if not row:
-        log.info(f'GOG install: game not found in DB, appid={appid}')
         return {'status': 'error', 'message': f'Game not found (appid {appid})'}
-    log.info(f'GOG install: found game {row["name"]!r}, gog_id={row["platform_id"]}')
+    log.debug(f'GOG install: game={row["name"]!r}, gog_id={row["platform_id"]}')
 
     game_name  = row['name']
     gog_id     = row['platform_id']
@@ -976,48 +954,37 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
         os_order = [os_pref]
     chosen_os = None
     builds    = []
-    log.info(f'GOG install: trying OS order={os_order}')
     for os_name in os_order:
         b = _get_builds(gog_id, os_name, session)
-        log.info(f'GOG install: _get_builds({gog_id}, {os_name}) returned {len(b)} builds')
+        log.debug(f'GOG install: _get_builds({gog_id}, {os_name}) → {len(b)} builds')
         if b:
             chosen_os = os_name
             builds    = b
             break
 
     if not builds:
-        log.info(f'GOG install: no builds found for any OS')
         return {'status': 'error', 'message': f'No downloadable builds found for {game_name!r}'}
 
     build = builds[0]
-    log.info(f'GOG install: {game_name!r} — {chosen_os} build, link={build.get("link", "?")[:120]}')
+    log.debug(f'GOG install: {game_name!r} — {chosen_os} build')
 
     # ── Acquire CDN download URL templates ───────────────────────────────────
     try:
         cdn_urls = _get_secure_link_urls(gog_id, session)
-        log.info(f'GOG install: got {len(cdn_urls)} CDN URL templates, url_format={cdn_urls[0]["url_format"][:120]}')
     except Exception as e:
-        log.info(f'GOG install: CDN token acquisition failed: {e}')
+        log.warning(f'GOG install: CDN token acquisition failed: {e}')
         return {'status': 'error', 'message': f'CDN token acquisition failed: {e}'}
 
     # ── Fetch meta manifest ───────────────────────────────────────────────────
-    log.info(f'GOG install: fetching meta manifest from {build["link"][:120]}')
     try:
         meta = _fetch_manifest(build['link'], session)
-        log.info(f'GOG install: meta manifest parsed, keys: {list(meta.keys())}, depots: {len(meta.get("depots", []))}')
     except Exception as e:
-        log.info(f'GOG install: meta manifest failed: {e}')
+        log.warning(f'GOG install: meta manifest failed: {e}')
         return {'status': 'error', 'message': f'Meta manifest failed: {e}'}
 
     install_dir  = meta.get('installDirectory') or re.sub(r'[^\w\s-]', '', game_name).strip()
     install_path = os.path.join(GOG_INSTALL_BASE, install_dir)
     os.makedirs(install_path, exist_ok=True)
-
-    # Depot manifest credentials from the meta manifest
-    client_id     = meta.get('clientId', '')
-    client_secret = meta.get('clientSecret', '')
-    if client_id and client_secret:
-        log.info(f'GOG install: got depot credentials — client_id={client_id[:12]}...')
 
     # ── Collect files from all relevant depots ────────────────────────────────
     all_files  = []
@@ -1026,43 +993,28 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
     for depot in meta.get('depots', []):
         manifest_id = depot.get('manifest')
         if not manifest_id:
-            log.info(f'GOG install: depot has no manifest id, skipping. depot keys: {list(depot.keys())}')
+            log.debug(f'GOG install: depot has no manifest id, skipping. depot keys: {list(depot.keys())}')
             continue
         langs = depot.get('languages') or ['*']
         # Accept language sub-tags: 'en-US' should match 'en'
         has_matching_lang = ('*' in langs or
                              any(l.startswith('en') for l in langs))
         if not has_matching_lang:
-            log.info(f'GOG install: depot {manifest_id} language mismatch: {langs}')
+            log.debug(f'GOG install: depot {manifest_id} language mismatch: {langs}')
             continue
 
         # Depot manifests are fetched from the CDN with Bearer token auth,
         # same hash-based path format as meta manifests.
-        depot_path = f'/content-system/v2/meta/{manifest_id[:2]}/{manifest_id[2:4]}/{manifest_id}'
+        depot_path   = f'/content-system/v2/meta/{manifest_id[:2]}/{manifest_id[2:4]}/{manifest_id}'
         manifest_url = f'https://gog-cdn-fastly.gog.com{depot_path}'
-        log.info(f'GOG install: fetching depot manifest {manifest_id} from {manifest_url}')
         try:
             dep_resp = session.get(manifest_url, timeout=30)
-            log.info(f'GOG install: depot manifest {manifest_id} — status={dep_resp.status_code}, '
-                      f'content-type={dep_resp.headers.get("content-type", "?")}, size={len(dep_resp.content)}')
-            raw_preview = dep_resp.content[:300]
-            log.info(f'GOG install: depot manifest {manifest_id} — raw bytes (first 300): {raw_preview}')
             dep_resp.raise_for_status()
-
-            # Try plain JSON first, then decompress
             try:
                 dm = json.loads(dep_resp.content)
-                log.info(f'GOG install: depot manifest {manifest_id} parsed as plain JSON, keys: {list(dm.keys())}')
-            except (json.JSONDecodeError, ValueError) as je:
-                log.info(f'GOG install: depot manifest {manifest_id} not plain JSON ({je}), trying decompression')
+            except (json.JSONDecodeError, ValueError):
                 dm = json.loads(_zlib_decomp(dep_resp.content))
-                log.info(f'GOG install: depot manifest {manifest_id} parsed after decompression, keys: {list(dm.keys())}')
-
-            depot_items = dm.get('depot', {}).get('items', [])
-            log.info(f'GOG install: depot manifest {manifest_id} — {len(depot_items)} items')
-            for itm in depot_items[:3]:
-                log.info(f'  item: path={itm.get("path")}, chunks={len(itm.get("chunks", []))}, flags={itm.get("flags")}')
-
+            log.debug(f'GOG install: depot {manifest_id} — {len(dm.get("depot", {}).get("items", []))} items')
         except Exception as e:
             log.error(f'GOG install: depot {manifest_id} manifest failed — {e}', exc_info=True)
             continue
@@ -1079,10 +1031,7 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
             })
             total_size += sum(c.get('size', 0) for c in chunks)
 
-    log.info(f'GOG install: {len(all_files)} files, {total_size / 1e6:.1f} MB uncompressed')
-    log.info(f'GOG install: meta manifest depots: {len(meta.get("depots", []))}')
-    for dep in meta.get('depots', []):
-        log.info(f'  depot: {list(dep.keys())}')
+    log.info(f'GOG install: {len(all_files)} files, {total_size / 1e6:.1f} MB — {game_name!r}')
 
     if not all_files:
         _cleanup_failed_install(install_path)
@@ -1190,7 +1139,7 @@ def start_install(appid, os_pref='auto'):
     Returns immediately with {'status': 'started'} or {'status': 'already_running'}.
     Poll get_install_state(appid) for progress.
     """
-    log.info(f'===== start_install called: appid={appid}, os_pref={os_pref} =====')
+    log.info(f'GOG start_install: appid={appid}, os_pref={os_pref}')
     from database import get_db as _get_db
     _db = _get_db()
     _row = _db.execute('SELECT name FROM games WHERE appid = ?', (appid,)).fetchone()
@@ -1260,7 +1209,7 @@ def launch_gog_game(appid):
 
     db  = get_db()
     row = db.execute(
-        'SELECT name, install_path, platform_executable, runner_path, wine_prefix '
+        'SELECT name, install_path, platform_executable, runner_path, wine_prefix, platform_id '
         'FROM games WHERE appid = ?', (appid,)
     ).fetchone()
     db.close()
@@ -1274,14 +1223,8 @@ def launch_gog_game(appid):
     wine_prefix         = row['wine_prefix']
     game_name           = row['name']
 
-    # Re-detect executable if not stored (shouldn't normally happen)
     if not platform_executable:
-        from database import get_db as _gdb
-        _db = _gdb()
-        gog_id = _db.execute('SELECT platform_id FROM games WHERE appid = ?', (appid,)).fetchone()
-        _db.close()
-        gog_id = gog_id['platform_id'] if gog_id else ''
-        platform_executable = _find_gog_executable(install_path, gog_id)
+        platform_executable = _find_gog_executable(install_path, row['platform_id'] or '')
 
     if not platform_executable:
         return {'status': 'error',

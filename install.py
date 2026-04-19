@@ -6,12 +6,18 @@ Run with: python install.py
 
 import os
 import sys
+import glob
 import subprocess
 import threading
 import platform
 import shutil
-import tkinter as tk
-from tkinter import ttk, messagebox
+
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+except ImportError:
+    print("ERROR: tkinter is not available. Install python3-tk and re-run.")
+    sys.exit(1)
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 INSTALL_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -81,11 +87,7 @@ class InstallerApp(tk.Tk):
         self.geometry(f"{w}x{h}+{x}+{y}")
 
     def _count_steps(self):
-        steps = 4  # sanity, python, venv, deps
-        if SYSTEM == "Darwin": steps += 2   # launcher + .app
-        elif SYSTEM == "Linux": steps += 2  # launcher + .desktop
-        elif SYSTEM == "Windows": steps += 2  # launcher + shortcut
-        return steps
+        return 6  # sanity, python, venv, deps, launcher, register
 
     def _build_ui(self):
         # ── Header ────────────────────────────────────────────────────────────
@@ -209,12 +211,23 @@ class InstallerApp(tk.Tk):
     def _finish_err(self, msg):
         def _do():
             self._step_var.set("Installation failed.")
-            self._log_line(f"\n✘  {msg}", "err")
+            self._log.configure(state="normal")
+            self._log.insert("end", f"\n✘  {msg}\n", "err")
+            self._log.see("end")
+            self._log.configure(state="disabled")
             self._btn_close.configure(state="normal", text="Close", bg=ERROR, cursor="hand2")
         self.after(0, _do)
 
     # ── Install logic (runs on background thread) ──────────────────────────────
     def _run_install(self):
+        if SYSTEM == "Linux":
+            try:
+                with open("/etc/os-release") as f:
+                    self._os_release = f.read().lower()
+            except Exception:
+                self._os_release = ""
+        else:
+            self._os_release = ""
         try:
             self._step_sanity()
             self._step_python()
@@ -240,28 +253,19 @@ class InstallerApp(tk.Tk):
 
         major, minor = sys.version_info[:2]
         if major == 3 and minor < 10:
-            msg = ("Python " + str(major) + "." + str(minor) + " is too old.\n\n"
-                   "PlayDate requires Python 3.10 or newer.\n\n"
-                   "Please install Python 3.10 or later from python.org and re-run the installer.")
-            raise RuntimeError(msg)
+            raise RuntimeError(
+                f"Python {major}.{minor} is too old.\n\n"
+                "PlayDate requires Python 3.10 or newer.\n\n"
+                "Please install Python 3.10 or later from python.org and re-run the installer."
+            )
 
         if SYSTEM == "Linux":
-            # Detect distro once — used in both error messages below
-            distro_id = ""
-            try:
-                with open("/etc/os-release") as f:
-                    for line in f:
-                        if line.startswith("ID_LIKE=") or line.startswith("ID="):
-                            distro_id = line.split("=", 1)[1].strip().strip('"').lower()
-                            break
-            except Exception:
-                pass
-
-            if any(d in distro_id for d in ("debian", "ubuntu")):
+            os_release = self._os_release
+            if any(d in os_release for d in ("debian", "ubuntu")):
                 webkit_cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
-            elif any(d in distro_id for d in ("fedora", "rhel", "centos")):
+            elif any(d in os_release for d in ("fedora", "rhel", "centos")):
                 webkit_cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
-            elif "arch" in distro_id:
+            elif "arch" in os_release:
                 webkit_cmd = "sudo pacman -S python-gobject webkit2gtk"
             else:
                 webkit_cmd = "See README.md for instructions for your distribution."
@@ -363,19 +367,8 @@ class InstallerApp(tk.Tk):
         # selinux bindings, so we tell pip to leave them alone.
         pip_cmd = [VENV_PYTHON, "-m", "pip", "install", "-r", REQ_FILE]
         if SYSTEM == "Linux":
-            try:
-                with open("/etc/os-release") as f:
-                    os_release = f.read().lower()
-            except Exception:
-                os_release = ""
-            if any(d in os_release for d in ("fedora", "rhel", "centos", "nobara")):
+            if any(d in self._os_release for d in ("fedora", "rhel", "centos", "nobara")):
                 self._log_line("\u2192  Fedora/Nobara detected \u2014 working around selinux build bug\u2026", "info")
-                # pip tries to rebuild selinux from source and fails because
-                # the original RPM build tree is gone. Solution: write a tiny
-                # pure-Python selinux shim directly into the venv so that pip
-                # resolves it as already satisfied without touching the system
-                # package at all.
-                import glob
                 sp_dirs = (
                     glob.glob(os.path.join(VENV_DIR, "lib",   "python*", "site-packages")) +
                     glob.glob(os.path.join(VENV_DIR, "lib64", "python*", "site-packages"))
@@ -491,8 +484,23 @@ class InstallerApp(tk.Tk):
             self._register_desktop_shortcut()
         self._advance("Step 6 — Registration complete")
 
+    def _win_shortcut(self, dest_path, ok_msg, fail_msg):
+        ps = (
+            f"$ws = New-Object -ComObject WScript.Shell; "
+            f"$s = $ws.CreateShortcut('{dest_path}'); "
+            f"$s.TargetPath = '{LAUNCHER_BAT}'; "
+            f"$s.WorkingDirectory = '{INSTALL_DIR}'; "
+            f"$s.IconLocation = '{ICON_PATH}'; "
+            f"$s.Description = 'Your personal Steam library manager'; "
+            f"$s.Save()"
+        )
+        result = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True)
+        if result.returncode == 0:
+            self._log_line(ok_msg, "ok")
+        else:
+            self._log_line(fail_msg, "warn")
+
     def _register_desktop_shortcut(self):
-        """Copy a shortcut to the user's desktop (wallpaper area)."""
         if SYSTEM == "Linux":
             desktop_dir = os.path.expanduser("~/Desktop")
             if not os.path.isdir(desktop_dir):
@@ -507,25 +515,8 @@ class InstallerApp(tk.Tk):
             except Exception as e:
                 self._log_line(f"⚠  Could not create desktop shortcut: {e}", "warn")
         elif SYSTEM == "Windows":
-            desktop_dir = os.path.join(os.path.expanduser("~"), "Desktop")
-            shortcut = os.path.join(desktop_dir, "PlayDate.lnk")
-            ps = (
-                f"$ws = New-Object -ComObject WScript.Shell; "
-                f"$s = $ws.CreateShortcut('{shortcut}'); "
-                f"$s.TargetPath = '{LAUNCHER_BAT}'; "
-                f"$s.WorkingDirectory = '{INSTALL_DIR}'; "
-                f"$s.IconLocation = '{ICON_PATH}'; "
-                f"$s.Description = 'Your personal Steam library manager'; "
-                f"$s.Save()"
-            )
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps],
-                capture_output=True
-            )
-            if result.returncode == 0:
-                self._log_line("✔  Desktop shortcut created", "ok")
-            else:
-                self._log_line("⚠  Could not create desktop shortcut (non-fatal)", "warn")
+            shortcut = os.path.join(os.path.expanduser("~"), "Desktop", "PlayDate.lnk")
+            self._win_shortcut(shortcut, "✔  Desktop shortcut created", "⚠  Could not create desktop shortcut (non-fatal)")
         elif SYSTEM == "Darwin":
             desktop_dir = os.path.expanduser("~/Desktop")
             dest = os.path.join(desktop_dir, "PlayDate.app")
@@ -590,37 +581,13 @@ class InstallerApp(tk.Tk):
         self._log_line("✔  Desktop entry registered", "ok")
 
     def _register_windows(self):
-        shortcut_dir = os.path.join(
+        shortcut = os.path.join(
             os.environ.get("APPDATA", ""),
-            "Microsoft", "Windows", "Start Menu", "Programs"
+            "Microsoft", "Windows", "Start Menu", "Programs", "PlayDate.lnk"
         )
-        shortcut = os.path.join(shortcut_dir, "PlayDate.lnk")
-        ps = (
-            f"$ws = New-Object -ComObject WScript.Shell; "
-            f"$s = $ws.CreateShortcut('{shortcut}'); "
-            f"$s.TargetPath = '{LAUNCHER_BAT}'; "
-            f"$s.WorkingDirectory = '{INSTALL_DIR}'; "
-            f"$s.IconLocation = '{ICON_PATH}'; "
-            f"$s.Description = 'Your personal Steam library manager'; "
-            f"$s.Save()"
-        )
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps],
-            capture_output=True
-        )
-        if result.returncode == 0:
-            self._log_line("✔  Start Menu shortcut created", "ok")
-        else:
-            self._log_line("⚠  Could not create Start Menu shortcut (non-fatal)", "warn")
+        self._win_shortcut(shortcut, "✔  Start Menu shortcut created", "⚠  Could not create Start Menu shortcut (non-fatal)")
 
 
 if __name__ == "__main__":
-    # Sanity: make sure tkinter is actually available
-    try:
-        import tkinter  # noqa
-    except ImportError:
-        print("ERROR: tkinter is not available. Install python3-tk and re-run.")
-        sys.exit(1)
-
     app = InstallerApp()
     app.mainloop()

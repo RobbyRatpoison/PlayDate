@@ -27,6 +27,20 @@ class RateLimitedError(Exception):
 BACKOFF_DELAYS = [15, 60, 300, 3615]
 
 
+def _weighted_score(percent, count):
+    """Confidence-interval weighted review score: pulls low-count scores toward 50."""
+    if count == 0:
+        return 0
+    p = percent / 100.0
+    return round((p - (p - 0.5) * (2 ** (-math.log10(count + 1)))) * 100)
+
+
+def _hours_to_minutes(val):
+    if val is None or val < 0:
+        return None
+    return int(round(val * 60))
+
+
 class _PoolBackoff:
     """
     Per-pool rate-limit gate. When any worker in the pool hits a 429 it calls
@@ -128,13 +142,14 @@ def _art_worker(normal_q, priority_q, cancel_event, icon_hash_map, today, progre
         v_path = os.path.join(VERTICAL_DIR,   f"{appid}.jpg")
         h_path = os.path.join(HORIZONTAL_DIR, f"{appid}.jpg")
         i_path = os.path.join(ICONS_DIR,      f"{appid}.jpg")
-        if os.path.exists(v_path) or os.path.exists(h_path) or os.path.exists(i_path):
+        v_exists, h_exists, i_exists = os.path.exists(v_path), os.path.exists(h_path), os.path.exists(i_path)
+        if v_exists or h_exists or i_exists:
             src_updates = {}
-            if os.path.exists(v_path) and not (row and row['vertical_art_source']):
+            if v_exists and not (row and row['vertical_art_source']):
                 src_updates['vertical_art_source'] = 'capsule'
-            if os.path.exists(h_path) and not (row and row['horizontal_art_source']):
+            if h_exists and not (row and row['horizontal_art_source']):
                 src_updates['horizontal_art_source'] = 'header'
-            if os.path.exists(i_path) and not (row and row['icon_source']):
+            if i_exists and not (row and row['icon_source']):
                 src_updates['icon_source'] = 'steam' if icon_hash_map.get(appid) else 'sgdb_icon'
             update_game_data(appid, art_fetched=today, **src_updates)
             if progress_cb:
@@ -160,7 +175,6 @@ def _art_worker(normal_q, priority_q, cancel_event, icon_hash_map, today, progre
 def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, progress_cb):
     session = requests.Session()
     session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    AUTO_BLACKLIST_TYPES = set()
 
     while True:
         if cancel_event and cancel_event.is_set():
@@ -196,17 +210,7 @@ def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, prog
                 continue
 
             if store_info:
-                app_type = store_info.pop('type', '')
-                if app_type in AUTO_BLACKLIST_TYPES:
-                    add_to_blacklist(appid, name or f"AppID {appid}")
-                    db = get_db()
-                    db.execute("DELETE FROM games WHERE appid=?", (appid,))
-                    db.commit()
-                    db.close()
-                    if progress_cb:
-                        progress_cb('blacklist', appid, total)
-                    time.sleep(0.5)
-                    continue
+                store_info.pop('type', None)
 
             game_data = {'meta_fetched': today}
 
@@ -278,7 +282,7 @@ def _cheevo_worker(normal_q, priority_q, backoff, cancel_event, today, progress_
             if progress_cb:
                 attempt = backoff._attempt + 1
                 delay   = BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
-                progress_cb('rate_limit_hit', {'pool': 'cheevo', 'attempt': attempt, 'delay': delay}, total)
+                progress_cb('rate_limit_hit', {'pool': 'cheevo', 'attempt': attempt, 'delay': delay}, None)
             priority_q.put(appid)
             if not backoff.on_rate_limited(cancel_event):
                 return
@@ -357,7 +361,6 @@ def _hltb_clean_name(name):
     Strips symbols and all punctuation so differences like trailing periods,
     semicolons, or colon-vs-dash separators don't prevent a match.
     """
-    import re
     name = re.sub(r'[®™©]', '', name)            # trademark/IP symbols
     name = re.sub(r'\s*\(\d{4}\)\s*$', '', name)  # trailing year, e.g. "(2010)"
     name = re.sub(r'[^\w\s]', ' ', name)           # all remaining punctuation → space
@@ -373,7 +376,6 @@ def _hltb_strip_edition(name):
     Strip common trailing edition/remaster qualifiers that Steam adds but HLTB omits.
     Returns the stripped name, or the original if nothing was removed.
     """
-    import re
     global _HLTB_EDITION_RE
     if _HLTB_EDITION_RE is None:
         qualifiers = '|'.join([
@@ -410,7 +412,6 @@ def fetch_hltb_data(name, threshold=75):
             b = max(results, key=lambda r: r.similarity)
             return b, int(round(b.similarity * 100))
 
-        import re
         cleaned = _hltb_clean_name(name)
         best, score = _search(cleaned)
         parens_fallback_used = False
@@ -441,11 +442,6 @@ def fetch_hltb_data(name, threshold=75):
 
         if not best:
             return None
-
-        def _hours_to_minutes(val):
-            if val is None or val < 0:
-                return None
-            return int(round(val * 60))
 
         effective_score = score - 15 if parens_fallback_used else score
         if effective_score < threshold:
@@ -481,11 +477,6 @@ def fetch_hltb_by_id(name, hltb_id):
     Returns dict with hltb_matched_name + times, or None on total failure.
     """
     from howlongtobeatpy import HowLongToBeat
-
-    def _hours_to_minutes(val):
-        if val is None or val < 0:
-            return None
-        return int(round(val * 60))
 
     # Try direct lookup first — works for compilations and anything not in search
     try:
@@ -538,16 +529,11 @@ def search_hltb_results(name):
         results = HowLongToBeat(0.0).search(cleaned, similarity_case_sensitive=False)
         # Fall back to punctuation-stripped query if the cleaned name found nothing
         if not results:
-            stripped = _hltb_strip_punctuation(cleaned)
+            stripped = _hltb_strip_edition(cleaned)
             if stripped != cleaned:
                 results = HowLongToBeat(0.0).search(stripped, similarity_case_sensitive=False)
         if not results:
             return []
-
-        def _hours_to_minutes(val):
-            if val is None or val < 0:
-                return None
-            return int(round(val * 60))
 
         out = []
         for r in sorted(results, key=lambda x: x.similarity, reverse=True)[:8]:
@@ -662,8 +648,8 @@ def add_new(cancel_event=None, progress_cb=None):
     db.close()
 
     installed_ids = get_locally_installed_appids()
-    from datetime import timezone as _tz
-    today         = int(datetime.now(_tz.utc).timestamp())
+    today_ts = int(datetime.now(timezone.utc).timestamp())
+    today    = datetime.now().strftime('%Y-%m-%d')
 
     new_games = []
     for g in reversed(games):
@@ -688,7 +674,7 @@ def add_new(cancel_event=None, progress_cb=None):
         return {"status": "success", "added": 0}
 
     # ── Phase 1c: batch insert placeholders ───────────────────────────────────
-    batch_insert_placeholder_games(new_games, today)
+    batch_insert_placeholder_games(new_games, today_ts)
     log.info(f"Inserted {total} placeholder game(s).")
     for g in new_games:
         if progress_cb:
@@ -841,6 +827,54 @@ def fetch_player_data(appid):
         log.error(f"Error fetching player data for {appid}: {e}")
         return None
 
+def _parse_steam_date(raw):
+    """Parse a Steam date string to a Unix timestamp, trying multiple formats. Returns None on failure."""
+    for fmt in ("%b %d, %Y", "%d %b, %Y", "%B %d, %Y"):
+        try:
+            return int(datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc).timestamp())
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+_appinfo_cache = None
+
+def _get_appinfo():
+    global _appinfo_cache
+    if _appinfo_cache is None:
+        _appinfo_cache = parse_appinfo()
+    return _appinfo_cache
+
+
+def _scrape_store_page_date(appid, session=None):
+    """
+    Scrape the release date displayed on the Steam store page.
+    Returns a Unix timestamp or None. Preferred over the API date because the
+    API returns the Steam launch date; the store page shows the original release date.
+    """
+    _http = session or requests
+    url = f"https://store.steampowered.com/app/{appid}/?l=english"
+    try:
+        resp = _http.get(
+            url, timeout=15,
+            cookies={'birthtime': '0', 'mature_content': '1'},
+            allow_redirects=True,
+        )
+        if resp.status_code == 429:
+            raise RateLimitedError()
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        date_div = soup.select_one('.release_date .date')
+        if not date_div:
+            return None
+        return _parse_steam_date(date_div.get_text(strip=True))
+    except RateLimitedError:
+        raise
+    except Exception as e:
+        log.debug(f"_scrape_store_page_date({appid}): {e}")
+        return None
+
+
 # Scrape Storefront API (Devs, Pubs, Release Date)
 def fetch_store_data(appid, session=None):
     """
@@ -864,26 +898,34 @@ def fetch_store_data(appid, session=None):
             return None
 
         data = json_data[str(appid)]['data']
-        from datetime import timezone as _tz
-        raw_date = data.get('release_date', {}).get('date', '')
-        date_value = None
-        for fmt in ("%b %d, %Y", "%d %b, %Y"):
-            try:
-                date_value = int(datetime.strptime(raw_date, fmt).replace(tzinfo=_tz.utc).timestamp())
-                break
-            except (ValueError, TypeError):
-                continue
 
-        # Extract and format the specific fields we want
+        # Prefer local appinfo.vdf dates (no HTTP): original_release_date matches
+        # the store page display date; steam_release_date is the Steam launch date.
+        # Fall back to scraping the store page only when neither is available.
+        vdf_entry = _get_appinfo().get(int(appid), {})
+        vdf_date = vdf_entry.get('original_release_date') or vdf_entry.get('steam_release_date')
+
+        if vdf_date is not None:
+            release_date = vdf_date
+        else:
+            api_date = _parse_steam_date(data.get('release_date', {}).get('date', ''))
+            try:
+                store_date = _scrape_store_page_date(appid, session)
+            except RateLimitedError:
+                raise
+            except Exception:
+                store_date = None
+            release_date = store_date if store_date is not None else api_date
+
         extracted = {
             'name':         data.get('name', ''),
             'type':         data.get('type', ''),
-            'developers':   ", ".join(data.get('developers', [])),
-            'publishers':   ", ".join(data.get('publishers', [])),
-            'release_date': date_value,
-            'genres':      ",".join(g['description'] for g in data.get('genres', [])),
-            'categories':  ",".join(c['description'] for c in data.get('categories', [])),
-            'is_free':     1 if data.get('is_free') else 0,
+            'developers':   ",".join(data.get('developers', [])),
+            'publishers':   ",".join(data.get('publishers', [])),
+            'release_date': release_date,
+            'genres':       ",".join(g['description'] for g in data.get('genres', [])),
+            'categories':   ",".join(c['description'] for c in data.get('categories', [])),
+            'is_free':      1 if data.get('is_free') else 0,
         }
 
         return extracted
@@ -904,39 +946,30 @@ def fetch_review_data(appid, session=None):
         response = _http.get(url, timeout=20)
         if response.status_code == 429:
             raise RateLimitedError()
+        response.raise_for_status()
 
-        # Checking for 200 status code specifically as your old code did
-        if response.status_code == 200:
-            data = response.json()
-            summary = data.get('query_summary', {})
-            total = summary.get('total_reviews', 0)
-            positive = summary.get('total_positive', 0)
-            if total == 0:
-                score = 'No Reviews'
-            elif total < 10:
-                score = 'Not Enough Reviews'
-            else:
-                score = summary.get('review_score_desc', 'No Reviews')
-
-            # Using your old working percentage calculation
-            percent = int((positive / total) * 100) if total > 0 else 0
-
-            if total == 0:
-                weighted = 0
-            else:
-                p = percent / 100.0
-                weighted = round((p - (p - 0.5) * (2 ** (-math.log10(total + 1)))) * 100)
-
-            return {
-                'review_score': score, #TEXT
-                'review_percentage': percent, #INT
-                'weighted_percentage': weighted, #INT
-                'total_reviews': total, #INT
-                'positive_reviews': positive #INT
-            }
+        data = response.json()
+        summary = data.get('query_summary', {})
+        total = summary.get('total_reviews', 0)
+        positive = summary.get('total_positive', 0)
+        if total == 0:
+            score = 'No Reviews'
+        elif total < 10:
+            score = 'Not Enough Reviews'
         else:
-            log.warning(f"Steam Review API returned status: {response.status_code}")
-            return None
+            score = summary.get('review_score_desc', 'No Reviews')
+
+        percent = int((positive / total) * 100) if total > 0 else 0
+
+        weighted = _weighted_score(percent, total)
+
+        return {
+            'review_score':       score,
+            'review_percentage':  percent,
+            'weighted_percentage': weighted,
+            'total_reviews':      total,
+            'positive_reviews':   positive,
+        }
 
     except RateLimitedError:
         raise
@@ -978,14 +1011,14 @@ def fetch_cheevo_data(appid):
         unlocked = sum(1 for a in achievements if a.get('achieved') == 1)
 
         if total > 0 and unlocked == total:
-                    return {
-                        'total_achievements': total, #INT
-                        'unlocked_achievements': unlocked, #INT
-                        'completion_status': "Completed" #TEXT
-                    }
+            return {
+                'total_achievements':   total,
+                'unlocked_achievements': unlocked,
+                'completion_status':    'Completed',
+            }
         return {
-            'total_achievements': total, #INT
-            'unlocked_achievements': unlocked #INT
+            'total_achievements':   total,
+            'unlocked_achievements': unlocked,
         }
 
     except RateLimitedError:
@@ -1030,7 +1063,6 @@ def fetch_tag_data(appid, session=None):
     return None
 
 def scrape_blaeo_games(today=None):
-    import requests as req
     if today is None:
         today = datetime.now().strftime('%Y-%m-%d')
     config = load_config()
@@ -1044,15 +1076,15 @@ def scrape_blaeo_games(today=None):
 
     status_map = {
         "Never-played": "Never Played",
-        "Wont-play": "Won't Play",
-        "Unfinished": "Unfinished",
-        "Beaten": "Beaten",
-        "Completed": "Completed"
+        "Wont-play":    "Won't Play",
+        "Unfinished":   "Unfinished",
+        "Beaten":       "Beaten",
+        "Completed":    "Completed",
     }
     status_rank = {"Never Played": 0, "Unfinished": 1, "Beaten": 2, "Completed": 3}
 
     try:
-        session = req.Session()
+        session = requests.Session()
         session.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
 
         all_rows = []
@@ -1188,9 +1220,6 @@ def sync_recent_playtime():
       - Won't Play                   → only changed if 100% achievements
       - Beaten                       → never downgraded; upgraded to Completed if 100%
     """
-    import logging
-    log = logging.getLogger(__name__)
-
     try:
         account = get_active_account()
         if not account:
@@ -1199,7 +1228,6 @@ def sync_recent_playtime():
         if not steam_id:
             return
 
-        from utils import fetch_local_library
         recent = [
             {
                 'appid':            g['appid'],
@@ -1291,7 +1319,7 @@ def sync_recent_playtime():
         log.info(f"sync_recent_playtime: updated {updated} games.")
 
     except Exception as e:
-        logging.getLogger(__name__).warning(f"sync_recent_playtime failed: {e}")
+        log.warning(f"sync_recent_playtime failed: {e}")
 
 
 # ── Bulk concurrent operations ────────────────────────────────────────────────
@@ -1545,6 +1573,7 @@ def bulk_protondb_scrape_games(appids, cancel_event, progress_cb):
 
 
 _startup_hltb_cancel = threading.Event()
+_store_date_migration_cancel = threading.Event()
 
 
 def sync_hltb_unfetched():
@@ -1606,6 +1635,109 @@ def sync_hltb_unfetched():
         futures_wait([pool.submit(worker) for _ in range(2)])
 
     log.info(f"sync_hltb_unfetched: done={counts['done']} failed={counts['failed']} / {total}")
+
+
+def sync_store_release_dates():
+    """
+    One-time startup migration: re-scrape release dates from Steam store pages
+    so that original release dates (e.g. prior itch.io releases) replace the
+    Steam launch dates previously stored from the API.
+
+    Progress is tracked in release_date_migration.json so the migration can
+    resume if interrupted. Once all games are processed the file is deleted and
+    state.json gets store_date_migration_done=True so this never runs again.
+    """
+    from config import BASE_DIR, load_state, save_state
+
+    state = load_state()
+    if state.get('store_date_migration_done'):
+        return
+
+    progress_path = os.path.join(BASE_DIR, 'release_date_migration.json')
+    try:
+        with open(progress_path, 'r', encoding='utf-8') as f:
+            done_ids = set(json.load(f).get('done', []))
+    except FileNotFoundError:
+        done_ids = set()
+    except Exception as e:
+        log.warning(f"sync_store_release_dates: could not read progress file — {e}")
+        done_ids = set()
+
+    db   = get_db()
+    rows = db.execute(
+        "SELECT appid FROM games WHERE platform = 'steam'"
+    ).fetchall()
+    db.close()
+
+    pending = [str(r['appid']) for r in rows if str(r['appid']) not in done_ids]
+
+    if not pending:
+        save_state({'store_date_migration_done': True})
+        try:
+            os.remove(progress_path)
+        except FileNotFoundError:
+            pass
+        log.info("sync_store_release_dates: already complete.")
+        return
+
+    log.info(f"sync_store_release_dates: migrating {len(pending)} game(s).")
+
+    session     = requests.Session()
+    failed      = 0
+    batch_count = 0
+
+    def _save_progress():
+        try:
+            with open(progress_path, 'w', encoding='utf-8') as f:
+                json.dump({'done': list(done_ids)}, f)
+        except Exception as e:
+            log.warning(f"sync_store_release_dates: could not save progress — {e}")
+
+    for appid_str in pending:
+        if _store_date_migration_cancel.is_set():
+            log.info("sync_store_release_dates: cancelled.")
+            break
+
+        appid = int(appid_str)
+        for attempt in range(2):
+            try:
+                ts = _scrape_store_page_date(appid, session)
+                if ts is not None:
+                    update_game_data(appid, release_date=ts)
+                done_ids.add(appid_str)
+                break
+            except RateLimitedError:
+                if attempt == 0:
+                    log.warning(f"sync_store_release_dates: rate limited at appid {appid}, pausing 30s.")
+                    time.sleep(30)
+                else:
+                    log.error(f"sync_store_release_dates: retry failed for {appid} — rate limited again")
+                    failed += 1
+                    done_ids.add(appid_str)
+            except Exception as e:
+                log.error(f"sync_store_release_dates: error for {appid} — {e}")
+                failed += 1
+                done_ids.add(appid_str)
+                break
+
+        batch_count += 1
+        if batch_count % 10 == 0:
+            _save_progress()
+
+        time.sleep(1)
+
+    _save_progress()
+
+    remaining = [a for a in pending if a not in done_ids]
+    if not remaining:
+        save_state({'store_date_migration_done': True})
+        try:
+            os.remove(progress_path)
+        except FileNotFoundError:
+            pass
+        log.info(f"sync_store_release_dates: complete. failed={failed}")
+    else:
+        log.info(f"sync_store_release_dates: paused with {len(remaining)} remaining, failed={failed}")
 
 
 def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):

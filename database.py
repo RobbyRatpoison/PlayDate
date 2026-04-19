@@ -1,6 +1,7 @@
 from config import BASE_DIR
 import sqlite3
 import os
+import re
 from datetime import datetime, timezone
 
 
@@ -33,20 +34,23 @@ def _db():
     return get_active_db_path()
 
 
-def get_db():
-    db_file = _db()
-    conn = sqlite3.connect(db_file, timeout=30)
+def _open_conn(db_file, timeout=30):
+    conn = sqlite3.connect(db_file, timeout=timeout)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def get_db():
+    db_file = _db()
+    conn = _open_conn(db_file)
     # Auto-init if the games table is missing (e.g. DB was deleted while running)
     try:
         conn.execute("SELECT 1 FROM games LIMIT 1")
     except sqlite3.OperationalError:
         conn.close()
         init_db()
-        conn = sqlite3.connect(db_file, timeout=30)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn = _open_conn(db_file)
     return conn
 
 def init_db():
@@ -126,7 +130,6 @@ def init_db():
             cursor.execute(f"ALTER TABLE games ADD COLUMN {column_name} {column_type}")
 
     # ── Migrate YYYY-MM-DD date strings to Unix timestamps ────────────────────
-    from datetime import datetime
     def _migrate_date_col(col):
         rows = cursor.execute(
             f"SELECT rowid, {col} FROM games WHERE {col} IS NOT NULL"
@@ -134,15 +137,11 @@ def init_db():
         updates, nulls = [], []
         for rowid, val in rows:
             if isinstance(val, str):
-                if val == '0' or not val.strip():
+                ts = date_to_ts(val)
+                if ts is not None:
+                    updates.append((ts, rowid))
+                else:
                     nulls.append((rowid,))
-                elif len(val) >= 10 and val[4] == '-':
-                    try:
-                        ts = int(datetime.strptime(val[:10], '%Y-%m-%d')
-                                 .replace(tzinfo=timezone.utc).timestamp())
-                        updates.append((ts, rowid))
-                    except ValueError:
-                        nulls.append((rowid,))
         if updates:
             cursor.executemany(f"UPDATE games SET {col} = ? WHERE rowid = ?", updates)
         if nulls:
@@ -164,8 +163,7 @@ def init_db():
     # column was left behind.
     def _drop_indexes_referencing(col_name):
         """Drop any index on the games table whose SQL mentions col_name."""
-        import re as _re_idx
-        pat = _re_idx.compile(r'\b' + _re_idx.escape(col_name) + r'\b')
+        pat = re.compile(r'\b' + re.escape(col_name) + r'\b')
         rows = cursor.execute(
             "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='games'"
         ).fetchall()
@@ -188,43 +186,37 @@ def init_db():
             col_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
 
     # ── Migrate existing games into the _fetched tracking system ─────────────
-    # Runs whenever any of the three columns still have NULLs (i.e. pre-feature
-    # games). Infers fetched status from existing data; remaining NULLs become
-    # '0' so populate treats them as pending.
-    has_nulls = cursor.execute(
-        "SELECT 1 FROM games WHERE meta_fetched IS NULL OR art_fetched IS NULL OR cheevos_fetched IS NULL LIMIT 1"
-    ).fetchone()
-    if has_nulls:
-        from datetime import datetime
-        today = datetime.now().strftime('%Y-%m-%d')
-        # meta: game has tags or review data → already scraped
-        cursor.execute("""
-            UPDATE games SET meta_fetched = ?
-            WHERE meta_fetched IS NULL
-            AND (
-                (tags IS NOT NULL AND tags != '')
-                OR (review_score IS NOT NULL AND review_score != '')
-            )
-        """, (today,))
-        # art: game has a non-missing art source → already downloaded
-        cursor.execute("""
-            UPDATE games SET art_fetched = ?
-            WHERE art_fetched IS NULL
-            AND (
-                (vertical_art_source IS NOT NULL AND vertical_art_source NOT IN ('', 'missing'))
-                OR (horizontal_art_source IS NOT NULL AND horizontal_art_source NOT IN ('', 'missing'))
-            )
-        """, (today,))
-        # cheevos: total_achievements is not NULL → fetch was attempted (0 = no achievements is valid)
-        cursor.execute("""
-            UPDATE games SET cheevos_fetched = ?
-            WHERE cheevos_fetched IS NULL
-            AND total_achievements IS NOT NULL
-        """, (today,))
-        # remaining NULLs → mark as pending so populate will fetch them
-        cursor.execute("UPDATE games SET meta_fetched    = '0' WHERE meta_fetched    IS NULL")
-        cursor.execute("UPDATE games SET art_fetched     = '0' WHERE art_fetched     IS NULL")
-        cursor.execute("UPDATE games SET cheevos_fetched = '0' WHERE cheevos_fetched IS NULL")
+    # Infers fetched status from existing data; remaining NULLs become '0' so
+    # populate treats them as pending. All statements are no-ops on current DBs.
+    today = datetime.now().strftime('%Y-%m-%d')
+    # meta: game has tags or review data → already scraped
+    cursor.execute("""
+        UPDATE games SET meta_fetched = ?
+        WHERE meta_fetched IS NULL
+        AND (
+            (tags IS NOT NULL AND tags != '')
+            OR (review_score IS NOT NULL AND review_score != '')
+        )
+    """, (today,))
+    # art: game has a non-missing art source → already downloaded
+    cursor.execute("""
+        UPDATE games SET art_fetched = ?
+        WHERE art_fetched IS NULL
+        AND (
+            (vertical_art_source IS NOT NULL AND vertical_art_source NOT IN ('', 'missing'))
+            OR (horizontal_art_source IS NOT NULL AND horizontal_art_source NOT IN ('', 'missing'))
+        )
+    """, (today,))
+    # cheevos: total_achievements is not NULL → fetch was attempted (0 = no achievements is valid)
+    cursor.execute("""
+        UPDATE games SET cheevos_fetched = ?
+        WHERE cheevos_fetched IS NULL
+        AND total_achievements IS NOT NULL
+    """, (today,))
+    # remaining NULLs → mark as pending so populate will fetch them
+    cursor.execute("UPDATE games SET meta_fetched    = '0' WHERE meta_fetched    IS NULL")
+    cursor.execute("UPDATE games SET art_fetched     = '0' WHERE art_fetched     IS NULL")
+    cursor.execute("UPDATE games SET cheevos_fetched = '0' WHERE cheevos_fetched IS NULL")
 
     # protondb_fetched: NULL means column was just added — mark all as pending ('0').
     # Also reset any games that were marked fetched but have no tier data (caused by
@@ -303,15 +295,12 @@ def init_db():
     conn.close()
 
 def add_new_game(appid, name):
-    db_file = _db()
-    if not os.path.exists(db_file):
-        init_db()
-    conn = sqlite3.connect(db_file, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO games (appid, name) VALUES (?, ?)", (str(appid), name))
-    conn.commit()
-    conn.close()
+    conn = get_db()
+    try:
+        conn.execute("INSERT OR IGNORE INTO games (appid, name) VALUES (?, ?)", (int(appid), name))
+        conn.commit()
+    finally:
+        conn.close()
 
 def batch_insert_placeholder_games(games, today):
     """
@@ -322,9 +311,6 @@ def batch_insert_placeholder_games(games, today):
     """
     if not games:
         return
-    db_file = _db()
-    if not os.path.exists(db_file):
-        init_db()
     cols = [
         'appid', 'name', 'playtime_forever', 'last_played', 'date_added',
         'completion_status', 'installed', 'icon_hash',
@@ -340,8 +326,7 @@ def batch_insert_placeholder_games(games, today):
         )
         for g in games
     ]
-    conn = sqlite3.connect(db_file, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = get_db()
     try:
         conn.executemany(f"INSERT OR IGNORE INTO games ({col_str}) VALUES ({placeholders})", rows)
         conn.commit()
@@ -411,7 +396,6 @@ def get_blacklist():
 def add_to_blacklist(appid, name, platform_id=None):
     """Add an appid to the blacklist. Safe to call if already present.
     Pass platform_id for non-Steam games so re-sync skips them."""
-    from datetime import datetime
     conn = sqlite3.connect(_db(), timeout=10)
     conn.execute(
         "INSERT OR REPLACE INTO blacklist (appid, name, date_blacklisted, platform_id) VALUES (?, ?, ?, ?)",
@@ -449,7 +433,6 @@ def migrate_image_files():
     import logging
     log = logging.getLogger(__name__)
 
-    from config import BASE_DIR
     library_dir  = os.path.join(BASE_DIR, 'static', 'img', 'library')
     vertical_dir = os.path.join(library_dir, 'vertical')
 
@@ -469,46 +452,47 @@ def migrate_image_files():
 
     # Find games whose "vertical" file is actually a horizontal header image
     conn = sqlite3.connect(_db(), timeout=10)
-    rows = conn.execute(
-        "SELECT appid FROM games WHERE vertical_art_source = 'header'"
-    ).fetchall()
-    header_appids = {row[0] for row in rows}
-    log.info(f"[migrate_image_files] Games with header source (→ horizontal/): {len(header_appids)}")
-
-    # Move all flat .jpg files to the appropriate subfolder
-    moved = 0
-    skipped = 0
     try:
-        for filename in os.listdir(library_dir):
-            if not filename.endswith('.jpg'):
-                continue
-            src = os.path.join(library_dir, filename)
-            if not os.path.isfile(src):
-                continue
-            try:
-                appid = int(filename.replace('.jpg', ''))
-            except ValueError:
-                skipped += 1
-                continue
-            dest_dir = horizontal_dir if appid in header_appids else vertical_dir
-            dest = os.path.join(dest_dir, filename)
-            os.rename(src, dest)
-            moved += 1
-    except Exception as e:
-        log.error(f"[migrate_image_files] Error moving files: {e}", exc_info=True)
+        rows = conn.execute(
+            "SELECT appid FROM games WHERE vertical_art_source = 'header'"
+        ).fetchall()
+        header_appids = {row[0] for row in rows}
+        log.info(f"[migrate_image_files] Games with header source (→ horizontal/): {len(header_appids)}")
 
-    log.info(f"[migrate_image_files] Moved {moved} files, skipped {skipped}.")
+        # Move all flat .jpg files to the appropriate subfolder
+        moved = 0
+        skipped = 0
+        try:
+            for filename in os.listdir(library_dir):
+                if not filename.endswith('.jpg'):
+                    continue
+                src = os.path.join(library_dir, filename)
+                if not os.path.isfile(src):
+                    continue
+                try:
+                    appid = int(filename.replace('.jpg', ''))
+                except ValueError:
+                    skipped += 1
+                    continue
+                dest_dir = horizontal_dir if appid in header_appids else vertical_dir
+                dest = os.path.join(dest_dir, filename)
+                os.rename(src, dest)
+                moved += 1
+        except Exception as e:
+            log.error(f"[migrate_image_files] Error moving files: {e}", exc_info=True)
 
-    # Fix DB records for games that had a horizontal image as their vertical cover
-    if header_appids:
-        placeholders = ', '.join('?' * len(header_appids))
-        conn.execute(
-            f"UPDATE games SET vertical_art_source = 'missing', horizontal_art_source = 'header' "
-            f"WHERE appid IN ({placeholders})",
-            list(header_appids)
-        )
-        conn.commit()
-        log.info(f"[migrate_image_files] Updated DB for {len(header_appids)} header-source games.")
+        log.info(f"[migrate_image_files] Moved {moved} files, skipped {skipped}.")
 
-    conn.close()
+        # Fix DB records for games that had a horizontal image as their vertical cover
+        if header_appids:
+            placeholders = ', '.join('?' * len(header_appids))
+            conn.execute(
+                f"UPDATE games SET vertical_art_source = 'missing', horizontal_art_source = 'header' "
+                f"WHERE appid IN ({placeholders})",
+                list(header_appids)
+            )
+            conn.commit()
+            log.info(f"[migrate_image_files] Updated DB for {len(header_appids)} header-source games.")
+    finally:
+        conn.close()
     log.info("[migrate_image_files] Migration complete.")

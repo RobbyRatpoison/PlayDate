@@ -415,7 +415,7 @@ const FM_FILTER_CONFIG = {
     'completion_status':  { label: 'Completion Status',    type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: ['Never Played','Unfinished','Beaten','Completed',"Won't Play"] },
     'installed':          { label: 'Installed',            type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
-                            options: {'1':'Yes','0':'No'} },
+                            options: {'1':'Yes','0':'No'}, default: '1' },
     'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
     'appid':              { label: 'AppID',                type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
     'groups':             { label: 'Group',                type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
@@ -442,7 +442,7 @@ const FM_FILTER_CONFIG = {
     'categories':         { label: 'Category',              type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_categories | tojson if unique_categories is defined else '[]' }} },
     'is_free':            { label: 'Free to Play',          type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
-                            options: {'1':'Yes','0':'No'} },
+                            options: {'1':'Yes','0':'No'}, default: '1' },
     'protondb_tier':      { label: 'ProtonDB Tier',         type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not fetched','IS NOT NULL':'is set'},
                             options: ['platinum','gold','silver','bronze','borked'] },
     'protondb_confidence':{ label: 'ProtonDB Confidence',   type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
@@ -766,19 +766,22 @@ function _buildColSelect(container, compatCols, initValCol) {
 function _buildLiteralInput(container, cfg, op, initVal) {
     let el;
     if (cfg.type === 'select') {
+        const effectiveVal = (initVal !== null && initVal !== undefined && initVal !== '')
+            ? initVal
+            : (cfg.default !== undefined ? cfg.default : initVal);
         const native = document.createElement('select');
         if (Array.isArray(cfg.options)) {
             cfg.options.forEach(o => {
                 const opt = document.createElement('option');
                 opt.value = o; opt.textContent = o;
-                if (o === initVal) opt.selected = true;
+                if (o === effectiveVal) opt.selected = true;
                 native.appendChild(opt);
             });
         } else {
             Object.entries(cfg.options).forEach(([v, l]) => {
                 const opt = document.createElement('option');
                 opt.value = v; opt.textContent = l;
-                if (v === String(initVal)) opt.selected = true;
+                if (v === String(effectiveVal)) opt.selected = true;
                 native.appendChild(opt);
             });
         }

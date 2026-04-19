@@ -1,0 +1,247 @@
+<div id="viewModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeViewModal()">
+<div class="modal-content" style="width:32rem; max-height:82vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+
+    <!-- Header -->
+    <div style="padding:1.25rem 1.5rem 0.875rem; border-bottom:1px solid #2a3f55; flex-shrink:0;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+            <h2 style="margin:0; color:#fff; font-size:1.1rem;">Library View</h2>
+            <button onclick="closeViewModal()" data-modal-row="0"
+                    style="background:none;border:none;color:#8f98a0;font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+    </div>
+
+    <!-- Body -->
+    <div style="flex:1; min-height:0; overflow-y:auto; padding:1.25rem 1.5rem;">
+        {% if state is defined and state.sort is defined %}
+
+        <!-- Sort + Order -->
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
+            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Sort by</span>
+            <select id="sort-dropdown" class="nav-dropdown" onchange="vmSetSort(this.value)"
+                    data-modal-row="1" data-picker-title="Sort by" title="Sort by"
+                    style="flex:1; height:2.5rem; min-width:0;">
+                <option value="name" {{ 'selected' if state.sort == 'name' }}>Alphabetical</option>
+                <option value="playtime_forever" {{ 'selected' if state.sort == 'playtime_forever' }}>Hours Played</option>
+                <option value="release_date" {{ 'selected' if state.sort == 'release_date' }}>Release Date</option>
+                <option value="last_played" {{ 'selected' if state.sort == 'last_played' }}>Recently Played</option>
+                <option value="date_added" {{ 'selected' if state.sort == 'date_added' }}>Date Added</option>
+                <option value="review_percentage" {{ 'selected' if state.sort == 'review_percentage' }}>Review Score</option>
+                <option value="weighted_percentage" {{ 'selected' if state.sort == 'weighted_percentage' }}>Weighted Score</option>
+                <option value="hltb_min" {{ 'selected' if state.sort == 'hltb_min' }}>HLTB Time</option>
+            </select>
+            <button class="order-btn" onclick="vmToggleOrder()" data-modal-row="1"
+                    title="Toggle ascending/descending"
+                    style="font-size:1.2rem; min-width:3rem; height:2.5rem; padding:0 0.75rem; flex-shrink:0;">
+                {{ '▲' if state.order == 'ASC' else '▼' }}
+            </button>
+        </div>
+
+        {% set _plat_labels = {'steam': 'Steam', 'gog': 'GOG', 'epic_games': 'Epic', 'ea_app': 'EA', 'ubisoft': 'Ubisoft'} %}
+        {% if available_platforms is defined and available_platforms | length > 1 %}
+        <!-- Platforms -->
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Platforms</span>
+            {% for plat in available_platforms %}
+            <button class="opt-plat-toggle{% if plat in hidden_platforms %} plat-off{% endif %}"
+                    onclick="vmTogglePlatform('{{ plat }}')" data-modal-row="2" data-platform="{{ plat }}">
+                <span class="plat-check">{{ '✓' if plat not in hidden_platforms else '' }}</span>
+                {{ _plat_labels.get(plat, plat) }}
+            </button>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Art Orientation + Card Size -->
+        <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
+            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Display</span>
+            <button id="art-orient-btn" onclick="vmToggleArtOrientation()" data-modal-row="3"
+                    title="Toggle vertical/horizontal images">▮ Vertical</button>
+            <input type="range" id="card-size-slider" min="120" max="400" step="10"
+                   value="{{ state.get('card_height', 200) }}"
+                   oninput="onCardSizeSlider(this.value)"
+                   title="Adjust card size (applies instantly)"
+                   style="flex:1; min-width:6rem;">
+        </div>
+
+        <!-- Group By -->
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
+            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Group by</span>
+            <select id="group-by-dropdown" class="nav-dropdown" onchange="vmSetGroupBy(this.value)"
+                    data-modal-row="4" data-picker-title="Group by" title="Group by"
+                    style="flex:1; height:2.5rem; min-width:0;">
+                <option value="" {{ 'selected' if not state.get('group_by') }}>None</option>
+                <option value="installed" {{ 'selected' if state.get('group_by') == 'installed' }}>Installed</option>
+                <option value="completion_status" {{ 'selected' if state.get('group_by') == 'completion_status' }}>Completion Status</option>
+                <option value="release_date" {{ 'selected' if state.get('group_by') == 'release_date' }}>Release Date</option>
+                <option value="date_added" {{ 'selected' if state.get('group_by') == 'date_added' }}>Date Added</option>
+                <option value="review_percentage" {{ 'selected' if state.get('group_by') == 'review_percentage' }}>Review Score</option>
+                <option value="weighted_percentage" {{ 'selected' if state.get('group_by') == 'weighted_percentage' }}>Weighted Score</option>
+                <option value="platform" {{ 'selected' if state.get('group_by') == 'platform' }}>Platform</option>
+            </select>
+        </div>
+
+        {% else %}
+        <div style="color:#555; font-size:0.85rem; font-style:italic; padding:1rem 0;">Library options are not available on this page.</div>
+        {% endif %}
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:0.875rem 1.5rem; border-top:1px solid #2a3f55; display:flex; gap:0.625rem; flex-shrink:0;">
+        <button onclick="closeViewModal()" class="nav-btn" data-modal-row="5" style="flex:1;">Close</button>
+        <button onclick="applyViewModal()" class="nav-btn" data-modal-row="5"
+                style="flex:2; background:#1a5c2e; border-color:#2a7c3e; color:#fff;">Apply</button>
+    </div>
+
+</div>
+</div>
+
+<style>
+.opt-plat-toggle {
+    height: 2.25rem;
+    padding: 0 0.875rem;
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 0.375rem;
+    background: #333;
+    border: 1px solid #444;
+    color: white;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.opt-plat-toggle:hover { background: #444; }
+.opt-plat-toggle.plat-off {
+    background: #222 !important;
+    color: #555 !important;
+    border-color: #333 !important;
+}
+.opt-plat-toggle.plat-off:hover {
+    background: #2a2a2a !important;
+    color: #888 !important;
+}
+.plat-check {
+    width: 14px;
+    display: inline-block;
+    color: var(--accent);
+    font-size: 0.9rem;
+}
+</style>
+
+<script>
+// Pending state — null/undefined means "no change from server-rendered state"
+let _vmPendSort = null;
+let _vmPendOrder = null;
+let _vmPendHiddenPlatforms = null; // Set when user has changed platforms
+let _vmPendArtOrient = null;
+let _vmPendGroupBy = undefined; // undefined = unchanged
+
+const _vmServerOrder = '{{ state.order if state is defined and state.order is defined else "ASC" }}';
+
+function openViewModal() {
+    _vmPendSort = null;
+    _vmPendOrder = null;
+    _vmPendHiddenPlatforms = null;
+    _vmPendArtOrient = null;
+    _vmPendGroupBy = undefined;
+
+    // Reset order button to server state
+    const orderBtn = document.querySelector('.order-btn');
+    if (orderBtn) orderBtn.textContent = _vmServerOrder === 'ASC' ? '▲' : '▼';
+
+    // Reset art orientation button to current JS state
+    const artBtn = document.getElementById('art-orient-btn');
+    if (artBtn && typeof _artOrientation !== 'undefined') {
+        const isH = _artOrientation === 'horizontal';
+        artBtn.textContent = isH ? '▬ Horizontal' : '▮ Vertical';
+        artBtn.classList.toggle('horizontal', isH);
+    }
+
+    // Reset platform buttons to current JS state
+    if (typeof _hiddenPlatforms !== 'undefined') {
+        document.querySelectorAll('.opt-plat-toggle[data-platform]').forEach(btn => {
+            const plat = btn.dataset.platform;
+            const isOff = _hiddenPlatforms.has(plat);
+            btn.classList.toggle('plat-off', isOff);
+            const check = btn.querySelector('.plat-check');
+            if (check) check.textContent = isOff ? '' : '✓';
+        });
+    }
+
+    // Reset sort/groupby dropdowns to server-rendered values (already correct from Jinja)
+
+    document.getElementById('viewModal').style.display = 'flex';
+}
+
+function closeViewModal() {
+    const modal = document.getElementById('viewModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function vmSetSort(col) {
+    _vmPendSort = col;
+    // Match the default-order logic from updateSort in library.html
+    if (typeof _sortDefaultOrder !== 'undefined') {
+        _vmPendOrder = _sortDefaultOrder[col] ?? 'ASC';
+    }
+    const btn = document.querySelector('.order-btn');
+    if (btn) btn.textContent = (_vmPendOrder ?? _vmServerOrder) === 'ASC' ? '▲' : '▼';
+}
+
+function vmToggleOrder() {
+    const eff = _vmPendOrder ?? _vmServerOrder;
+    _vmPendOrder = eff === 'ASC' ? 'DESC' : 'ASC';
+    const btn = document.querySelector('.order-btn');
+    if (btn) btn.textContent = _vmPendOrder === 'ASC' ? '▲' : '▼';
+}
+
+function vmTogglePlatform(platform) {
+    if (_vmPendHiddenPlatforms === null) {
+        _vmPendHiddenPlatforms = new Set(typeof _hiddenPlatforms !== 'undefined' ? _hiddenPlatforms : []);
+    }
+    if (_vmPendHiddenPlatforms.has(platform)) _vmPendHiddenPlatforms.delete(platform);
+    else _vmPendHiddenPlatforms.add(platform);
+
+    // Update button visual
+    const btn = document.querySelector(`.opt-plat-toggle[data-platform="${platform}"]`);
+    if (btn) {
+        const isOff = _vmPendHiddenPlatforms.has(platform);
+        btn.classList.toggle('plat-off', isOff);
+        const check = btn.querySelector('.plat-check');
+        if (check) check.textContent = isOff ? '' : '✓';
+    }
+}
+
+function vmToggleArtOrientation() {
+    const current = _vmPendArtOrient ?? (typeof _artOrientation !== 'undefined' ? _artOrientation : 'vertical');
+    _vmPendArtOrient = current === 'vertical' ? 'horizontal' : 'vertical';
+    const btn = document.getElementById('art-orient-btn');
+    if (btn) {
+        const isH = _vmPendArtOrient === 'horizontal';
+        btn.textContent = isH ? '▬ Horizontal' : '▮ Vertical';
+        btn.classList.toggle('horizontal', isH);
+    }
+}
+
+function vmSetGroupBy(val) {
+    _vmPendGroupBy = val || null;
+}
+
+async function applyViewModal() {
+    const updates = {};
+
+    if (_vmPendSort !== null) updates.sort = _vmPendSort;
+    if (_vmPendOrder !== null) updates.order = _vmPendOrder;
+    if (_vmPendHiddenPlatforms !== null) updates.hidden_platforms = [..._vmPendHiddenPlatforms];
+    if (_vmPendArtOrient !== null) updates.artwork_orientation = _vmPendArtOrient;
+    if (_vmPendGroupBy !== undefined) updates.group_by = _vmPendGroupBy;
+
+    if (Object.keys(updates).length === 0) {
+        closeViewModal();
+        return;
+    }
+
+    await sendStateUpdate(updates);
+}
+</script>

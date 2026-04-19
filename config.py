@@ -9,30 +9,17 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.4.1"
+__version__ = "1.4.2"
 
-# ── BASE_DIR: works both as a plain Python script and inside a PyInstaller .exe
-#
-# When frozen (running as PlayDate.exe), sys.executable is the .exe itself and
-# sys._MEIPASS is the temp/bundle folder where PyInstaller extracts the code.
-# We want BASE_DIR to be the folder *next to* the .exe so that user data files
-# (config.json, state.json, games.db, playdate.log) are written there and
-# survive upgrades/reinstalls — not inside the bundle which gets replaced.
-#
-# When running normally as `python main.py`, __file__ gives us the script folder.
-# ─────────────────────────────────────────────────────────────────────────────
 if getattr(sys, 'frozen', False):
-    # Running as a PyInstaller bundle
     BASE_DIR = os.path.dirname(sys.executable)
 else:
-    # Running as a plain Python script
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
 STATE_PATH  = os.path.join(BASE_DIR, 'state.json')
 THEME_PATH  = os.path.join(BASE_DIR, 'theme.json')
 
-# ── Theme defaults — single source of truth for all CSS variables ─────────────
 DEFAULT_THEME = {
     # Backgrounds
     "--bg-page":          "#0e1419",
@@ -62,7 +49,6 @@ DEFAULT_THEME = {
 }
 
 def load_theme():
-    """Returns the active theme dict, falling back to defaults for any missing keys."""
     theme = dict(DEFAULT_THEME)
     if os.path.exists(THEME_PATH):
         try:
@@ -76,7 +62,6 @@ def load_theme():
     return theme
 
 def save_theme(vars_dict):
-    """Persist a theme dict to theme.json. Unknown keys are silently dropped. Preserves saved themes."""
     clean = {k: v for k, v in vars_dict.items() if k in DEFAULT_THEME}
     # Preserve any saved themes already in the file
     saved = {}
@@ -93,7 +78,6 @@ def save_theme(vars_dict):
         json.dump(clean, f, indent=4)
 
 def load_saved_themes():
-    """Returns the saved themes dict {name: {vars}}."""
     if not os.path.exists(THEME_PATH):
         return {}
     try:
@@ -104,7 +88,6 @@ def load_saved_themes():
         return {}
 
 def save_named_theme(name, vars_dict):
-    """Save a named theme to the _saved section of theme.json."""
     clean = {k: v for k, v in vars_dict.items() if k in DEFAULT_THEME}
     saved = load_saved_themes()
     saved[name] = clean
@@ -115,7 +98,6 @@ def save_named_theme(name, vars_dict):
         json.dump(active, f, indent=4)
 
 def delete_named_theme(name):
-    """Remove a named theme from the _saved section."""
     saved = load_saved_themes()
     saved.pop(name, None)
     active = load_theme()
@@ -124,7 +106,6 @@ def delete_named_theme(name):
         json.dump(active, f, indent=4)
 
 def rename_named_theme(old_name, new_name):
-    """Rename a saved theme."""
     saved = load_saved_themes()
     if old_name not in saved:
         return False
@@ -135,7 +116,6 @@ def rename_named_theme(old_name, new_name):
         json.dump(active, f, indent=4)
     return True
 
-# ── Built-in filter presets — single source of truth for index + library ──────
 BUILTIN_FILTERS = {
     "all_games":     {"label": "All Games",      "where": "1=1"},
     "installed":     {"label": "Installed",       "where": "installed = 1"},
@@ -150,7 +130,6 @@ BUILTIN_FILTERS = {
 }
 
 DEFAULT_SHELVES = [
-    # ── Row 1: Recently Added + Clock + Recently Released (top_row split) ──
     {
         "id": "recently_added",
         "label": "RECENTLY ADDED",
@@ -196,7 +175,6 @@ DEFAULT_SHELVES = [
         "dedup_priority": 2,
         "visible": True
     },
-    # ── Row 2: Installed ──
     {
         "id": "installed",
         "label": "INSTALLED",
@@ -212,7 +190,6 @@ DEFAULT_SHELVES = [
         "dedup_priority": 0,
         "visible": True
     },
-    # ── Row 3: Shuffle ──
     {
         "id": "discovery",
         "label": "SHUFFLE",
@@ -239,13 +216,11 @@ DEFAULT_STATE = {
     "card_height": 200,
     "check_for_updates": True,
     "window_state": None,
-    "hltb_match_threshold": 99
+    "hltb_match_threshold": 99,
+    "group_by": None,
 }
 
 def validate_steam_creds(api_key, steam_id):
-    """
-    Returns (True, "Success") or (False, "Error Message")
-    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
@@ -271,7 +246,6 @@ def validate_steam_creds(api_key, steam_id):
         return False, f"Connection Failed: {str(e)}"
 
 def resolve_vanity_url(api_key, steam_id):
-    """Converts vanity name to SteamID64. Returns original ID if already numerical."""
     if steam_id.isdigit():
         return steam_id
 
@@ -286,19 +260,20 @@ def resolve_vanity_url(api_key, steam_id):
 
 @config_bp.app_context_processor
 def inject_config_status():
-    """Injects config state into all templates."""
-    config = load_config() or {}
+    config = load_config()
+    config_exists = config is not None
+    config = config or {}
     active_id = config.get('active_account')
     accounts  = config.get('accounts', {})
     active    = accounts.get(active_id, {})
-    needs_config = not is_configured() or not active_id or active_id not in accounts
+    needs_config = not config_exists or not active_id or active_id not in accounts
     state = load_state()
     accounts_list = [
         {**v, 'active': k == active_id}
         for k, v in accounts.items()
     ]
     return dict(
-        config_exists=is_configured(),
+        config_exists=config_exists,
         needs_config=needs_config,
         existing_steam_id=active.get('steam_id', ''),
         existing_api_key=active.get('api_key', ''),
@@ -313,7 +288,6 @@ def inject_config_status():
     )
 
 def load_config():
-    """Returns the current configuration data from config.json."""
     if is_configured():
         with open(CONFIG_PATH, 'r') as f:
             return json.load(f)
@@ -321,6 +295,10 @@ def load_config():
 
 def is_configured():
     return os.path.exists(CONFIG_PATH)
+
+def _save_config_data(data):
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(data, f, indent=4)
 
 def get_active_account():
     """Returns the active account dict {steam_id, api_key, label}, or None."""
@@ -331,7 +309,6 @@ def get_active_account():
     return config.get('accounts', {}).get(active_id)
 
 def get_active_db_path():
-    """Returns the path to the active account's database file."""
     config = load_config()
     if config:
         active_id = config.get('active_account', '')
@@ -417,8 +394,7 @@ def save_config():
     # sgdb_key-only update (no steam_id required)
     if sgdb_key is not None and not raw_id:
         config_data['sgdb_key'] = sgdb_key.strip()
-        with open(CONFIG_PATH, 'w') as f:
-            json.dump(config_data, f, indent=4)
+        _save_config_data(config_data)
         return jsonify({"status": "success"})
 
     if not raw_id:
@@ -449,9 +425,7 @@ def save_config():
     if is_new or set_active or config_data.get('active_account') == resolved_id or not config_data.get('active_account'):
         config_data['active_account'] = resolved_id
 
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config_data, f, indent=4)
-
+    _save_config_data(config_data)
     return jsonify({"status": "success"})
 
 def get_default_shelves():
@@ -484,17 +458,12 @@ def _load_state_unlocked():
         except json.JSONDecodeError:
             return create_state(force=True)
     dirty = False
+    for key, val in [('artwork_orientation', 'vertical'), ('card_height', 200), ('hide_duplicates', True)]:
+        if key not in state:
+            state[key] = val
+            dirty = True
     if 'shelves' not in state:
         state['shelves'] = get_default_shelves()
-        dirty = True
-    if 'artwork_orientation' not in state:
-        state['artwork_orientation'] = 'vertical'
-        dirty = True
-    if 'card_height' not in state:
-        state['card_height'] = 200
-        dirty = True
-    if 'hide_duplicates' not in state:
-        state['hide_duplicates'] = True
         dirty = True
     if dirty:
         _write_state_atomic(state)
@@ -509,25 +478,19 @@ def save_state(updates):
     with _state_lock:
         state = _load_state_unlocked()
 
-        if "filter_tree" in updates:
-            state["filter_tree"] = updates["filter_tree"]
-
-        if "sort" in updates: state["sort"] = updates["sort"]
-        if "order" in updates: state["order"] = updates["order"]
-        if "artwork_orientation" in updates: state["artwork_orientation"] = updates["artwork_orientation"]
-        if "card_height" in updates: state["card_height"] = updates["card_height"]
-        if "check_for_updates" in updates: state["check_for_updates"] = updates["check_for_updates"]
-        if "window_state" in updates: state["window_state"] = updates["window_state"]
-        if "fullscreen" in updates: state["fullscreen"] = updates["fullscreen"]
-        if "hltb_match_threshold" in updates: state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
-        if "pagywosg_sg_group" in updates: state["pagywosg_sg_group"] = updates["pagywosg_sg_group"]
-        if "hide_duplicates" in updates: state["hide_duplicates"] = bool(updates["hide_duplicates"])
+        _PASSTHROUGH = {"filter_tree", "sort", "order", "artwork_orientation", "card_height",
+                        "check_for_updates", "window_state", "fullscreen",
+                        "pagywosg_sg_group", "shelves", "group_by"}
+        for key in _PASSTHROUGH:
+            if key in updates:
+                state[key] = updates[key]
+        if "hltb_match_threshold" in updates:
+            state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
+        if "hide_duplicates" in updates:
+            state["hide_duplicates"] = bool(updates["hide_duplicates"])
         if "hidden_platforms" in updates:
             safe = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
             state["hidden_platforms"] = [p for p in (updates["hidden_platforms"] or []) if p in safe]
-
-        if "shelves" in updates:
-            state["shelves"] = updates["shelves"]
 
         _write_state_atomic(state)
         return state
@@ -592,8 +555,6 @@ def rename_saved_theme_route(name):
         return jsonify({"status": "error", "message": "Theme not found."}), 404
     return jsonify({"status": "success"})
 
-# ── Account management routes ─────────────────────────────────────────────────
-
 @config_bp.route('/api/accounts', methods=['GET'])
 def get_accounts():
     config    = load_config() or {}
@@ -611,15 +572,13 @@ def switch_account():
     steam_id = ((request.json or {}).get('steam_id') or '').strip()
     if not steam_id:
         return jsonify({'status': 'error', 'message': 'steam_id required'}), 400
-    if not is_configured():
+    config_data = load_config()
+    if not config_data:
         return jsonify({'status': 'error', 'message': 'Not configured'}), 400
-    with open(CONFIG_PATH, 'r') as f:
-        config_data = json.load(f)
     if steam_id not in config_data.get('accounts', {}):
         return jsonify({'status': 'error', 'message': 'Account not found'}), 404
     config_data['active_account'] = steam_id
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config_data, f, indent=4)
+    _save_config_data(config_data)
     return jsonify({'status': 'success'})
 
 @config_bp.route('/api/account/remove', methods=['POST'])
@@ -627,26 +586,22 @@ def remove_account():
     steam_id = ((request.json or {}).get('steam_id') or '').strip()
     if not steam_id:
         return jsonify({'status': 'error', 'message': 'steam_id required'}), 400
-    if not is_configured():
+    config_data = load_config()
+    if not config_data:
         return jsonify({'status': 'error', 'message': 'Not configured'}), 400
-    with open(CONFIG_PATH, 'r') as f:
-        config_data = json.load(f)
     config_data.get('accounts', {}).pop(steam_id, None)
     if config_data.get('active_account') == steam_id:
         remaining = list(config_data.get('accounts', {}).keys())
         config_data['active_account'] = remaining[0] if remaining else None
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config_data, f, indent=4)
+    _save_config_data(config_data)
     return jsonify({'status': 'success', 'new_active': config_data.get('active_account')})
 
 @config_bp.route('/api/save-sg-username', methods=['POST'])
 def save_sg_username():
     username = ((request.json or {}).get('sg_username') or '').strip()
-    if not is_configured():
+    config_data = load_config()
+    if not config_data:
         return jsonify({'status': 'error', 'message': 'Not configured'}), 400
-    with open(CONFIG_PATH, 'r') as f:
-        config_data = json.load(f)
     config_data['sg_username'] = username
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(config_data, f, indent=4)
+    _save_config_data(config_data)
     return jsonify({'status': 'success'})

@@ -207,17 +207,6 @@
             background: #444;
         }
 
-        .search-container {
-            position: relative;
-            flex-grow: 1;
-        }
-
-        #library-search {
-            width: 100%;
-            height: 3rem;
-            padding: 0 2.75rem 0 1.25rem;
-        }
-
         .clear-btn {
             position: static !important;
             padding: 0 1.5rem !important;
@@ -227,43 +216,17 @@
             font-size: inherit !important;
             cursor: pointer;
         }
-
         .clear-btn:hover { background: #5a2020 !important; color: white !important; }
 
-        #plat-panel {
-            border-radius: 0.5rem;
-            padding: 0.5rem;
-            gap: 0.375rem;
+        .search-container {
+            position: relative;
+            flex-grow: 1;
         }
 
-        #plat-panel .plat-toggle {
-            height: 2.25rem !important;
-            padding: 0 0.875rem !important;
-            font-size: 0.82rem !important;
-            text-align: left;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            border-radius: 0.375rem !important;
+        #library-search {
             width: 100%;
-        }
-
-        #plat-panel .plat-check {
-            width: 14px;
-            display: inline-block;
-            color: var(--accent);
-            font-size: 0.9rem;
-        }
-
-        #plat-panel .plat-toggle.plat-off {
-            background: #222 !important;
-            color: #555 !important;
-            border-color: #333 !important;
-        }
-
-        #plat-panel .plat-toggle.plat-off:hover {
-            background: #2a2a2a !important;
-            color: #888 !important;
+            height: 3rem;
+            padding: 0 2.75rem 0 1.25rem;
         }
 
         .search-btn {
@@ -370,7 +333,93 @@
         }
         .game-card.dice-picked { outline: 3px solid #333; }
         .game-card.dice-picked { animation: dice-flash 7s ease-out forwards; z-index: 2; }
+
+        /* ── Grouped layout ── */
+        .grouped-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            padding: 20px;
+        }
+        .group-section {}
+        .group-label {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            padding: 0.45rem 0.5rem;
+            margin-bottom: 0.35rem;
+            border-bottom: 1px solid #2a3f55;
+            cursor: pointer;
+            user-select: none;
+        }
+        .group-label:hover { border-bottom-color: #3a5870; }
+        .group-chevron {
+            color: var(--accent);
+            font-size: 0.8rem;
+            width: 0.85em;
+            flex-shrink: 0;
+        }
+        .group-name {
+            color: #cdd6e0;
+            font-size: 0.82rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .group-count {
+            color: #5c6b78;
+            font-size: 0.78rem;
+            margin-left: auto;
+        }
+        .group-inner-grid {
+            padding: 0.5rem 0 !important;
+        }
     </style>
+    {% set _non_default_sort = state.sort not in ('name', '') or state.order != 'ASC' %}
+    {% set _has_plat_filter = hidden_platforms | length > 0 %}
+    {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_min': 'HLTB Time'} -%}
+    {%- set _group_labels = {'installed': 'Installed', 'completion_status': 'Completion', 'release_date': 'Release Year', 'date_added': 'Year Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'platform': 'Platform'} -%}
+    {%- set _plat_labels = {'steam': 'Steam', 'gog': 'GOG', 'epic_games': 'Epic', 'ea_app': 'EA', 'ubisoft': 'Ubisoft'} -%}
+    {%- set ns = namespace(filter_label=none, has_real_filter=false) -%}
+    {%- if state.filter_tree -%}
+        {%- set ft = state.filter_tree -%}
+        {%- if ft.get('custom_sql') -%}
+            {%- set ns.has_real_filter = true -%}
+        {%- else -%}
+            {%- for item in ft.get('items', []) -%}
+                {%- if not (item.get('type') == 'condition' and item.get('column') == 'name' and item.get('operator') == 'LIKE') -%}
+                    {%- set ns.has_real_filter = true -%}
+                {%- endif -%}
+            {%- endfor -%}
+        {%- endif -%}
+        {%- if ns.has_real_filter -%}
+            {# Match against presets #}
+            {%- if ft.get('custom_sql') -%}
+                {%- for key, f in builtin_filters.items() -%}
+                    {%- if ns.filter_label is none and f.where is not none and f.where == ft.get('custom_sql') -%}
+                        {%- set ns.filter_label = f.label -%}
+                    {%- endif -%}
+                {%- endfor -%}
+            {%- endif -%}
+            {# Match against saved filters #}
+            {%- if ns.filter_label is none -%}
+                {%- for name, saved_tree in state.get('saved_filters', {}).items() -%}
+                    {%- if ns.filter_label is none and saved_tree | tojson == ft | tojson -%}
+                        {%- set ns.filter_label = name -%}
+                    {%- endif -%}
+                {%- endfor -%}
+            {%- endif -%}
+            {# PAGYWOSG event name #}
+            {%- if ns.filter_label is none and ft.get('pagywosg_event') -%}
+                {%- set ns.filter_label = ft.pagywosg_event.get('name', 'PAGYWOSG') -%}
+            {%- endif -%}
+            {# Fallback #}
+            {%- if ns.filter_label is none -%}
+                {%- set ns.filter_label = 'custom filter' -%}
+            {%- endif -%}
+        {%- endif -%}
+    {%- endif -%}
+    {%- set _is_filtered = ns.filter_label is not none or _has_plat_filter -%}
     <div class="search-nav-bar">
         <div class="search-container">
             <input type="text"
@@ -380,49 +429,14 @@
                 value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% endif %}">
         </div>
         <button onclick="triggerSearch()" title="Search" style="padding:0 0.75rem;">🔍</button>
-        <select id="sort-dropdown" class="nav-dropdown" onchange="updateSort(this.value)" title='Sort by...' data-picker-title="Sort by">
-            <option value="name" {{ 'selected' if state.sort == 'name' }}>Alphabetical</option>
-            <option value="playtime_forever" {{ 'selected' if state.sort == 'playtime_forever' }}>Hours Played</option>
-            <option value="release_date" {{ 'selected' if state.sort == 'release_date' }}>Release Date</option>
-            <option value="last_played" {{ 'selected' if state.sort == 'last_played' }}>Recently Played</option>
-            <option value="date_added" {{ 'selected' if state.sort == 'date_added' }}>Date Added</option>
-            <option value="review_percentage" {{ 'selected' if state.sort == 'review_percentage' }}>Review Score</option>
-            <option value="weighted_percentage" {{ 'selected' if state.sort == 'weighted_percentage' }}>Weighted Score</option>
-            <option value="hltb_min" {{ 'selected' if state.sort == 'hltb_min' }}>HLTB Time</option>
-        </select>
-        <button class="order-btn" onclick="toggleOrder()" title='Toggle Ascending or Descending'>
-            {{ '▲' if state.order == 'ASC' else '▼' }}
-        </button>
-        {% if available_platforms | length > 1 %}
-        {% set _plat_labels = {'steam': 'Steam', 'gog': 'GOG', 'epic_games': 'Epic', 'ea_app': 'EA', 'ubisoft': 'Ubisoft'} %}
-        <div id="plat-wrap" style="position:relative;">
-            <button id="plat-btn" onclick="togglePlatDropdown(event)" title="Filter by platform">PLATFORMS</button>
-            <div id="plat-panel" style="display:none;position:fixed;z-index:500;background:#2a2a2a;border:1px solid #444;flex-direction:column;min-width:7.5rem;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
-                {% for plat in available_platforms %}
-                <button class="plat-toggle{% if plat in hidden_platforms %} plat-off{% endif %}"
-                        onclick="togglePlatform('{{ plat }}')">
-                    <span class="plat-check">{{ '✓' if plat not in hidden_platforms else '' }}</span>
-                    {{ _plat_labels.get(plat, plat) }}
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-        {% set has_filters = state.filter_tree and (state.filter_tree.get('items') or state.filter_tree.get('custom_sql')) %}
-        {% if has_filters %}
-        <button onclick="clearAndReload()" class="clear-btn">✕ CLEAR FILTERS</button>
-        {% endif %}
+        <button onclick="openViewModal()" title="View options">VIEW</button>
+        {% if _is_filtered %}<button onclick="clearAndReload()" class="clear-btn">✕ CLEAR</button>{% endif %}
         <button onclick="openFilterModal()">FILTERS</button>
         <button onclick="openBulkEditModal()">BULK OPS</button>
         <button onclick="pickRandomGame()" title="Pick a random game">🎲</button>
         <button id="select-badge" style="display:none;" onclick="_exitSelectMode()" title="Cancel selection">
             <span id="select-badge-count">0</span> selected ✕
         </button>
-<button id="art-orient-btn" onclick="toggleArtOrientation()" title="Toggle vertical/horizontal images">⬜ Vertical</button>
-        <input type="range" id="card-size-slider" min="120" max="400" step="10"
-               value="{{ state.get('card_height', 200) }}"
-               oninput="onCardSizeSlider(this.value)"
-               title="Adjust card size">
     </div>
 
     <!-- Filter error banner (shown by playdate.js showFilterError, or server-side sql_error) -->
@@ -433,7 +447,14 @@
     </div>
 
     <div class="library-header">
-        <p>Showing {{ games|length }} games in your collection</p>
+        <p>Showing
+            {%- if _is_filtered %} {{ games|length }} of {{ total_games }}{% else %} {{ games|length }}{% endif %}
+            games
+            {%- if ns.filter_label is not none %} &middot; {{ ns.filter_label }}{% endif %}
+            {%- if _has_plat_filter %} &middot; {% for p in available_platforms if p not in hidden_platforms %}{{ _plat_labels.get(p, p) }}{% if not loop.last %}, {% endif %}{% endfor %} only{% endif %}
+            {%- if _non_default_sort %} &middot; {{ _sort_labels.get(state.sort, state.sort) }} {{ '↑' if state.order == 'ASC' else '↓' }}{% endif %}
+            {%- if group_by %}<span id="group-by-label"> &middot; Grouped by {{ _group_labels.get(group_by, group_by) }}</span>{% else %}<span id="group-by-label" style="display:none;"></span>{% endif %}
+        </p>
     </div>
 
     <div class="game-grid" id="game-grid"></div>
@@ -457,6 +478,7 @@
     const _imgV = Date.now(); // cache-buster: prevents stale 404s from browser negative cache
     const _imgVersions = new Map(); // appid (int) → per-game version after image change
     let _artOrientation = '{{ state.get("artwork_orientation", "vertical") }}';
+    let _groupBy = {{ group_by | tojson }};
     let _cardSizeTimeout = null;
 
     function _setCardSize(size) {
@@ -480,8 +502,8 @@
             const pct = (size - parseInt(slider.min)) / (parseInt(slider.max) - parseInt(slider.min)) * 100;
             slider.style.setProperty('--slider-pct', pct + '%');
         }
-        if (_artOrientation === 'horizontal' && grid) {
-            grid.classList.add('horizontal');
+        if (_artOrientation === 'horizontal') {
+            // .horizontal class on game grids is applied by buildGrid(); just update button here
             if (btn) { btn.textContent = '▬ Horizontal'; btn.classList.add('horizontal'); }
         }
     })();
@@ -489,15 +511,14 @@
 
     function toggleArtOrientation() {
         _artOrientation = _artOrientation === 'vertical' ? 'horizontal' : 'vertical';
-        const grid = document.getElementById('game-grid');
         const btn  = document.getElementById('art-orient-btn');
-        if (_artOrientation === 'horizontal') {
-            grid.classList.add('horizontal');
+        const isHorizontal = _artOrientation === 'horizontal';
+        document.querySelectorAll('.game-grid').forEach(g => g.classList.toggle('horizontal', isHorizontal));
+        if (isHorizontal) {
             btn.textContent = '▬ Horizontal';
             btn.classList.add('horizontal');
         } else {
-            grid.classList.remove('horizontal');
-            btn.textContent = '⬜ Vertical';
+            btn.textContent = '▮ Vertical';
             btn.classList.remove('horizontal');
         }
         // Re-apply card size with new orientation's scaling
@@ -580,27 +601,10 @@
 
     async function clearAndReload() {
         const emptyTree = { type: 'group', logic: 'AND', items: [] };
-        await sendStateUpdate({ filter_tree: emptyTree });
+        await sendStateUpdate({ filter_tree: emptyTree, hidden_platforms: [] });
     }
 
     const _hiddenPlatforms = new Set({{ hidden_platforms | tojson }});
-
-    function togglePlatDropdown(e) {
-        e.stopPropagation();
-        const panel = document.getElementById('plat-panel');
-        if (!panel) return;
-        if (panel.style.display === 'flex') { panel.style.display = 'none'; return; }
-        const rect = document.getElementById('plat-btn').getBoundingClientRect();
-        panel.style.top  = (rect.bottom + 4) + 'px';
-        panel.style.left = rect.left + 'px';
-        panel.style.display = 'flex';
-    }
-
-    document.addEventListener('click', e => {
-        const panel = document.getElementById('plat-panel');
-        if (panel && !document.getElementById('plat-wrap')?.contains(e.target))
-            panel.style.display = 'none';
-    });
 
     function togglePlatform(platform) {
         if (_hiddenPlatforms.has(platform)) _hiddenPlatforms.delete(platform);
@@ -678,20 +682,159 @@
         if (game) openEditModal(game);
     }
 
+    // ── Group-by helpers ─────────────────────────────────────────────────────
+
+    const _GROUP_FIXED_ORDER = {
+        installed: ['installed', 'not_installed'],
+        completion_status: ['Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"],
+        platform: ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'],
+    };
+    const _GROUP_PLAT_LABELS = { steam: 'Steam', gog: 'GOG', epic_games: 'Epic', ea_app: 'EA', ubisoft: 'Ubisoft' };
+    const _GROUP_BY_LABELS = {
+        installed: 'Installed', completion_status: 'Completion', release_date: 'Release Year',
+        date_added: 'Year Added', review_percentage: 'Review Score',
+        weighted_percentage: 'Weighted Score', platform: 'Platform',
+    };
+
+    function _getGroupKey(game) {
+        switch (_groupBy) {
+            case 'installed':         return game.installed ? 'installed' : 'not_installed';
+            case 'completion_status': return game.completion_status || 'Never Played';
+            case 'release_date':
+            case 'date_added':        return game[_groupBy] ? String(game[_groupBy]).substring(0, 4) : null;
+            case 'review_percentage':
+            case 'weighted_percentage': {
+                const s = game[_groupBy];
+                if (s == null) return null;
+                return Math.floor(Math.min(Number(s), 99) / 10) * 10;
+            }
+            case 'platform':          return game.platform || 'steam';
+            default:                  return null;
+        }
+    }
+
+    function _getGroupLabel(key) {
+        switch (_groupBy) {
+            case 'installed':   return key === 'installed' ? 'Installed' : 'Not Installed';
+            case 'completion_status': return key;
+            case 'release_date':
+            case 'date_added':  return key ?? 'Unknown';
+            case 'review_percentage':
+            case 'weighted_percentage': return key == null ? 'Unknown' : key + 's';
+            case 'platform':    return _GROUP_PLAT_LABELS[key] ?? key;
+            default:            return String(key);
+        }
+    }
+
+    function _sortGroupKeys(rawKeys) {
+        const fixedOrder = _GROUP_FIXED_ORDER[_groupBy];
+        if (fixedOrder) {
+            const known   = fixedOrder.filter(k => rawKeys.includes(k));
+            const unknown = rawKeys.filter(k => !fixedOrder.includes(k));
+            return [...known, ...unknown];
+        }
+        // Date/score fields: numeric DESC, unknown (null) last
+        const nulls = rawKeys.filter(k => k === null);
+        const rest  = rawKeys.filter(k => k !== null).sort((a, b) => Number(b) - Number(a));
+        return [...rest, ...nulls];
+    }
+
+    const _collapsedGroups = new Set();
+
+    function _toggleGroupCollapse(strKey) {
+        const section  = document.querySelector(`.group-section[data-group-key="${CSS.escape(strKey)}"]`);
+        if (!section) return;
+        const inner    = section.querySelector('.group-inner-grid');
+        const chevron  = section.querySelector('.group-chevron');
+        if (_collapsedGroups.has(strKey)) {
+            _collapsedGroups.delete(strKey);
+            inner.style.display = '';
+            if (chevron) chevron.textContent = '▾';
+        } else {
+            _collapsedGroups.add(strKey);
+            inner.style.display = 'none';
+            if (chevron) chevron.textContent = '▸';
+        }
+    }
+
+    function _makeCard(game) {
+        const card = document.createElement('div');
+        card.className    = 'game-card';
+        card.id           = `card-${game.appid}`;
+        card.dataset.appid    = game.appid;
+        card.dataset.platform = game.platform || 'steam';
+        return card;
+    }
+
+    function _updateGroupByHeaderLabel() {
+        const el = document.getElementById('group-by-label');
+        if (!el) return;
+        if (_groupBy) {
+            el.textContent = ' \u00b7 Grouped by ' + (_GROUP_BY_LABELS[_groupBy] ?? _groupBy);
+            el.style.display = '';
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
     function buildGrid() {
         const grid = document.getElementById('game-grid');
         grid.innerHTML = '';
-        const fragment = document.createDocumentFragment();
-        GAMES.forEach(game => {
-            const card = document.createElement('div');
-            card.className = 'game-card';
-            card.id = `card-${game.appid}`;
-            card.dataset.appid = game.appid;
-            card.dataset.platform = game.platform || 'steam';
-            // Start as empty placeholder — observer populates on scroll-in
-            fragment.appendChild(card);
-        });
-        grid.appendChild(fragment);
+
+        if (!_groupBy) {
+            grid.className = 'game-grid' + (_artOrientation === 'horizontal' ? ' horizontal' : '');
+            const fragment = document.createDocumentFragment();
+            GAMES.forEach(game => fragment.appendChild(_makeCard(game)));
+            grid.appendChild(fragment);
+        } else {
+            grid.className = 'grouped-container';
+
+            // Group games by key (preserving server sort order within each group)
+            const groupMap = new Map();
+            for (const game of GAMES) {
+                const rawKey = _getGroupKey(game);
+                const strKey = String(rawKey ?? '__null__');
+                if (!groupMap.has(strKey)) groupMap.set(strKey, { rawKey, games: [] });
+                groupMap.get(strKey).games.push(game);
+            }
+
+            const rawKeys    = [...new Set([...groupMap.values()].map(g => g.rawKey))];
+            const sortedKeys = _sortGroupKeys(rawKeys);
+            const fragment   = document.createDocumentFragment();
+
+            for (const rawKey of sortedKeys) {
+                const strKey = String(rawKey ?? '__null__');
+                const group  = groupMap.get(strKey);
+                if (!group || group.games.length === 0) continue;
+
+                const section   = document.createElement('div');
+                section.className = 'group-section';
+                section.dataset.groupKey = strKey;
+
+                const labelEl   = document.createElement('div');
+                labelEl.className = 'group-label';
+                labelEl.innerHTML =
+                    `<span class="group-chevron">▾</span>` +
+                    `<span class="group-name">${_getGroupLabel(rawKey)}</span>` +
+                    `<span class="group-count">${group.games.length}</span>`;
+                labelEl.addEventListener('click', () => _toggleGroupCollapse(strKey));
+
+                const innerGrid = document.createElement('div');
+                innerGrid.className = 'game-grid group-inner-grid' + (_artOrientation === 'horizontal' ? ' horizontal' : '');
+                group.games.forEach(game => innerGrid.appendChild(_makeCard(game)));
+
+                if (_collapsedGroups.has(strKey)) {
+                    innerGrid.style.display = 'none';
+                    labelEl.querySelector('.group-chevron').textContent = '▸';
+                }
+
+                section.appendChild(labelEl);
+                section.appendChild(innerGrid);
+                fragment.appendChild(section);
+            }
+            grid.appendChild(fragment);
+        }
+
         observeCards();
     }
 
@@ -763,29 +906,52 @@
     document.addEventListener('populate:new_cards', (e) => {
         const grid = document.getElementById('game-grid');
         if (!grid) return;
-        const fragment = document.createDocumentFragment();
+
+        // Build game objects first, skip duplicates
+        const newGames = [];
         for (const g of e.detail) {
-            const appid = g.appid;
-            if (_GAME_MAP.has(appid)) continue;  // already present
-            // Add minimal game object so cardInnerHTML can render it
+            if (_GAME_MAP.has(g.appid)) continue;
             const gameObj = {
-                appid,
-                name:               g.name || '',
-                completion_status:  g.completion_status || 'Never Played',
-                playtime_forever:   g.playtime_forever  || 0,
+                appid:             g.appid,
+                name:              g.name              || '',
+                completion_status: g.completion_status || 'Never Played',
+                playtime_forever:  g.playtime_forever  || 0,
+                platform:          g.platform          || 'steam',
+                installed:         g.installed         || 0,
             };
             GAMES.push(gameObj);
-            _GAME_MAP.set(appid, gameObj);
-            const card = document.createElement('div');
-            card.className    = 'game-card';
-            card.id           = `card-${appid}`;
-            card.dataset.appid = appid;
-            card.dataset.platform = g.platform || 'steam';
-            fragment.appendChild(card);
+            _GAME_MAP.set(g.appid, gameObj);
+            newGames.push(gameObj);
         }
-        grid.appendChild(fragment);
-        // Observe new cards so the IntersectionObserver can populate them
-        grid.querySelectorAll('.game-card:not([data-observed])').forEach(c => {
+        if (!newGames.length) return;
+
+        if (!_groupBy) {
+            const fragment = document.createDocumentFragment();
+            newGames.forEach(gameObj => fragment.appendChild(_makeCard(gameObj)));
+            grid.appendChild(fragment);
+        } else {
+            // Slot each new card into its group section; rebuild if a new group appears
+            const byKey = new Map();
+            for (const gameObj of newGames) {
+                const rawKey = _getGroupKey(gameObj);
+                const strKey = String(rawKey ?? '__null__');
+                if (!byKey.has(strKey)) byKey.set(strKey, { rawKey, games: [] });
+                byKey.get(strKey).games.push(gameObj);
+            }
+            let needsRebuild = false;
+            for (const [strKey, { games }] of byKey) {
+                const section = grid.querySelector(`.group-section[data-group-key="${CSS.escape(strKey)}"]`);
+                if (!section) { needsRebuild = true; break; }
+                const innerGrid = section.querySelector('.group-inner-grid');
+                const fragment  = document.createDocumentFragment();
+                games.forEach(gameObj => fragment.appendChild(_makeCard(gameObj)));
+                innerGrid.appendChild(fragment);
+            }
+            if (needsRebuild) { buildGrid(); return; }
+        }
+
+        // Observe newly added cards
+        document.querySelectorAll('.game-card:not([data-observed])').forEach(c => {
             c.dataset.observed = '1';
             _observer.observe(c);
         });
@@ -1422,6 +1588,7 @@ async function runBulkDelete() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('sort-dropdown'));
+    initCustomSelect(document.getElementById('group-by-dropdown'));
     initCustomSelect(document.getElementById('bulk-column'));
     initCustomSelect(document.getElementById('bulk-mode'));
     initCustomSelect(document.getElementById('bulk-status-select'));

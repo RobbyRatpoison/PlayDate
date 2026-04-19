@@ -3,6 +3,7 @@ config.json
 
 # --- Local Application State ---
 state.json
+release_date_migration.json
 
 # --- Databases ---
 *.db

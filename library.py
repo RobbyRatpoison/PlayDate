@@ -337,7 +337,8 @@ def library():
                            sql_error=sql_error, builtin_filters=BUILTIN_FILTERS,
                            total_games=total_games, hidden_dupes=hidden_dupes,
                            available_platforms=available_platforms,
-                           hidden_platforms=hidden_platforms)
+                           hidden_platforms=hidden_platforms,
+                           group_by=state.get('group_by'))
 
 
 @library_bp.route('/update_game', methods=['POST'])

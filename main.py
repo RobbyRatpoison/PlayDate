@@ -47,7 +47,7 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
     try:
         import webview as _webview_test  # noqa
     except Exception:
-        import subprocess, shutil
+        import subprocess
         distro_id = ""
         try:
             with open("/etc/os-release") as _f:
@@ -160,10 +160,7 @@ def _setup_focus_handler(webview_window):
                 # a separate thread so the GTK main thread stays free.
                 def _do():
                     try:
-                        webview_window.evaluate_js(
-                            'if(window._inputMgr && window._inputMgr.unsuppressGamepad)'
-                            ' window._inputMgr.unsuppressGamepad();'
-                        )
+                        webview_window.evaluate_js(_UNSUPPRESS_GAMEPAD_JS)
                     except Exception:
                         pass
                 threading.Thread(target=_do, daemon=True).start()
@@ -186,9 +183,7 @@ def _setup_focus_handler(webview_window):
         import ctypes
         import time as _time
 
-        _user32   = ctypes.windll.user32
-        _kernel32 = ctypes.windll.kernel32
-        _pd_hwnd  = [None]   # filled on first poll once the window exists
+        _user32 = ctypes.windll.user32
 
         def _get_window_title(hwnd):
             length = _user32.GetWindowTextLengthW(hwnd)
@@ -207,10 +202,7 @@ def _setup_focus_handler(webview_window):
                     title     = _get_window_title(hwnd)
                     is_pd     = 'PlayDate' in title
                     if is_pd and not was_foreground:
-                        webview_window.evaluate_js(
-                            'if(window._inputMgr && window._inputMgr.unsuppressGamepad)'
-                            ' window._inputMgr.unsuppressGamepad();'
-                        )
+                        webview_window.evaluate_js(_UNSUPPRESS_GAMEPAD_JS)
                     was_foreground = is_pd
                 except Exception:
                     pass
@@ -229,6 +221,11 @@ def _destroy_window():
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 # Module-level window reference so Flask routes can call pywebview APIs
+_UNSUPPRESS_GAMEPAD_JS = (
+    'if(window._inputMgr && window._inputMgr.unsuppressGamepad)'
+    ' window._inputMgr.unsuppressGamepad();'
+)
+
 _webview_window = None
 _fullscreen      = False  # tracked here so _on_closing can persist it reliably
 
@@ -364,7 +361,7 @@ def _load_window_state():
     if fullscreen:
         return dict(fullscreen=True, maximized=False, width=width, height=height, x=None, y=None)
 
-    if maximized or not ws.get('x') is not None:
+    if maximized or ws.get('x') is None:
         return dict(fullscreen=False, maximized=True, width=width, height=height, x=None, y=None)
 
     x, y = ws['x'], ws['y']
@@ -458,11 +455,12 @@ if __name__ == '__main__':
     threading.Thread(target=_run_install_sync, daemon=True).start()
 
     # 2c. Sync recent playtime from Steam API in background, then fetch any
-    #     unfetched HLTB data silently in the same thread.
+    #     unfetched HLTB data and migrate store release dates silently in the same thread.
     def _run_playtime_sync():
-        from scrapers import sync_recent_playtime, sync_hltb_unfetched
+        from scrapers import sync_recent_playtime, sync_hltb_unfetched, sync_store_release_dates
         sync_recent_playtime()
         sync_hltb_unfetched()
+        sync_store_release_dates()
 
     threading.Thread(target=_run_playtime_sync, daemon=True).start()
     log.info("Playtime sync started in background.")
@@ -486,7 +484,6 @@ if __name__ == '__main__':
     _api = PyWebviewAPI()
     _ws = _load_window_state()
     _fullscreen = _ws.get('fullscreen', False)
-    _window_maximized = _ws['maximized']
 
     window = webview.create_window(
         title            = "PlayDate",
@@ -561,6 +558,8 @@ if __name__ == '__main__':
 
     def _on_closing():
         populate_cancel.set()   # stop any running populate before the process exits
+        from scrapers import _store_date_migration_cancel
+        _store_date_migration_cancel.set()
         _save_window_state(_tracked)
 
     window.events.maximized += _on_maximized
