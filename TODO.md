@@ -1,5 +1,7 @@
 # TODO
 
+## Pending (next release)
+
 ## User requests and other things that need sorting
 
 - none
@@ -8,7 +10,6 @@
 
 - **Ghost tooltip circle on secondary monitor** — a gray circle appears in the top-left corner of the secondary monitor. When hovering over elements in PlayDate, the tooltip renders at the circle's position first before snapping into the window. Likely caused by the tooltip div being positioned relative to a wrong coordinate origin on multi-monitor setups. Potentially fixed but I am leaving it here until I feel confident that the fix worked.
 - **PlayDate on Steam Deck** — controller support is completely broken
-- **Store Release Date** — currently we scrape Steam release date, but we should probably be scraping Store release date instead. Or in addition. Either way PAGYWOSG has issues with Steam release date because the game's store page sometimes does not match the Steam release date and we need to fix that.
 
 ---
 
@@ -16,12 +17,12 @@
 
 - **Gamepad support** — home page editor buttons, bulk edit modal navigation, text input focus, disable RB/LB while in modals *(partial: `clearSuppression()` added; remaining: modal navigation, text input focus)*
 - **Pick 6 factor range limits** — enforce a minimum pool size and warn/relax when limits are too tight; determine how to handle games with missing data
+- **Simplify code** — files remaining: library.py, uninstall.py, images.py, playdate.js, input.js, style.css, and all html files
 
 ---
 
 ## Small Features
 
-- **Library group-by** — sort games into sections by a chosen field (e.g. installed status, completion status, ProtonDB tier); each section sorted by the active sort column and direction. Implementation approach for non-obvious grouping fields TBD. Group-by installed (installed games first) is the most-wanted specific case.
 - **PAGYWOSG Snowballs / Secret Santa support** — Snowballs and Secret Santa are PAGYWOSG/POP gift events. The filter builder and quals panel should recognise their pool/criteria structure the same way the main PAGYWOSG event does.
 - **Cross-platform duplicate priority order** — when a game is owned on multiple platforms, the duplicate hider should show the version from whichever platform ranks highest in a user-configurable priority list. Currently it always prefers Steam (GOG copies are hidden if the same game exists on Steam). Should support drag-to-reorder platform priority in Settings.
 - **Arch Install Instructions** — plus extra instructions specifically for Steam Deck installation.
