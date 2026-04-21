@@ -359,7 +359,7 @@
         }
 
         // Don't show menu at all if there's nothing to offer
-        if (!anyClipboard && !appid) return;
+        if (!anyClipboard && !appid) { hideMenu(); return; }
 
         showMenu(e.clientX, e.clientY);
     }
@@ -535,6 +535,41 @@
             }
         } catch (_) {}
     }, true);
+
+    // ── Submenu edge-detection: reposition before CSS :hover shows it ────
+    document.getElementById('ctx-completion').addEventListener('mouseenter', function () {
+        const sub = document.getElementById('ctx-completion-sub');
+        // Reset to defaults first so measurements are accurate
+        sub.style.left  = '';
+        sub.style.right = '';
+        sub.style.top   = '';
+        sub.style.bottom = '';
+
+        const parentRect = this.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const subW = sub.offsetWidth  || 160;
+        const subH = sub.offsetHeight || 130;
+
+        // Horizontal: flip to left side if right edge would overflow
+        if (parentRect.right + subW > vw) {
+            sub.style.left  = 'auto';
+            sub.style.right = '100%';
+        } else {
+            sub.style.left  = '100%';
+            sub.style.right = 'auto';
+        }
+
+        // Vertical: slide up if bottom would overflow
+        const rawTop = parentRect.top - 4;
+        if (rawTop + subH > vh) {
+            sub.style.top    = 'auto';
+            sub.style.bottom = '0';
+        } else {
+            sub.style.top    = '-4px';
+            sub.style.bottom = 'auto';
+        }
+    });
 
     // ── Event listeners ───────────────────────────────────────────────────
     document.addEventListener('contextmenu', buildAndShow);

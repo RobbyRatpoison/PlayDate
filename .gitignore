@@ -5,6 +5,10 @@ config.json
 state.json
 release_date_migration.json
 
+# --- Claude Code ---
+.claude/
+memory/
+
 # --- Databases ---
 *.db
 *.csv

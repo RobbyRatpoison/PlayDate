@@ -298,6 +298,10 @@ select {
     align-items: center;
     z-index: 1000;
 }
+.modal-overlay.sub-modal {
+    background: transparent;
+    z-index: 1001;
+}
 
 .modal-content {
     background: var(--bg-surface);

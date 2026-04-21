@@ -9,7 +9,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.4.2"
+__version__ = "1.4.3"
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -480,7 +480,8 @@ def save_state(updates):
 
         _PASSTHROUGH = {"filter_tree", "sort", "order", "artwork_orientation", "card_height",
                         "check_for_updates", "window_state", "fullscreen",
-                        "pagywosg_sg_group", "shelves", "group_by"}
+                        "pagywosg_sg_group", "shelves", "group_by",
+                        "store_date_migration_done"}
         for key in _PASSTHROUGH:
             if key in updates:
                 state[key] = updates[key]

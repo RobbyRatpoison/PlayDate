@@ -461,54 +461,17 @@
 </style>
 
 <!-- ── SETTINGS MODAL ── -->
-<div id="settings-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeSettingsModal();">
+<!-- ── ACCOUNTS MODAL ── -->
+<div id="accounts-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAccountsModal();">
     <div class="modal-content" style="width:360px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 style="margin:0; color:var(--text-primary);">Settings</h2>
-            <button onclick="closeSettingsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <h2 style="margin:0; color:var(--text-primary);">Accounts</h2>
+            <button onclick="closeAccountsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-
         <div class="hub-section">
-            <div class="hub-section-label">Account</div>
-            <button class="settings-item" data-modal-row="0" onclick="openAccountModal()">Account</button>
+            <div class="hub-section-label">Steam</div>
+            <button class="settings-item" data-modal-row="0" onclick="openAccountModal()">Steam Account</button>
         </div>
-
-        <div class="hub-section">
-            <div class="hub-section-label">Appearance</div>
-            <button class="settings-item" data-modal-row="1" onclick="closeSettingsModal();openBgModal()">Background Image</button>
-            <button class="settings-item" data-modal-row="1" onclick="openThemePickerModal()">Theme</button>
-        </div>
-
-        <div class="hub-section">
-            <div class="hub-section-label">Library</div>
-            <div style="padding:8px 10px;">
-                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary);">
-                    <input type="checkbox" id="hide-dupes-cb"
-                           {% if hide_duplicates %}checked{% endif %}
-                           onchange="sendStateUpdate({hide_duplicates: this.checked})"
-                           style="width:auto; margin:0;">
-                    Hide duplicate entries
-                </label>
-                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">e.g. GOG version when Steam version exists</div>
-            </div>
-        </div>
-
-        <div class="hub-section">
-            <div class="hub-section-label">HLTB</div>
-            <div style="padding:8px 10px;">
-                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:2px;">Auto-confirm threshold</label>
-                <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px;">Minimum name similarity (0–100) for auto-confirming a match. Matches below this are flagged as unconfirmed.</div>
-                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
-                    <input type="range" id="hltb-threshold-slider" min="0" max="100" value="{{ hltb_match_threshold }}"
-                        oninput="_onHltbSlider(this)"
-                        class="hltb-slider">
-                    <span id="hltb-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
-                </div>
-                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" onclick="saveHltbThreshold()">Save</button>
-                <div id="hltb-threshold-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
-            </div>
-        </div>
-
         <div class="hub-section">
             <div class="hub-section-label">GOG</div>
             <div style="padding:8px 10px;">
@@ -531,24 +494,145 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
 
+<!-- ── APPEARANCE MODAL ── -->
+<div id="appearance-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAppearanceModal();">
+    <div class="modal-content" style="width:360px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Appearance</h2>
+            <button onclick="closeAppearanceModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <div class="hub-section">
+            <button class="settings-item" data-modal-row="0" onclick="openBgModal()">Background &amp; Opacity</button>
+            <button class="settings-item" data-modal-row="0" onclick="openThemePickerModal()">Theme</button>
+            <button class="settings-item" data-modal-row="0" onclick="openThemeModal()">Theme Editor</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── LIBRARY MODAL ── -->
+<div id="library-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeLibraryModal();">
+    <div class="modal-content" style="width:360px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Library</h2>
+            <button onclick="closeLibraryModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <div class="hub-section">
+            <div class="hub-section-label">Duplicates</div>
+            <div style="padding:8px 10px;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary);">
+                    <input type="checkbox" id="hide-dupes-cb"
+                           {% if hide_duplicates %}checked{% endif %}
+                           onchange="sendStateUpdate({hide_duplicates: this.checked})"
+                           style="width:auto; margin:0;">
+                    Hide duplicate entries
+                </label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">e.g. GOG version when Steam version exists</div>
+            </div>
+        </div>
+        <div class="hub-section">
+            <div class="hub-section-label">HLTB</div>
+            <div style="padding:8px 10px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:2px;">Auto-confirm threshold</label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px;">Minimum name similarity (0–100) for auto-confirming a match. Matches below this are flagged as unconfirmed.</div>
+                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                    <input type="range" id="hltb-threshold-slider" min="0" max="100" value="{{ hltb_match_threshold }}"
+                        oninput="_onHltbSlider(this)"
+                        class="hltb-slider">
+                    <span id="hltb-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
+                </div>
+                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="0" onclick="saveHltbThreshold()">Save</button>
+                <div id="hltb-threshold-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
+            </div>
+            <button class="settings-item" data-modal-row="1" onclick="openHltbModal()">HLTB Data</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── COMMUNITY MODAL ── -->
+<div id="community-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeCommunityModal();">
+    <div class="modal-content" style="width:360px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Community</h2>
+            <button onclick="closeCommunityModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <div class="hub-section">
+            <button class="settings-item" data-modal-row="0" onclick="openPagModal()">PAGYWOSG Filter Builder</button>
+        </div>
+        <div class="hub-section">
+            <div class="hub-section-label">BLAEO</div>
+            <button id="blaeo-btn" class="settings-item" data-modal-row="1" onclick="runBlaeo()">Sync BLAEO</button>
+            <div id="blaeo-status" class="tool-status" style="margin-top:2px;padding:0 10px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── DATA MODAL ── -->
+<div id="data-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeDataModal();">
+    <div class="modal-content" style="width:360px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">Data</h2>
+            <button onclick="closeDataModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <div class="hub-section">
+            <button class="settings-item" data-modal-row="0" onclick="openFilterIoModal()">Filter Import / Export</button>
+            <button class="settings-item" data-modal-row="0" onclick="openBackupModal()">Backup &amp; Restore</button>
+            <button class="settings-item" data-modal-row="0" onclick="openImportModal()">Import from Database</button>
+            <button class="settings-item" data-modal-row="0" onclick="openPlayniteModal()">Import Date Added from Playnite</button>
+            <button class="settings-item" data-modal-row="0" onclick="runCsvExport()">Export Library to CSV</button>
+            <details id="csv-col-picker" style="margin:2px 0 2px 2px;">
+                <summary style="cursor:pointer;font-size:0.82em;color:var(--accent);user-select:none;list-style:none;display:inline-flex;align-items:center;gap:4px;">
+                    <span id="csv-col-summary">Columns</span>
+                </summary>
+                <div style="display:flex;flex-wrap:wrap;gap:3px 16px;margin-top:6px;font-size:0.82em;color:var(--text-primary);">
+                    {% for col in [
+                        'Name','AppID','Completion Status','Tags','Groups',
+                        'Playtime (hrs)','Last Played','Date Added','Installed',
+                        'Review Score','Review %','Developers','Publishers',
+                        'Release Date','Achievements Unlocked','Achievements Total','Achievement %'
+                    ] %}
+                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;">
+                        <input type="checkbox" class="csv-col-cb" value="{{ col }}" checked style="width:auto;margin:0;">
+                        {{ col }}
+                    </label>
+                    {% endfor %}
+                </div>
+                <div style="margin-top:5px;font-size:0.8em;">
+                    <a href="#" onclick="csvColAll(true);return false" style="color:var(--accent)">All</a>
+                    &nbsp;/&nbsp;
+                    <a href="#" onclick="csvColAll(false);return false" style="color:var(--accent)">None</a>
+                </div>
+            </details>
+            <div id="csv-export-status" class="tool-status" style="margin-top:2px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── SYSTEM MODAL ── -->
+<div id="system-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeSystemModal();">
+    <div class="modal-content" style="width:360px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h2 style="margin:0; color:var(--text-primary);">System</h2>
+            <button onclick="closeSystemModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
         <div class="hub-section">
             <div class="hub-section-label">Updates</div>
-            <button id="autoupdate-toggle-btn" class="settings-item" data-modal-row="2" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
+            <button id="autoupdate-toggle-btn" class="settings-item" data-modal-row="0" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
         </div>
-
         <div class="hub-section">
             <div class="hub-section-label">Testing</div>
             <div style="padding:8px 10px; display:flex; flex-direction:column; gap:8px;">
-                <button class="nav-btn" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
-                <button class="nav-btn" onclick="openGamepadDiag()" style="font-size:0.8rem;">Gamepad Diagnostics</button>
+                <button class="nav-btn" data-modal-row="1" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
+                <button class="nav-btn" data-modal-row="1" onclick="openGamepadDiag()" style="font-size:0.8rem;">Gamepad Diagnostics</button>
             </div>
         </div>
     </div>
 </div>
 
 <!-- ── GAMEPAD DIAGNOSTICS MODAL ── -->
-<div id="gamepad-diag-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeGamepadDiag();">
+<div id="gamepad-diag-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeGamepadDiag();">
     <div class="modal-content" style="width:440px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
             <h2 style="margin:0; color:var(--text-primary);">Gamepad Diagnostics</h2>
@@ -599,7 +683,7 @@
 </div>
 
 <!-- ── GOG CONNECT MODAL ── -->
-<div id="gog-connect-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeGogConnectModal();">
+<div id="gog-connect-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeGogConnectModal();">
     <div class="modal-content" style="width:420px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
             <h2 style="margin:0; color:var(--text-primary);">Connect GOG Account</h2>
@@ -626,7 +710,7 @@
 </div>
 
 <!-- ── ACCOUNT MODAL ── -->
-<div id="account-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAccountModal();">
+<div id="account-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeAccountModal();">
     <div class="modal-content" style="width:fit-content; min-width:400px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <h2 style="margin:0; color:var(--text-primary);">Account</h2>
@@ -743,61 +827,9 @@
 </div>
 
 <!-- ── TOOLS MODAL ── -->
-<div id="tools-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeToolsModal();">
-    <div class="modal-content" style="width:360px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 style="margin:0; color:var(--text-primary);">Tools</h2>
-            <button onclick="closeToolsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-        </div>
-
-        <div class="hub-section">
-            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openThemeModal()">Theme Editor</button>
-            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openFilterIoModal()">Filter Import / Export</button>
-            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openBackupModal()">Backup &amp; Restore</button>
-            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openImportModal()">Import from Database</button>
-            <button class="settings-item" data-modal-row="0" onclick="closeToolsModal();openPlayniteModal()">Import Date Added from Playnite</button>
-            <button class="settings-item" data-modal-row="0" onclick="runCsvExport()">Export Library to CSV</button>
-            <details id="csv-col-picker" style="margin:2px 0 2px 2px;">
-                <summary style="cursor:pointer;font-size:0.82em;color:var(--accent);user-select:none;list-style:none;display:inline-flex;align-items:center;gap:4px;">
-                    <span id="csv-col-summary">Columns</span>
-                </summary>
-                <div style="display:flex;flex-wrap:wrap;gap:3px 16px;margin-top:6px;font-size:0.82em;color:var(--text-primary);">
-                    {% for col in [
-                        'Name','AppID','Completion Status','Tags','Groups',
-                        'Playtime (hrs)','Last Played','Date Added','Installed',
-                        'Review Score','Review %','Developers','Publishers',
-                        'Release Date','Achievements Unlocked','Achievements Total','Achievement %'
-                    ] %}
-                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;">
-                        <input type="checkbox" class="csv-col-cb" value="{{ col }}" checked style="width:auto;margin:0;">
-                        {{ col }}
-                    </label>
-                    {% endfor %}
-                </div>
-                <div style="margin-top:5px;font-size:0.8em;">
-                    <a href="#" onclick="csvColAll(true);return false" style="color:var(--accent)">All</a>
-                    &nbsp;/&nbsp;
-                    <a href="#" onclick="csvColAll(false);return false" style="color:var(--accent)">None</a>
-                </div>
-            </details>
-            <div id="csv-export-status" class="tool-status" style="margin-top:2px;"></div>
-        </div>
-
-        <div class="hub-section">
-            <button class="settings-item" data-modal-row="1" onclick="closeToolsModal();openPagModal()">PAGYWOSG Filter Builder</button>
-            <button class="settings-item" data-modal-row="1" onclick="closeToolsModal();openHltbModal()">HLTB Data</button>
-            <button id="blaeo-btn" class="settings-item" data-modal-row="1" onclick="runBlaeo()">Sync BLAEO</button>
-            <div id="blaeo-status" class="tool-status" style="margin-top:2px;"></div>
-        </div>
-
-        <div class="hub-section">
-            <button class="settings-item" data-modal-row="2" onclick="closeToolsModal();openBlacklistModal()">Manage Blacklist</button>
-        </div>
-    </div>
-</div>
 
 <!-- ── BACKGROUND IMAGE MODAL ── -->
-<div id="bg-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBgModal();">
+<div id="bg-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeBgModal();">
     <div class="modal-content" style="width:460px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
             <h2 style="margin:0; color:var(--text-primary);">Background Image</h2>
@@ -834,7 +866,7 @@
 </div>
 
 <!-- ── BACKUP & RESTORE MODAL ── -->
-<div id="backup-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBackupModal();">
+<div id="backup-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeBackupModal();">
     <div class="modal-content" style="width:520px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
             <h2 style="margin:0; color:var(--text-primary);">Backup &amp; Restore</h2>
@@ -901,7 +933,7 @@
 </div>
 
 <!-- ── DB IMPORT MODAL ── -->
-<div id="import-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeImportModal();">
+<div id="import-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeImportModal();">
     <div class="modal-content" style="width:620px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
             <h2 style="margin:0; color:var(--text-primary);">Import Data from Another Database</h2>
@@ -967,7 +999,7 @@
 </div>
 
 <!-- ── PLAYNITE IMPORT MODAL ── -->
-<div id="playnite-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePlayniteModal();">
+<div id="playnite-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closePlayniteModal();">
     <div class="modal-content" style="width:480px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
             <h2 style="margin:0; color:var(--text-primary);">Import from Playnite</h2>
@@ -980,7 +1012,7 @@
 </div>
 
 <!-- ── PAGYWOSG MODAL ── -->
-<div id="pagywosg-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePagModal();">
+<div id="pagywosg-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closePagModal();">
     <div class="modal-content" style="width:min(760px,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
 
         <!-- Fixed header -->
@@ -1111,7 +1143,7 @@
 </div>
 
 <!-- ── FILTER IMPORT / EXPORT MODAL ── -->
-<div id="filter-io-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeFilterIoModal();">
+<div id="filter-io-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeFilterIoModal();">
     <div class="modal-content" style="width:400px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <h2 style="margin:0; color:var(--text-primary);">Filter Import / Export</h2>
@@ -1152,7 +1184,7 @@
 </div>
 
 <!-- ── THEME EDITOR MODAL ── -->
-<div id="theme-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeThemeModal();">
+<div id="theme-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeThemeModal();">
     <div class="modal-content" style="width:min(920px,96vw); max-height:92vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
             <h2 style="margin:0; color:var(--text-primary);">Theme Editor</h2>
@@ -1356,7 +1388,7 @@
 </div>
 
 <!-- Theme picker modal -->
-<div id="theme-picker-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeThemePickerModal();">
+<div id="theme-picker-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeThemePickerModal();">
     <div class="modal-content" style="width:380px; max-height:80vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
             <h2 style="margin:0; color:var(--text-primary);">Choose Theme</h2>
@@ -3572,13 +3604,49 @@ document.addEventListener('DOMContentLoaded', () => {
     if (active) document.getElementById('cfg-label').value = active.label || '';
 });
 
-// ── SETTINGS / TOOLS HUB MODALS ──────────────────────────────────────────────
+// ── SECTION MODALS ────────────────────────────────────────────────────────────
 function openAccountModal() {
-    closeSettingsModal();
     document.getElementById('account-modal').style.display = 'flex';
 }
 function closeAccountModal() {
     document.getElementById('account-modal').style.display = 'none';
+}
+function openAccountsModal() {
+    document.getElementById('accounts-modal').style.display = 'flex';
+    _gogRefreshStatus();
+}
+function closeAccountsModal() {
+    document.getElementById('accounts-modal').style.display = 'none';
+}
+function openAppearanceModal() {
+    document.getElementById('appearance-modal').style.display = 'flex';
+}
+function closeAppearanceModal() {
+    document.getElementById('appearance-modal').style.display = 'none';
+}
+function openLibraryModal() {
+    document.getElementById('library-modal').style.display = 'flex';
+}
+function closeLibraryModal() {
+    document.getElementById('library-modal').style.display = 'none';
+}
+function openCommunityModal() {
+    document.getElementById('community-modal').style.display = 'flex';
+}
+function closeCommunityModal() {
+    document.getElementById('community-modal').style.display = 'none';
+}
+function openDataModal() {
+    document.getElementById('data-modal').style.display = 'flex';
+}
+function closeDataModal() {
+    document.getElementById('data-modal').style.display = 'none';
+}
+function openSystemModal() {
+    document.getElementById('system-modal').style.display = 'flex';
+}
+function closeSystemModal() {
+    document.getElementById('system-modal').style.display = 'none';
 }
 function _onHltbSlider(el) {
     document.getElementById('hltb-threshold-val').textContent = el.value;
@@ -3601,13 +3669,6 @@ function saveHltbThreshold() {
     el.style.setProperty('--slider-pct', pct + '%');
 })();
 
-function openSettingsModal() {
-    document.getElementById('settings-modal').style.display = 'flex';
-    _gogRefreshStatus();
-}
-function closeSettingsModal() {
-    document.getElementById('settings-modal').style.display = 'none';
-}
 function resizeToSteamDeck() {
     if (window.pywebview && window.pywebview.api && window.pywebview.api.resize_window) {
         window.pywebview.api.resize_window(1280, 800);
@@ -3759,7 +3820,6 @@ async function _gogRefreshStatus() {
 }
 
 async function gogStartConnect() {
-    closeSettingsModal();
     document.getElementById('gog-auth-code').value = '';
     document.getElementById('gog-connect-status').textContent = '';
     document.getElementById('gog-connect-modal').style.display = 'flex';
@@ -3800,7 +3860,6 @@ async function gogSubmitCode() {
             st.textContent = `Connected as ${d.username || 'unknown'}`;
             setTimeout(() => {
                 closeGogConnectModal();
-                openSettingsModal();
             }, 1200);
         } else {
             st.style.color = 'var(--text-danger)';
@@ -3919,12 +3978,6 @@ async function gogDetectDuplicates() {
 async function gogDisconnect() {
     await fetch('/api/gog/disconnect', { method: 'POST' });
     _gogRefreshStatus();
-}
-function openToolsModal() {
-    document.getElementById('tools-modal').style.display = 'flex';
-}
-function closeToolsModal() {
-    document.getElementById('tools-modal').style.display = 'none';
 }
 function openFilterIoModal() {
     document.getElementById('filter-io-modal').style.display = 'flex';

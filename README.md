@@ -40,7 +40,7 @@ PlayDate pulls your Steam and GOG libraries, enriches them with metadata (tags, 
 
 ### Metadata & Artwork
 - **Steam scraper** — imports playtime, tags, review scores, achievement counts, release dates, developers, publishers, and genres from Steam's API and store pages; runs concurrent worker pools for art, metadata, and achievements so cards populate live as each phase completes
-- **HowLongToBeat** — scrapes main story, completionist, and all-styles times for every game; sortable from the library; HLTB Review tool in the Tools menu for managing unmatched and unconfirmed entries
+- **HowLongToBeat** — scrapes main story, completionist, and all-styles times for every game; sortable from the library; HLTB Review tool in the Library menu for managing unmatched and unconfirmed entries
 - **Startup sync** — on every launch, PlayDate reads your local Steam files to update playtime and last-played dates; if playtime changed, it fetches fresh achievement data and promotes completion status (`Never Played` → `Unfinished`, 100% achievements → `Completed`); also sweeps the library for any games already at 100% that weren't marked Completed
 - **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB; non-Steam games go straight to SteamGridDB name search
 - **SteamGridDB browser** — search and apply custom artwork for any game from directly within PlayDate
@@ -81,11 +81,17 @@ chmod +x install.sh && ./install.sh
 Requires Python 3.10+ and the WebKit/GTK bindings for your distro:
 
 ```bash
-# Debian / Ubuntu
+# Debian, Ubuntu, Mint, Pop!_OS, etc.
 sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0
 
-# Fedora
+# Fedora, Nobara, Ultramarine, etc.
 sudo dnf install python3-gobject webkit2gtk4.0
+
+# Arch, Manjaro, EndeavourOS, CachyOS, Garuda, etc.
+sudo pacman -S python-gobject webkit2gtk
+
+# openSUSE
+sudo zypper install python3-gobject typelib-1_0-WebKit2-4_0
 ```
 
 ### macOS
@@ -122,7 +128,7 @@ On first launch you'll be prompted for:
 
 Then hit **Populate PlayDate** in the navbar to import your library and fetch metadata. Game cards appear immediately as placeholders and fill in live as art, metadata, and achievements are fetched in parallel. First-run time depends on library size and Steam's API rate limits.
 
-Additional Steam accounts can be added at any time via **Tools → Account**. To connect your GOG library, go to **Settings → GOG** and click **Connect GOG Account**.
+Additional Steam accounts can be added at any time via **Accounts → Steam Account**. To connect your GOG library, go to **Accounts → GOG** and click **Connect GOG Account**.
 
 ---
 

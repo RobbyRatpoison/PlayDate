@@ -167,8 +167,18 @@
             display: flex;
             gap: 0.9rem;
             align-items: center;
-            margin-bottom: 1.2rem;
-            padding: 0 clamp(1rem, 5vw, 8rem);
+            padding: 0.6rem clamp(1rem, 5vw, 8rem);
+            position: fixed;
+            top: 5vh;
+            left: 0;
+            right: 0;
+            z-index: 500;
+            background: var(--bg-page, #0e1419);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+
+        .container {
+            padding-top: calc(5vh + 4.2rem) !important;
         }
 
         #library-search {

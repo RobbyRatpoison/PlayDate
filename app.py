@@ -313,6 +313,8 @@ def create_app(template_folder=None, static_folder=None):
 
         NUM_PICKS = 6
         picks = []
+        any_relaxed = False
+        bounded_pool_size = len(games)
 
         if mode in ('smart', 'weighted'):
             profile_rows = db.execute(
@@ -401,51 +403,58 @@ def create_app(template_folder=None, static_folder=None):
                 except Exception:
                     return 0.5
 
-            def score_game(g):
+            def score_game(g, relax_factor=0.0):
                 sim, matched = tag_similarity(g)
                 rev  = review_score(g)
                 stal = staleness_score(g)
                 rec  = recency_score(g)
                 hltb = hltb_length_score(g)
 
-                # Bounds: return None to exclude this game from the candidate pool.
-                # Direction: positive weight → min bound; negative weight → max bound.
-                # Missing data (None score) passes the bound check.
-                w_rev_dir = w_review if mode == 'weighted' else 35.0
-                if b_review is not None and rev is not None:
-                    rev_pct = rev * 100
-                    if w_rev_dir >= 0 and rev_pct < b_review:
-                        return None
-                    elif w_rev_dir < 0 and rev_pct > b_review:
-                        return None
-                if b_staleness is not None:
-                    from datetime import datetime, timezone as _tzb
-                    _now = datetime.now(_tzb.utc).timestamp()
-                    _lp  = g.get('last_played')
-                    _days = (_now - float(_lp)) / 86400 if _lp else 999999.0
-                    if w_staleness >= 0 and _days < b_staleness:
-                        return None
-                    elif w_staleness < 0 and _days > b_staleness:
-                        return None
-                if b_recency is not None:
-                    _rd = g.get('release_date')
-                    if _rd:
-                        try:
-                            from datetime import datetime, timezone as _tzc
-                            _yr = datetime.fromtimestamp(float(_rd), tz=_tzc.utc).year
-                            if w_recency >= 0 and _yr < b_recency:
+                if relax_factor < 1.0:
+                    w_rev_dir = w_review if mode == 'weighted' else 35.0
+                    if b_review is not None and rev is not None:
+                        rev_pct = rev * 100
+                        if w_rev_dir >= 0:
+                            if rev_pct < b_review * (1 - relax_factor):
                                 return None
-                            elif w_recency < 0 and _yr > b_recency:
+                        else:
+                            if rev_pct > b_review + (100 - b_review) * relax_factor:
                                 return None
-                        except Exception:
-                            pass
-                if b_hltb is not None:
-                    _times = [v for v in [g.get('hltb_main'), g.get('hltb_extras'), g.get('hltb_completionist')] if v]
-                    if _times:
-                        if w_hltb >= 0 and max(_times) / 60 < b_hltb:
-                            return None
-                        elif w_hltb < 0 and min(_times) / 60 > b_hltb:
-                            return None
+                    if b_staleness is not None:
+                        from datetime import datetime, timezone as _tzb
+                        _now = datetime.now(_tzb.utc).timestamp()
+                        _lp  = g.get('last_played')
+                        _days = (_now - float(_lp)) / 86400 if _lp else 999999.0
+                        if w_staleness >= 0:
+                            if _days < b_staleness * (1 - relax_factor):
+                                return None
+                        else:
+                            if _days > b_staleness * (1 + 9 * relax_factor):
+                                return None
+                    if b_recency is not None:
+                        _rd = g.get('release_date')
+                        if _rd:
+                            try:
+                                from datetime import datetime, timezone as _tzc
+                                _yr = datetime.fromtimestamp(float(_rd), tz=_tzc.utc).year
+                                if w_recency >= 0:
+                                    if _yr < b_recency - relax_factor * (b_recency - 1970):
+                                        return None
+                                else:
+                                    _cur_yr = datetime.now(_tzc.utc).year
+                                    if _yr > b_recency + relax_factor * (_cur_yr - b_recency):
+                                        return None
+                            except Exception:
+                                pass
+                    if b_hltb is not None:
+                        _times = [v for v in [g.get('hltb_main'), g.get('hltb_extras'), g.get('hltb_completionist')] if v]
+                        if _times:
+                            if w_hltb >= 0:
+                                if max(_times) / 60 < b_hltb * (1 - relax_factor):
+                                    return None
+                            else:
+                                if min(_times) / 60 > b_hltb * (1 + 9 * relax_factor):
+                                    return None
 
                 if mode == 'weighted':
                     total_w = (abs(w_tags) + abs(w_review) + abs(w_staleness) + abs(w_recency) + abs(w_hltb)) or 1.0
@@ -457,17 +466,16 @@ def create_app(template_folder=None, static_folder=None):
                         s = unknown_val if score is None else score
                         norm = abs(w_raw) / total_w
                         return norm * s if w_raw > 0 else norm * (1.0 - s)
-                    final = (sig(w_tags, sim) + sig(w_review, rev) + sig(w_staleness, stal)
-                             + sig(w_recency, rec) + sig(w_hltb, hltb, unknown_val=0.1))
+                    final = (sig(w_tags, sim) + sig(w_review, rev, unknown_val=0.1) + sig(w_staleness, stal)
+                             + sig(w_recency, rec, unknown_val=0.1) + sig(w_hltb, hltb, unknown_val=0.1))
                 else:
-                    # Smart mode: fixed weights, review weight falls back to tags if missing.
-                    if rev is None:
-                        final = sim
-                    else:
-                        final = 0.65 * sim + 0.35 * rev
+                    final = 0.65 * sim + 0.35 * (rev if rev is not None else 0.1)
 
                 return final, sim, matched
 
+            has_bounds = any(b is not None for b in [b_review, b_staleness, b_recency, b_hltb])
+            if has_bounds:
+                bounded_pool_size = sum(1 for g in games if score_game(g) is not None)
             remaining = list(games)
             for _ in range(min(NUM_PICKS, len(remaining))):
                 scored = []
@@ -475,6 +483,19 @@ def create_app(template_folder=None, static_folder=None):
                     result = score_game(g)
                     if result is not None:
                         scored.append((result, g))
+                this_relaxed = False
+                if not scored and has_bounds:
+                    for step in range(1, 21):
+                        f = step * 0.05
+                        scored = []
+                        for g in remaining:
+                            result = score_game(g, relax_factor=f)
+                            if result is not None:
+                                scored.append((result, g))
+                        if scored:
+                            this_relaxed = True
+                            any_relaxed = True
+                            break
                 if not scored:
                     break
                 total  = sum(s[0] for s, _ in scored)
@@ -559,7 +580,7 @@ def create_app(template_folder=None, static_folder=None):
                 if cs == 'Unfinished':
                     reason += " You've started this one before."
 
-                picks.append({"game": game, "reason": reason})
+                picks.append({"game": game, "reason": reason, "bounds_relaxed": this_relaxed})
                 remaining = [g for g in remaining if g['appid'] != game['appid']]
 
         else:
@@ -568,9 +589,11 @@ def create_app(template_folder=None, static_folder=None):
                 picks.append({"game": g, "reason": None})
 
         return jsonify({
-            "status":    "success",
-            "picks":     picks,
-            "pool_size": len(games)
+            "status":                "success",
+            "picks":                 picks,
+            "pool_size":             len(games),
+            "bounded_pool_size":     bounded_pool_size,
+            "bounds_relaxed":        any_relaxed,
         })
 
     @app.route('/api/populate-status')
