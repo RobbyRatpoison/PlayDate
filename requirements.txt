@@ -17,7 +17,7 @@ pywebview==6.1
 pythonnet==3.1.0rc0
 
 # HTTP & scraping
-requests==2.32.5
+requests==2.33.1
 beautifulsoup4==4.14.3
 howlongtobeatpy==1.0.21
 aiohttp==3.13.5
@@ -30,7 +30,7 @@ charset-normalizer==3.4.4
 idna==3.11
 
 # Image processing
-Pillow==12.1.1
+Pillow==12.2.0
 
 # Utilities
 RapidFuzz==3.14.3
