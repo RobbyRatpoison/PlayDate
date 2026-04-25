@@ -80,6 +80,7 @@ _bulk_date_state = {
 
 # ── Update checking ───────────────────────────────────────────────────────────
 _update_cache = {}  # available, latest_version, installer_url, zipball_url, checked_at, error
+_update_dl_state = {'status': 'idle', 'error': None, 'manual_url': None}  # idle|downloading|error
 
 def _do_update_check():
     """Hit the GitHub releases API and populate _update_cache. Thread-safe."""
@@ -1599,6 +1600,39 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    @app.route('/api/game-description/<int:appid>')
+    def game_description(appid):
+        import requests as _r
+        db = get_db()
+        row = db.execute("SELECT platform FROM games WHERE appid = ?", (appid,)).fetchone()
+        db.close()
+        if not row:
+            return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+        platform = row['platform'] or 'steam'
+        try:
+            if platform == 'gog':
+                resp = _r.get(f'https://api.gog.com/products/{abs(appid)}?expand=description', timeout=10)
+                if resp.ok:
+                    d = resp.json()
+                    desc = (d.get('description') or {}).get('lead') or (d.get('description') or {}).get('full', '')
+                    desc = re.sub(r'<[^>]+>', ' ', desc)
+                    desc = re.sub(r'\s+', ' ', desc).strip()
+                    return jsonify({'status': 'success', 'description': desc})
+            else:
+                resp = _r.get(
+                    f'https://store.steampowered.com/api/appdetails?appids={appid}',
+                    timeout=10
+                )
+                if resp.ok:
+                    d = resp.json()
+                    app_data = d.get(str(appid), {})
+                    if app_data.get('success'):
+                        desc = app_data.get('data', {}).get('short_description', '')
+                        return jsonify({'status': 'success', 'description': desc})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'status': 'error', 'message': 'No description available'})
+
     @app.route('/api/set-completion/<int:appid>', methods=['POST'])
     def set_completion(appid):
         status = (request.json or {}).get('status', '').strip()
@@ -2699,18 +2733,37 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'status': 'error', 'message': 'No update available'}), 400
 
         def _do_update():
-            import time, tempfile, urllib.request
+            import time, tempfile, urllib.request, ssl
             time.sleep(0.5)  # let the HTTP response send first
+
+            def _fetch(url, dest):
+                """Download url to dest, retrying without SSL verification on SSL errors."""
+                try:
+                    urllib.request.urlretrieve(url, dest)
+                except ssl.SSLError as exc:
+                    log.warning(f"SSL error downloading update ({exc}), retrying without verification")
+                    ctx = ssl._create_unverified_context()
+                    with urllib.request.urlopen(url, context=ctx) as r, open(dest, 'wb') as f:
+                        while True:
+                            chunk = r.read(65536)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+
+            _update_dl_state['status'] = 'downloading'
+            _update_dl_state['error'] = None
             try:
                 if getattr(sys, 'frozen', False):
                     # Windows frozen exe: download installer and launch it
                     url = _update_cache.get('installer_url')
                     if not url:
                         log.error("perform-update: no installer URL cached")
+                        _update_dl_state.update({'status': 'error', 'error': 'No installer URL cached', 'manual_url': None})
                         return
                     tmp = os.path.join(tempfile.gettempdir(), 'PlayDate-Setup.exe')
                     log.info(f"Downloading installer: {url}")
-                    urllib.request.urlretrieve(url, tmp)
+                    _update_dl_state['manual_url'] = url
+                    _fetch(url, tmp)
                     log.info(f"Launching installer: {tmp}")
                     subprocess.Popen(
                         [tmp],
@@ -2722,10 +2775,12 @@ def create_app(template_folder=None, static_folder=None):
                     url = _update_cache.get('zipball_url')
                     if not url:
                         log.error("perform-update: no zipball URL cached")
+                        _update_dl_state.update({'status': 'error', 'error': 'No zipball URL cached', 'manual_url': None})
                         return
                     tmp_zip = os.path.join(tempfile.gettempdir(), 'playdate-update.zip')
                     log.info(f"Downloading source zip: {url}")
-                    urllib.request.urlretrieve(url, tmp_zip)
+                    _update_dl_state['manual_url'] = url
+                    _fetch(url, tmp_zip)
                     log.info(f"Extracting to {BASE_DIR}")
                     with zipfile.ZipFile(tmp_zip) as zf:
                         members = zf.namelist()
@@ -2760,11 +2815,16 @@ def create_app(template_folder=None, static_folder=None):
                         )
             except Exception as e:
                 log.error(f"perform-update failed: {e}", exc_info=True)
+                _update_dl_state.update({'status': 'error', 'error': str(e)})
                 return
             os._exit(0)
 
         threading.Thread(target=_do_update, daemon=True).start()
         return jsonify({'status': 'ok'})
+
+    @app.route('/api/update-dl-status')
+    def update_dl_status():
+        return jsonify(_update_dl_state)
 
     # ── Background update check on startup ───────────────────────────────────
     def _startup_update_check():

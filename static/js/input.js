@@ -103,6 +103,9 @@
         },
     };
 
+    // Set to true to enable gamepad navigation. Currently disabled — many issues remain.
+    const GAMEPAD_ENABLED = false;
+
     // Track whether a gamepad has ever been seen this session (persisted across page loads)
     let _gpEverSeen = sessionStorage.getItem('pd_gp_seen') === '1';
 
@@ -340,8 +343,11 @@
         });
     }
 
-    // Library: returns flat array of .game-card elements and computes column count
+    // Library: returns flat array of .game-card elements (or .list-row in list mode)
     function _libraryCards() {
+        if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') {
+            return [...document.querySelectorAll('#game-list .list-row')];
+        }
         return [...document.querySelectorAll('.game-card')];
     }
 
@@ -354,6 +360,8 @@
     }
 
     function _libraryColCount(cards) {
+        // List mode is always single-column
+        if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') return 1;
         if (!cards.length) return 1;
         // Use offsetTop which is stable at page load unlike getBoundingClientRect.
         // 10px tolerance handles subpixel rounding differences between cards.
@@ -445,6 +453,8 @@
         'pagywosg-modal', 'blacklist-modal', 'theme-modal',
         // Home page edit mode panels (use style.display)
         'shelf-edit-modal', 'dedup-panel', 'split-picker',
+        // List mode detail pane (lowest priority — only active when in list view)
+        'detail-content',
     ];
 
     // Visibility check that handles both inline-style modals and class-toggled ones (.visible)
@@ -558,7 +568,10 @@
                             const card = cards[idx];
                             _state.focusedAppid = parseInt(card.dataset.appid) || null;
                             _applyFocus(card);
-                            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            const scrollOpts = (typeof _artOrientation !== 'undefined' && _artOrientation === 'list')
+                                ? { behavior: 'smooth', block: 'nearest' }
+                                : { behavior: 'smooth', block: 'center' };
+                            card.scrollIntoView(scrollOpts);
                         }
                         break;
                     }
@@ -1072,6 +1085,16 @@
                             // Toolbar: move right between toolbar items
                             const tbItems = _libraryToolbarItems();
                             if (_state.col < tbItems.length - 1) _state.col++;
+                        } else if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') {
+                            // List mode: right enters the detail pane
+                            const cards = _libraryCards();
+                            const card  = cards[_state.row];
+                            if (card) {
+                                card.click();
+                                _pushZone('modal');
+                                _state.modalRow = 0;
+                                _state.modalCol = 0;
+                            }
                         } else {
                             const cards = _libraryCards();
                             if (_state.row < cards.length - 1) _state.row++;
@@ -1260,6 +1283,15 @@
                             const cards = _libraryCards();
                             const card  = cards[_state.row];
                             if (!card) break;
+                            // In list mode: A opens the detail pane
+                            if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') {
+                                card.click();
+                                _pushZone('modal');
+                                _state.modalRow = 0;
+                                _state.modalCol = 0;
+                                _syncFocus();
+                                break;
+                            }
                             if (document.body.classList.contains('select-mode')) {
                                 card.click(); // toggles selection via onCardClick
                             } else {
@@ -1750,22 +1782,24 @@
         }
     }
 
-    window.addEventListener('gamepadconnected', () => {
-        if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
-    });
-    if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
+    if (GAMEPAD_ENABLED) {
+        window.addEventListener('gamepadconnected', () => {
+            if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
+        });
+        _rafId = requestAnimationFrame(_pollLoop);
 
-    // ── Pause polling when window loses focus (e.g. a game launched) ─────────
-    window.addEventListener('blur', () => {
-        if (_rafId) {
-            cancelAnimationFrame(_rafId);
-            _rafId = null;
-        }
-        _clearGamepadState();
-    });
-    window.addEventListener('focus', () => {
-        if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
-    });
+        // ── Pause polling when window loses focus (e.g. a game launched) ─────
+        window.addEventListener('blur', () => {
+            if (_rafId) {
+                cancelAnimationFrame(_rafId);
+                _rafId = null;
+            }
+            _clearGamepadState();
+        });
+        window.addEventListener('focus', () => {
+            if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
+        });
+    }
 
     // ── Library re-focus hook ─────────────────────────────────────────────────
     // Called by library.html's observeCards after populating a card.

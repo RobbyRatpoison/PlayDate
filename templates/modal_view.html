@@ -51,15 +51,18 @@
         </div>
         {% endif %}
 
-        <!-- Art Orientation + Card Size -->
+        <!-- Display mode + Card Size -->
         <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
             <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Display</span>
-            <button id="art-orient-btn" onclick="vmToggleArtOrientation()" data-modal-row="3"
-                    title="Toggle vertical/horizontal images">▮ Vertical</button>
+            <div style="display:flex; gap:0.375rem;" data-modal-row="3">
+                <button id="vm-view-vertical"   class="vm-view-btn" onclick="vmSetView('vertical')"   data-modal-row="3">▮ Vertical</button>
+                <button id="vm-view-horizontal" class="vm-view-btn" onclick="vmSetView('horizontal')" data-modal-row="3">▬ Horizontal</button>
+                <button id="vm-view-list"       class="vm-view-btn" onclick="vmSetView('list')"       data-modal-row="3">☰ List</button>
+            </div>
             <input type="range" id="card-size-slider" min="120" max="400" step="10"
                    value="{{ state.get('card_height', 200) }}"
                    oninput="onCardSizeSlider(this.value)"
-                   title="Adjust card size (applies instantly)"
+                   title="Adjust card size (grid modes only)"
                    style="flex:1; min-width:6rem;">
         </div>
 
@@ -96,6 +99,24 @@
 </div>
 
 <style>
+.vm-view-btn {
+    height: 2.25rem;
+    padding: 0 0.875rem;
+    font-size: 0.82rem;
+    border-radius: 0.375rem;
+    background: #333;
+    border: 1px solid #444;
+    color: white;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.vm-view-btn:hover { background: #444; }
+.vm-view-btn.vm-view-active {
+    background: var(--accent);
+    color: #1b2838;
+    border-color: var(--accent);
+}
 .opt-plat-toggle {
     height: 2.25rem;
     padding: 0 0.875rem;
@@ -134,29 +155,31 @@
 let _vmPendSort = null;
 let _vmPendOrder = null;
 let _vmPendHiddenPlatforms = null; // Set when user has changed platforms
-let _vmPendArtOrient = null;
+let _vmPendView = null;
 let _vmPendGroupBy = undefined; // undefined = unchanged
 
 const _vmServerOrder = '{{ state.order if state is defined and state.order is defined else "ASC" }}';
+
+function _vmSyncViewButtons(mode) {
+    ['vertical', 'horizontal', 'list'].forEach(m => {
+        const btn = document.getElementById('vm-view-' + m);
+        if (btn) btn.classList.toggle('vm-view-active', m === mode);
+    });
+}
 
 function openViewModal() {
     _vmPendSort = null;
     _vmPendOrder = null;
     _vmPendHiddenPlatforms = null;
-    _vmPendArtOrient = null;
+    _vmPendView = null;
     _vmPendGroupBy = undefined;
 
     // Reset order button to server state
     const orderBtn = document.querySelector('.order-btn');
     if (orderBtn) orderBtn.textContent = _vmServerOrder === 'ASC' ? '▲' : '▼';
 
-    // Reset art orientation button to current JS state
-    const artBtn = document.getElementById('art-orient-btn');
-    if (artBtn && typeof _artOrientation !== 'undefined') {
-        const isH = _artOrientation === 'horizontal';
-        artBtn.textContent = isH ? '▬ Horizontal' : '▮ Vertical';
-        artBtn.classList.toggle('horizontal', isH);
-    }
+    // Sync view mode buttons to current JS state
+    _vmSyncViewButtons(typeof _artOrientation !== 'undefined' ? _artOrientation : 'vertical');
 
     // Reset platform buttons to current JS state
     if (typeof _hiddenPlatforms !== 'undefined') {
@@ -213,15 +236,9 @@ function vmTogglePlatform(platform) {
     }
 }
 
-function vmToggleArtOrientation() {
-    const current = _vmPendArtOrient ?? (typeof _artOrientation !== 'undefined' ? _artOrientation : 'vertical');
-    _vmPendArtOrient = current === 'vertical' ? 'horizontal' : 'vertical';
-    const btn = document.getElementById('art-orient-btn');
-    if (btn) {
-        const isH = _vmPendArtOrient === 'horizontal';
-        btn.textContent = isH ? '▬ Horizontal' : '▮ Vertical';
-        btn.classList.toggle('horizontal', isH);
-    }
+function vmSetView(mode) {
+    _vmPendView = mode;
+    _vmSyncViewButtons(mode);
 }
 
 function vmSetGroupBy(val) {
@@ -234,7 +251,7 @@ async function applyViewModal() {
     if (_vmPendSort !== null) updates.sort = _vmPendSort;
     if (_vmPendOrder !== null) updates.order = _vmPendOrder;
     if (_vmPendHiddenPlatforms !== null) updates.hidden_platforms = [..._vmPendHiddenPlatforms];
-    if (_vmPendArtOrient !== null) updates.artwork_orientation = _vmPendArtOrient;
+    if (_vmPendView !== null) updates.artwork_orientation = _vmPendView;
     if (_vmPendGroupBy !== undefined) updates.group_by = _vmPendGroupBy;
 
     if (Object.keys(updates).length === 0) {

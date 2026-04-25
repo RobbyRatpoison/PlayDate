@@ -173,13 +173,13 @@ def build_condition_sql(cond, params):
         return f"{col} {op} ?"
     elif op == 'STRFTIME_MONTH':
         params.append(val.zfill(2))
-        return f"strftime('%m', {col}, 'unixepoch') = ?"
+        return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%m', {col}, 'unixepoch') = ?)"
     elif op == 'STRFTIME_DAY':
         params.append(val.zfill(2))
-        return f"strftime('%d', {col}, 'unixepoch') = ?"
+        return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%d', {col}, 'unixepoch') = ?)"
     elif op == 'STRFTIME_YEAR':
         params.append(val)
-        return f"strftime('%Y', {col}, 'unixepoch') = ?"
+        return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%Y', {col}, 'unixepoch') = ?)"
     elif op == 'IS NULL':
         if col in DATE_COLUMNS:
             return f"{col} IS NULL"

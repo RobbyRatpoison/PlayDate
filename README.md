@@ -18,6 +18,7 @@ PlayDate pulls your Steam and GOG libraries, enriches them with metadata (tags, 
 ### Library
 - **Virtual grid renderer** — handles 2000+ games without performance issues
 - **Vertical and horizontal card views** — toggle between portrait capsule art and landscape header art; adjustable card size slider
+- **List view** — split-pane layout with a scrollable game list on the left and a detail/edit panel on the right; resizable divider
 - **Sort and search** — sort by any column, live search by name
 - **Filter system** — simple mode (pick a field, operator, value) and advanced mode (nested AND/OR groups with unlimited conditions); date fields support month/day/year part matching; custom SQL expression mode for power users; filters can be saved and reloaded by name
 - **Bulk edit** — apply changes to any field across a filtered or manually selected set of games at once

@@ -143,9 +143,11 @@ Shelf fields: `filter_key` (builtin or saved filter name), `sort_col` (`'RANDOM(
 
 **Edit mode cancel:** `_initEditBackup()` saves to `sessionStorage` once on entry (not on `saveAndReload` reloads). Cancel restores via POST before navigating away. Save/reset call `_clearEditBackup()`.
 
-## Library Virtual Grid
+## Library Views
 
-`library.html` uses IntersectionObserver (`rootMargin: '1200px'`) + `CARD_HTML_CACHE`. Images use `data-src` with 200ms delay after scroll (0ms on initial load). `_patchGameCard` evicts from cache so edits show fresh data.
+**Grid mode** (default): `library.html` uses IntersectionObserver (`rootMargin: '1200px'`) + `CARD_HTML_CACHE`. Images use `data-src` with 200ms delay after scroll (0ms on initial load). `_patchGameCard` evicts from cache so edits show fresh data.
+
+**List mode**: split-pane layout (`#library-list-layout`) with `#list-pane` (scrollable rows, 20% width, resizable) and `#detail-pane` (game detail + inline edit form). Activated via the VIEW modal; stored as `artwork_orientation: 'list'` in `state.json`. On activation, `#game-grid` and `.library-header` are hidden, `body` and `.container` overflow is locked to `hidden`, and `_adjustListHeight()` sizes `#library-list-layout` to fill the remaining viewport. A `_listObserver` (IntersectionObserver) loads icons as rows scroll into view.
 
 ## HLTB Integration
 

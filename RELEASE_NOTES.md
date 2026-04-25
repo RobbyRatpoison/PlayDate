@@ -38,20 +38,20 @@ chmod +x install.sh && ./install.sh
 
 ---
 
-## v1.4.3 — 2026-04-21
+## v1.4.4 — 2026-04-25
 
-### Menu
+### Library
 
-- The hamburger menu now has direct entries for **Accounts**, **Appearance**, **Library**, **Community**, **Data**, **System**, and **Manage**, replacing the old Settings and Tools buttons. Each opens a focused modal for that area.
-
-### Pick 6
-
-- Added soft bound relaxation: if the active filters produce a pool smaller than 12 games, bounds loosen in 5% steps until at least 6 games are available. A warning is shown when this happens.
+- Added **List view** as a third display mode alongside Vertical and Horizontal. Switch to it via the VIEW modal — the art orientation toggle is now a three-button group. List view shows a scrollable game list on the left with a resizable divider and a detail panel on the right. The detail panel shows cover art, an on-demand game description, and all editable fields from the edit modal. Group-by is supported with collapsible section headers. Rows outside the viewport are unloaded so performance stays consistent regardless of library size. Right-clicking a row opens the standard context menu. The last selected game is remembered when navigating away and back.
 
 ### Fixes
 
-- Context menu completion status submenu no longer goes off the right edge or bottom of the screen.
-- Right-clicking an area with no menu options now closes any open context menu.
-- Release date migration no longer restarts on every launch after completing.
+- Fixed update download silently hanging on SSL certificate verification failures; now retries with verification disabled, and shows an error with a manual download link if the retry also fails.
+- Fixed games with no release date falsely matching date-based filter conditions (month, day, year).
+- Fixed account modal API key tooltip being clipped by the modal edge.
+
+### Other
+
+- Gamepad navigation is temporarily disabled while it is reworked. It will return in a future update.
 
 

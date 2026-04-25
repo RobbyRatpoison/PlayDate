@@ -188,6 +188,9 @@
             // Library page: .game-card[data-appid]
             if (el.classList && el.classList.contains('game-card') && el.dataset.appid)
                 return el.dataset.appid;
+            // Library list mode: .list-row[data-appid]
+            if (el.classList && el.classList.contains('list-row') && el.dataset.appid)
+                return el.dataset.appid;
             // Home page: .shelf-capsule-wrap[data-appid]
             if (el.classList && el.classList.contains('shelf-capsule-wrap') && el.dataset.appid)
                 return el.dataset.appid;

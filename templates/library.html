@@ -104,6 +104,213 @@
             border-color: var(--accent);
         }
 
+        /* ── List mode layout ─────────────────────────────────────────── */
+        #library-list-layout {
+            display: flex;
+            flex-direction: row;
+            overflow: hidden;
+            border-top: 1px solid var(--border);
+            background: var(--bg-surface);
+        }
+        #list-pane {
+            width: 20%;
+            min-width: 200px;
+            max-width: 50%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            flex-shrink: 0;
+            background: var(--bg-surface);
+        }
+        #game-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        .list-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border);
+            user-select: none;
+            background: var(--bg-surface);
+            min-height: 47px;
+            box-sizing: border-box;
+        }
+        .list-row:hover { background: var(--bg-raised); }
+        .list-row.selected {
+            background: #1a3a5c;
+            border-left: 3px solid var(--accent);
+            padding-left: 9px;
+        }
+        .list-row.gamepad-focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .list-group-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            font-size: 0.72rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            background: var(--bg-raised);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            cursor: pointer;
+            user-select: none;
+        }
+        .list-group-header:hover { background: var(--bg-input); }
+        .list-icon {
+            width: 32px;
+            height: 32px;
+            object-fit: cover;
+            border-radius: 3px;
+            flex-shrink: 0;
+            background: var(--bg-raised);
+        }
+        .list-name {
+            flex: 1;
+            font-size: 0.88rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-primary);
+        }
+        .list-status-badge {
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #list-divider {
+            width: 6px;
+            background: var(--bg-raised);
+            cursor: col-resize;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        #list-divider:hover, #list-divider.dragging { background: var(--accent); }
+        #detail-pane {
+            flex: 1;
+            min-width: 300px;
+            min-height: 0;
+            overflow: hidden;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg-surface);
+        }
+        #detail-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        #detail-content {
+            flex-direction: row;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        #detail-main {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        #detail-cover-art {
+            width: 45%;
+            flex-shrink: 0;
+            object-fit: contain;
+            object-position: top center;
+            align-self: stretch;
+            background: var(--bg-raised);
+            border-left: 1px solid var(--border);
+        }
+        #detail-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            background: var(--bg-surface);
+        }
+        #detail-header-icon {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: var(--bg-raised);
+            flex-shrink: 0;
+        }
+        #detail-title {
+            font-size: 1.05rem;
+            font-weight: bold;
+            color: var(--text-primary);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #detail-plat-badge {
+            font-size: 0.72rem;
+            padding: 2px 7px;
+            border-radius: 3px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            flex-shrink: 0;
+        }
+        #detail-desc-section {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            background: var(--bg-surface);
+        }
+        #detail-desc-text {
+            font-size: 0.84rem;
+            color: var(--text-secondary);
+            line-height: 1.55;
+        }
+        #detail-desc-loading {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        #detail-form-area {
+            flex: 1;
+            padding: 14px 16px;
+            background: var(--bg-surface);
+        }
+        #detail-footer {
+            display: flex;
+            gap: 8px;
+            padding: 10px 16px;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+            background: var(--bg-surface);
+        }
+        .dp-label {
+            display: block;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-bottom: 3px;
+            margin-top: 10px;
+        }
+        .dp-label:first-child { margin-top: 0; }
+
         .game-card.hovered {
             outline-color: var(--accent);
         }
@@ -469,13 +676,151 @@
 
     <div class="game-grid" id="game-grid"></div>
 
+    <!-- List mode layout -->
+    <div id="library-list-layout" style="display:none;">
+        <div id="list-pane">
+            <div id="game-list"></div>
+        </div>
+        <div id="list-divider"></div>
+        <div id="detail-pane">
+            <div id="detail-empty">Select a game from the list</div>
+            <div id="detail-content" style="display:none;">
+                <div id="detail-main">
+                <!-- Header: icon + title + platform -->
+                <div id="detail-header">
+                    <img id="detail-header-icon" src="" alt="">
+                    <span id="detail-title"></span>
+                    <span id="detail-plat-badge"></span>
+                    <a id="detail-store-link" href="#" target="_blank"
+                       style="font-size:0.78rem; color:var(--accent); text-decoration:none; flex-shrink:0; display:none;">Store ↗</a>
+                </div>
+                <!-- Description -->
+                <div id="detail-desc-section">
+                    <div id="detail-desc-loading" style="display:none;">Loading description...</div>
+                    <div id="detail-desc-text"></div>
+                </div>
+                <!-- Form area -->
+                <div id="detail-form-area">
+                    <form id="dp-form" onsubmit="return false;">
+                    <input type="hidden" name="edit-appid" id="dp-appid">
+
+                    <!-- INFO pane -->
+                    <div id="detail-pane-info">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                            <div>
+                                <label class="dp-label">Game Title</label>
+                                <input type="text" name="name" id="dp-name" style="width:100%;box-sizing:border-box;" data-modal-row="1">
+                                <label class="dp-label">Developers</label>
+                                <input type="text" name="developers" id="dp-dev" style="width:100%;box-sizing:border-box;" data-modal-row="2">
+                                <label class="dp-label">Publishers</label>
+                                <input type="text" name="publishers" id="dp-pub" style="width:100%;box-sizing:border-box;" data-modal-row="3">
+                                <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:8px;">
+                                    <div>
+                                        <label class="dp-label">Release Date</label>
+                                        <input type="text" name="release_date" id="dp-rel" placeholder="YYYY-MM-DD" style="width:100%;box-sizing:border-box;" data-modal-row="4">
+                                    </div>
+                                    <div>
+                                        <label class="dp-label">Free to Play</label>
+                                        <select name="is_free" id="dp-is-free" data-modal-row="4">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <label class="dp-label">Review Score</label>
+                                <input type="text" name="review_score" id="dp-review-score" style="width:100%;box-sizing:border-box;" data-modal-row="5">
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                                    <div>
+                                        <label class="dp-label">Review %</label>
+                                        <input type="number" name="review_percentage" id="dp-review-pct" min="0" max="100" style="width:100%;box-sizing:border-box;" data-modal-row="6">
+                                    </div>
+                                    <div>
+                                        <label class="dp-label">Total Reviews</label>
+                                        <input type="number" name="total_reviews" id="dp-total-reviews" style="width:100%;box-sizing:border-box;" data-modal-row="6">
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="dp-label">Tags</label>
+                                <div class="pill-input-box" id="dp-tags-box" style="min-height:38px; max-height:80px; overflow-y:auto;" data-modal-row="7"></div>
+                                <input type="hidden" name="tags" id="dp-tags">
+                                <small class="pill-hint">Enter to add</small>
+                                <label class="dp-label">Genres</label>
+                                <div class="pill-input-box" id="dp-genres-box" style="min-height:38px; max-height:80px; overflow-y:auto;" data-modal-row="8"></div>
+                                <input type="hidden" name="genres" id="dp-genres">
+                                <small class="pill-hint">Enter to add</small>
+                                <label class="dp-label">Categories</label>
+                                <div class="pill-input-box" id="dp-categories-box" style="min-height:38px; max-height:80px; overflow-y:auto;" data-modal-row="9"></div>
+                                <input type="hidden" name="categories" id="dp-categories">
+                                <small class="pill-hint">Enter to add</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STATS pane -->
+                    <div id="detail-pane-stats" style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                            <div>
+                                <label class="dp-label">Completion Status</label>
+                                <select name="completion_status" id="dp-status" data-modal-row="1">
+                                    <option value="Never Played">Never Played</option>
+                                    <option value="Unfinished">Unfinished</option>
+                                    <option value="Beaten">Beaten</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Won't Play">Won't Play</option>
+                                </select>
+                                <label class="dp-label">Installed</label>
+                                <select name="installed" id="dp-installed" data-modal-row="2">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </select>
+                                <label class="dp-label">Last Played</label>
+                                <input type="text" name="last_played" id="dp-last-played" placeholder="YYYY-MM-DD" style="width:100%;box-sizing:border-box;" data-modal-row="3">
+                                <label class="dp-label">Date Added</label>
+                                <input type="text" name="date_added" id="dp-date-added" placeholder="YYYY-MM-DD" style="width:100%;box-sizing:border-box;" data-modal-row="4">
+                            </div>
+                            <div>
+                                <label class="dp-label">Playtime (mins)</label>
+                                <input type="number" name="playtime_forever" id="dp-playtime" placeholder="mins" min="0" step="1" style="width:100%;box-sizing:border-box;" data-modal-row="5">
+                                <label class="dp-label">Achievements (unlocked / total)</label>
+                                <div style="display:flex; gap:6px;">
+                                    <input type="number" name="unlocked_achievements" id="dp-unlocked-ach" placeholder="Unlocked" style="flex:1;box-sizing:border-box;" data-modal-row="6">
+                                    <input type="number" name="total_achievements"    id="dp-total-ach"    placeholder="Total"    style="flex:1;box-sizing:border-box;" data-modal-row="6">
+                                </div>
+                                <label class="dp-label">Groups</label>
+                                <div class="pill-input-box" id="dp-groups-box" style="min-height:38px; max-height:80px; overflow-y:auto;" data-modal-row="7"></div>
+                                <input type="hidden" name="groups" id="dp-groups">
+                                <small class="pill-hint">Enter to add</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    </form>
+                </div><!-- /detail-form-area -->
+
+                <!-- Footer buttons -->
+                <div id="detail-footer">
+                    <button type="button" id="dp-save-btn" class="btn-save" style="flex:2;margin:0;" data-modal-row="10" onclick="dpSaveGame()">Save</button>
+                    <button type="button" class="nav-btn" style="flex:1;" data-modal-row="10" onclick="dpCancelEdit()">Cancel</button>
+                    <button type="button" class="nav-btn" style="flex:1;" data-modal-row="10" onclick="dpSyncData()">Sync</button>
+                    <button type="button" class="nav-btn" style="flex:1; border-color:var(--color-danger); background:var(--color-danger); color:var(--text-bright);" data-modal-row="10" onclick="dpDeleteGame()">Delete</button>
+                    <button type="button" class="nav-btn" style="flex:1;" data-modal-row="10" onclick="dpOpenArtEditor()">Art</button>
+                </div>
+                </div><!-- /detail-main -->
+                <img id="detail-cover-art" src="" alt="">
+            </div><!-- /detail-content -->
+        </div><!-- /detail-pane -->
+    </div><!-- /library-list-layout -->
+
     <!-- PAGYWOSG hover tooltip -->
     <div id="pag-hover-tooltip" style="
-        display:none; position:fixed; z-index:9000; pointer-events:none;
+        display:block; position:fixed; left:0; top:0; z-index:9000; pointer-events:none;
+        transform:translate(-9999px,-9999px); opacity:0;
         background:var(--bg-surface); border:1px solid var(--border);
         border-radius:7px; padding:9px 12px; max-width:320px;
         font-size:0.8rem; line-height:1.5; box-shadow:0 4px 18px rgba(0,0,0,0.45);
     "></div>
+
 
 {% endblock %}
 
@@ -502,8 +847,6 @@
     }
 
     (function _initGridPrefs() {
-        const grid   = document.getElementById('game-grid');
-        const btn    = document.getElementById('art-orient-btn');
         const slider = document.getElementById('card-size-slider');
         const size   = {{ state.get('card_height', 200) }};
         _setCardSize(size);
@@ -512,25 +855,24 @@
             const pct = (size - parseInt(slider.min)) / (parseInt(slider.max) - parseInt(slider.min)) * 100;
             slider.style.setProperty('--slider-pct', pct + '%');
         }
-        if (_artOrientation === 'horizontal') {
-            // .horizontal class on game grids is applied by buildGrid(); just update button here
-            if (btn) { btn.textContent = '▬ Horizontal'; btn.classList.add('horizontal'); }
+        if (_artOrientation === 'list') {
+            document.getElementById('game-grid').style.display = 'none';
+            const ll = document.getElementById('library-list-layout');
+            if (ll) ll.style.display = 'flex';
+            const lh = document.querySelector('.library-header');
+            if (lh) lh.style.display = 'none';
+            document.body.style.overflow = 'hidden';
+            const ct = document.querySelector('.container');
+            if (ct) { ct.style.overflow = 'hidden'; ct.style.paddingBottom = '0'; }
         }
     })();
 
 
     function toggleArtOrientation() {
+        if (_artOrientation === 'list') return; // handled by VIEW modal
         _artOrientation = _artOrientation === 'vertical' ? 'horizontal' : 'vertical';
-        const btn  = document.getElementById('art-orient-btn');
         const isHorizontal = _artOrientation === 'horizontal';
         document.querySelectorAll('.game-grid').forEach(g => g.classList.toggle('horizontal', isHorizontal));
-        if (isHorizontal) {
-            btn.textContent = '▬ Horizontal';
-            btn.classList.add('horizontal');
-        } else {
-            btn.textContent = '▮ Vertical';
-            btn.classList.remove('horizontal');
-        }
         // Re-apply card size with new orientation's scaling
         _setCardSize(parseInt(document.getElementById('card-size-slider').value));
         // Rebuild cards with correct image paths
@@ -908,7 +1250,16 @@
     }
 
     // Build on load
-    document.addEventListener('DOMContentLoaded', buildGrid);
+    document.addEventListener('DOMContentLoaded', function() {
+        if (_artOrientation === 'list') {
+            _adjustListHeight();
+            _initListDivider();
+            buildListView();
+            window.addEventListener('resize', _adjustListHeight);
+        } else {
+            buildGrid();
+        }
+    });
 
     // ── Live populate updates ─────────────────────────────────────────────────
 
@@ -1805,6 +2156,11 @@ async function stopBulkDateImport() {
     const grid     = document.getElementById('game-grid');
     const sgGroup  = _pagExtractSgGroup(_serverFilterTree);
 
+    // ── Debug (delegates to global overlay in base.html) ──────────────────────
+    const _dbgPush = msg => window._hoverDebugPush?.(msg);
+    const _dbgRender = () => {};  // base.html re-renders on every mousemove
+    // ──────────────────────────────────────────────────────────────────────────
+
     function _hltbMin(game) {
         const vals = [game.hltb_main, game.hltb_extras, game.hltb_completionist]
             .filter(v => v && v > 0);
@@ -1845,6 +2201,15 @@ async function stopBulkDateImport() {
     }
 
     let _hoveredAppid = null;
+    let _hideOnStopTimer = null;
+
+    function _hideTooltip(reason) {
+        _dbgPush(`HIDE  reason=${reason ?? 'unknown'} prev_appid=${_hoveredAppid}`);
+        tooltip.style.transform = 'translate(-9999px,-9999px)';
+        tooltip.style.opacity = '0';
+        tooltip.innerHTML = '';
+        _hoveredAppid = null;
+    }
 
     grid.addEventListener('mouseover', e => {
         const card = e.target.closest('.game-card[data-appid]');
@@ -1852,51 +2217,43 @@ async function stopBulkDateImport() {
         if (appid === _hoveredAppid) return;
         clearTimeout(_hideOnStopTimer);
         _hoveredAppid = appid;
-        if (!appid || !card.dataset.populated) { tooltip.style.display = 'none'; tooltip.innerHTML = ''; return; }
+        if (!appid || !card.dataset.populated) { _dbgPush(`mouseover no-card/unpopulated`); _hideTooltip('mouseover-no-card'); return; }
         const game = _GAME_MAP.get(appid);
-        if (!game) { tooltip.style.display = 'none'; tooltip.innerHTML = ''; return; }
+        if (!game) { _hideTooltip('mouseover-no-game'); return; }
         const html = _buildTooltip(game);
-        if (!html) { tooltip.style.display = 'none'; tooltip.innerHTML = ''; return; }
-        // Set content but keep hidden — mousemove positions it before making it visible
-        // so it never flashes at (0,0) on a secondary monitor.
+        if (!html) { _dbgPush(`mouseover appid=${appid} no tooltip content`); _hideTooltip('mouseover-no-content'); return; }
+        // Pre-render off-screen so offsetWidth/Height are available for clamping on first mousemove.
         tooltip.innerHTML = html;
-        tooltip.style.display = 'none';
+        tooltip.style.transform = 'translate(-9999px,-9999px)';
+        tooltip.style.opacity = '0';
+        _hoveredAppid = appid;
+        _dbgPush(`mouseover LOADED appid=${appid} html_len=${html.length}`);
+        _dbgRender(null, null);
     });
 
-    grid.addEventListener('mouseleave', () => {
-        _hoveredAppid = null;
-        tooltip.style.display = 'none';
-    });
-
-    let _lastMouseY = 0;
-    let _hideOnStopTimer = null;
-
-    document.addEventListener('pointerleave', () => {
-        _hoveredAppid = null;
-        tooltip.style.display = 'none';
-    });
+    grid.addEventListener('mouseleave', e => { _dbgPush(`grid mouseleave`); _hideTooltip('grid-mouseleave'); });
+    document.addEventListener('pointerleave', e => { _dbgPush(`doc pointerleave`); _hideTooltip('pointerleave'); });
 
     document.addEventListener('mousemove', e => {
-        _lastMouseY = e.clientY;
         clearTimeout(_hideOnStopTimer);
         if (e.clientY >= window.innerHeight - 4) {
-            _hideOnStopTimer = setTimeout(() => {
-                _hoveredAppid = null;
-                tooltip.style.display = 'none';
-            }, 150);
+            _dbgPush(`near-bottom hide timer set clientY=${e.clientY}`);
+            _hideOnStopTimer = setTimeout(() => _hideTooltip('bottom-edge-timeout'), 150);
         }
-        if (!_hoveredAppid || !tooltip.innerHTML) { tooltip.style.display = 'none'; return; }
+        if (!_hoveredAppid || !tooltip.innerHTML) {
+            if (_hoveredAppid || tooltip.innerHTML) _dbgPush(`mousemove HIDE-PATH hoveredAppid=${_hoveredAppid} innerHTML_len=${tooltip.innerHTML.length}`);
+            _hideTooltip('mousemove-no-content');
+            _dbgRender(e.clientX, e.clientY);
+            return;
+        }
         const pad = 14;
         let x = e.clientX + pad, y = e.clientY + pad;
-        // Only do bounds-clamping once the tooltip is visible and has known dimensions.
-        if (tooltip.style.display === 'block') {
-            const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-            if (x + tw > window.innerWidth  - pad) x = e.clientX - tw - pad;
-            if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
-        }
-        tooltip.style.left = x + 'px';
-        tooltip.style.top  = y + 'px';
-        tooltip.style.display = 'block';
+        const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+        if (x + tw > window.innerWidth  - pad) x = e.clientX - tw - pad;
+        if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
+        tooltip.style.transform = `translate(${x}px,${y}px)`;
+        tooltip.style.opacity = '1';
+        _dbgRender(e.clientX, e.clientY);
     });
 })();
 
@@ -1976,6 +2333,446 @@ function pickRandomGame() {
     }, { threshold: 0.3 });
     observer.observe(card);
 }
+
+    // ── LIST MODE ──────────────────────────────────────────────────────────────
+
+    let _dpCurrentGame = null;
+    let _dpCurrentAppid = null;
+    let _dpDescLoaded = new Set(); // appids whose description is already shown
+
+    const _DP_SESSION_KEY = 'pd_list_selected_appid';
+    function _dpSaveSelection(appid) { sessionStorage.setItem(_DP_SESSION_KEY, String(appid)); }
+    function _dpRestoreSelection() {
+        const saved = sessionStorage.getItem(_DP_SESSION_KEY);
+        return saved ? _GAME_MAP.get(parseInt(saved, 10)) || null : null;
+    }
+
+    function _adjustListHeight() {
+        const ll = document.getElementById('library-list-layout');
+        if (!ll || ll.style.display === 'none') return;
+        const top = ll.getBoundingClientRect().top;
+        ll.style.height = (window.innerHeight - top - 2) + 'px';
+    }
+
+    function _initListDivider() {
+        const divider  = document.getElementById('list-divider');
+        const listPane = document.getElementById('list-pane');
+        const layout   = document.getElementById('library-list-layout');
+        if (!divider || !listPane || !layout) return;
+        let dragging = false, startX = 0, startW = 0;
+        divider.addEventListener('mousedown', e => {
+            dragging = true; startX = e.clientX; startW = listPane.offsetWidth;
+            divider.classList.add('dragging');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', e => {
+            if (!dragging) return;
+            const totalW  = layout.offsetWidth;
+            const newW    = startW + (e.clientX - startX);
+            const minW    = 200;
+            const maxW    = Math.floor(totalW * 0.5);
+            listPane.style.width = Math.min(Math.max(newW, minW), maxW) + 'px';
+            listPane.style.flex  = 'none';
+        });
+        document.addEventListener('mouseup', () => {
+            if (!dragging) return;
+            dragging = false;
+            divider.classList.remove('dragging');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    }
+
+    // Creates a placeholder row — content is filled lazily by observeListRows()
+    function _makeListRow(game) {
+        const row = document.createElement('div');
+        row.className = 'list-row';
+        row.dataset.appid     = game.appid;
+        row.dataset.name      = game.name      || '';
+        row.dataset.status    = game.completion_status || '';
+        row.dataset.platform  = game.platform  || 'steam';
+        row.dataset.installed = game.installed ? '1' : '0';
+        // Resolve via _GAME_MAP at click time so edits are always reflected
+        row.addEventListener('click',    () => { const g = _GAME_MAP.get(game.appid); if (g) openDetailPane(g); });
+        row.addEventListener('dblclick', () => launchGame(game.appid));
+        return row;
+    }
+
+    function _populateListRow(row) {
+        const appid = parseInt(row.dataset.appid, 10);
+        const game  = _GAME_MAP.get(appid);
+        if (!game) return;
+
+        const icon = document.createElement('img');
+        icon.className = 'list-icon';
+        icon.alt = '';
+        icon.src = `/static/img/library/icons/${game.appid}.jpg?v=${_imgV}`;
+        icon.onerror = () => { icon.style.display = 'none'; };
+
+        const name = document.createElement('span');
+        name.className = 'list-name';
+        name.textContent = game.name || '';
+
+        const status = document.createElement('span');
+        status.className = 'list-status-badge';
+        status.textContent = game.completion_status || '';
+
+        row.appendChild(icon);
+        row.appendChild(name);
+        row.appendChild(status);
+        row.dataset.populated = '1';
+    }
+
+    let _listObserver = null;
+    function observeListRows() {
+        if (_listObserver) _listObserver.disconnect();
+        const gameList = document.getElementById('game-list');
+        if (!gameList) return;
+        _listObserver = new IntersectionObserver((entries) => {
+            requestAnimationFrame(() => {
+                entries.forEach(entry => {
+                    const row = entry.target;
+                    if (entry.isIntersecting) {
+                        if (!row.dataset.populated) _populateListRow(row);
+                    } else {
+                        if (row.dataset.populated) {
+                            row.innerHTML = '';
+                            delete row.dataset.populated;
+                        }
+                    }
+                });
+            });
+        }, { root: gameList, rootMargin: '800px', threshold: 0 });
+        gameList.querySelectorAll('.list-row').forEach(r => _listObserver.observe(r));
+    }
+
+    function buildListView() {
+        const listEl = document.getElementById('game-list');
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+
+        if (_groupBy) {
+            // Group games by key, preserving server sort order within each group
+            const groupMap = new Map();
+            GAMES.forEach(game => {
+                const key = String(_getGroupKey(game) ?? 'null');
+                if (!groupMap.has(key)) groupMap.set(key, []);
+                groupMap.get(key).push(game);
+            });
+            const sortedKeys = _sortGroupKeys([...groupMap.keys()].map(k => k === 'null' ? null : k))
+                .map(k => String(k ?? 'null'));
+            sortedKeys.forEach(strKey => {
+                const games = groupMap.get(strKey);
+                if (!games?.length) return;
+                const rawKey = strKey === 'null' ? null : strKey;
+                const collapsed = _collapsedGroups.has(strKey);
+
+                const header = document.createElement('div');
+                header.className = 'list-group-header';
+                header.dataset.groupKey = strKey;
+
+                const chevron = document.createElement('span');
+                chevron.className = 'group-chevron';
+                chevron.textContent = collapsed ? '▸' : '▾';
+                header.appendChild(chevron);
+                header.appendChild(document.createTextNode(_getGroupLabel(rawKey)));
+                fragment.appendChild(header);
+
+                const rows = games.map(game => {
+                    const row = _makeListRow(game);
+                    if (collapsed) row.style.display = 'none';
+                    return row;
+                });
+                rows.forEach(r => fragment.appendChild(r));
+
+                header.addEventListener('click', () => {
+                    const isNowCollapsed = _collapsedGroups.has(strKey);
+                    if (isNowCollapsed) {
+                        _collapsedGroups.delete(strKey);
+                        chevron.textContent = '▾';
+                        rows.forEach(r => r.style.display = '');
+                    } else {
+                        _collapsedGroups.add(strKey);
+                        chevron.textContent = '▸';
+                        rows.forEach(r => r.style.display = 'none');
+                    }
+                });
+            });
+        } else {
+            GAMES.forEach(game => fragment.appendChild(_makeListRow(game)));
+        }
+
+        listEl.appendChild(fragment);
+        observeListRows();
+
+        // Show last-selected (from sessionStorage), in-memory current, or first visible row
+        const _firstVisibleGame = () => {
+            const row = listEl.querySelector('.list-row:not([style*="display: none"]):not([style*="display:none"])');
+            return row ? _GAME_MAP.get(parseInt(row.dataset.appid, 10)) || null : GAMES[0];
+        };
+        const first = _dpCurrentGame
+            ? (_GAME_MAP.get(_dpCurrentGame.appid) || _firstVisibleGame())
+            : (_dpRestoreSelection() || _firstVisibleGame());
+        if (first) openDetailPane(first);
+
+        // Register with input manager for gamepad
+        if (window._inputMgr?.onListBuilt) window._inputMgr.onListBuilt();
+    }
+
+    function _patchListRow(game) {
+        const row = document.querySelector(`.list-row[data-appid="${game.appid}"]`);
+        if (!row) return;
+        const nameEl   = row.querySelector('.list-name');
+        const statusEl = row.querySelector('.list-status-badge');
+        if (nameEl)   nameEl.textContent   = game.name || '';
+        if (statusEl) statusEl.textContent = game.completion_status || '';
+        // Keep context menu data attributes in sync
+        if (row) {
+            row.dataset.name      = game.name      || '';
+            row.dataset.status    = game.completion_status || '';
+            row.dataset.installed = game.installed ? '1' : '0';
+        }
+        // Refresh in GAMES array
+        const existing = _GAME_MAP.get(game.appid);
+        if (existing) Object.assign(existing, game);
+    }
+
+    const _PLAT_LABELS = { steam: 'Steam', gog: 'GOG', epic_games: 'Epic', ea_app: 'EA', ubisoft: 'Ubisoft' };
+
+    function openDetailPane(game) {
+        _dpCurrentGame   = game;
+        _dpCurrentAppid  = game.appid;
+        _dpSaveSelection(game.appid);
+
+        // Highlight list row
+        document.querySelectorAll('.list-row').forEach(r => r.classList.remove('selected'));
+        const row = document.querySelector(`.list-row[data-appid="${game.appid}"]`);
+        if (row) {
+            row.classList.add('selected');
+            row.scrollIntoView({ block: 'nearest' });
+        }
+
+        // Vertical cover art (right sidebar)
+        const coverEl = document.getElementById('detail-cover-art');
+        if (coverEl) {
+            coverEl.src = `/static/img/library/vertical/${game.appid}.jpg?v=${_imgV}`;
+            coverEl.style.display = '';
+            coverEl.onerror = () => { coverEl.style.display = 'none'; };
+        }
+
+        // Header
+        const iconEl = document.getElementById('detail-header-icon');
+        if (iconEl) {
+            iconEl.src = `/static/img/library/icons/${game.appid}.jpg?v=${_imgV}`;
+            iconEl.onerror = () => { iconEl.style.display = 'none'; };
+            iconEl.style.display = '';
+        }
+        const titleEl = document.getElementById('detail-title');
+        if (titleEl) titleEl.textContent = game.name || '';
+        const platEl = document.getElementById('detail-plat-badge');
+        if (platEl) platEl.textContent = _PLAT_LABELS[game.platform] || game.platform || 'Steam';
+        const storeLink = document.getElementById('detail-store-link');
+        if (storeLink) {
+            if (game.platform === 'steam' || (!game.platform && game.appid >= 0)) {
+                storeLink.href = `https://store.steampowered.com/app/${game.appid}/`;
+                storeLink.style.display = '';
+            } else {
+                storeLink.style.display = 'none';
+            }
+        }
+
+        // Description (load lazily)
+        const descText    = document.getElementById('detail-desc-text');
+        const descLoading = document.getElementById('detail-desc-loading');
+        if (!_dpDescLoaded.has(game.appid)) {
+            if (descText)    descText.textContent = '';
+            if (descLoading) descLoading.style.display = '';
+            _dpLoadDescription(game.appid);
+        }
+
+        // Form fields
+        function dpSet(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.value = val ?? '';
+        }
+        dpSet('dp-appid',          game.appid);
+        dpSet('dp-name',           game.name);
+        dpSet('dp-dev',            game.developers);
+        dpSet('dp-pub',            game.publishers);
+        dpSet('dp-rel',            game.release_date);
+        dpSet('dp-review-score',   game.review_score);
+        dpSet('dp-review-pct',     game.review_percentage ?? '');
+        dpSet('dp-total-reviews',  game.total_reviews ?? '');
+        dpSet('dp-last-played',    game.last_played);
+        dpSet('dp-date-added',     game.date_added);
+        dpSet('dp-playtime',       game.playtime_forever ?? '');
+        dpSet('dp-unlocked-ach',   game.unlocked_achievements ?? '');
+        dpSet('dp-total-ach',      game.total_achievements ?? '');
+
+        const isFreeEl    = document.getElementById('dp-is-free');
+        const statusEl    = document.getElementById('dp-status');
+        const installedEl = document.getElementById('dp-installed');
+        if (isFreeEl)    isFreeEl.value    = String(game.is_free ?? 0);
+        if (statusEl)    statusEl.value    = game.completion_status || 'Never Played';
+        if (installedEl) installedEl.value = String(game.installed ?? 0);
+
+        if (typeof pillInputSet === 'function') {
+            pillInputSet('dp-tags',       'dp-tags-box',       game.tags       || '');
+            pillInputSet('dp-genres',     'dp-genres-box',     game.genres     || '');
+            pillInputSet('dp-categories', 'dp-categories-box', game.categories || '');
+            pillInputSet('dp-groups',     'dp-groups-box',     game.groups     || '');
+        }
+
+        // Show content
+        document.getElementById('detail-empty').style.display   = 'none';
+        document.getElementById('detail-content').style.display = 'flex';
+
+        // Reset save button
+        const saveBtn = document.getElementById('dp-save-btn');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+    }
+
+    async function _dpLoadDescription(appid) {
+        try {
+            const res  = await fetch(`/api/game-description/${appid}`);
+            const data = await res.json();
+            if (_dpCurrentAppid !== appid) return; // user selected different game
+            const descText    = document.getElementById('detail-desc-text');
+            const descLoading = document.getElementById('detail-desc-loading');
+            if (descLoading) descLoading.style.display = 'none';
+            if (descText) {
+                descText.textContent = (data.status === 'success' && data.description)
+                    ? data.description : '';
+            }
+            _dpDescLoaded.add(appid);
+        } catch (_) {
+            const descLoading = document.getElementById('detail-desc-loading');
+            if (descLoading) descLoading.style.display = 'none';
+        }
+    }
+
+    async function dpSaveGame() {
+        const appid = _dpCurrentAppid;
+        if (!appid) return;
+
+        // The pill hidden inputs are kept in sync by _pillSync; FormData picks them up directly.
+        const fd = new FormData(document.getElementById('dp-form'));
+        // custom selects emit a hidden input via initCustomSelect; pill hiddens are in the form
+        const saveBtn = document.getElementById('dp-save-btn');
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        try {
+            const res    = await fetch('/update_game', { method: 'POST', body: fd });
+            const result = await res.json();
+            if (result.status === 'success') {
+                _patchGameCard(result.game);
+                _patchListRow(result.game);
+                _dpCurrentGame = result.game;
+                if (result.unique_tags)       { PILL_SUGGESTIONS['dp-tags']       = result.unique_tags;       PILL_SUGGESTIONS['edit-tags']       = result.unique_tags;       }
+                if (result.unique_groups)     { PILL_SUGGESTIONS['dp-groups']     = result.unique_groups;     PILL_SUGGESTIONS['edit-groups']     = result.unique_groups;     }
+                if (result.unique_genres)     { PILL_SUGGESTIONS['dp-genres']     = result.unique_genres;     PILL_SUGGESTIONS['edit-genres']     = result.unique_genres;     }
+                if (result.unique_categories) { PILL_SUGGESTIONS['dp-categories'] = result.unique_categories; PILL_SUGGESTIONS['edit-categories'] = result.unique_categories; }
+                saveBtn.textContent = 'Saved ✓';
+                setTimeout(() => { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }, 1800);
+            } else {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '✘ ' + (result.message || 'Failed');
+                setTimeout(() => { saveBtn.textContent = 'Save'; }, 3000);
+            }
+        } catch (_) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = '✘ Network error';
+            setTimeout(() => { saveBtn.textContent = 'Save'; }, 3000);
+        }
+    }
+
+    function dpCancelEdit() {
+        if (_dpCurrentGame) openDetailPane(_dpCurrentGame);
+    }
+
+    async function dpSyncData() {
+        const appid = _dpCurrentAppid;
+        if (!appid) return;
+        const game   = _dpCurrentGame;
+        const isGog  = game?.platform === 'gog';
+        const btn    = document.querySelector('#detail-footer button[onclick="dpSyncData()"]');
+        if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
+        const url = isGog ? `/api/gog/scrape-single/${appid}` : `/api/scrape_single/${appid}`;
+        try {
+            const res    = await fetch(url, { method: isGog ? 'POST' : 'GET' });
+            const data   = await res.json();
+            if (data.status === 'success' && data.data) {
+                const g = data.data;
+                if (_dpCurrentAppid === appid) {
+                    openDetailPane({ ..._dpCurrentGame, ...g });
+                    _dpDescLoaded.delete(appid); // refresh description too
+                }
+            }
+            if (btn) { btn.textContent = 'Done'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Sync'; }, 1500); }
+        } catch (_) {
+            if (btn) { btn.disabled = false; btn.textContent = 'Sync'; }
+        }
+    }
+
+    async function dpDeleteGame() {
+        const appid = _dpCurrentAppid;
+        if (!appid) return;
+        const name = _dpCurrentGame?.name || `AppID ${appid}`;
+        if (!await confirm(`Remove "${name}" from your PlayDate library?\n\nThis deletes the game's database entry and cover image.`)) return;
+        const blacklist = await confirmCustom(
+            `Blacklist "${name}"?\n\nBlacklisted games won't be re-added during populate.`,
+            'Blacklist and Delete', 'Delete'
+        );
+        try {
+            const res = await fetch(`/api/delete-game/${appid}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ blacklist, name })
+            });
+            const result = await res.json();
+            if (result.status === 'success') window.location.reload();
+            else alert('Delete failed: ' + result.message);
+        } catch (_) { alert('Network error during delete.'); }
+    }
+
+    function dpOpenArtEditor() {
+        const game = _dpCurrentGame;
+        if (!game) return;
+        openEditModal(game);
+    }
+
+    // Keep dp- pill suggestions in sync with edit- suggestions
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof PILL_SUGGESTIONS !== 'undefined') {
+            ['tags', 'genres', 'categories', 'groups'].forEach(k => {
+                PILL_SUGGESTIONS['dp-' + k] = PILL_SUGGESTIONS['edit-' + k] || [];
+            });
+        }
+        // Init custom selects for detail pane
+        ['dp-is-free', 'dp-status', 'dp-installed'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && typeof initCustomSelect === 'function') initCustomSelect(el);
+        });
+    });
+
+    // Handle new cards added during populate in list mode
+    document.addEventListener('populate:new_cards', (e) => {
+        if (_artOrientation !== 'list') return;
+        const listEl = document.getElementById('game-list');
+        if (!listEl) return;
+        for (const g of e.detail) {
+            if (_GAME_MAP.has(g.appid)) continue;
+            const gameObj = { appid: g.appid, name: g.name || '', completion_status: g.completion_status || 'Never Played', platform: g.platform || 'steam' };
+            GAMES.push(gameObj);
+            _GAME_MAP.set(g.appid, gameObj);
+            const row = _makeListRow(gameObj);
+            listEl.appendChild(row);
+            _listObserver?.observe(row);
+        }
+    });
 </script>
 
 <!-- Bulk Delete Modal -->
