@@ -152,11 +152,13 @@ def execute_import(data):
         ext_conn.row_factory = sqlite3.Row
         ext_cur = ext_conn.cursor()
 
-        # Validate table against actual tables in the uploaded DB
+        # Validate table against actual tables in the uploaded DB; re-bind from
+        # the validated set so static analysis sees a controlled value downstream.
         valid_tables = {row[0] for row in ext_cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        if table not in valid_tables:
+        table = next((t for t in valid_tables if t == table), None)
+        if not table:
             ext_conn.close()
-            return jsonify({"status": "error", "message": f"Table '{table}' not found in uploaded database."}), 400
+            return jsonify({"status": "error", "message": "Table not found in uploaded database."}), 400
 
         # Build type maps for warning generation
         src_pragma = {row[1]: row[2].upper() for row in ext_cur.execute(f'PRAGMA table_info("{table}")').fetchall()}
@@ -176,13 +178,16 @@ def execute_import(data):
             if warning:
                 type_warnings.append(f"{src_col} → {tgt_col}: {warning}")
 
-        valid_cols = set(src_pragma.keys())
+        # Re-bind each column from the validated set so static analysis sees
+        # controlled values downstream.
+        valid_cols = {c: c for c in src_pragma.keys()}
         source_cols = [appid_col] + [m["source"] for m in mappings if m["source"] != appid_col]
-        invalid_cols = [c for c in source_cols if c not in valid_cols]
-        if invalid_cols:
+        safe_cols = [valid_cols.get(c) for c in source_cols]
+        if any(c is None for c in safe_cols):
+            missing = [source_cols[i] for i, c in enumerate(safe_cols) if c is None]
             ext_conn.close()
-            return jsonify({"status": "error", "message": f"Column(s) not found in table: {', '.join(invalid_cols)}"}), 400
-        col_list = ", ".join(f'"{c}"' for c in source_cols)
+            return jsonify({"status": "error", "message": f"Column(s) not found in table: {', '.join(missing)}"}), 400
+        col_list = ", ".join(f'"{c}"' for c in safe_cols)
         rows = ext_cur.execute(f'SELECT {col_list} FROM "{table}"').fetchall()
         ext_conn.close()
 
