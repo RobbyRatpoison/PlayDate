@@ -1059,7 +1059,7 @@ const achLink = document.getElementById('achievements-link');
             const data = await res.json();
             if (data.status === 'success') {
                 status.style.color = '#5c7e10'; status.textContent = '✔ Saved!';
-                _loadArtPanel(type, `/static/img/library/${type === 'icon' ? 'icons' : type}/${appid}.jpg?v=${Date.now()}`, data.source || 'custom');
+                _loadArtPanel(type, `/static/img/library/${type === 'icon' ? 'icons' : type}/${parseInt(appid)}.jpg?v=${Date.now()}`, data.source || 'custom');
                 _bustPageArtCache(appid, type);
                 document.getElementById(`art-url-row-${type}`).style.display = 'none';
             } else {
@@ -1082,7 +1082,7 @@ const achLink = document.getElementById('achievements-link');
             const data = await res.json();
             if (data.status === 'success') {
                 const dirMap = { vertical: 'vertical', horizontal: 'horizontal', icon: 'icons' };
-                const src = `/static/img/library/${dirMap[type]}/${appid}.jpg?v=${Date.now()}`;
+                const src = `/static/img/library/${dirMap[type]}/${parseInt(appid)}.jpg?v=${Date.now()}`;
                 _loadArtPanel(type, src, data.source);
                 _bustPageArtCache(appid, type);
                 status.style.color = '#5c7e10'; status.textContent = '✔ Done!';
@@ -1295,7 +1295,7 @@ const achLink = document.getElementById('achievements-link');
         if (img) {
             const orient = (typeof _artOrientation !== 'undefined' && _artOrientation === 'horizontal') ? 'horizontal' : 'vertical';
             const v = Date.now();
-            img.src = `/static/img/library/${orient}/${appid}.jpg?v=` + v;
+            img.src = `/static/img/library/${orient}/${parseInt(appid)}.jpg?v=` + v;
             // Store per-game version so cardInnerHTML rebuilds with the right URL after scroll eviction
             if (typeof _imgVersions !== 'undefined') _imgVersions.set(parseInt(appid), v);
         }
@@ -1861,7 +1861,7 @@ const achLink = document.getElementById('achievements-link');
             const div = document.createElement('div');
             div.className = 'sgdb-thumb';
             const img = document.createElement('img');
-            img.src = opt.thumb;
+            if (/^https?:\/\//.test(opt.thumb)) img.src = opt.thumb;
             img.alt = '';
             img.onerror = () => div.remove();
             div.appendChild(img);
@@ -1895,7 +1895,7 @@ const achLink = document.getElementById('achievements-link');
             data.results.forEach(g => {
                 const row = document.createElement('div');
                 row.className = 'sgdb-game-row';
-                row.innerHTML = `<span style="flex:1">${g.name}</span>${g.verified ? '<span class="sgdb-verified-badge">Verified</span>' : ''}`;
+                row.innerHTML = `<span style="flex:1">${escHtml(g.name)}</span>${g.verified ? '<span class="sgdb-verified-badge">Verified</span>' : ''}`;
                 row.addEventListener('click', () => sgdbLoadById(g.id, g.name));
                 list.appendChild(row);
             });
@@ -1955,7 +1955,7 @@ const achLink = document.getElementById('achievements-link');
             const data = await res.json();
             if (data.status === 'success') {
                 const dirMap = { vertical: 'vertical', horizontal: 'horizontal', icon: 'icons' };
-                const src = `/static/img/library/${dirMap[_sgdbType]}/${_sgdbAppid}.jpg?v=${Date.now()}`;
+                const src = `/static/img/library/${dirMap[_sgdbType]}/${parseInt(_sgdbAppid)}.jpg?v=${Date.now()}`;
                 const sourceMap = { vertical: 'sgdb_grid', horizontal: 'sgdb_grid_wide', icon: 'sgdb_icon' };
                 _loadArtPanel(_sgdbType, src, sourceMap[_sgdbType]);
                 _bustPageArtCache(_sgdbAppid, _sgdbType);
