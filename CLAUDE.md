@@ -131,6 +131,8 @@ Six signals: tag cosine similarity (playtime-weighted taste profile from beaten 
 
 ## Frontend JS
 
+**`playdate.js`** — loaded globally on every page. Shared utilities: `escHtml(s)` (HTML-escape for safe `innerHTML` use), `fmtHours(minutes)`, SQL syntax highlighter. Always use `escHtml()` instead of manual `replace()` chains when inserting user/API data into `innerHTML`.
+
 **Custom dropdowns:** Never add a native `<select>` without calling `initCustomSelect()` on it. Native selects create OS-level popups that stay visible when pywebview loses focus.
 
 **`confirm()` returns a Promise.** In async DOM listeners, use `.then()` chains over `await` — pywebview's event dispatch doesn't wait for async handlers.
