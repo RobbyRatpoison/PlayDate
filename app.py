@@ -1935,8 +1935,9 @@ def create_app(template_folder=None, static_folder=None):
             db.close()
 
             # Delete all cached images
+            safe_id = str(int(appid))
             for subdir in ('vertical', 'horizontal', 'icons'):
-                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{int(appid)}.jpg')
+                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, safe_id + '.jpg')
                 if os.path.exists(img_path):
                     os.remove(img_path)
 
@@ -1964,8 +1965,9 @@ def create_app(template_folder=None, static_folder=None):
             # Delete all cached images
             deleted_imgs = 0
             for appid in appids:
+                safe_id = str(int(appid))
                 for subdir in ('vertical', 'horizontal', 'icons'):
-                    img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{int(appid)}.jpg')
+                    img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, safe_id + '.jpg')
                     if os.path.exists(img_path):
                         os.remove(img_path)
                         deleted_imgs += 1

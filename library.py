@@ -106,8 +106,13 @@ def is_safe_sql(sql: str) -> bool:
 def _strip_sql_wrapper(sql):
     """Strip SELECT...WHERE prefix and ORDER BY suffix if user pasted a full query."""
     sql = sql[:10000]
-    sql = _re.sub(r'(?i)^\s*SELECT\s+\*\s+FROM\s+\w+\s+WHERE\s+', '', sql)
-    sql = _re.sub(r'(?i)\s+ORDER\s+BY\s+[^\r\n]+', '', sql)
+    upper = sql.upper()
+    where_idx = upper.find(' WHERE ')
+    if where_idx >= 0:
+        sql = sql[where_idx + 7:]
+    order_idx = sql.upper().rfind(' ORDER BY ')
+    if order_idx >= 0:
+        sql = sql[:order_idx]
     return sql.strip()
 
 DATE_COLUMNS = {'release_date', 'date_added', 'last_played'}
