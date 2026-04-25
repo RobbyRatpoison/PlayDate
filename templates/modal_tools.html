@@ -2285,7 +2285,7 @@ function refreshTypeWarnings() {
         const sType = srcTypes[src] || '';
         const tType = tgtTypes[tgt] || '';
         if (sType && tType && isNumeric(sType) !== isNumeric(tType)) {
-            warnings.push(`<strong>${src}</strong> (${sType}) → <strong>${tgt}</strong> (${tType}): values will be imported as-is and may not sort correctly`);
+            warnings.push(`<strong>${escHtml(src)}</strong> (${escHtml(sType)}) → <strong>${escHtml(tgt)}</strong> (${escHtml(tType)}): values will be imported as-is and may not sort correctly`);
         }
     });
 

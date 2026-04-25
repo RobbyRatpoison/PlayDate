@@ -2,6 +2,16 @@
  * playdate.js — shared utilities loaded on every page via base.html
  */
 
+/** Escape a string for safe insertion into innerHTML. */
+function escHtml(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 /**
  * Format a playtime value (stored as minutes) as a human-readable hours string.
  * e.g. 75 → "1.2 hrs", 12345 → "205.8 hrs"

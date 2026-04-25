@@ -693,7 +693,7 @@ function makeCard(game, reason, boundsRelaxed) {
     const appid = game.appid;
     const localSrc = `/static/img/library/vertical/${appid}.jpg`;
     const steamSrc = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
-    const escaped = (game.name || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const escaped = escHtml(game.name || '');
 
     const card = document.createElement('div');
     card.className = 'result-card' + (boundsRelaxed ? ' bounds-relaxed' : '');

@@ -152,8 +152,14 @@ def execute_import(data):
         ext_conn.row_factory = sqlite3.Row
         ext_cur = ext_conn.cursor()
 
+        # Validate table against actual tables in the uploaded DB
+        valid_tables = {row[0] for row in ext_cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if table not in valid_tables:
+            ext_conn.close()
+            return jsonify({"status": "error", "message": f"Table '{table}' not found in uploaded database."}), 400
+
         # Build type maps for warning generation
-        src_pragma = {row[1]: row[2].upper() for row in ext_cur.execute(f"PRAGMA table_info({table})").fetchall()}
+        src_pragma = {row[1]: row[2].upper() for row in ext_cur.execute(f'PRAGMA table_info("{table}")').fetchall()}
 
         local_db_check = get_db()
         tgt_pragma = {row[1]: row[2].upper() for row in local_db_check.execute("PRAGMA table_info(games)").fetchall()}
@@ -170,9 +176,14 @@ def execute_import(data):
             if warning:
                 type_warnings.append(f"{src_col} → {tgt_col}: {warning}")
 
+        valid_cols = set(src_pragma.keys())
         source_cols = [appid_col] + [m["source"] for m in mappings if m["source"] != appid_col]
-        col_list = ", ".join(source_cols)
-        rows = ext_cur.execute(f"SELECT {col_list} FROM {table}").fetchall()
+        invalid_cols = [c for c in source_cols if c not in valid_cols]
+        if invalid_cols:
+            ext_conn.close()
+            return jsonify({"status": "error", "message": f"Column(s) not found in table: {', '.join(invalid_cols)}"}), 400
+        col_list = ", ".join(f'"{c}"' for c in source_cols)
+        rows = ext_cur.execute(f'SELECT {col_list} FROM "{table}"').fetchall()
         ext_conn.close()
 
         local_db = get_db()

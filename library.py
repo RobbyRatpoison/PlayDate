@@ -105,6 +105,7 @@ def is_safe_sql(sql: str) -> bool:
 
 def _strip_sql_wrapper(sql):
     """Strip SELECT...WHERE prefix and ORDER BY suffix if user pasted a full query."""
+    sql = sql[:10000]
     sql = _re.sub(r'(?i)^\s*SELECT\s+\*\s+FROM\s+\w+\s+WHERE\s+', '', sql)
     sql = _re.sub(r'(?i)\s+ORDER\s+BY\s+.+$', '', sql)
     return sql.strip()
@@ -378,16 +379,17 @@ def bulk_edit_games(data):
     filter_tree = data.get('filter_tree')
     appids = data.get('appids')   # list of ints — takes priority over filter_tree
 
-    allowed_columns = {
+    allowed_columns = {c: c for c in (
         'completion_status', 'tags', 'groups', 'developers', 'publishers',
         'release_date', 'review_score', 'review_percentage', 'weighted_percentage',
         'total_reviews', 'positive_reviews', 'playtime_forever', 'date_added',
         'installed', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
         'unlocked_achievements', 'total_achievements',
         'genres', 'categories', 'is_free'
-    }
-    if column not in allowed_columns:
-        return jsonify({"status": "error", "message": f"Column '{column}' is not editable."}), 400
+    )}
+    column = allowed_columns.get(column)
+    if not column:
+        return jsonify({"status": "error", "message": f"Column is not editable."}), 400
     if not value and mode != 'remove':
         return jsonify({"status": "error", "message": "Value cannot be empty."}), 400
 

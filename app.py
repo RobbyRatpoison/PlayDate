@@ -61,6 +61,7 @@ import json
 import subprocess
 import platform
 import shutil
+from urllib.parse import urlparse
 
 
 # ── Pending dates (set by browser userscript from Steam help pages) ───────────
@@ -81,6 +82,15 @@ _bulk_date_state = {
 # ── Update checking ───────────────────────────────────────────────────────────
 _update_cache = {}  # available, latest_version, installer_url, zipball_url, checked_at, error
 _update_dl_state = {'status': 'idle', 'error': None, 'manual_url': None}  # idle|downloading|error
+
+def _validate_user_path(path: str) -> str | None:
+    """Return the resolved absolute path, or None if it looks malicious."""
+    if not path or '\x00' in path:
+        return None
+    resolved = os.path.realpath(path)
+    if not os.path.isabs(resolved):
+        return None
+    return resolved
 
 def _do_update_check():
     """Hit the GitHub releases API and populate _update_cache. Thread-safe."""
@@ -160,7 +170,8 @@ def create_app(template_folder=None, static_folder=None):
     @app.after_request
     def _userscript_cors(response):
         origin = request.headers.get('Origin', '')
-        if origin.startswith('https://help.steampowered.com'):
+        _o = urlparse(origin)
+        if _o.scheme == 'https' and _o.hostname == 'help.steampowered.com':
             response.headers['Access-Control-Allow-Origin']          = origin
             response.headers['Access-Control-Allow-Headers']         = 'Content-Type'
             response.headers['Access-Control-Allow-Methods']         = 'GET, POST, OPTIONS'
@@ -172,14 +183,20 @@ def create_app(template_folder=None, static_folder=None):
     # (sys._MEIPASS), but downloaded covers and the user background are written
     # to BASE_DIR (next to the .exe).  These routes serve those files from the
     # correct location so they're visible on Windows builds.
+    _SAFE_FILENAME_RE = re.compile(r'^[\w\-./]+$')
+
     @app.route('/static/img/library/<path:filename>')
     def serve_library_image(filename):
+        if not _SAFE_FILENAME_RE.match(filename):
+            return '', 400
         return send_from_directory(
             os.path.join(BASE_DIR, 'static', 'img', 'library'), filename
         )
 
     @app.route('/static/img/backgrounds/<path:filename>')
     def serve_background_image(filename):
+        if not _SAFE_FILENAME_RE.match(filename):
+            return '', 400
         bg_dir = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
         if os.path.exists(os.path.join(bg_dir, filename)):
             return send_from_directory(bg_dir, filename)
@@ -738,7 +755,7 @@ def create_app(template_folder=None, static_folder=None):
             elif os_name == 'Linux':
                 subprocess.Popen(['xdg-open', url])
             else:
-                subprocess.Popen(f'start "" "{url}"', shell=True)
+                subprocess.Popen(['cmd', '/c', 'start', '', url])
             return jsonify({"status": "success"})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
@@ -772,7 +789,7 @@ def create_app(template_folder=None, static_folder=None):
                 elif os_name == 'Linux':
                     subprocess.Popen(['xdg-open', url])
                 elif os_name == 'Windows':
-                    subprocess.Popen(['cmd', '/c', f'start {url}'])
+                    subprocess.Popen(['cmd', '/c', 'start', '', url])
                 log.info(f"Launched Steam appid {appid_int}")
             except Exception as e:
                 log.error(f"Failed to launch Steam appid {appid_int}: {e}")
@@ -916,7 +933,8 @@ def create_app(template_folder=None, static_folder=None):
                 'horizontal': 'sgdb_grid_wide',
                 'icon':       'sgdb_icon',
             }
-            source = sgdb_source_map[orientation] if 'steamgriddb.com' in url else 'custom'
+            _u = urlparse(url)
+            source = sgdb_source_map[orientation] if (_u.hostname and (_u.hostname == 'steamgriddb.com' or _u.hostname.endswith('.steamgriddb.com'))) else 'custom'
             update_game_data(appid, **{col_map[orientation]: source})
             return jsonify({"status": "success", "source": source})
         return jsonify({"status": "error", "message": "Failed to download image. Check the URL and try again."}), 500
@@ -1165,7 +1183,8 @@ def create_app(template_folder=None, static_folder=None):
         if request.method == 'OPTIONS':
             return ('', 204)
         origin = request.headers.get('Origin', '')
-        if origin and not origin.startswith('https://help.steampowered.com'):
+        _o = urlparse(origin)
+        if origin and not (_o.scheme == 'https' and _o.hostname == 'help.steampowered.com'):
             return jsonify({'status': 'error', 'message': 'Forbidden'}), 403
         data  = request.json or {}
         appid = data.get('appid')
@@ -1329,7 +1348,7 @@ def create_app(template_folder=None, static_folder=None):
         if not raw:
             return jsonify({'status': 'error', 'message': 'code is required'}), 400
         # Accept the full redirect URL and extract just the code parameter
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import parse_qs
         if raw.startswith('http'):
             qs   = parse_qs(urlparse(raw).query)
             code = (qs.get('code') or [''])[0].strip()
@@ -1867,7 +1886,7 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/export-filter', methods=['POST'])
     def export_filter_file():
         data = request.json
-        path = (data.get('path') or '').strip()
+        path = _validate_user_path((data.get('path') or '').strip())
         name = (data.get('name') or '').strip()
         tree = data.get('tree')
         if not path or not name or not tree:
@@ -1881,7 +1900,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/read-filter-file', methods=['POST'])
     def read_filter_file():
-        path = (request.json.get('path') or '').strip()
+        path = _validate_user_path((request.json.get('path') or '').strip())
         if not path or not os.path.exists(path):
             return jsonify({'status': 'error', 'message': 'File not found.'}), 400
         try:
@@ -1916,7 +1935,7 @@ def create_app(template_folder=None, static_folder=None):
 
             # Delete all cached images
             for subdir in ('vertical', 'horizontal', 'icons'):
-                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{appid}.jpg')
+                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{int(appid)}.jpg')
                 if os.path.exists(img_path):
                     os.remove(img_path)
 
@@ -1945,7 +1964,7 @@ def create_app(template_folder=None, static_folder=None):
             deleted_imgs = 0
             for appid in appids:
                 for subdir in ('vertical', 'horizontal', 'icons'):
-                    img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{appid}.jpg')
+                    img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, f'{int(appid)}.jpg')
                     if os.path.exists(img_path):
                         os.remove(img_path)
                         deleted_imgs += 1
@@ -2462,7 +2481,7 @@ def create_app(template_folder=None, static_folder=None):
         """
         import zipfile
         data        = request.json or {}
-        save_path   = data.get('path', '').strip()
+        save_path   = _validate_user_path(data.get('path', '').strip())
         include_art = data.get('include_art', False)
         if not save_path:
             return jsonify({"status": "error", "message": "No path provided."}), 400
@@ -2579,7 +2598,7 @@ def create_app(template_folder=None, static_folder=None):
         """Write CSV directly to a user-chosen path (pywebview save-dialog path)."""
         import csv
         data        = request.json or {}
-        save_path   = data.get('path', '').strip()
+        save_path   = _validate_user_path(data.get('path', '').strip())
         filter_tree = data.get('filter_tree')
         columns     = data.get('columns') or None
         if not save_path:
@@ -2609,7 +2628,7 @@ def create_app(template_folder=None, static_folder=None):
         """Write a theme JSON directly to a user-chosen path."""
         from config import DEFAULT_THEME
         data      = request.json or {}
-        save_path = data.get('path', '').strip()
+        save_path = _validate_user_path(data.get('path', '').strip())
         theme     = data.get('theme', {})
         if not save_path:
             return jsonify({"status": "error", "message": "No path provided."}), 400
@@ -2850,4 +2869,4 @@ if __name__ == '__main__':
     migrate_to_multi_account()
     init_db()
     migrate_image_files()
-    app.run(debug=True, port=5000)
+    app.run(debug=os.environ.get('FLASK_DEBUG', '0') == '1', port=5000)

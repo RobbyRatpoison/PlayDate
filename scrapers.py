@@ -361,6 +361,7 @@ def _hltb_clean_name(name):
     Strips symbols and all punctuation so differences like trailing periods,
     semicolons, or colon-vs-dash separators don't prevent a match.
     """
+    name = name[:500]
     name = re.sub(r'[®™©]', '', name)            # trademark/IP symbols
     name = re.sub(r'\s*\(\d{4}\)\s*$', '', name)  # trailing year, e.g. "(2010)"
     name = re.sub(r'[^\w\s]', ' ', name)           # all remaining punctuation → space

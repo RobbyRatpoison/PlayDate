@@ -791,9 +791,9 @@
 
         // Reset and populate artwork panels
         _artCurrentTab = 'vertical';
-        _loadArtPanel('vertical',   `/static/img/library/vertical/${game.appid}.jpg`,   game.vertical_art_source);
-        _loadArtPanel('horizontal', `/static/img/library/horizontal/${game.appid}.jpg`, game.horizontal_art_source);
-        _loadArtPanel('icon',       `/static/img/library/icons/${game.appid}.jpg`,      game.icon_source);
+        _loadArtPanel('vertical',   `/static/img/library/vertical/${parseInt(game.appid)}.jpg`,   game.vertical_art_source);
+        _loadArtPanel('horizontal', `/static/img/library/horizontal/${parseInt(game.appid)}.jpg`, game.horizontal_art_source);
+        _loadArtPanel('icon',       `/static/img/library/icons/${parseInt(game.appid)}.jpg`,      game.icon_source);
         openArtTab('vertical');
 
         const storeLink    = document.getElementById('steam-store-link');
@@ -1249,7 +1249,7 @@ const achLink = document.getElementById('achievements-link');
         const dirMap = { vertical: 'vertical', horizontal: 'horizontal', icon: 'icons' };
         const dir = dirMap[type];
         if (!dir) return;
-        const newSrc = `/static/img/library/${dir}/${appid}.jpg?v=${Date.now()}`;
+        const newSrc = `/static/img/library/${dir}/${parseInt(appid)}.jpg?v=${Date.now()}`;
 
         // Library virtual-scroll grid card
         const curOrient = (typeof _artOrientation !== 'undefined' && _artOrientation === 'horizontal') ? 'horizontal' : 'vertical';
