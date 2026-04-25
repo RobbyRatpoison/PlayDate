@@ -363,7 +363,7 @@ def _hltb_clean_name(name):
     """
     name = name[:500]
     name = re.sub(r'[®™©]', '', name)            # trademark/IP symbols
-    name = re.sub(r'\s*\(\d{4}\)\s*$', '', name)  # trailing year, e.g. "(2010)"
+    name = re.sub(r'[ \t]*\(\d{4}\)[ \t]*$', '', name)  # trailing year, e.g. "(2010)"
     name = re.sub(r'[^\w\s]', ' ', name)           # all remaining punctuation → space
     name = re.sub(r'\bsokpop\s+s\d+\b', '', name, flags=re.IGNORECASE)  # Sokpop S07 series prefix
     name = re.sub(r'\s{2,}', ' ', name)            # collapse whitespace

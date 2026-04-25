@@ -1517,6 +1517,7 @@ def create_app(template_folder=None, static_folder=None):
         install_path = row['install_path']
 
         # Delete install directory if it exists
+        install_path = os.path.realpath(install_path) if install_path else None
         if install_path and os.path.isdir(install_path):
             try:
                 shutil.rmtree(install_path)
@@ -2017,7 +2018,7 @@ def create_app(template_folder=None, static_folder=None):
     def import_playnite_dates():
         from imports import parse_playnite_dates
         data = request.json or {}
-        zip_path = data.get('path', '').strip()
+        zip_path = _validate_user_path(data.get('path', '').strip())
         app.logger.info(f"Playnite import: request received, path={zip_path!r}")
         if not zip_path or not os.path.isfile(zip_path):
             app.logger.warning(f"Playnite import: file not found at {zip_path!r}")
@@ -2670,11 +2671,19 @@ def create_app(template_folder=None, static_folder=None):
 
                 restored = []
                 skipped  = []
+                _base_real = os.path.realpath(BASE_DIR)
+
+                def _safe_dest(rel):
+                    """Resolve a relative ZIP entry path and confirm it stays within BASE_DIR."""
+                    dest = os.path.realpath(os.path.join(BASE_DIR, rel.replace('/', os.sep)))
+                    return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
 
                 # Core files: restore to BASE_DIR
                 for arcname in ('config.json', 'state.json'):
                     if arcname in names:
-                        dest = os.path.join(BASE_DIR, arcname)
+                        dest = _safe_dest(arcname)
+                        if not dest:
+                            continue
                         with zf.open(arcname) as src:
                             data = src.read()
                         with open(dest, 'wb') as dst:
@@ -2688,7 +2697,9 @@ def create_app(template_folder=None, static_folder=None):
                 # Per-account databases: games_*.db
                 db_entries = [n for n in names if n.startswith('games_') and n.endswith('.db')]
                 for arcname in db_entries:
-                    dest = os.path.join(BASE_DIR, arcname)
+                    dest = _safe_dest(arcname)
+                    if not dest:
+                        continue
                     with zf.open(arcname) as src:
                         data = src.read()
                     with open(dest, 'wb') as dst:
@@ -2700,7 +2711,9 @@ def create_app(template_folder=None, static_folder=None):
                 art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
                 if art_files:
                     for arcname in art_files:
-                        dest = os.path.join(BASE_DIR, arcname.replace('/', os.sep))
+                        dest = _safe_dest(arcname)
+                        if not dest:
+                            continue
                         os.makedirs(os.path.dirname(dest), exist_ok=True)
                         with zf.open(arcname) as src, open(dest, 'wb') as dst:
                             dst.write(src.read())
