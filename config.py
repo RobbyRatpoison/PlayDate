@@ -4,12 +4,13 @@ import json
 import os
 import sys
 import threading
+import uuid
 
 _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.4.4"
+__version__ = "1.4.5"
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -124,10 +125,53 @@ BUILTIN_FILTERS = {
     "unfinished":    {"label": "Unfinished",      "where": "completion_status = 'Unfinished'"},
     "not_beaten":    {"label": "Not Beaten",      "where": "completion_status IN ('Never Played', 'Unfinished')"},
     "beaten":        {"label": "Beaten",          "where": "completion_status IN ('Beaten', 'Completed')"},
+    # Individual completion statuses (used by card outline defaults)
+    "completed":     {"label": "Completed",       "where": "completion_status = 'Completed'"},
+    "beaten_only":   {"label": "Beaten",          "where": "completion_status = 'Beaten'"},
+    "wont_play":     {"label": "Won't Play",      "where": "completion_status = 'Won''t Play'"},
     # Widget presets — no SQL
     "clock":          {"label": "Clock",             "where": None},
     "completion_pie": {"label": "Completion Chart",  "where": None},
 }
+
+DEFAULT_CARD_OUTLINES = {
+    "enabled": {"library": True, "home": True, "pick6": True},
+    "rules": [
+        {"id": None, "label": "Completed",    "color": "#5BC0DE", "priority": 0,
+         "filter": {"type": "preset", "preset_key": "completed"}},
+        {"id": None, "label": "Beaten",       "color": "#5CB85C", "priority": 1,
+         "filter": {"type": "preset", "preset_key": "beaten_only"}},
+        {"id": None, "label": "Unfinished",   "color": "#F0AD4E", "priority": 2,
+         "filter": {"type": "preset", "preset_key": "unfinished"}},
+        {"id": None, "label": "Won't Play",   "color": "#D9534F", "priority": 3,
+         "filter": {"type": "preset", "preset_key": "wont_play"}},
+        {"id": None, "label": "Never Played", "color": "#EEEEEE", "priority": 4,
+         "filter": {"type": "preset", "preset_key": "never_played"}},
+    ]
+}
+
+
+def resolve_outline_rule_where(rule, saved_filters):
+    """Return a SQL WHERE string for a card outline rule, or None if unresolvable."""
+    f = rule.get('filter', {})
+    ftype = f.get('type')
+    if ftype == 'preset':
+        entry = BUILTIN_FILTERS.get(f.get('preset_key', ''))
+        if entry and entry.get('where'):
+            return entry['where']
+    elif ftype == 'saved':
+        fid = f.get('filter_id')
+        for name, sf in saved_filters.items():
+            wrapped = sf if isinstance(sf, dict) and 'tree' in sf else {'tree': sf}
+            if wrapped.get('id') == fid:
+                from index import _filter_tree_to_sql
+                return _filter_tree_to_sql(wrapped['tree'])
+    elif ftype == 'custom':
+        tree = f.get('tree')
+        if tree:
+            from index import _filter_tree_to_sql
+            return _filter_tree_to_sql(tree)
+    return None
 
 DEFAULT_SHELVES = [
     {
@@ -258,6 +302,22 @@ def resolve_vanity_url(api_key, steam_id):
         pass
     return steam_id
 
+def _active_platform_priority(state):
+    """Return platform_priority filtered to platforms that actually exist in the DB."""
+    priority = state.get('platform_priority', ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'])
+    try:
+        from database import get_db
+        db = get_db()
+        rows = db.execute(
+            "SELECT DISTINCT COALESCE(NULLIF(platform,''),'steam') AS p FROM games"
+        ).fetchall()
+        db.close()
+        present = {r['p'] for r in rows}
+        return [p for p in priority if p in present]
+    except Exception:
+        return priority
+
+
 @config_bp.app_context_processor
 def inject_config_status():
     config = load_config()
@@ -284,6 +344,7 @@ def inject_config_status():
         initial_fullscreen=state.get('fullscreen', False),
         hltb_match_threshold=state.get('hltb_match_threshold', 99),
         hide_duplicates=state.get('hide_duplicates', True),
+        platform_priority=_active_platform_priority(state),
         app_version=__version__,
     )
 
@@ -465,6 +526,26 @@ def _load_state_unlocked():
     if 'shelves' not in state:
         state['shelves'] = get_default_shelves()
         dirty = True
+
+    # Migrate saved filters: wrap bare trees as {id, tree} and assign missing UUIDs
+    saved = state.get('saved_filters', {})
+    for name, val in list(saved.items()):
+        if not isinstance(val, dict) or 'tree' not in val:
+            saved[name] = {'id': str(uuid.uuid4()), 'tree': val}
+            dirty = True
+        elif not val.get('id'):
+            val['id'] = str(uuid.uuid4())
+            dirty = True
+
+    # Seed card_outlines with defaults on first run
+    if 'card_outlines' not in state:
+        import copy
+        outline_defaults = copy.deepcopy(DEFAULT_CARD_OUTLINES)
+        for rule in outline_defaults['rules']:
+            rule['id'] = str(uuid.uuid4())
+        state['card_outlines'] = outline_defaults
+        dirty = True
+
     if dirty:
         _write_state_atomic(state)
     return state
@@ -481,7 +562,7 @@ def save_state(updates):
         _PASSTHROUGH = {"filter_tree", "sort", "order", "artwork_orientation", "card_height",
                         "check_for_updates", "window_state", "fullscreen",
                         "pagywosg_sg_group", "shelves", "group_by",
-                        "store_date_migration_done"}
+                        "store_date_migration_done", "card_outlines"}
         for key in _PASSTHROUGH:
             if key in updates:
                 state[key] = updates[key]
@@ -489,6 +570,14 @@ def save_state(updates):
             state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
         if "hide_duplicates" in updates:
             state["hide_duplicates"] = bool(updates["hide_duplicates"])
+        if "platform_priority" in updates:
+            _valid = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
+            incoming = [p for p in (updates["platform_priority"] or []) if p in _valid]
+            # Append any known platforms not in the incoming list (preserves all entries)
+            for p in ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']:
+                if p not in incoming:
+                    incoming.append(p)
+            state["platform_priority"] = incoming
         if "hidden_platforms" in updates:
             safe = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
             state["hidden_platforms"] = [p for p in (updates["hidden_platforms"] or []) if p in safe]

@@ -1,9 +1,38 @@
-from config import load_state, BUILTIN_FILTERS
+from config import load_state, BUILTIN_FILTERS, resolve_outline_rule_where
 from database import get_db
 from utils import get_all_unique_groups, get_all_unique_tags
 from flask import Blueprint, jsonify, render_template, request, redirect, url_for
 
 library_bp = Blueprint('library', __name__)
+
+
+def _compute_outline_colors(games, state):
+    """Return {appid: color} for the highest-priority matching outline rule per game."""
+    outlines = state.get('card_outlines', {})
+    rules = sorted(outlines.get('rules', []), key=lambda r: r.get('priority', 999))
+    if not rules:
+        return {}
+
+    saved_filters = state.get('saved_filters', {})
+    all_appids = {str(g['appid']) for g in games}
+    result = {}
+    db = get_db()
+    try:
+        for rule in rules:
+            color = rule.get('color')
+            if not color:
+                continue
+            where = resolve_outline_rule_where(rule, saved_filters)
+            if not where or where == '1=0':
+                continue
+            rows = db.execute(f"SELECT appid FROM games WHERE {where}").fetchall()
+            for row in rows:
+                aid = str(row[0])
+                if aid in all_appids and aid not in result:
+                    result[aid] = color
+    finally:
+        db.close()
+    return result
 
 # ── SQL builder ─────────────────────────────────────────────────────────────
 
@@ -310,6 +339,13 @@ def library():
             games = []
     db.close()
 
+    _outlines_cfg = state.get('card_outlines', {})
+    outline_colors = (
+        _compute_outline_colors(games, state)
+        if _outlines_cfg.get('enabled', {}).get('library', True)
+        else {}
+    )
+
     # Drop icon_hash — it's a raw Steam hash used only server-side during scraping,
     # never referenced in browser JS, so no need to ship it to every page load.
     from database import ts_to_date
@@ -344,7 +380,8 @@ def library():
                            total_games=total_games, hidden_dupes=hidden_dupes,
                            available_platforms=available_platforms,
                            hidden_platforms=hidden_platforms,
-                           group_by=state.get('group_by'))
+                           group_by=state.get('group_by'),
+                           outline_colors=outline_colors)
 
 
 @library_bp.route('/update_game', methods=['POST'])
@@ -364,9 +401,12 @@ def update_game():
         row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
         db.close()
         game = dict(row) if row else {"appid": appid}
+        state = load_state()
+        outline_map = _compute_outline_colors([game], state)
         return jsonify({
             "status": "success",
             "game": game,
+            "outline_color": outline_map.get(str(appid)),
             "unique_tags":       get_all_unique_tags(),
             "unique_groups":     get_all_unique_groups(),
             "unique_genres":     get_all_unique_genres(),

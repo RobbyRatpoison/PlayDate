@@ -131,11 +131,13 @@ Six signals: tag cosine similarity (playtime-weighted taste profile from beaten 
 
 ## Frontend JS
 
-**`playdate.js`** — loaded globally on every page. Shared utilities: `escHtml(s)` (HTML-escape for safe `innerHTML` use), `fmtHours(minutes)`, SQL syntax highlighter. Always use `escHtml()` instead of manual `replace()` chains when inserting user/API data into `innerHTML`.
+**`playdate.js`** — loaded globally on every page. Shared utilities: `escHtml(s)` (HTML-escape for safe `innerHTML` use), `fmtHours(minutes)`, SQL syntax highlighter, `safeLocal`/`safeSession` (storage wrappers). Always use `escHtml()` instead of manual `replace()` chains when inserting user/API data into `innerHTML`.
 
 **Custom dropdowns:** Never add a native `<select>` without calling `initCustomSelect()` on it. Native selects create OS-level popups that stay visible when pywebview loses focus.
 
 **`confirm()` returns a Promise.** In async DOM listeners, use `.then()` chains over `await` — pywebview's event dispatch doesn't wait for async handlers.
+
+**`localStorage` and `sessionStorage` are not available as globals in pywebview's WebKit2GTK context.** Always use `safeLocal` / `safeSession` from `playdate.js` instead. These fall back to in-memory objects when the native APIs are unavailable.
 
 **`input.js`** — zone-based state machine (`nav`, `content`, `modal`, `ctx-menu`). Modal buttons need `data-modal-row`. Gamepad: XB layout, 400ms initial / 150ms repeat, 0.35 dead zone.
 
@@ -179,7 +181,7 @@ The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the mo
 
 ## Release Workflow
 
-Completed work goes in the **Pending** section of `TODO.md`. At release, distill it into user-facing notes for `RELEASE_NOTES.md`, then delete the section.
+Completed work goes in the **Unreleased** section of `TODO.md`. At release, distill it into user-facing notes for `RELEASE_NOTES.md`, then delete the section.
 
 ## To-Do
 

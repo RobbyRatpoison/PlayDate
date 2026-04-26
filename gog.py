@@ -378,37 +378,50 @@ def _normalize_name_for_dup(name):
     return name
 
 
-def auto_detect_duplicates():
+PLATFORM_PRIORITY_DEFAULT = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']
+
+
+def auto_detect_duplicates(platform_priority=None):
     """
-    Match GOG games to Steam games by normalized name and set duplicate_of.
-    Only sets duplicate_of on GOG games that don't already have it set.
+    Match games across platforms by normalized name and set duplicate_of.
+    Lower-priority platform versions are marked as duplicates of higher-priority ones.
+    Clears previously auto-detected duplicates before re-running.
     Returns count of newly marked duplicates.
     """
+    if platform_priority is None:
+        platform_priority = PLATFORM_PRIORITY_DEFAULT
+
     from database import get_db
     db = get_db()
     try:
-        steam_by_norm = {}
-        for row in db.execute(
-            "SELECT appid, name FROM games WHERE platform = 'steam' AND name IS NOT NULL"
-        ).fetchall():
-            norm = _normalize_name_for_dup(row['name'])
-            steam_by_norm[norm] = str(row['appid'])
+        db.execute("UPDATE games SET duplicate_of = NULL, duplicate_auto = 0 WHERE duplicate_auto = 1")
 
-        gog_games = db.execute(
-            "SELECT appid, name FROM games WHERE platform = 'gog' "
-            "AND (duplicate_of IS NULL OR duplicate_of = '') AND name IS NOT NULL"
-        ).fetchall()
+        games_by_platform = {}
+        for row in db.execute(
+            "SELECT appid, name, platform FROM games WHERE name IS NOT NULL"
+        ).fetchall():
+            plat = row['platform']
+            if plat not in games_by_platform:
+                games_by_platform[plat] = {}
+            norm = _normalize_name_for_dup(row['name'])
+            games_by_platform[plat][norm] = str(row['appid'])
 
         updated = 0
-        for row in gog_games:
-            norm = _normalize_name_for_dup(row['name'])
-            if norm in steam_by_norm:
-                db.execute(
-                    "UPDATE games SET duplicate_of = ? WHERE appid = ?",
-                    (steam_by_norm[norm], row['appid'])
-                )
-                log.info(f'GOG duplicate: {row["name"]!r} → Steam appid {steam_by_norm[norm]}')
-                updated += 1
+        for i, high_plat in enumerate(platform_priority):
+            if high_plat not in games_by_platform:
+                continue
+            high_games = games_by_platform[high_plat]
+            for low_plat in platform_priority[i + 1:]:
+                if low_plat not in games_by_platform:
+                    continue
+                for norm, low_appid in games_by_platform[low_plat].items():
+                    if norm in high_games:
+                        db.execute(
+                            "UPDATE games SET duplicate_of = ?, duplicate_auto = 1 WHERE appid = ?",
+                            (high_games[norm], low_appid)
+                        )
+                        log.info(f'Auto-duplicate ({low_plat}→{high_plat}): appid {low_appid} → {high_games[norm]}')
+                        updated += 1
 
         if updated:
             db.commit()

@@ -57,7 +57,8 @@ def _build_shelf_query(shelf, saved_filters):
     elif filter_key in FILTER_QUERIES:
         where = FILTER_QUERIES[filter_key]['where']
     elif filter_key in saved_filters:
-        where = _filter_tree_to_sql(saved_filters[filter_key])
+        sf = saved_filters[filter_key]
+        where = _filter_tree_to_sql(sf['tree'] if isinstance(sf, dict) and 'tree' in sf else sf)
     else:
         where = '1=1'
 
@@ -193,6 +194,16 @@ def index():
         else:
             rows.append({'type': 'single', 'shelf': s})
 
+    # Compute outline colors for all games on the page
+    from library import _compute_outline_colors
+    all_shelf_games = [g for games in shelf_games.values() for g in games]
+    outlines_cfg = state.get('card_outlines', {})
+    outline_colors = (
+        _compute_outline_colors(all_shelf_games, state)
+        if all_shelf_games and outlines_cfg.get('enabled', {}).get('home', True)
+        else {}
+    )
+
     return render_template(
         'index.html',
         state=state,
@@ -205,4 +216,5 @@ def index():
         completion_counts=completion_counts,
         edit_mode=edit_mode,
         available_platforms=available_platforms,
+        outline_colors=outline_colors,
     )

@@ -199,12 +199,12 @@
                 <div>
                     <!-- Tab strip -->
                     <div class="edit-tab-strip">
-                        <button type="button" id="edit-tab-btn-info"  class="edit-tab-btn active" onclick="switchEditTab('info')">Info</button>
-                        <button type="button" id="edit-tab-btn-stats" class="edit-tab-btn"        onclick="switchEditTab('stats')">Stats</button>
+                        <button type="button" id="edit-tab-btn-stats" class="edit-tab-btn active" onclick="switchEditTab('stats')">Stats</button>
+                        <button type="button" id="edit-tab-btn-info"  class="edit-tab-btn"        onclick="switchEditTab('info')">Info</button>
                     </div>
 
                     <!-- INFO pane -->
-                    <div id="edit-pane-info">
+                    <div id="edit-pane-info" style="display:none;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; align-items: stretch;">
 
                             <!-- Info left sub-col: game metadata + reviews -->
@@ -241,7 +241,7 @@
                                         <input type="number" name="review_percentage" id="edit-review-percentage" min="0" max="100">
                                     </div>
                                     <div>
-                                        <label title="Review score adjusted for confidence. Low review counts are pulled toward 50 (neutral) rather than the raw score. Formula: score - (score - 0.5) × 2^(-log₁₀(reviews+1))">Weighted %</label>
+                                        <label data-tooltip="Review score adjusted for confidence. Low review counts are pulled toward 50 (neutral) rather than the raw score. Formula: score - (score - 0.5) × 2^(-log₁₀(reviews+1))">Weighted %</label>
                                         <input type="number" name="weighted_percentage" id="edit-weighted-pct">
                                     </div>
                                 </div>
@@ -277,67 +277,51 @@
                             </div>
                         </div>
 
-                        <div id="hltb-row" style="display:none; flex-direction:column; gap:6px; margin-top:10px; padding:10px 14px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
+                        <div id="hltb-row-i" style="display:none; flex-direction:column; gap:6px; margin-top:10px; padding:10px 14px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
                             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                 <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0; font-weight:bold;">HLTB:</span>
-                                <span id="edit-hltb-warn" style="font-size:0.75rem; color:#e6b450; display:none;" title="Low match confidence — please verify">&#9888;</span>
-                                <a id="edit-hltb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
+                                <span id="edit-hltb-warn-i" style="font-size:0.75rem; color:#e6b450; display:none;" data-tooltip="Low match confidence — please verify">&#9888;</span>
+                                <a id="edit-hltb-link-i" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
                                 <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
-                                    <button type="button" id="edit-hltb-confirm" onclick="_confirmHLTB()"
+                                    <button type="button" id="edit-hltb-confirm-i" onclick="_confirmHLTB(this)"
                                         style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
-                                    <button type="button" id="edit-hltb-other" onclick="_otherMatchHLTB(this)"
+                                    <button type="button" id="edit-hltb-other-i" onclick="_otherMatchHLTB(this)"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
-                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB()"
+                                    <button type="button" id="edit-hltb-clear-i" onclick="_clearHLTB(this)"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
-                                    <button type="button" id="edit-hltb-refresh" onclick="_refreshHLTB()"
+                                    <button type="button" id="edit-hltb-refresh-i" onclick="_refreshHLTB(this)"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
                                 </div>
                             </div>
-                            <div id="edit-hltb-times" style="font-size:0.85rem; color:#c2c8cc;"></div>
+                            <div id="edit-hltb-times-i" style="font-size:0.85rem; color:#c2c8cc;"></div>
                         </div>
-                        <div id="edit-hltb-alt-results" style="flex-direction:column; gap:4px; margin-top:4px; padding:8px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;"></div>
+                        <div id="edit-hltb-alt-results-i" style="flex-direction:column; gap:4px; margin-top:4px; padding:8px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;"></div>
                     </div>
 
                     <!-- STATS pane -->
-                    <div id="edit-pane-stats" style="display:none;">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; align-items: start;">
+                    <div id="edit-pane-stats">
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); column-gap: 10px; row-gap: 10px; align-items: start;">
 
-                            <!-- Stats left sub-col: user-specific fields -->
-                            <div style="display: flex; flex-direction: column;">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                    <div>
-                                        <label>Completion Status</label>
-                                        <select name="completion_status" id="edit-status">
-                                            <option value="Never Played">Never Played</option>
-                                            <option value="Unfinished">Unfinished</option>
-                                            <option value="Beaten">Beaten</option>
-                                            <option value="Completed">Completed</option>
-                                            <option value="Won't Play">Won't Play</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label>Installed</label>
-                                        <select name="installed" id="edit-installed">
-                                            <option value="0">No</option>
-                                            <option value="1">Yes</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                    <div>
-                                        <label>Last Played</label>
-                                        <input type="text" name="last_played" id="edit-last-played" placeholder="YYYY-MM-DD">
-                                    </div>
-                                    <div>
-                                        <label>Date Added <a id="steam-help-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
-                                        <input type="text" name="date_added" id="edit-date-added" placeholder="YYYY-MM-DD">
-                                    </div>
-                                </div>
+                            <div>
+                                <label>Completion Status</label>
+                                <select name="completion_status" id="edit-status">
+                                    <option value="Never Played">Never Played</option>
+                                    <option value="Unfinished">Unfinished</option>
+                                    <option value="Beaten">Beaten</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Won't Play">Won't Play</option>
+                                </select>
                             </div>
 
-                            <!-- Stats right sub-col: playtime + achievements -->
-                            <div style="display: flex; flex-direction: column;">
+                            <div>
+                                <label>Installed</label>
+                                <select name="installed" id="edit-installed">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </select>
+                            </div>
+
+                            <div style="grid-column: span 2;">
                                 <label>Playtime</label>
                                 <div style="display:flex; gap:6px; align-items:center;">
                                     <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
@@ -350,7 +334,19 @@
                                         <span style="font-size:0.72rem; color:var(--text-secondary); padding-left:2px;">hrs</span>
                                     </div>
                                 </div>
+                            </div>
 
+                            <div>
+                                <label>Last Played</label>
+                                <input type="text" name="last_played" id="edit-last-played" placeholder="YYYY-MM-DD">
+                            </div>
+
+                            <div>
+                                <label>Date Added <a id="steam-help-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
+                                <input type="text" name="date_added" id="edit-date-added" placeholder="YYYY-MM-DD">
+                            </div>
+
+                            <div style="grid-column: span 2;">
                                 <label>Achievements <a id="achievements-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <div style="flex: 1;"><input type="number" name="unlocked_achievements" id="edit-unlocked-ach" placeholder="Unlocked"></div>
@@ -378,6 +374,26 @@
                                 style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer; flex-shrink:0;">Refresh</button>
                         </div>
                         {% endif %}
+
+                        <div id="hltb-row" style="display:none; flex-direction:column; gap:6px; margin-top:10px; padding:10px 14px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0; font-weight:bold;">HLTB:</span>
+                                <span id="edit-hltb-warn" style="font-size:0.75rem; color:#e6b450; display:none;" data-tooltip="Low match confidence — please verify">&#9888;</span>
+                                <a id="edit-hltb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
+                                <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" id="edit-hltb-confirm" onclick="_confirmHLTB(this)"
+                                        style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
+                                    <button type="button" id="edit-hltb-other" onclick="_otherMatchHLTB(this)"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
+                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB(this)"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
+                                    <button type="button" id="edit-hltb-refresh" onclick="_refreshHLTB(this)"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
+                                </div>
+                            </div>
+                            <div id="edit-hltb-times" style="font-size:0.85rem; color:#c2c8cc;"></div>
+                        </div>
+                        <div id="edit-hltb-alt-results" style="flex-direction:column; gap:4px; margin-top:4px; padding:8px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;"></div>
                     </div>
 
                     <!-- PAGYWOSG quals: below both panes -->
@@ -576,26 +592,6 @@
         color: #c2c8cc;
     }
     .pill-suggestion-item:hover, .pill-suggestion-item.active { background: #1a3a52; color: #fff; }
-    [data-tooltip] { position: relative; cursor: default; }
-    [data-tooltip]::after {
-        content: attr(data-tooltip);
-        position: absolute;
-        bottom: calc(100% + 6px);
-        left: 50%;
-        transform: translateX(-50%);
-        background: #1a2233;
-        color: #c2c8cc;
-        border: 1px solid #3a4a5c;
-        border-radius: 5px;
-        padding: 6px 10px;
-        font-size: 0.75rem;
-        white-space: nowrap;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.15s;
-        z-index: 9999;
-    }
-    [data-tooltip]:hover::after { opacity: 1; }
 </style>
 
 <script>
@@ -746,7 +742,7 @@
         const minsEl = document.getElementById('edit-playtime');
         const hrsEl  = document.getElementById('edit-playtime-hrs');
         if (minsEl) minsEl.value = mins !== null && mins !== '' ? mins : '';
-        if (hrsEl)  hrsEl.value  = mins !== null && mins !== '' && mins !== 0
+        if (hrsEl)  hrsEl.value  = mins !== null && mins !== ''
             ? (mins / 60).toFixed(1) : '';
     }
 
@@ -764,7 +760,7 @@
     });
 
     function openEditModal(game) {
-        switchEditTab('info');
+        switchEditTab('stats');
         safeSet('edit-appid', game.appid);
         safeSet('display-appid', (game.platform === 'gog' && game.platform_id) ? game.platform_id : game.appid, 'textContent');
         safeSet('edit-name', game.name);
@@ -1230,6 +1226,7 @@ const achLink = document.getElementById('achievements-link');
                     if (result.unique_genres)     { PILL_SUGGESTIONS['edit-genres']     = result.unique_genres;     if (typeof FM_FILTER_CONFIG !== 'undefined') FM_FILTER_CONFIG.genres.options     = result.unique_genres; }
                     if (result.unique_categories) { PILL_SUGGESTIONS['edit-categories'] = result.unique_categories; if (typeof FM_FILTER_CONFIG !== 'undefined') FM_FILTER_CONFIG.categories.options = result.unique_categories; }
                     _patchGameCard(result.game);
+                    _applyOutlineColor(result.game, result.outline_color ?? null);
                     closeModal();
                 } else {
                     saveBtn.disabled = false;
@@ -1305,6 +1302,23 @@ const achLink = document.getElementById('achievements-link');
         if (typeof CARD_HTML_CACHE !== 'undefined') CARD_HTML_CACHE.delete(parseInt(appid));
     }
 
+    function _applyOutlineColor(game, outlineColor) {
+        if (typeof OUTLINE_COLORS === 'undefined') return;
+        const appid = String(game.appid);
+        if (outlineColor) {
+            OUTLINE_COLORS[appid] = outlineColor;
+        } else {
+            delete OUTLINE_COLORS[appid];
+        }
+        const card = document.querySelector(`.game-card[data-appid="${appid}"]`);
+        if (!card) return;
+        if (outlineColor) {
+            card.style.setProperty('--outline-color', outlineColor);
+        } else {
+            card.style.removeProperty('--outline-color');
+        }
+    }
+
     window.onclick = function(event) {
         if (event.target.className === 'modal-overlay') {
             closeModal();
@@ -1328,12 +1342,20 @@ const achLink = document.getElementById('achievements-link');
 
     function _pagExtractSgGroup(tree) {
         // Returns the groups condition value used as the wins-branch marker, or null.
+        // Handles both direct child and OR-wrapped (when santa gifts are also in the qualifier).
         let found = null;
         function walk(node) {
             if (!node || found) return;
             if (node.type === 'group' && node.logic === 'AND') {
                 const gc = (node.items || []).find(i => i.type === 'condition' && i.column === 'groups');
                 if (gc) { found = gc.value; return; }
+                // groups wrapped in OR alongside santa appid_list
+                for (const child of (node.items || [])) {
+                    if (child.type === 'group' && child.logic === 'OR') {
+                        const gc2 = (child.items || []).find(i => i.type === 'condition' && i.column === 'groups');
+                        if (gc2) { found = gc2.value; return; }
+                    }
+                }
             }
             (node.items || []).forEach(walk);
         }
@@ -1369,12 +1391,23 @@ const achLink = document.getElementById('achievements-link');
                 conds.push({col: node.column, op: node.operator, val: node.value, pool});
             } else if (node.type === 'group') {
                 if (node.logic === 'AND') {
-                    // Wins branch is any AND group that has a 'groups' condition as marker
-                    const sgCond = (node.items || []).find(i =>
+                    // Wins branch: AND group whose first child is either a groups condition
+                    // or an OR[groups, santa_appid_list] qualifier node.
+                    let sgCond = (node.items || []).find(i =>
                         i.type === 'condition' && i.column === 'groups');
+                    let qualifierOrNode = null;
+                    if (!sgCond) {
+                        qualifierOrNode = (node.items || []).find(i =>
+                            i.type === 'group' && i.logic === 'OR' &&
+                            (i.items || []).some(c => c.type === 'condition' && c.column === 'groups'));
+                        if (qualifierOrNode)
+                            sgCond = (qualifierOrNode.items || []).find(i => i.type === 'condition' && i.column === 'groups');
+                    }
+                    const isWins = !!sgCond;
                     (node.items || []).forEach(i => {
-                        if (sgCond && i.type === 'condition' && i.column === 'groups') return;
-                        walk(i, sgCond ? 'wins' : pool);
+                        if (i === qualifierOrNode) return;
+                        if (isWins && i.type === 'condition' && i.column === 'groups') return;
+                        walk(i, isWins ? 'wins' : pool);
                     });
                 } else {
                     (node.items || []).forEach(i => walk(i, pool));
@@ -1461,6 +1494,15 @@ const achLink = document.getElementById('achievements-link');
 
     let _hltbAppid = null;
     let _hltbGame  = null;
+    let _hltbActiveAlt = null;
+
+    // Helper: get both pane elements for a given base ID
+    function _hltbEls(base) {
+        return ['', '-i'].map(s => document.getElementById(base + s)).filter(Boolean);
+    }
+
+    // Derive pane suffix from a button's ID ('-i' for info pane, '' for stats pane)
+    function _hltbCtxSuffix(btn) { return btn.id.endsWith('-i') ? '-i' : ''; }
 
     function _fmtMins(mins) {
         if (mins == null) return null;
@@ -1471,56 +1513,48 @@ const achLink = document.getElementById('achievements-link');
     function _renderHLTB(game) {
         _hltbAppid = game.appid;
         _hltbGame  = game;
-        const altEl = document.getElementById('edit-hltb-alt-results');
-        if (altEl) altEl.classList.remove('open');
-        const otherBtn = document.getElementById('edit-hltb-other');
-        if (otherBtn) otherBtn.textContent = 'Other match';
-        const row     = document.getElementById('hltb-row');
+        _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
+        _hltbEls('edit-hltb-other').forEach(el => el.textContent = 'Other match');
+        _hltbEls('hltb-row').forEach(r => r.style.display = 'flex');
+
         const fetched = game.hltb_fetched;
         const hasData = game.hltb_id && (fetched === 'unconfirmed' || (fetched && fetched !== '0'));
 
-        row.style.display = 'flex';
-
-        const link = document.getElementById('edit-hltb-link');
-        const timesEl = document.getElementById('edit-hltb-times');
-
-        const refreshBtn = document.getElementById('edit-hltb-refresh');
-
         if (!hasData) {
-            document.getElementById('edit-hltb-warn').style.display    = 'none';
-            document.getElementById('edit-hltb-confirm').style.display = 'none';
-            document.getElementById('edit-hltb-clear').style.display   = 'none';
-            if (refreshBtn) refreshBtn.style.display = 'none';
-            if (link) {
-                link.style.display = '';
+            _hltbEls('edit-hltb-warn').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-confirm').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-clear').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-refresh').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-link').forEach(link => {
                 link.href = `https://howlongtobeat.com/?q=${encodeURIComponent(game.name || '')}`;
                 link.textContent = 'Search HLTB ↗';
-            }
-            timesEl.textContent = '';
-            if (otherBtn) {
-                otherBtn.textContent = 'Find match';
+            });
+            _hltbEls('edit-hltb-times').forEach(el => el.textContent = '');
+            // Auto-open the stats-pane search panel when no match exists
+            const statsOther = document.getElementById('edit-hltb-other');
+            if (statsOther) {
+                statsOther.textContent = 'Find match';
                 const altEl = document.getElementById('edit-hltb-alt-results');
-                if (altEl && !altEl.classList.contains('open')) _otherMatchHLTB(otherBtn);
+                if (altEl && !altEl.classList.contains('open')) _otherMatchHLTB(statsOther);
             }
+            const infoOther = document.getElementById('edit-hltb-other-i');
+            if (infoOther) infoOther.textContent = 'Find match';
             return;
         }
 
-        document.getElementById('edit-hltb-clear').style.display = '';
-        if (refreshBtn) refreshBtn.style.display = '';
-        if (otherBtn) otherBtn.textContent = 'Other match';
-        if (link) {
-            link.style.display = '';
+        _hltbEls('edit-hltb-clear').forEach(el => el.style.display = '');
+        _hltbEls('edit-hltb-refresh').forEach(el => el.style.display = '');
+        _hltbEls('edit-hltb-link').forEach(link => {
             link.href = `https://howlongtobeat.com/game/${game.hltb_id}`;
             link.textContent = (game.hltb_matched_name || 'HLTB') + ' ↗';
-        }
+        });
 
         const unconfirmed = fetched === 'unconfirmed';
-        document.getElementById('edit-hltb-warn').style.display    = unconfirmed ? '' : 'none';
-        document.getElementById('edit-hltb-confirm').style.display = unconfirmed ? '' : 'none';
+        _hltbEls('edit-hltb-warn').forEach(el => el.style.display = unconfirmed ? '' : 'none');
+        _hltbEls('edit-hltb-confirm').forEach(el => el.style.display = unconfirmed ? '' : 'none');
 
         if (unconfirmed) {
-            timesEl.textContent = 'Unconfirmed match';
-            timesEl.style.color = '#8f98a0';
+            _hltbEls('edit-hltb-times').forEach(el => { el.textContent = 'Unconfirmed match'; el.style.color = '#8f98a0'; });
         } else {
             const parts = [];
             const main   = _fmtMins(game.hltb_main);
@@ -1529,14 +1563,13 @@ const achLink = document.getElementById('achievements-link');
             if (main)   parts.push(`Main: ${main}`);
             if (extras) parts.push(`+Extras: ${extras}`);
             if (compl)  parts.push(`Completionist: ${compl}`);
-            timesEl.textContent = parts.join(' · ') || 'No times';
-            timesEl.style.color = '#c2c8cc';
+            const text = parts.join(' · ') || 'No times';
+            _hltbEls('edit-hltb-times').forEach(el => { el.textContent = text; el.style.color = '#c2c8cc'; });
         }
     }
 
-    function _refreshHLTB() {
+    function _refreshHLTB(btn) {
         if (!_hltbAppid) return;
-        const btn = document.getElementById('edit-hltb-refresh');
         btn.textContent = '...';
         btn.disabled = true;
         fetch(`/api/hltb/${_hltbAppid}`, {method: 'POST'})
@@ -1547,9 +1580,8 @@ const achLink = document.getElementById('achievements-link');
             .finally(() => { btn.textContent = 'Re-scrape'; btn.disabled = false; });
     }
 
-    function _confirmHLTB() {
+    function _confirmHLTB(btn) {
         if (!_hltbAppid) return;
-        const btn = document.getElementById('edit-hltb-confirm');
         btn.textContent = '...';
         btn.disabled = true;
         fetch(`/api/hltb/${_hltbAppid}/confirm`, {method: 'POST'})
@@ -1560,30 +1592,31 @@ const achLink = document.getElementById('achievements-link');
             .finally(() => { btn.textContent = 'Confirm'; btn.disabled = false; });
     }
 
-    function _clearHLTB() {
+    function _clearHLTB(btn) {
         if (!_hltbAppid) return;
-        document.getElementById('edit-hltb-alt-results').classList.remove('open');
+        _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
         fetch(`/api/hltb/${_hltbAppid}`, {method: 'DELETE'})
             .then(() => _renderHLTB({...(_hltbGame || {}), hltb_id: null, hltb_fetched: null, hltb_main: null, hltb_extras: null, hltb_completionist: null, hltb_matched_name: null, hltb_match_score: null}));
     }
 
     function _otherMatchHLTB(btn) {
         if (!_hltbAppid) return;
-        const altEl = document.getElementById('edit-hltb-alt-results');
+        const suffix = _hltbCtxSuffix(btn);
+        const altEl = document.getElementById('edit-hltb-alt-results' + suffix);
         if (altEl.classList.contains('open')) {
             altEl.classList.remove('open');
             return;
         }
+        _hltbActiveAlt = altEl;
         const origLabel = btn.textContent;
         btn.textContent = '...';
         btn.disabled = true;
-        _hltbRunSearch(_hltbGame?.name || '')
+        _hltbRunSearch(altEl, _hltbGame?.name || '')
             .finally(() => { btn.textContent = origLabel; btn.disabled = false; });
     }
 
-    function _hltbRunSearch(query) {
+    function _hltbRunSearch(altEl, query) {
         if (!_hltbAppid) return Promise.resolve();
-        const altEl = document.getElementById('edit-hltb-alt-results');
 
         // Event delegation for Select buttons — set up once per altEl lifetime
         if (!altEl._hltbDelegated) {
@@ -1604,14 +1637,14 @@ const achLink = document.getElementById('achievements-link');
             .then(data => {
                 const results = data.results || [];
                 const titleRowHtml = `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
-                    <input id="edit-hltb-search-query" type="text" value="${_escHtml(query)}"
+                    <input data-hltb-search-input type="text" value="${_escHtml(query)}"
                         style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
                         onkeydown="if(event.key==='Enter'){event.preventDefault();_hltbResearch();}">
                     <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
                         onclick="_hltbResearch()">Search</button>
                 </div>`;
                 const manualHtml = `<div style="display:flex; align-items:center; gap:6px; padding:6px 0 2px; border-top:1px solid #2a475e; margin-top:4px;">
-                    <input id="edit-hltb-manual-id" type="text" placeholder="Paste HLTB URL or game ID…"
+                    <input data-hltb-manual-input type="text" placeholder="Paste HLTB URL or game ID…"
                         style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
                         onkeydown="if(event.key==='Enter')_selectHLTBById()">
                     <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
@@ -1641,13 +1674,14 @@ const achLink = document.getElementById('achievements-link');
     }
 
     function _hltbResearch() {
-        const input = document.getElementById('edit-hltb-search-query');
+        if (!_hltbActiveAlt) return;
+        const input = _hltbActiveAlt.querySelector('[data-hltb-search-input]');
         if (!input) return;
         const q = input.value.trim();
         if (!q) return;
         input.disabled = true;
-        _hltbRunSearch(q).finally(() => {
-            const el = document.getElementById('edit-hltb-search-query');
+        _hltbRunSearch(_hltbActiveAlt, q).finally(() => {
+            const el = _hltbActiveAlt?.querySelector('[data-hltb-search-input]');
             if (el) el.disabled = false;
         });
     }
@@ -1662,16 +1696,15 @@ const achLink = document.getElementById('achievements-link');
             .then(r => r.json())
             .then(data => {
                 if (data.status === 'success') {
-                    document.getElementById('edit-hltb-alt-results').classList.remove('open');
-                    document.getElementById('edit-hltb-other').textContent = 'Other match';
+                    _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
                     _renderHLTB({...(_hltbGame || {}), ...(data.data || {}), hltb_matched_name: matchedName});
                 }
             });
     }
 
     function _selectHLTBById() {
-        if (!_hltbAppid) return;
-        const input = document.getElementById('edit-hltb-manual-id');
+        if (!_hltbAppid || !_hltbActiveAlt) return;
+        const input = _hltbActiveAlt.querySelector('[data-hltb-manual-input]');
         if (!input) return;
         const raw = input.value.trim();
         if (!raw) return;
@@ -1688,8 +1721,7 @@ const achLink = document.getElementById('achievements-link');
             .then(r => r.json())
             .then(data => {
                 if (data.status === 'success') {
-                    document.getElementById('edit-hltb-alt-results').classList.remove('open');
-                    document.getElementById('edit-hltb-other').textContent = 'Other match';
+                    _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
                     _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
                 } else {
                     input.style.borderColor = 'var(--color-danger)';
@@ -1707,16 +1739,22 @@ const achLink = document.getElementById('achievements-link');
         const results = [];
         const sgGroup = _pagExtractSgGroup(ft);
         const isWin = sgGroup ? _pagCsvContains(game.groups, sgGroup) : false;
+        const isSantaGift = (ft.pagywosg_verified?.[String(game.appid)] || []).some(e => e.auto && e.pool === 'wins');
 
         // Metadata conditions from filter tree
         _pagExtractConds(ft).forEach(cond => {
-            if (cond.pool === 'wins' && !isWin) return;
+            if (cond.pool === 'wins' && !isWin && !isSantaGift) return;
             const desc = _pagCheckCond(cond, game);
-            if (desc) results.push({desc, label: _pagLabel(cond.pool, game, sgGroup), verified: false});
+            if (desc) {
+                const label = (cond.pool === 'wins' && !isWin && isSantaGift)
+                    ? '(santa/snowball)' : _pagLabel(cond.pool, game, sgGroup);
+                results.push({desc, label, verified: false});
+            }
         });
 
-        // Community-verified games
+        // Community-verified games (skip auto+wins — shown via conditions above)
         (ft.pagywosg_verified?.[String(game.appid)] || []).forEach(({cat, pool, verifier, auto}) => {
+            if (auto && pool === 'wins') return;
             if (pool === 'wins' && !isWin) return;
             results.push({desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifier: verifier || null});
         });
@@ -1776,8 +1814,8 @@ const achLink = document.getElementById('achievements-link');
 </div>
 
 <style>
-    #edit-hltb-alt-results { display: none; }
-    #edit-hltb-alt-results.open { display: flex; }
+    #edit-hltb-alt-results, #edit-hltb-alt-results-i { display: none; }
+    #edit-hltb-alt-results.open, #edit-hltb-alt-results-i.open { display: flex; }
     .sgdb-thumb {
         cursor: pointer; border-radius: 4px; overflow: hidden;
         border: 2px solid transparent; transition: border-color 0.15s;

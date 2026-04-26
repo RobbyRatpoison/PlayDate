@@ -144,12 +144,13 @@
     .hamburger-status.success { color: var(--accent-positive); }
     .hamburger-status.error   { color: var(--text-danger); }
     .hamburger-status.info    { color: var(--accent); }
+    [data-tooltip]:not(button):not(a) { cursor: help; }
     </style>
     {% block extra_css %}{% endblock %}
     <script>
     // Seed sessionStorage with server-side fullscreen state so isFullscreen()
     // is correct on first load (e.g. when the app starts in fullscreen mode).
-    sessionStorage.setItem('_playdateFullscreen', '{{ "1" if initial_fullscreen else "0" }}');
+    safeSession.setItem('_playdateFullscreen', '{{ "1" if initial_fullscreen else "0" }}');
     </script>
     <script>
     // Reveal the body as soon as the DOM is ready
@@ -194,7 +195,7 @@
             <a class="{{ 'active' if request.path == '/pick' }}" onclick="window.location.href='/pick'">PICK 6</a>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
-            <button id="fullscreen-button" class="nav-btn" title="Toggle fullscreen (F11)" style="min-width:2.25rem;padding:0 0.625rem;font-size:1rem;">⛶</button>
+            <button id="fullscreen-button" class="nav-btn" data-tooltip="Toggle fullscreen (F11)" style="min-width:2.25rem;padding:0 0.625rem;font-size:1rem;">⛶</button>
             <button id="exit-button" class="nav-btn exit-btn">EXIT</button>
         </div>
     </div>
@@ -474,8 +475,8 @@
                     _updatePopulateBtn(data);
                     btn.style.borderColor = "#a32a2a";
                     _startPopulatePoller();
-                } else if (_configExists && !sessionStorage.getItem('_populateTriggered')) {
-                    sessionStorage.setItem('_populateTriggered', '1');
+                } else if (_configExists && !safeSession.getItem('_populateTriggered')) {
+                    safeSession.setItem('_populateTriggered', '1');
                     _populating = true;
                     const btn = document.getElementById('add-button');
                     btn.innerText = "STOP POPULATING";
@@ -545,10 +546,10 @@
         // _playdateFullscreen is stored in sessionStorage so it survives page
         // navigation — a plain JS variable would reset on every page load.
         function _getPWVFullscreen() {
-            return sessionStorage.getItem('_playdateFullscreen') === '1';
+            return safeSession.getItem('_playdateFullscreen') === '1';
         }
         function _setPWVFullscreen(val) {
-            sessionStorage.setItem('_playdateFullscreen', val ? '1' : '0');
+            safeSession.setItem('_playdateFullscreen', val ? '1' : '0');
         }
 
         function isFullscreen() {
@@ -758,89 +759,6 @@
 
     </script>
     {% block scripts %}{% endblock %}
-
-    <!-- Hover debug overlay (Ctrl+Shift+T to toggle, persists across pages) -->
-    <div id="hover-debug" style="display:none; position:fixed; bottom:10px; right:10px; z-index:999999;
-        background:rgba(0,0,0,0.88); color:#0f0; font:11px/1.4 monospace; padding:10px 12px;
-        border:1px solid #0f0; border-radius:6px; max-width:480px; max-height:320px; overflow-y:auto;
-        pointer-events:none; white-space:pre;"></div>
-    <script>
-    (function() {
-        const panel = document.getElementById('hover-debug');
-        let enabled = localStorage.getItem('hoverDebug') === '1';
-        if (enabled) panel.style.display = 'block';
-
-        let _lastEl = null, _lastMx = null, _lastMy = null;
-        const _log = [];
-        // Library page tooltip IIFE writes here
-        window._hoverDebugLog = _log;
-
-        function _desc(el) {
-            if (!el) return 'null';
-            const tag = el.tagName.toLowerCase();
-            const id = el.id ? `#${el.id}` : '';
-            const cls = el.className && typeof el.className === 'string'
-                ? '.' + el.className.trim().split(/\s+/).slice(0,3).join('.') : '';
-            const appid = el.closest?.('[data-appid]')?.dataset?.appid;
-            let anc = el.parentElement, ancStr = '';
-            while (anc && anc !== document.body) {
-                if (anc.id) { ancStr = ` < #${anc.id}`; break; }
-                anc = anc.parentElement;
-            }
-            return `${tag}${id}${cls}${appid ? `  [appid=${appid}]` : ''}${ancStr}`;
-        }
-
-        function render() {
-            if (!enabled) return;
-            const tt = document.getElementById('pag-hover-tooltip');
-            let ttLines = [];
-            if (tt) {
-                const r = tt.getBoundingClientRect();
-                const s = tt.style;
-                ttLines = [
-                    `── pag tooltip ────────────────────`,
-                    `display      : ${getComputedStyle(tt).display}`,
-                    `opacity      : ${s.opacity}`,
-                    `transform    : ${s.transform}`,
-                    `getBCR left  : ${r.left.toFixed(1)}  top: ${r.top.toFixed(1)}`,
-                    `getBCR w×h   : ${r.width.toFixed(1)} × ${r.height.toFixed(1)}`,
-                    `innerHTML len: ${tt.innerHTML.length}`,
-                ];
-            }
-            panel.textContent = [
-                `page         : ${location.pathname}`,
-                `mouse        : ${_lastMx ?? '?'}, ${_lastMy ?? '?'}`,
-                `window w×h   : ${window.innerWidth} × ${window.innerHeight}`,
-                `hovered el   : ${_desc(_lastEl)}`,
-                ...ttLines,
-                ``,
-                `── event log ──────────────────────`,
-                ..._log.slice().reverse(),
-            ].join('\n');
-        }
-
-        document.addEventListener('mouseover', e => { _lastEl = e.target; render(); }, true);
-        document.addEventListener('mousemove', e => { _lastMx = e.clientX; _lastMy = e.clientY; render(); }, true);
-
-        document.addEventListener('keydown', e => {
-            if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-                enabled = !enabled;
-                localStorage.setItem('hoverDebug', enabled ? '1' : '0');
-                panel.style.display = enabled ? 'block' : 'none';
-                if (enabled) render();
-            }
-        });
-
-        window._hoverDebugPush = function(msg) {
-            if (!enabled) return;
-            const t = new Date().toISOString().slice(11,23);
-            _log.push(`${t}  ${msg}`);
-            if (_log.length > 40) _log.shift();
-            render();
-        };
-        window._hoverDebugEnabled = () => enabled;
-    })();
-    </script>
 
     <!-- Rate-limit modal -->
     <div id="rate-limit-modal" style="display:none; position:fixed; inset:0; z-index:99999;

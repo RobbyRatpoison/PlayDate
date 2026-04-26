@@ -89,13 +89,13 @@
         get focusedAppid() { return _state.focusedAppid; },
         suppressForGame() {
             _gameSuppressed = true;
-            sessionStorage.setItem('pd_game_running', '1');
+            safeSession.setItem('pd_game_running', '1');
             _clearGamepadState();
             _watchForGameClose();
         },
         clearSuppression() {
             _gameSuppressed = false;
-            sessionStorage.removeItem('pd_game_running');
+            safeSession.removeItem('pd_game_running');
             _clearGamepadState();
         },
         unsuppressGamepad() {
@@ -107,14 +107,14 @@
     const GAMEPAD_ENABLED = false;
 
     // Track whether a gamepad has ever been seen this session (persisted across page loads)
-    let _gpEverSeen = sessionStorage.getItem('pd_gp_seen') === '1';
+    let _gpEverSeen = safeSession.getItem('pd_gp_seen') === '1';
 
     // ── Game-running suppression ──────────────────────────────────────────────
     // Set when a game launches; persists across the page reload that follows.
     // Cleared only when the user explicitly interacts with PlayDate (click/key).
     // This is the only reliable way to stop gamepad input while a game is running:
     // the gamepad is shared hardware and focus events don't fire in pywebview.
-    let _gameSuppressed = sessionStorage.getItem('pd_game_running') === '1';
+    let _gameSuppressed = safeSession.getItem('pd_game_running') === '1';
 
     function _clearGamepadState() {
         _gp.prev        = {};
@@ -128,7 +128,7 @@
     function _unsuppressGamepad() {
         if (!_gameSuppressed) return;
         _gameSuppressed = false;
-        sessionStorage.removeItem('pd_game_running');
+        safeSession.removeItem('pd_game_running');
     }
 
     // Two-phase watcher: polls /api/game-running (checks Steam's reaper process on
@@ -1714,7 +1714,7 @@
 
         if (!_gpEverSeen) {
             _gpEverSeen = true;
-            sessionStorage.setItem('pd_gp_seen', '1');
+            safeSession.setItem('pd_gp_seen', '1');
         }
 
         const now = performance.now();

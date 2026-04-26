@@ -1,57 +1,32 @@
 # Release Notes
 
-## Installation
+## v1.4.5 — 2026-04-26
 
-### Windows
-1. Download **PlayDate-Setup.exe** below
-2. Run it and follow the installer wizard
-3. PlayDate will appear in your Start Menu
+### Card Outlines
 
-**Requirements:** Windows 10 or 11 (64-bit). Microsoft Edge WebView2 Runtime is required — it comes pre-installed on Windows 10/11.
+- Game cards can now display coloured outlines driven by configurable rules. Each rule pairs a colour with a filter (built-in preset, saved filter, or custom). The highest-priority matching rule wins per card.
+- Default rules ship pre-configured with BLAEO completion status colours.
+- Per-page toggles let you enable or disable outlines independently on Library, Home, and Pick 6.
+- The dice button in the Library glows with the picked game's outline colour.
+- The native colour picker (broken in this environment) has been replaced with a custom one: hue/saturation/value controls, hex input, palette swatches, and a screen eyedropper.
 
-### Linux
-```bash
-chmod +x install.sh && ./install.sh
-```
+### Edit Modal
 
-**Requirements:** Python 3.10+ and the WebKit/GTK bindings for your distro:
-```bash
-# Debian, Ubuntu, Mint, Pop!_OS, etc.
-sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0
+- Stats is now the first tab and opens by default; Info is second.
+- HLTB times now appear in both the Stats and Info tabs.
+- Stats tab fields reorganised into a cleaner grid layout.
+- Fixed: 0 playtime now shows as 0.0 hours instead of a blank field.
 
-# Fedora, Nobara, Ultramarine, etc.
-sudo dnf install python3-gobject webkit2gtk4.0
+### Community
 
-# Arch, Manjaro, EndeavourOS, CachyOS, Garuda, etc.
-sudo pacman -S python-gobject webkit2gtk
-
-# openSUSE
-sudo zypper install python3-gobject typelib-1_0-WebKit2-4_0
-```
-
-### macOS
-```bash
-chmod +x install.sh && ./install.sh
-```
-
-**Requirements:** Python 3.10+. pywebview should work out of the box on recent macOS versions. macOS support is present but not yet fully tested.
-
----
-
-## v1.4.4 — 2026-04-25
+- New **Secret Santa / Snowballs** gift list — track games received as Discord event gifts. The PAGYWOSG filter builder gains an option to include these gifts as wins in the generated filter.
 
 ### Library
 
-- Added **List view** as a third display mode alongside Vertical and Horizontal. Switch to it via the VIEW modal — the art orientation toggle is now a three-button group. List view shows a scrollable game list on the left with a resizable divider and a detail panel on the right. The detail panel shows cover art, an on-demand game description, and all editable fields from the edit modal. Group-by is supported with collapsible section headers. Rows outside the viewport are unloaded so performance stays consistent regardless of library size. Right-clicking a row opens the standard context menu. The last selected game is remembered when navigating away and back.
+- Duplicate detection platform priority is now configurable via a drag-to-reorder list in the Library modal (Duplicates section).
 
 ### Fixes
 
-- Fixed update download silently hanging on SSL certificate verification failures; now retries with verification disabled, and shows an error with a manual download link if the retry also fails.
-- Fixed games with no release date falsely matching date-based filter conditions (month, day, year).
-- Fixed account modal API key tooltip being clipped by the modal edge.
-
-### Other
-
-- Gamepad navigation is temporarily disabled while it is reworked. It will return in a future update.
-
-
+- Fixed GOG game descriptions not loading in List view.
+- Fixed tooltips throughout the app being clipped or mispositioned (particularly the API key tooltip in the account modal).
+- Reduced likelihood of a phantom window appearing on secondary monitors when launching games.

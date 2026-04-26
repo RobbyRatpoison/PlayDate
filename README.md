@@ -73,6 +73,8 @@ PlayDate pulls your Steam and GOG libraries, enriches them with metadata (tags, 
 
 Download **PlayDate-Setup.exe** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest) and run it. The installer handles everything — no Python required.
 
+**Requirements:** Windows 10 or 11 (64-bit). Microsoft Edge WebView2 Runtime is required — it comes pre-installed on Windows 10/11.
+
 ### Linux
 
 ```bash

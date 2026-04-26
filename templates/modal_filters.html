@@ -135,7 +135,6 @@
             <select id="saved-filters-select" onchange="loadSavedFilterFromModal(this)"
                     data-modal-row="3"
                     style="flex:1; height:2.25rem; font-size:0.85rem;"
-                    title="Load a saved filter"
                     data-picker-title="Load saved filter">
                 <option value="">Saved filters…</option>
                 {% for name in state.get('saved_filters', {}) %}
@@ -1634,7 +1633,8 @@ async function applyBuiltinFilter(key) {
 function loadSavedFilterFromModal(selectEl) {
     const name = selectEl.value;
     if (!name) return;
-    const tree = _savedFilters[name];
+    const entry = _savedFilters[name];
+    const tree = (entry && typeof entry === 'object' && 'tree' in entry) ? entry.tree : entry;
     if (tree) {
         _loadedSavedTree = tree;
         populateModalFromTree(tree);
@@ -1716,7 +1716,9 @@ async function _doSave(name) {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            _savedFilters[name] = tree;
+            const existing = _savedFilters[name];
+            const existingId = (existing && typeof existing === 'object' && existing.id) ? existing.id : null;
+            _savedFilters[name] = {id: existingId, tree};
             const selectEl = document.getElementById('saved-filters-select');
             if (selectEl?._addOption) selectEl._addOption(name, name);
             selectEl.value = name;

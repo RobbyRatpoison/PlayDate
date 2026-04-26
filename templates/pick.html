@@ -309,6 +309,7 @@
         transform: scale(0.95);
     }
     .result-card:hover { border-color: var(--accent); transform: scale(1); }
+    .result-card[style*="--outline-color"] { outline: 3px solid var(--outline-color); }
 
     .result-art {
         width: 100%;
@@ -689,7 +690,7 @@ async function pickGame() {
     btn.textContent = 'PICK 6';
 }
 
-function makeCard(game, reason, boundsRelaxed) {
+function makeCard(game, reason, boundsRelaxed, outlineColor) {
     const appid = game.appid;
     const localSrc = `/static/img/library/vertical/${appid}.jpg`;
     const steamSrc = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
@@ -698,6 +699,7 @@ function makeCard(game, reason, boundsRelaxed) {
     const card = document.createElement('div');
     card.className = 'result-card' + (boundsRelaxed ? ' bounds-relaxed' : '');
     card.dataset.appid = appid;
+    if (outlineColor) card.style.setProperty('--outline-color', outlineColor);
     card.innerHTML = `
         <div class="result-art" onclick="launchGame(${appid})" style="cursor:pointer;">
             <img src="${localSrc}" alt="${escaped}"
@@ -714,7 +716,7 @@ function showResults(picks, poolSize, boundsRelaxed) {
     const container = document.getElementById('result-cards');
     container.innerHTML = '';
     window._games = (picks || []).map(p => p.game);
-    (picks || []).forEach(p => container.appendChild(makeCard(p.game, p.reason, p.bounds_relaxed)));
+    (picks || []).forEach(p => container.appendChild(makeCard(p.game, p.reason, p.bounds_relaxed, p.outline_color)));
 
     const warn = document.getElementById('bounds-warn');
     if (boundsRelaxed) {

@@ -18,7 +18,7 @@
         <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
             <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Sort by</span>
             <select id="sort-dropdown" class="nav-dropdown" onchange="vmSetSort(this.value)"
-                    data-modal-row="1" data-picker-title="Sort by" title="Sort by"
+                    data-modal-row="1" data-picker-title="Sort by"
                     style="flex:1; height:2.5rem; min-width:0;">
                 <option value="name" {{ 'selected' if state.sort == 'name' }}>Alphabetical</option>
                 <option value="playtime_forever" {{ 'selected' if state.sort == 'playtime_forever' }}>Hours Played</option>
@@ -30,7 +30,7 @@
                 <option value="hltb_min" {{ 'selected' if state.sort == 'hltb_min' }}>HLTB Time</option>
             </select>
             <button class="order-btn" onclick="vmToggleOrder()" data-modal-row="1"
-                    title="Toggle ascending/descending"
+                    data-tooltip="Toggle ascending/descending" data-tooltip-right
                     style="font-size:1.2rem; min-width:3rem; height:2.5rem; padding:0 0.75rem; flex-shrink:0;">
                 {{ '▲' if state.order == 'ASC' else '▼' }}
             </button>
@@ -62,7 +62,7 @@
             <input type="range" id="card-size-slider" min="120" max="400" step="10"
                    value="{{ state.get('card_height', 200) }}"
                    oninput="onCardSizeSlider(this.value)"
-                   title="Adjust card size (grid modes only)"
+                   data-tooltip="Adjust card size (grid modes only)"
                    style="flex:1; min-width:6rem;">
         </div>
 
@@ -70,7 +70,7 @@
         <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
             <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Group by</span>
             <select id="group-by-dropdown" class="nav-dropdown" onchange="vmSetGroupBy(this.value)"
-                    data-modal-row="4" data-picker-title="Group by" title="Group by"
+                    data-modal-row="4" data-picker-title="Group by"
                     style="flex:1; height:2.5rem; min-width:0;">
                 <option value="" {{ 'selected' if not state.get('group_by') }}>None</option>
                 <option value="installed" {{ 'selected' if state.get('group_by') == 'installed' }}>Installed</option>
@@ -83,6 +83,20 @@
             </select>
         </div>
 
+        <!-- Card Outlines -->
+        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0;">
+            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Outlines</span>
+            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <button id="vm-outline-library" class="vm-outline-toggle" onclick="vmToggleOutline('library')" data-modal-row="5">Library</button>
+                <button id="vm-outline-home"    class="vm-outline-toggle" onclick="vmToggleOutline('home')"    data-modal-row="5">Home</button>
+                <button id="vm-outline-pick6"   class="vm-outline-toggle" onclick="vmToggleOutline('pick6')"   data-modal-row="5">Pick 6</button>
+                <button onclick="openCardOutlinesModal()" data-modal-row="5"
+                        style="height:2.25rem; padding:0 0.875rem; font-size:0.82rem; border-radius:0.375rem; background:#2a3f55; border:1px solid #3a5f7a; color:#c7d5e0; cursor:pointer; white-space:nowrap;">
+                    Edit Rules
+                </button>
+            </div>
+        </div>
+
         {% else %}
         <div style="color:#555; font-size:0.85rem; font-style:italic; padding:1rem 0;">Library options are not available on this page.</div>
         {% endif %}
@@ -90,8 +104,8 @@
 
     <!-- Footer -->
     <div style="padding:0.875rem 1.5rem; border-top:1px solid #2a3f55; display:flex; gap:0.625rem; flex-shrink:0;">
-        <button onclick="closeViewModal()" class="nav-btn" data-modal-row="5" style="flex:1;">Close</button>
-        <button onclick="applyViewModal()" class="nav-btn" data-modal-row="5"
+        <button onclick="closeViewModal()" class="nav-btn" data-modal-row="6" style="flex:1;">Close</button>
+        <button onclick="applyViewModal()" class="nav-btn" data-modal-row="6"
                 style="flex:2; background:#1a5c2e; border-color:#2a7c3e; color:#fff;">Apply</button>
     </div>
 
@@ -148,6 +162,24 @@
     color: var(--accent);
     font-size: 0.9rem;
 }
+.vm-outline-toggle {
+    height: 2.25rem;
+    padding: 0 0.875rem;
+    font-size: 0.82rem;
+    border-radius: 0.375rem;
+    background: #333;
+    border: 1px solid #444;
+    color: white;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.vm-outline-toggle:hover { background: #444; }
+.vm-outline-toggle.vm-outline-on {
+    background: var(--accent);
+    color: #1b2838;
+    border-color: var(--accent);
+}
 </style>
 
 <script>
@@ -157,6 +189,39 @@ let _vmPendOrder = null;
 let _vmPendHiddenPlatforms = null; // Set when user has changed platforms
 let _vmPendView = null;
 let _vmPendGroupBy = undefined; // undefined = unchanged
+let _vmPendOutlineEnabled = null; // {library, home, pick6} or null if unchanged
+
+// Loaded from server on first open
+let _vmOutlineRules = null;
+let _vmOutlineEnabled = null;
+
+async function _vmLoadOutlines() {
+    if (_vmOutlineEnabled !== null) return;
+    try {
+        const r = await fetch('/api/card-outlines').then(r => r.json());
+        if (r.status === 'success') {
+            _vmOutlineEnabled = r.card_outlines.enabled || {library: true, home: true, pick6: true};
+            _vmOutlineRules = r.card_outlines.rules || [];
+        }
+    } catch (e) { /* ignore */ }
+    if (!_vmOutlineEnabled) _vmOutlineEnabled = {library: true, home: true, pick6: true};
+}
+
+function _vmSyncOutlineButtons(enabled) {
+    ['library', 'home', 'pick6'].forEach(k => {
+        const btn = document.getElementById('vm-outline-' + k);
+        if (btn) btn.classList.toggle('vm-outline-on', !!enabled[k]);
+    });
+}
+
+function vmToggleOutline(key) {
+    if (!_vmPendOutlineEnabled) {
+        const eff = _vmOutlineEnabled || {library: true, home: true, pick6: true};
+        _vmPendOutlineEnabled = {...eff};
+    }
+    _vmPendOutlineEnabled[key] = !_vmPendOutlineEnabled[key];
+    _vmSyncOutlineButtons(_vmPendOutlineEnabled);
+}
 
 const _vmServerOrder = '{{ state.order if state is defined and state.order is defined else "ASC" }}';
 
@@ -173,6 +238,7 @@ function openViewModal() {
     _vmPendHiddenPlatforms = null;
     _vmPendView = null;
     _vmPendGroupBy = undefined;
+    _vmPendOutlineEnabled = null;
 
     // Reset order button to server state
     const orderBtn = document.querySelector('.order-btn');
@@ -195,6 +261,8 @@ function openViewModal() {
     // Reset sort/groupby dropdowns to server-rendered values (already correct from Jinja)
 
     document.getElementById('viewModal').style.display = 'flex';
+
+    _vmLoadOutlines().then(() => _vmSyncOutlineButtons(_vmOutlineEnabled));
 }
 
 function closeViewModal() {
@@ -254,11 +322,373 @@ async function applyViewModal() {
     if (_vmPendView !== null) updates.artwork_orientation = _vmPendView;
     if (_vmPendGroupBy !== undefined) updates.group_by = _vmPendGroupBy;
 
-    if (Object.keys(updates).length === 0) {
+    const saveOutline = _vmPendOutlineEnabled !== null;
+    if (saveOutline) {
+        const current = await fetch('/api/card-outlines').then(r => r.json());
+        const outlines = current.card_outlines || {};
+        outlines.enabled = _vmPendOutlineEnabled;
+        _vmOutlineEnabled = _vmPendOutlineEnabled;
+        await fetch('/api/card-outlines', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({card_outlines: outlines})
+        });
+    }
+
+    if (Object.keys(updates).length === 0 && !saveOutline) {
         closeViewModal();
         return;
     }
 
-    await sendStateUpdate(updates);
+    if (Object.keys(updates).length > 0) {
+        await sendStateUpdate(updates);
+    } else {
+        closeViewModal();
+    }
 }
+
+// ── Card Outlines Modal ───────────────────────────────────────────────────────
+
+function openCardOutlinesModal() {
+    closeViewModal();
+    _coLoad();
+    document.getElementById('cardOutlinesModal').style.display = 'flex';
+}
+
+function closeCardOutlinesModal() {
+    document.getElementById('cardOutlinesModal').style.display = 'none';
+}
+
+// Working copy of rules (array of rule objects)
+let _coRules = null;
+let _coSavedFilters = []; // [{id, name}]
+let _coDragSrc = null;
+
+const _CO_BUILTIN_PRESETS = [
+    {key: 'all_games',     label: 'All Games'},
+    {key: 'installed',     label: 'Installed'},
+    {key: 'not_installed', label: 'Not Installed'},
+    {key: 'never_played',  label: 'Never Played'},
+    {key: 'unfinished',    label: 'Unfinished'},
+    {key: 'not_beaten',    label: 'Not Beaten'},
+    {key: 'beaten',        label: 'Beaten'},
+    {key: 'completed',     label: 'Completed'},
+    {key: 'beaten_only',   label: 'Beaten'},
+    {key: 'wont_play',     label: "Won't Play"},
+];
+
+async function _coLoad() {
+    const r = await fetch('/api/card-outlines').then(r => r.json());
+    _coRules = (r.card_outlines?.rules || []).map((rule, i) => ({...rule, priority: i}));
+    _coSavedFilters = r.saved_filters || [];
+    _vmOutlineEnabled = r.card_outlines?.enabled || {library: true, home: true, pick6: true};
+    _vmOutlineRules = _coRules;
+    _coRender();
+}
+
+function _coFilterLabel(filter) {
+    if (!filter) return '(none)';
+    if (filter.type === 'preset') {
+        const p = _CO_BUILTIN_PRESETS.find(x => x.key === filter.preset_key);
+        return p ? p.label : filter.preset_key;
+    }
+    if (filter.type === 'saved') {
+        const sf = _coSavedFilters.find(x => x.id === filter.filter_id);
+        return sf ? sf.name : '(deleted filter)';
+    }
+    if (filter.type === 'custom') return 'Custom filter';
+    return '(unknown)';
+}
+
+function _coRender() {
+    const list = document.getElementById('co-rule-list');
+    list.innerHTML = '';
+    if (!_coRules || !_coRules.length) {
+        list.innerHTML = '<div style="color:#8f98a0; font-size:0.82rem; padding:0.5rem 0;">No rules. Add one below.</div>';
+        return;
+    }
+    _coRules.forEach((rule, idx) => {
+        const row = document.createElement('div');
+        row.className = 'co-rule-row';
+        row.dataset.idx = idx;
+        row.draggable = true;
+        row.innerHTML = `
+            <span class="co-drag-handle">⠿</span>
+            <span class="co-color-swatch" style="background:${escHtml(rule.color || '#888')};"></span>
+            <span class="co-rule-label">${escHtml(rule.label || '(unlabeled)')}</span>
+            <span class="co-rule-filter">${escHtml(_coFilterLabel(rule.filter))}</span>
+            <button class="co-delete-btn" onclick="_coDeleteRule(${idx})">✕</button>
+        `;
+        row.querySelector('.co-color-swatch').addEventListener('click', e => {
+            e.stopPropagation();
+            openColorPicker(e.currentTarget, _coRules[idx].color || '#888888', hex => {
+                _coRules[idx].color = hex;
+                e.currentTarget.style.background = hex;
+            });
+        });
+        row.addEventListener('dragstart', e => { _coDragSrc = idx; row.classList.add('co-dragging'); e.dataTransfer.effectAllowed = 'move'; });
+        row.addEventListener('dragend', () => row.classList.remove('co-dragging'));
+        row.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; row.classList.add('co-drag-over'); });
+        row.addEventListener('dragleave', () => row.classList.remove('co-drag-over'));
+        row.addEventListener('drop', e => {
+            e.preventDefault(); row.classList.remove('co-drag-over');
+            if (_coDragSrc === null || _coDragSrc === idx) return;
+            const moved = _coRules.splice(_coDragSrc, 1)[0];
+            _coRules.splice(idx, 0, moved);
+            _coRules.forEach((r, i) => r.priority = i);
+            _coDragSrc = null;
+            _coRender();
+        });
+        list.appendChild(row);
+    });
+}
+
+
+function _coDeleteRule(idx) {
+    _coRules.splice(idx, 1);
+    _coRules.forEach((r, i) => r.priority = i);
+    _coRender();
+}
+
+// Add-rule form state
+let _coAddFilter = null; // {type, preset_key?, filter_id?, tree?}
+
+function _coShowAddForm() {
+    document.getElementById('co-add-form').style.display = '';
+    document.getElementById('co-add-btn').style.display = 'none';
+    _coAddFilter = null;
+    _coUpdateAddFilterSource(document.getElementById('co-add-source').value);
+}
+
+function _coHideAddForm() {
+    document.getElementById('co-add-form').style.display = 'none';
+    document.getElementById('co-add-btn').style.display = '';
+    _coAddFilter = null;
+}
+
+function _coUpdateAddFilterSource(type) {
+    const presetRow  = document.getElementById('co-add-preset-row');
+    const savedRow   = document.getElementById('co-add-saved-row');
+    const customNote = document.getElementById('co-add-custom-note');
+    presetRow.style.display  = type === 'preset'  ? '' : 'none';
+    savedRow.style.display   = type === 'saved'   ? '' : 'none';
+    customNote.style.display = type === 'custom'  ? '' : 'none';
+    _coAddFilter = null;
+    if (type === 'preset') {
+        const sel = document.getElementById('co-add-preset-select');
+        if (sel && sel.value) _coAddFilter = {type: 'preset', preset_key: sel.value};
+    } else if (type === 'saved') {
+        const sel = document.getElementById('co-add-saved-select');
+        if (sel && sel.value) _coAddFilter = {type: 'saved', filter_id: sel.value};
+    }
+}
+
+function _coSelectPreset(key) {
+    _coAddFilter = {type: 'preset', preset_key: key};
+}
+
+function _coSelectSaved(id) {
+    _coAddFilter = id ? {type: 'saved', filter_id: id} : null;
+}
+
+function _coAddRule() {
+    const label = (document.getElementById('co-add-label').value || '').trim();
+    const colorSwatch = document.getElementById('co-add-color-swatch');
+    const color = colorSwatch ? colorSwatch.style.background : '#888888';
+    const source = document.getElementById('co-add-source').value;
+
+    if (!label) { alert('Please enter a label for this rule.'); return; }
+    if (!_coAddFilter && source !== 'custom') { alert('Please select a filter.'); return; }
+
+    const filter = _coAddFilter || {type: 'custom', tree: null};
+    const newRule = {
+        id: null,
+        label,
+        color,
+        priority: _coRules.length,
+        filter,
+    };
+    _coRules.push(newRule);
+    _coRender();
+    _coHideAddForm();
+    document.getElementById('co-add-label').value = '';
+}
+
+async function _coSave() {
+    const saveBtn = document.getElementById('co-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    try {
+        const current = await fetch('/api/card-outlines').then(r => r.json());
+        const outlines = current.card_outlines || {};
+        outlines.rules = _coRules;
+        const res = await fetch('/api/card-outlines', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({card_outlines: outlines})
+        });
+        if ((await res.json()).status === 'success') {
+            closeCardOutlinesModal();
+            location.reload();
+        } else {
+            saveBtn.textContent = '✘ Save failed';
+            setTimeout(() => { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }, 2000);
+        }
+    } catch (e) {
+        saveBtn.textContent = '✘ Error';
+        setTimeout(() => { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }, 2000);
+    }
+}
+</script>
+
+<!-- Card Outlines Modal -->
+<div id="cardOutlinesModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeCardOutlinesModal()">
+<div class="modal-content" style="width:38rem; max-height:82vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+
+    <div style="padding:1.25rem 1.5rem 0.875rem; border-bottom:1px solid #2a3f55; flex-shrink:0; display:flex; align-items:center; justify-content:space-between;">
+        <h2 style="margin:0; color:#fff; font-size:1.1rem;">Card Outline Rules</h2>
+        <button onclick="closeCardOutlinesModal()" style="background:none;border:none;color:#8f98a0;font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    </div>
+
+    <div style="flex:1; min-height:0; overflow-y:auto; padding:1.25rem 1.5rem;">
+        <p style="color:#8f98a0; font-size:0.8rem; margin:0 0 1rem;">
+            Rules are checked in order — the first match wins. Drag rows to reorder.
+        </p>
+        <div id="co-rule-list"></div>
+
+        <!-- Add rule form -->
+        <div id="co-add-form" style="display:none; margin-top:1rem; padding:0.875rem; background:#1a2332; border-radius:0.5rem; border:1px solid #2a3f55;">
+            <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap;">
+                <input id="co-add-label" type="text" placeholder="Label (e.g. Wishlist)"
+                       style="flex:1; min-width:8rem; height:2rem; padding:0 0.5rem; background:#101822; border:1px solid #2a3f55; color:#fff; border-radius:0.375rem; font-size:0.82rem;">
+                <div id="co-add-color-swatch"
+                     style="width:2.5rem; height:2rem; border-radius:0.375rem; border:1px solid #2a3f55; background:#66c0f4; cursor:pointer; flex-shrink:0;"
+                     data-tooltip="Choose color" data-tooltip-right
+                     onclick="openColorPicker(this, this.style.background, hex => { this.style.background = hex; })"></div>
+            </div>
+            <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem; flex-wrap:wrap;">
+                <span style="color:#8f98a0; font-size:0.8rem; flex-shrink:0;">Filter source:</span>
+                <select id="co-add-source" onchange="_coUpdateAddFilterSource(this.value)"
+                        class="co-select"
+                        style="flex:1; height:2rem; background:#101822; border:1px solid #2a3f55; color:#fff; border-radius:0.375rem; font-size:0.82rem; padding:0 0.5rem;">
+                    <option value="preset">Built-in preset</option>
+                    <option value="saved">Saved filter</option>
+                    <option value="custom">Custom (build in filter modal)</option>
+                </select>
+            </div>
+            <div id="co-add-preset-row" style="margin-bottom:0.75rem;">
+                <select id="co-add-preset-select" onchange="_coSelectPreset(this.value)"
+                        class="co-select"
+                        style="width:100%; height:2rem; background:#101822; border:1px solid #2a3f55; color:#fff; border-radius:0.375rem; font-size:0.82rem; padding:0 0.5rem;">
+                </select>
+            </div>
+            <div id="co-add-saved-row" style="display:none; margin-bottom:0.75rem;">
+                <select id="co-add-saved-select" onchange="_coSelectSaved(this.value)"
+                        class="co-select"
+                        style="width:100%; height:2rem; background:#101822; border:1px solid #2a3f55; color:#fff; border-radius:0.375rem; font-size:0.82rem; padding:0 0.5rem;">
+                    <option value="">-- Select saved filter --</option>
+                </select>
+            </div>
+            <div id="co-add-custom-note" style="display:none; margin-bottom:0.75rem; color:#8f98a0; font-size:0.8rem;">
+                Custom filter trees are not yet editable here. Add the rule first, then edit the filter using the Filters modal and re-save.
+            </div>
+            <div style="display:flex; gap:0.5rem;">
+                <button onclick="_coAddRule()"
+                        style="flex:2; height:2rem; background:#1a5c2e; border:1px solid #2a7c3e; color:#fff; border-radius:0.375rem; font-size:0.82rem; cursor:pointer;">
+                    Add Rule
+                </button>
+                <button onclick="_coHideAddForm()"
+                        style="flex:1; height:2rem; background:#333; border:1px solid #444; color:#fff; border-radius:0.375rem; font-size:0.82rem; cursor:pointer;">
+                    Cancel
+                </button>
+            </div>
+        </div>
+
+        <button id="co-add-btn" onclick="_coShowAddForm()"
+                style="margin-top:1rem; width:100%; height:2.25rem; background:#2a3f55; border:1px solid #3a5f7a; color:#c7d5e0; border-radius:0.375rem; font-size:0.82rem; cursor:pointer;">
+            + Add Rule
+        </button>
+    </div>
+
+    <div style="padding:0.875rem 1.5rem; border-top:1px solid #2a3f55; display:flex; gap:0.625rem; flex-shrink:0;">
+        <button onclick="closeCardOutlinesModal()" class="nav-btn" style="flex:1;">Close</button>
+        <button id="co-save-btn" onclick="_coSave()" class="nav-btn"
+                style="flex:2; background:#1a5c2e; border-color:#2a7c3e; color:#fff;">Save</button>
+    </div>
+
+</div>
+</div>
+
+<style>
+.co-rule-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    margin-bottom: 0.375rem;
+    background: #1a2332;
+    border: 1px solid #2a3f55;
+    border-radius: 0.375rem;
+    cursor: default;
+    user-select: none;
+}
+.co-rule-row.co-drag-over { border-color: var(--accent); background: #1e2d42; }
+.co-rule-row.co-dragging  { opacity: 0.4; }
+.co-drag-handle { color: #555; font-size: 1rem; cursor: grab; flex-shrink: 0; }
+.co-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238f98a0'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    padding-right: 1.8rem !important;
+}
+.co-color-swatch {
+    width: 1.25rem; height: 1.25rem;
+    border-radius: 50%;
+    border: 2px solid #444;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: border-color 0.15s;
+}
+.co-color-swatch:hover { border-color: #aaa; }
+.co-rule-label { flex: 0 0 auto; min-width: 6rem; color: #e2eaf0; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.co-rule-filter { flex: 1; color: #8f98a0; font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.co-delete-btn {
+    background: none; border: none; color: #555; font-size: 0.9rem; cursor: pointer; padding: 0 2px; flex-shrink: 0;
+}
+.co-delete-btn:hover { color: var(--text-danger); }
+</style>
+
+<script>
+// Populate saved filters dropdown when modal opens
+(function() {
+    const origOpen = window.openCardOutlinesModal;
+    window.openCardOutlinesModal = function() {
+        origOpen();
+        // Populate saved select after load
+        setTimeout(() => {
+            const sel = document.getElementById('co-add-saved-select');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">-- Select saved filter --</option>';
+            (_coSavedFilters || []).forEach(sf => {
+                const opt = document.createElement('option');
+                opt.value = sf.id;
+                opt.textContent = sf.name;
+                sel.appendChild(opt);
+            });
+        }, 100);
+    };
+})();
+// Populate preset select from JS constant
+document.addEventListener('DOMContentLoaded', () => {
+    const sel = document.getElementById('co-add-preset-select');
+    if (!sel) return;
+    _CO_BUILTIN_PRESETS.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.key;
+        opt.textContent = p.label;
+        sel.appendChild(opt);
+    });
+    if (sel.value) _coAddFilter = {type: 'preset', preset_key: sel.value};
+});
 </script>

@@ -123,6 +123,7 @@ def init_db():
         'runner_path': 'TEXT',           # Path to Proton binary used for this game
         'platform_executable': 'TEXT',   # Relative path to main exe within install_path
         'duplicate_of': 'TEXT',          # appid of preferred version of this game (e.g. Steam appid for a GOG duplicate); NULL = canonical
+        'duplicate_auto': 'INT',         # 1 = set by auto-detection; 0/NULL = manually set
     }
 
     for column_name, column_type in required_columns.items():
@@ -291,8 +292,27 @@ def init_db():
     except Exception:
         pass  # column already exists
 
+    # ── Migrate pre-duplicate_auto GOG→Steam entries ─────────────────────────
+    # Before duplicate_auto existed, auto_detect_duplicates() only marked GOG
+    # games as duplicates of Steam games and left duplicate_auto NULL.
+    # Mark these as auto-detected so priority-aware re-detection can replace them.
+    legacy = cursor.execute(
+        "SELECT COUNT(*) FROM games "
+        "WHERE platform = 'gog' AND duplicate_auto IS NULL "
+        "AND duplicate_of IS NOT NULL AND duplicate_of != '' "
+        "AND CAST(duplicate_of AS INTEGER) > 0"
+    ).fetchone()[0]
+    if legacy:
+        cursor.execute(
+            "UPDATE games SET duplicate_auto = 1 "
+            "WHERE platform = 'gog' AND duplicate_auto IS NULL "
+            "AND duplicate_of IS NOT NULL AND duplicate_of != '' "
+            "AND CAST(duplicate_of AS INTEGER) > 0"
+        )
+
     conn.commit()
     conn.close()
+    return bool(legacy)
 
 def add_new_game(appid, name):
     conn = get_db()

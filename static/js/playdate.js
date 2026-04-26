@@ -2,6 +2,67 @@
  * playdate.js — shared utilities loaded on every page via base.html
  */
 
+// Safe wrappers for localStorage/sessionStorage — pywebview may not expose them.
+const _memLocal   = {};
+const _memSession = {};
+const safeLocal   = _makeStorage(() => localStorage,   _memLocal);
+const safeSession = _makeStorage(() => sessionStorage, _memSession);
+function _makeStorage(getter, mem) {
+    function _get() { try { return getter(); } catch { return null; } }
+    return {
+        getItem(k)      { const s = _get(); return s ? s.getItem(k)      : (mem[k] ?? null); },
+        setItem(k, v)   { const s = _get(); if (s) s.setItem(k, v);      else mem[k] = v; },
+        removeItem(k)   { const s = _get(); if (s) s.removeItem(k);      else delete mem[k]; },
+    };
+}
+
+// ── Tooltip manager ──────────────────────────────────────────────────────────
+(function () {
+    const tt = document.createElement('div');
+    tt.style.cssText = [
+        'position:fixed', 'visibility:hidden', 'opacity:0',
+        'background:#1a2233', 'color:#c2c8cc', 'border:1px solid #3a4a5c',
+        'border-radius:5px', 'padding:6px 10px', 'font-size:0.75rem',
+        'max-width:280px', 'white-space:normal', 'word-wrap:break-word',
+        'pointer-events:none', 'z-index:9999', 'transition:opacity 0.15s',
+    ].join(';');
+    document.addEventListener('DOMContentLoaded', () => document.body.appendChild(tt));
+
+    let _cur = null;
+
+    document.addEventListener('mouseover', function (e) {
+        const el = e.target.closest('[data-tooltip]');
+        if (!el || !el.dataset.tooltip) return;
+        _cur = el;
+        tt.textContent = el.dataset.tooltip;
+        tt.style.visibility = 'visible';
+        requestAnimationFrame(() => {
+            if (_cur !== el) return;
+            const r  = el.getBoundingClientRect();
+            const tw = tt.offsetWidth;
+            const th = tt.offsetHeight;
+            let top  = r.top - th - 6;
+            let left = ('tooltipRight' in el.dataset) ? r.right - tw : r.left;
+            if (top < 4)  top  = r.bottom + 6;
+            if (left < 4) left = 4;
+            if (left + tw > window.innerWidth - 4) left = window.innerWidth - tw - 4;
+            tt.style.top  = top  + 'px';
+            tt.style.left = left + 'px';
+            tt.style.opacity = '1';
+        });
+    });
+
+    document.addEventListener('mouseout', function (e) {
+        const el = e.target.closest('[data-tooltip]');
+        if (!el) return;
+        if (!el.contains(e.relatedTarget)) {
+            _cur = null;
+            tt.style.opacity = '0';
+            tt.style.visibility = 'hidden';
+        }
+    });
+}());
+
 /** Escape a string for safe insertion into innerHTML. */
 function escHtml(s) {
     return String(s)
@@ -482,4 +543,282 @@ function _closeOutsideHandler(e) {
 }
 document.addEventListener('mousedown', _closeOutsideHandler);
 document.addEventListener('click', _closeOutsideHandler);
+
+// ─── Custom colour picker ──────────────────────────────────────────────────
+// Replaces <input type="color"> which is broken in pywebview/WebKit2GTK.
+// Usage: openColorPicker(anchorEl, '#rrggbb', hex => { /* called on change */ })
+
+const _CP_PALETTE = [
+    '#FFFFFF','#C7D5E0','#8F98A0','#555555','#222222','#000000',
+    '#5BC0DE','#66C0F4','#4A90D9','#1A5C8C','#0D3B5C','#071828',
+    '#5CB85C','#5C7E10','#3A7A3A','#1A4A1A','#D9534F','#A32A2A',
+    '#F0AD4E','#C97C00','#F5D76E','#E8A020','#9B59B6','#6C3483',
+];
+
+let _cpEl = null, _cpOnChange = null, _cpAnchor = null;
+let _cpH = 0, _cpS = 1, _cpV = 1; // working HSV state
+
+function _cpRgbToHsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    const s = max === 0 ? 0 : d / max, v = max;
+    if (d !== 0) {
+        switch (max) {
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+            case g: h = ((b - r) / d + 2) / 6; break;
+            case b: h = ((r - g) / d + 4) / 6; break;
+        }
+    }
+    return [h * 360, s, v];
+}
+
+function _cpHsvToRgb(h, s, v) {
+    const i = Math.floor(h / 60) % 6;
+    const f = h / 60 - Math.floor(h / 60);
+    const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+    const [r, g, b] = [[v,t,p],[q,v,p],[p,v,t],[p,q,v],[t,p,v],[v,p,q]][i];
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function _cpHexToRgb(hex) {
+    const h = hex.replace('#', '');
+    return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+function _cpRgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2,'0')).join('');
+}
+
+function _cpCurrentHex() {
+    const [r, g, b] = _cpHsvToRgb(_cpH, _cpS, _cpV);
+    return _cpRgbToHex(r, g, b);
+}
+
+function openColorPicker(anchor, currentHex, onChange) {
+    closeColorPicker();
+    _cpOnChange = onChange;
+    _cpAnchor = anchor;
+
+    // Parse initial hex → HSV
+    const initHex = /^#[0-9a-fA-F]{6}$/.test((currentHex||'').trim())
+        ? currentHex.trim() : '#ff0000';
+    const [ir, ig, ib] = _cpHexToRgb(initHex);
+    [_cpH, _cpS, _cpV] = _cpRgbToHsv(ir, ig, ib);
+
+    const pop = document.createElement('div');
+    pop.id = '_color-picker-popover';
+    pop.style.cssText = 'position:fixed;z-index:99999;background:#1b2838;border:1px solid #2a3f55;' +
+        'border-radius:0.5rem;padding:0.625rem;box-shadow:0 4px 24px rgba(0,0,0,0.7);' +
+        'display:flex;flex-direction:column;gap:0.5rem;width:220px;user-select:none;';
+
+    // ── SV box ────────────────────────────────────────────────────────────
+    const svBox = document.createElement('div');
+    svBox.style.cssText = 'position:relative;width:100%;height:130px;border-radius:4px;cursor:crosshair;flex-shrink:0;overflow:hidden;';
+
+    const svBg = document.createElement('div');  // hue background
+    svBg.style.cssText = 'position:absolute;inset:0;';
+
+    const svWhite = document.createElement('div'); // white→transparent
+    svWhite.style.cssText = 'position:absolute;inset:0;background:linear-gradient(to right,#fff,transparent);';
+
+    const svBlack = document.createElement('div'); // transparent→black
+    svBlack.style.cssText = 'position:absolute;inset:0;background:linear-gradient(to bottom,transparent,#000);';
+
+    const svCursor = document.createElement('div');
+    svCursor.style.cssText = 'position:absolute;width:12px;height:12px;border-radius:50%;' +
+        'border:2px solid #fff;box-shadow:0 0 0 1px #000;transform:translate(-50%,-50%);pointer-events:none;';
+
+    svBox.append(svBg, svWhite, svBlack, svCursor);
+
+    function _svUpdateBg() {
+        svBg.style.background = `hsl(${_cpH},100%,50%)`;
+    }
+    function _svUpdateCursor() {
+        svCursor.style.left = (_cpS * 100) + '%';
+        svCursor.style.top  = ((1 - _cpV) * 100) + '%';
+    }
+
+    function _svPick(e) {
+        const r = svBox.getBoundingClientRect();
+        _cpS = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        _cpV = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+        _svUpdateCursor();
+        _cpEmit();
+    }
+    let _svDrag = false;
+    svBox.addEventListener('mousedown', e => { e.preventDefault(); _svDrag = true; _svPick(e); });
+    document.addEventListener('mousemove', e => { if (_svDrag) _svPick(e); });
+    document.addEventListener('mouseup',   () => { _svDrag = false; });
+
+    pop.appendChild(svBox);
+
+    // ── Hue slider ────────────────────────────────────────────────────────
+    const hueTrack = document.createElement('div');
+    hueTrack.style.cssText = 'position:relative;height:12px;border-radius:6px;cursor:pointer;flex-shrink:0;' +
+        'background:linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00);';
+
+    const hueThumb = document.createElement('div');
+    hueThumb.style.cssText = 'position:absolute;top:50%;width:14px;height:14px;border-radius:50%;' +
+        'border:2px solid #fff;box-shadow:0 0 0 1px #000;transform:translate(-50%,-50%);pointer-events:none;';
+    hueTrack.appendChild(hueThumb);
+
+    function _hueUpdateThumb() {
+        hueThumb.style.left = (_cpH / 360 * 100) + '%';
+    }
+    function _huePick(e) {
+        const r = hueTrack.getBoundingClientRect();
+        _cpH = Math.max(0, Math.min(360, (e.clientX - r.left) / r.width * 360));
+        _hueUpdateThumb();
+        _svUpdateBg();
+        _cpEmit();
+    }
+    let _hueDrag = false;
+    hueTrack.addEventListener('mousedown', e => { e.preventDefault(); _hueDrag = true; _huePick(e); });
+    document.addEventListener('mousemove', e => { if (_hueDrag) _huePick(e); });
+    document.addEventListener('mouseup',   () => { _hueDrag = false; });
+
+    pop.appendChild(hueTrack);
+
+    // ── Bottom row: eyedropper + preview + hex ────────────────────────────
+    const bottomRow = document.createElement('div');
+    bottomRow.style.cssText = 'display:flex;align-items:center;gap:0.375rem;';
+
+    const dropBtn = document.createElement('button');
+    dropBtn.title = 'Pick colour from screen';
+    dropBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22l5-5M14.5 2.5l7 7-10 10-7-7 10-10z"/><path d="M7 17l-5 5"/></svg>';
+    dropBtn.style.cssText = 'width:2rem;height:2rem;flex-shrink:0;background:#2a3f55;border:1px solid #3a5f7a;' +
+        'color:#c7d5e0;border-radius:0.25rem;cursor:pointer;font-size:1rem;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;';
+    dropBtn.addEventListener('click', async e => {
+        e.stopPropagation();
+        if ('EyeDropper' in window) {
+            try {
+                const result = await new EyeDropper().open();
+                const hex = result.sRGBHex;
+                const [r, g, b] = _cpHexToRgb(hex);
+                [_cpH, _cpS, _cpV] = _cpRgbToHsv(r, g, b);
+                _cpFullUpdate();
+            } catch (_) {}
+            return;
+        }
+        // Fallback: ask Python backend to open native system color dialog.
+        // Hide all visible modals and the colour picker popup so the screenshot
+        // shows the clean app window behind them.
+        const _hidden = [];
+        document.querySelectorAll('.modal-overlay').forEach(el => {
+            if (el.style.display !== 'none') { el.style.display = 'none'; _hidden.push(el); }
+        });
+        const _cpPopEl = document.getElementById('_color-picker-popover');
+        if (_cpPopEl) { _cpPopEl.style.visibility = 'hidden'; }
+        // Wait two frames so pywebview repaints before the subprocess grabs the screen.
+        await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+        try {
+            const resp = await fetch('/api/pick-screen-color');
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data.color) {
+                    const [r, g, b] = _cpHexToRgb(data.color);
+                    [_cpH, _cpS, _cpV] = _cpRgbToHsv(r, g, b);
+                    _cpFullUpdate();
+                }
+                // data.cancelled or data.error → do nothing
+            }
+        } catch (_) {}
+        // Restore hidden elements.
+        _hidden.forEach(el => { el.style.display = ''; });
+        if (_cpPopEl) { _cpPopEl.style.visibility = ''; }
+    });
+    bottomRow.appendChild(dropBtn);
+
+    const preview = document.createElement('div');
+    preview.style.cssText = 'width:2rem;height:2rem;flex-shrink:0;border-radius:0.25rem;border:1px solid #444;';
+
+    const hexInput = document.createElement('input');
+    hexInput.type = 'text';
+    hexInput.maxLength = 7;
+    hexInput.style.cssText = 'flex:1;height:2rem;background:#101822;border:1px solid #2a3f55;color:#fff;' +
+        'border-radius:0.25rem;font-size:0.82rem;padding:0 0.375rem;font-family:monospace;min-width:0;';
+    hexInput.addEventListener('input', () => {
+        let v = hexInput.value.trim();
+        if (!v.startsWith('#')) v = '#' + v;
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+            const [r, g, b] = _cpHexToRgb(v);
+            [_cpH, _cpS, _cpV] = _cpRgbToHsv(r, g, b);
+            _svUpdateBg(); _svUpdateCursor(); _hueUpdateThumb();
+            preview.style.background = v;
+            _cpOnChange && _cpOnChange(v);
+        }
+    });
+    hexInput.addEventListener('keydown', e => { if (e.key === 'Enter') closeColorPicker(); });
+
+    bottomRow.append(preview, hexInput);
+    pop.appendChild(bottomRow);
+
+    // ── Palette ───────────────────────────────────────────────────────────
+    const palette = document.createElement('div');
+    palette.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:3px;';
+    _CP_PALETTE.forEach(hex => {
+        const sw = document.createElement('div');
+        sw.style.cssText = `aspect-ratio:1;border-radius:3px;background:${hex};cursor:pointer;` +
+            'border:1px solid rgba(255,255,255,0.1);box-sizing:border-box;';
+        sw.title = hex;
+        sw.addEventListener('mousedown', e => e.stopPropagation());
+        sw.addEventListener('click', e => {
+            e.stopPropagation();
+            const [r, g, b] = _cpHexToRgb(hex);
+            [_cpH, _cpS, _cpV] = _cpRgbToHsv(r, g, b);
+            _cpFullUpdate();
+        });
+        palette.appendChild(sw);
+    });
+    pop.appendChild(palette);
+
+    document.body.appendChild(pop);
+    _cpEl = pop;
+
+    function _cpEmit() {
+        const hex = _cpCurrentHex();
+        preview.style.background = hex;
+        hexInput.value = hex.toUpperCase();
+        _cpOnChange && _cpOnChange(hex);
+    }
+
+    function _cpFullUpdate() {
+        _svUpdateBg(); _svUpdateCursor(); _hueUpdateThumb();
+        _cpEmit();
+    }
+
+    // Initial render
+    _svUpdateBg(); _svUpdateCursor(); _hueUpdateThumb();
+    const initOut = _cpCurrentHex();
+    preview.style.background = initOut;
+    hexInput.value = initOut.toUpperCase();
+
+    // Position
+    const rect = anchor.getBoundingClientRect();
+    const popW = 220, popH = 280;
+    let top = rect.bottom + 4, left = rect.left;
+    if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
+    if (left < 8) left = 8;
+    if (top + popH > window.innerHeight - 8) top = rect.top - popH - 4;
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+
+    hexInput.focus(); hexInput.select();
+
+    setTimeout(() => {
+        document.addEventListener('mousedown', _cpOutside, { capture: true });
+    }, 0);
+}
+
+function closeColorPicker() {
+    if (_cpEl) { _cpEl.remove(); _cpEl = null; }
+    document.removeEventListener('mousedown', _cpOutside, { capture: true });
+}
+
+function _cpOutside(e) {
+    if (_cpEl && !_cpEl.contains(e.target) && e.target !== _cpAnchor) {
+        closeColorPicker();
+    }
+}
 

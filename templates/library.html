@@ -48,7 +48,7 @@
             grid-template-columns: repeat(auto-fill, minmax(var(--card-min-width, 180px), 1fr));
             gap: 25px;
             padding: 20px;
-            contain: layout style paint;
+            contain: layout style;
         }
 
         .game-card {
@@ -535,21 +535,22 @@
         .game-card { position: relative; }
 
         @keyframes dice-flash {
-            0%    { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
-            9.9%  { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
-            10%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
-            19.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
-            20%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
-            29.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
-            30%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
-            39.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
-            40%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
-            49.9% { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
-            50%   { outline-color: var(--accent); box-shadow: 0 0 0 6px rgba(102,192,244,0.5); }
-            100%  { outline-color: #333;          box-shadow: 0 0 0 0   rgba(102,192,244,0);   }
+            0%    { outline-color: var(--dice-glow, var(--accent)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--dice-glow, var(--accent)) 50%, transparent); }
+            9.9%  { outline-color: transparent; box-shadow: 0 0 0 0 transparent; }
+            10%   { outline-color: var(--dice-glow, var(--accent)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--dice-glow, var(--accent)) 50%, transparent); }
+            19.9% { outline-color: transparent; box-shadow: 0 0 0 0 transparent; }
+            20%   { outline-color: var(--dice-glow, var(--accent)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--dice-glow, var(--accent)) 50%, transparent); }
+            29.9% { outline-color: transparent; box-shadow: 0 0 0 0 transparent; }
+            30%   { outline-color: var(--dice-glow, var(--accent)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--dice-glow, var(--accent)) 50%, transparent); }
+            39.9% { outline-color: transparent; box-shadow: 0 0 0 0 transparent; }
+            40%   { outline-color: var(--dice-glow, var(--accent)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--dice-glow, var(--accent)) 50%, transparent); }
+            49.9% { outline-color: transparent; box-shadow: 0 0 0 0 transparent; }
+            50%   { outline-color: var(--dice-glow, var(--accent)); box-shadow: 0 0 0 6px color-mix(in srgb, var(--dice-glow, var(--accent)) 50%, transparent); }
+            100%  { outline-color: transparent; box-shadow: 0 0 0 0 transparent; }
         }
-        .game-card.dice-picked { outline: 3px solid #333; }
+        .game-card.dice-picked { outline: 3px solid transparent; }
         .game-card.dice-picked { animation: dice-flash 7s ease-out forwards; z-index: 2; }
+        .game-card[style*="--outline-color"] { outline: 3px solid var(--outline-color); }
 
         /* ── Grouped layout ── */
         .grouped-container {
@@ -620,7 +621,8 @@
             {%- endif -%}
             {# Match against saved filters #}
             {%- if ns.filter_label is none -%}
-                {%- for name, saved_tree in state.get('saved_filters', {}).items() -%}
+                {%- for name, saved_entry in state.get('saved_filters', {}).items() -%}
+                    {%- set saved_tree = saved_entry.tree if saved_entry is mapping and 'tree' in saved_entry else saved_entry -%}
                     {%- if ns.filter_label is none and saved_tree | tojson == ft | tojson -%}
                         {%- set ns.filter_label = name -%}
                     {%- endif -%}
@@ -645,13 +647,13 @@
                 onkeyup="handleSearch(event, this.value)"
                 value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% endif %}">
         </div>
-        <button onclick="triggerSearch()" title="Search" style="padding:0 0.75rem;">🔍</button>
-        <button onclick="openViewModal()" title="View options">VIEW</button>
+        <button onclick="triggerSearch()" data-tooltip="Search" style="padding:0 0.75rem;">🔍</button>
+        <button onclick="openViewModal()" data-tooltip="View options">VIEW</button>
         {% if _is_filtered %}<button onclick="clearAndReload()" class="clear-btn">✕ CLEAR</button>{% endif %}
         <button onclick="openFilterModal()">FILTERS</button>
         <button onclick="openBulkEditModal()">BULK OPS</button>
-        <button onclick="pickRandomGame()" title="Pick a random game">🎲</button>
-        <button id="select-badge" style="display:none;" onclick="_exitSelectMode()" title="Cancel selection">
+        <button onclick="pickRandomGame()" data-tooltip="Pick a random game">🎲</button>
+        <button id="select-badge" style="display:none;" onclick="_exitSelectMode()" data-tooltip="Cancel selection">
             <span id="select-badge-count">0</span> selected ✕
         </button>
     </div>
@@ -814,8 +816,8 @@
 
     <!-- PAGYWOSG hover tooltip -->
     <div id="pag-hover-tooltip" style="
-        display:block; position:fixed; left:0; top:0; z-index:9000; pointer-events:none;
-        transform:translate(-9999px,-9999px); opacity:0;
+        display:none; position:fixed; left:0; top:0; z-index:9000; pointer-events:none;
+        opacity:0;
         background:var(--bg-surface); border:1px solid var(--border);
         border-radius:7px; padding:9px 12px; max-width:320px;
         font-size:0.8rem; line-height:1.5; box-shadow:0 4px 18px rgba(0,0,0,0.45);
@@ -828,6 +830,7 @@
 <script>
     // ── All game data in one JS array — no per-card script tags ──
     const GAMES = {{ games | tojson }};
+    const OUTLINE_COLORS = {{ outline_colors | tojson }};
 
     // ── Artwork orientation + card size (restored from state) ────────────────
     const _imgV = Date.now(); // cache-buster: prevents stale 404s from browser negative cache
@@ -1115,6 +1118,8 @@
         card.id           = `card-${game.appid}`;
         card.dataset.appid    = game.appid;
         card.dataset.platform = game.platform || 'steam';
+        const outlineColor = OUTLINE_COLORS[String(game.appid)];
+        if (outlineColor) card.style.setProperty('--outline-color', outlineColor);
         return card;
     }
 
@@ -2156,11 +2161,6 @@ async function stopBulkDateImport() {
     const grid     = document.getElementById('game-grid');
     const sgGroup  = _pagExtractSgGroup(_serverFilterTree);
 
-    // ── Debug (delegates to global overlay in base.html) ──────────────────────
-    const _dbgPush = msg => window._hoverDebugPush?.(msg);
-    const _dbgRender = () => {};  // base.html re-renders on every mousemove
-    // ──────────────────────────────────────────────────────────────────────────
-
     function _hltbMin(game) {
         const vals = [game.hltb_main, game.hltb_extras, game.hltb_completionist]
             .filter(v => v && v > 0);
@@ -2169,14 +2169,20 @@ async function stopBulkDateImport() {
 
     function _buildTooltip(game) {
         const isWin = sgGroup ? _pagCsvContains(game.groups, sgGroup) : false;
+        const isSantaGift = (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).some(e => e.auto && e.pool === 'wins');
 
         const results = [];
         _pagExtractConds(_serverFilterTree).forEach(cond => {
-            if (cond.pool === 'wins' && !isWin) return;
+            if (cond.pool === 'wins' && !isWin && !isSantaGift) return;
             const desc = _pagCheckCond(cond, game);
-            if (desc) results.push({ desc, label: _pagLabel(cond.pool, game, sgGroup), verified: false });
+            if (desc) {
+                const label = (cond.pool === 'wins' && !isWin && isSantaGift)
+                    ? '(santa/snowball)' : _pagLabel(cond.pool, game, sgGroup);
+                results.push({ desc, label, verified: false });
+            }
         });
         (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).forEach(({ cat, pool, verifier, auto }) => {
+            if (auto && pool === 'wins') return;
             if (pool === 'wins' && !isWin) return;
             results.push({ desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifier: verifier || null });
         });
@@ -2203,9 +2209,10 @@ async function stopBulkDateImport() {
     let _hoveredAppid = null;
     let _hideOnStopTimer = null;
 
-    function _hideTooltip(reason) {
-        _dbgPush(`HIDE  reason=${reason ?? 'unknown'} prev_appid=${_hoveredAppid}`);
-        tooltip.style.transform = 'translate(-9999px,-9999px)';
+    function _hideTooltip() {
+        tooltip.style.display = 'none';
+        tooltip.style.transform = '';
+        tooltip.style.visibility = '';
         tooltip.style.opacity = '0';
         tooltip.innerHTML = '';
         _hoveredAppid = null;
@@ -2217,33 +2224,29 @@ async function stopBulkDateImport() {
         if (appid === _hoveredAppid) return;
         clearTimeout(_hideOnStopTimer);
         _hoveredAppid = appid;
-        if (!appid || !card.dataset.populated) { _dbgPush(`mouseover no-card/unpopulated`); _hideTooltip('mouseover-no-card'); return; }
+        if (!appid || !card.dataset.populated) { _hideTooltip(); return; }
         const game = _GAME_MAP.get(appid);
-        if (!game) { _hideTooltip('mouseover-no-game'); return; }
+        if (!game) { _hideTooltip(); return; }
         const html = _buildTooltip(game);
-        if (!html) { _dbgPush(`mouseover appid=${appid} no tooltip content`); _hideTooltip('mouseover-no-content'); return; }
-        // Pre-render off-screen so offsetWidth/Height are available for clamping on first mousemove.
+        if (!html) { _hideTooltip(); return; }
+        // Pre-render hidden so offsetWidth/Height are available for clamping on first mousemove.
+        tooltip.style.display = 'block';
         tooltip.innerHTML = html;
-        tooltip.style.transform = 'translate(-9999px,-9999px)';
+        tooltip.style.visibility = 'hidden';
         tooltip.style.opacity = '0';
         _hoveredAppid = appid;
-        _dbgPush(`mouseover LOADED appid=${appid} html_len=${html.length}`);
-        _dbgRender(null, null);
     });
 
-    grid.addEventListener('mouseleave', e => { _dbgPush(`grid mouseleave`); _hideTooltip('grid-mouseleave'); });
-    document.addEventListener('pointerleave', e => { _dbgPush(`doc pointerleave`); _hideTooltip('pointerleave'); });
+    grid.addEventListener('mouseleave', () => _hideTooltip());
+    document.addEventListener('pointerleave', () => _hideTooltip());
 
     document.addEventListener('mousemove', e => {
         clearTimeout(_hideOnStopTimer);
         if (e.clientY >= window.innerHeight - 4) {
-            _dbgPush(`near-bottom hide timer set clientY=${e.clientY}`);
-            _hideOnStopTimer = setTimeout(() => _hideTooltip('bottom-edge-timeout'), 150);
+            _hideOnStopTimer = setTimeout(() => _hideTooltip(), 150);
         }
         if (!_hoveredAppid || !tooltip.innerHTML) {
-            if (_hoveredAppid || tooltip.innerHTML) _dbgPush(`mousemove HIDE-PATH hoveredAppid=${_hoveredAppid} innerHTML_len=${tooltip.innerHTML.length}`);
-            _hideTooltip('mousemove-no-content');
-            _dbgRender(e.clientX, e.clientY);
+            _hideTooltip();
             return;
         }
         const pad = 14;
@@ -2252,8 +2255,8 @@ async function stopBulkDateImport() {
         if (x + tw > window.innerWidth  - pad) x = e.clientX - tw - pad;
         if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
         tooltip.style.transform = `translate(${x}px,${y}px)`;
+        tooltip.style.visibility = '';
         tooltip.style.opacity = '1';
-        _dbgRender(e.clientX, e.clientY);
     });
 })();
 
@@ -2288,6 +2291,12 @@ function pickRandomGame() {
     const startGlow = () => {
         card.classList.remove('dice-picked');
         void card.offsetWidth;
+        const outlineColor = OUTLINE_COLORS[String(game.appid)];
+        if (outlineColor) {
+            card.style.setProperty('--dice-glow', outlineColor);
+        } else {
+            card.style.removeProperty('--dice-glow');
+        }
         card.classList.add('dice-picked');
         card.addEventListener('animationend', () => card.classList.remove('dice-picked'), { once: true });
     };
@@ -2341,9 +2350,9 @@ function pickRandomGame() {
     let _dpDescLoaded = new Set(); // appids whose description is already shown
 
     const _DP_SESSION_KEY = 'pd_list_selected_appid';
-    function _dpSaveSelection(appid) { sessionStorage.setItem(_DP_SESSION_KEY, String(appid)); }
+    function _dpSaveSelection(appid) { safeSession.setItem(_DP_SESSION_KEY, String(appid)); }
     function _dpRestoreSelection() {
-        const saved = sessionStorage.getItem(_DP_SESSION_KEY);
+        const saved = safeSession.getItem(_DP_SESSION_KEY);
         return saved ? _GAME_MAP.get(parseInt(saved, 10)) || null : null;
     }
 
@@ -2508,7 +2517,7 @@ function pickRandomGame() {
         listEl.appendChild(fragment);
         observeListRows();
 
-        // Show last-selected (from sessionStorage), in-memory current, or first visible row
+        // Show last-selected (from safeSession), in-memory current, or first visible row
         const _firstVisibleGame = () => {
             const row = listEl.querySelector('.list-row:not([style*="display: none"]):not([style*="display:none"])');
             return row ? _GAME_MAP.get(parseInt(row.dataset.appid, 10)) || null : GAMES[0];

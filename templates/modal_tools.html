@@ -162,16 +162,16 @@
         align-items: center;
     }
 
-    .theme-var-row input[type="color"] {
+    .theme-var-row [id^="thpick-"] {
         width: 32px;
         height: 32px;
-        padding: 2px;
         border-radius: 6px;
         border: 1px solid var(--border);
-        background: none;
         cursor: pointer;
         flex-shrink: 0;
+        transition: border-color 0.15s;
     }
+    .theme-var-row [id^="thpick-"]:hover { border-color: #aaa; }
 
     .theme-var-label {
         display: flex;
@@ -413,29 +413,6 @@
     .settings-item:last-of-type { margin-bottom: 0; }
     .settings-item:hover:not(:disabled) { background: var(--bg-surface); border-color: var(--accent); }
     .settings-item:disabled { opacity: 0.5; cursor: default; }
-    [data-tooltip] { position: relative; cursor: help; }
-    [data-tooltip]::after {
-        content: attr(data-tooltip);
-        position: absolute;
-        bottom: calc(100% + 6px);
-        right: 0;
-        left: auto;
-        transform: none;
-        background: #1a2233;
-        color: #c2c8cc;
-        border: 1px solid #3a4a5c;
-        border-radius: 5px;
-        padding: 6px 10px;
-        font-size: 0.75rem;
-        white-space: normal;
-        max-width: 280px;
-        width: max-content;
-        pointer-events: none;
-        opacity: 0;
-        transition: opacity 0.15s;
-        z-index: 9999;
-    }
-    [data-tooltip]:hover::after { opacity: 1; }
 
     .hltb-slider, #bg-opacity-slider {
         flex: 1;
@@ -461,6 +438,24 @@
         background: var(--accent);
         cursor: pointer;
     }
+
+    #platform-priority-list { list-style: none; padding: 0; margin: 0 0 8px; }
+    #platform-priority-list li {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 8px; border-radius: 5px;
+        border: 1px solid rgba(255,255,255,0.07);
+        background: rgba(255,255,255,0.03);
+        margin-bottom: 4px; cursor: grab;
+        font-size: 0.82rem; color: var(--text-primary);
+        user-select: none;
+    }
+    #platform-priority-list li .plat-rank {
+        font-size: 0.72rem; color: var(--text-secondary);
+        min-width: 14px; text-align: right;
+    }
+    #platform-priority-list li.plat-dragging { opacity: 0.35; cursor: grabbing; }
+    #platform-priority-list li.plat-drag-over { border-color: var(--accent); background: var(--bg-surface); }
+    body.plat-priority-dragging, body.plat-priority-dragging * { cursor: grabbing !important; user-select: none !important; }
 </style>
 
 <!-- ── SETTINGS MODAL ── -->
@@ -532,7 +527,15 @@
                            style="width:auto; margin:0;">
                     Hide duplicate entries
                 </label>
-                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">e.g. GOG version when Steam version exists</div>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">When multiple platforms have the same game, the highest-ranked version is kept.</div>
+                <div style="margin-top:10px;">
+                    <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;">Platform priority <span style="font-weight:normal; opacity:0.6;">(drag to reorder — top = preferred)</span></div>
+                    <ul id="platform-priority-list"></ul>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button class="nav-btn" data-modal-row="0" onclick="savePlatformPriority()" style="font-size:0.8rem;">Save Order</button>
+                        <div id="plat-priority-status" style="font-size:0.78rem; color:#8f98a0; min-height:1em;"></div>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="hub-section">
@@ -563,12 +566,46 @@
         </div>
         <div class="hub-section">
             <button class="settings-item" data-modal-row="0" onclick="openPagModal()">PAGYWOSG Filter Builder</button>
+            <button class="settings-item" data-modal-row="0" onclick="openSantaModal()">Secret Santa / Snowballs</button>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">BLAEO</div>
             <button id="blaeo-btn" class="settings-item" data-modal-row="1" onclick="runBlaeo()">Sync BLAEO</button>
             <div id="blaeo-status" class="tool-status" style="margin-top:2px;padding:0 10px;"></div>
         </div>
+    </div>
+</div>
+
+<!-- ── SECRET SANTA / SNOWBALLS MODAL ── -->
+<div id="santa-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeSantaModal();">
+    <div class="modal-content" style="width:420px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h2 style="margin:0; color:var(--text-primary);">Secret Santa / Snowballs</h2>
+            <button onclick="closeSantaModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
+        </div>
+        <p style="font-size:0.82rem; color:var(--text-secondary); margin:0 0 14px; line-height:1.5;">
+            Games received as PAGYWOSG/PoP Discord Secret Santa or Snowballs gifts.
+            When the filter builder detects this category in the month's criteria, these games are included in the wins pool.
+        </p>
+
+        <div style="position:relative; margin-bottom:8px;">
+            <input id="santa-search" type="text" placeholder="Search your library..." autocomplete="off"
+                style="width:100%; box-sizing:border-box; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text-primary); font-size:0.9rem;">
+            <div id="santa-search-results" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:100;
+                background:var(--bg-surface); border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px;
+                max-height:160px; overflow-y:auto; box-shadow:0 6px 16px rgba(0,0,0,0.4);"></div>
+        </div>
+
+        <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">
+            Gift List (<span id="santa-count">0</span>)
+        </div>
+        <div id="santa-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:6px; margin-bottom:14px;"></div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="nav-btn" onclick="closeSantaModal()">Close</button>
+            <button id="santa-save-btn" class="nav-btn" onclick="saveSantaGifts()">Save</button>
+        </div>
+        <div id="santa-status" class="tool-status" style="margin-top:8px; text-align:right;"></div>
     </div>
 </div>
 
@@ -753,7 +790,7 @@
                     placeholder="Enables achievements, full library import, and vanity name lookup"
                     style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
+                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" data-tooltip="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
             </div>
         </div>
 
@@ -801,7 +838,7 @@
                     placeholder="Enables SteamGridDB artwork"
                     style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" title="Show/hide" onclick="toggleCfgKeyVisibility('cfg-sgdb-key', this)">👁</button>
+                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" data-tooltip="Show/hide" onclick="toggleCfgKeyVisibility('cfg-sgdb-key', this)">👁</button>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
                 <button class="nav-btn" onclick="saveSgdbKey()">Save SGDB Key</button>
@@ -974,9 +1011,9 @@
                 </div>
             </div>
             <label style="margin-bottom:10px;">Column mappings <span style="color:var(--text-secondary); font-weight:normal; font-size:0.82rem; margin-left:6px;">— which columns to copy, and what to call them in your library</span></label>
-            <div style="display:grid; grid-template-columns:1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:0 2px;">
+            <div style="display:grid; grid-template-columns:1fr 28px 1fr 32px; gap:8px; margin-bottom:6px; padding:6px 8px; background:rgba(255,255,255,0.04); border-radius:5px;">
                 <span style="font-size:0.78rem; color:var(--text-secondary); text-align:center;">From uploaded file</span>
-                <span></span>
+                <span style="font-size:0.78rem; color:var(--text-secondary); text-align:center;">›</span>
                 <span style="font-size:0.78rem; color:var(--text-secondary); text-align:center;">Into your library</span>
                 <span></span>
             </div>
@@ -1043,9 +1080,14 @@
             <div id="pag-sg-group-notice" style="display:none; margin-bottom:16px;"></div>
 
             <div style="margin-bottom:20px;">
-                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
                     <span style="color:var(--accent); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — Wins Only</span>
                     <span id="pag-wins-subtitle" style="color:var(--text-secondary); font-size:0.75rem; font-style:italic;">only applies to games won on SteamGifts</span>
+                </div>
+                <div id="pag-santa-row" style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:0.82rem; color:var(--text-secondary);">
+                    <input type="checkbox" id="pag-santa-cb" style="width:auto; margin:0;">
+                    <label for="pag-santa-cb" id="pag-santa-label" style="display:inline; margin:0; cursor:pointer;">Include Secret Santa / Snowballs gifts (<span id="pag-santa-count">0</span> games)</label>
+                    <span id="pag-santa-setup" style="display:none; font-size:0.78rem; color:var(--text-secondary); font-style:italic;">— add gifts via <a href="#" onclick="event.preventDefault();closePagModal();openSantaModal()" style="color:var(--accent);">Secret Santa / Snowballs</a></span>
                 </div>
                 <input type="text" id="pag-wins-search" placeholder="Search tags…"
                     style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
@@ -1582,10 +1624,147 @@ const PAG_DATE_COLUMNS = new Set(['release_date', 'date_added', 'last_played']);
 function openPagModal() {
     document.getElementById('pagywosg-modal').style.display = 'flex';
     if (!_pagAllTags.length) pagInit();
+    _pagRefreshSantaGifts();
+}
+
+async function _pagRefreshSantaGifts() {
+    try {
+        const res  = await fetch('/api/santa-gifts');
+        const data = await res.json();
+        _pagSantaGifts = data.gifts || [];
+        const cb = document.getElementById('pag-santa-cb');
+        const label = document.getElementById('pag-santa-label');
+        const setup = document.getElementById('pag-santa-setup');
+        if (_pagSantaGifts.length) {
+            document.getElementById('pag-santa-count').textContent = _pagSantaGifts.length;
+            cb.disabled = false;
+            label.style.opacity = '';
+            label.style.cursor = 'pointer';
+            setup.style.display = 'none';
+        } else {
+            cb.disabled = true;
+            cb.checked = false;
+            label.style.opacity = '0.45';
+            label.style.cursor = 'default';
+            setup.style.display = '';
+        }
+    } catch (e) { /* silent */ }
 }
 function closePagModal() {
     document.getElementById('pagywosg-modal').style.display = 'none';
 }
+
+// ── Secret Santa / Snowballs ──
+let _santaGifts = [];        // [{appid, name}]
+let _santaSearchTimer = null;
+let _santaSearchCache = [];  // last search results
+
+async function openSantaModal() {
+    document.getElementById('santa-modal').style.display = 'flex';
+    document.getElementById('santa-status').textContent = '';
+    const res = await fetch('/api/santa-gifts');
+    const data = await res.json();
+    _santaGifts = data.gifts || [];
+    _renderSantaList();
+    const inp = document.getElementById('santa-search');
+    inp.value = '';
+    document.getElementById('santa-search-results').style.display = 'none';
+    inp.focus();
+}
+function closeSantaModal() {
+    document.getElementById('santa-modal').style.display = 'none';
+}
+
+function _renderSantaList() {
+    const el = document.getElementById('santa-list');
+    document.getElementById('santa-count').textContent = _santaGifts.length;
+    if (!_santaGifts.length) {
+        el.innerHTML = '<div style="padding:10px 12px; color:var(--text-secondary); font-size:0.85rem;">No games added yet.</div>';
+        return;
+    }
+    el.innerHTML = _santaGifts
+        .slice().sort((a, b) => a.name.localeCompare(b.name))
+        .map(g => `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; border-bottom:1px solid var(--border);">
+            <span style="font-size:0.88rem; color:var(--text-primary);">${escHtml(g.name)}</span>
+            <button onclick="_santaRemove(${g.appid})" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:0.85rem; padding:0 2px; line-height:1;">&#x2715;</button>
+        </div>`)
+        .join('');
+}
+
+function _santaRemove(appid) {
+    _santaGifts = _santaGifts.filter(g => g.appid !== appid);
+    _renderSantaList();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const inp = document.getElementById('santa-search');
+    const results = document.getElementById('santa-search-results');
+
+    inp.addEventListener('input', () => {
+        clearTimeout(_santaSearchTimer);
+        const q = inp.value.trim();
+        if (!q) { results.style.display = 'none'; return; }
+        _santaSearchTimer = setTimeout(async () => {
+            const res = await fetch(`/api/games/search?q=${encodeURIComponent(q)}&platform=steam`);
+            const games = await res.json();
+            if (!games.length) { results.style.display = 'none'; return; }
+            _santaSearchCache = games;
+            results.innerHTML = games.map((g, i) =>
+                `<div data-idx="${i}" style="padding:7px 10px; cursor:pointer; font-size:0.88rem; color:var(--text-primary);"
+                    onmouseenter="this.style.background='var(--hover-bg)'" onmouseleave="this.style.background=''"
+                    onclick="_santaAddIdx(${i})">
+                    ${escHtml(g.name)} <span style="color:var(--text-secondary); font-size:0.78rem;">#${g.appid}</span>
+                </div>`
+            ).join('');
+            results.style.display = 'block';
+        }, 200);
+    });
+
+    document.addEventListener('click', e => {
+        if (!results.contains(e.target) && e.target !== inp) {
+            results.style.display = 'none';
+        }
+    });
+});
+
+function _santaAddIdx(idx) {
+    const g = _santaSearchCache[idx];
+    if (!g) return;
+    if (!_santaGifts.find(x => x.appid === g.appid)) {
+        _santaGifts.push({appid: g.appid, name: g.name});
+        _renderSantaList();
+    }
+    document.getElementById('santa-search').value = '';
+    document.getElementById('santa-search-results').style.display = 'none';
+}
+
+async function saveSantaGifts() {
+    const btn = document.getElementById('santa-save-btn');
+    const status = document.getElementById('santa-status');
+    btn.disabled = true;
+    status.textContent = '';
+    try {
+        const res = await fetch('/api/santa-gifts', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({gifts: _santaGifts}),
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            status.style.color = 'var(--text-secondary)';
+            status.textContent = 'Saved.';
+        } else {
+            status.style.color = 'var(--accent)';
+            status.textContent = data.message || 'Error saving.';
+        }
+    } catch (e) {
+        status.style.color = 'var(--accent)';
+        status.textContent = 'Network error.';
+    }
+    btn.disabled = false;
+}
+
+let _pagSantaGifts = [];  // [{appid, name}] loaded once on pagInit
 
 async function pagInit() {
     try {
@@ -1862,18 +2041,29 @@ function pagBuildTree() {
 
     const mainParts = [];
 
-    // SG wins block: (groups = sg_group) AND (tags OR extra_conds)
-    // Omitted entirely when _pagSgGroup is null (user has no SteamGifts wins)
+    // SG wins block: (wins_qualifier) AND (tags OR extra_conds)
+    // wins_qualifier is groups = sg_group alone, or OR[groups, santa_appid_list] when santa gifts included.
+    // Omitted entirely when _pagSgGroup is null and no santa gifts checked.
+    const santaChecked = document.getElementById('pag-santa-cb')?.checked && _pagSantaGifts.length;
+    const santaNode = santaChecked
+        ? { type: 'appid_list', appids: _pagSantaGifts.map(g => g.appid), label: 'Secret Santa / Snowballs', auto: true }
+        : null;
     const winsConds = [...winsTagItems, ...winsExtraItems];
-    if (winsConds.length && _pagSgGroup) {
+    const hasWinsBlock = winsConds.length && (_pagSgGroup || santaNode);
+    if (hasWinsBlock) {
         const winsInner = winsConds.length === 1 ? winsConds[0] : { type: 'group', logic: 'OR', items: winsConds };
-        mainParts.push({
-            type: 'group', logic: 'AND',
-            items: [
+        let winsQualifier;
+        if (_pagSgGroup && santaNode) {
+            winsQualifier = { type: 'group', logic: 'OR', items: [
                 { type: 'condition', column: 'groups', operator: 'LIKE', value: _pagSgGroup },
-                winsInner
-            ]
-        });
+                santaNode
+            ]};
+        } else if (_pagSgGroup) {
+            winsQualifier = { type: 'condition', column: 'groups', operator: 'LIKE', value: _pagSgGroup };
+        } else {
+            winsQualifier = santaNode;
+        }
+        mainParts.push({ type: 'group', logic: 'AND', items: [winsQualifier, winsInner] });
     }
 
     // All games block: tags OR extra_conds
@@ -2002,6 +2192,16 @@ async function pagConfirmSave() {
             }
         });
     });
+    if (document.getElementById('pag-santa-cb')?.checked && _pagSantaGifts.length) {
+        const santaCat = 'Secret Santa / Snowballs';
+        _pagSantaGifts.forEach(({appid, name}) => {
+            const key = String(appid);
+            if (!verifiedLookup[key]) verifiedLookup[key] = [];
+            if (!verifiedLookup[key].some(e => e.cat === santaCat && e.pool === 'wins')) {
+                verifiedLookup[key].push({cat: santaCat, pool: 'wins', auto: true});
+            }
+        });
+    }
     tree.pagywosg_verified = verifiedLookup;
     try {
         const res = await fetch('/api/save-filter', {
@@ -2013,7 +2213,9 @@ async function pagConfirmSave() {
         if (data.status === 'success') {
             saveStatus.className = 'tool-status success';
             saveStatus.textContent = `✔ Saved as "${name}".`;
-            _savedFilters[name] = tree;
+            const existingEntry = _savedFilters[name];
+            const existingId = (existingEntry && typeof existingEntry === 'object' && existingEntry.id) ? existingEntry.id : null;
+            _savedFilters[name] = {id: existingId, tree};
             const selectEl = document.getElementById('saved-filters-select');
             if (selectEl && selectEl._addOption) selectEl._addOption(name, name);
         } else {
@@ -2850,9 +3052,9 @@ function _themeRenderPanel() {
         const row = document.createElement('div');
         row.className = 'theme-var-row';
         row.innerHTML = `
-            <input type="color" id="thpick-${safeKey}"
-                   value="${hexVal}"
-                   oninput="themePickerChange('${meta.key}', this.value)">
+            <div id="thpick-${safeKey}"
+                 style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:${hexVal};cursor:pointer;flex-shrink:0;"
+                 data-tooltip="Pick color"></div>
             <div class="theme-var-label">
                 <strong>${meta.label}</strong>
                 <span>${meta.desc}</span>
@@ -2862,11 +3064,20 @@ function _themeRenderPanel() {
                    value="${hexVal}" maxlength="9"
                    oninput="themeHexChange('${meta.key}', this.value)"
                    onblur="themeHexBlur('${meta.key}', this.value)">
-            <button title="Reset to active theme" onclick="themeResetVar('${meta.key}')"
+            <button data-tooltip="Reset to active theme" onclick="themeResetVar('${meta.key}')"
                     style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.9rem;padding:0 2px;opacity:${isDefault ? '0.25' : '1'};transition:opacity 0.15s;"
                     id="threset-${safeKey}">↺</button>
         `;
         panel.appendChild(row);
+        const swatchEl = row.querySelector(`#thpick-${safeKey}`);
+        swatchEl.addEventListener('click', () => {
+            openColorPicker(swatchEl, swatchEl.style.background, hex => {
+                swatchEl.style.background = hex;
+                const hexEl = document.getElementById('thhex-' + safeKey);
+                if (hexEl) hexEl.value = hex;
+                themePickerChange(meta.key, hex);
+            });
+        });
     }
 }
 
@@ -2908,7 +3119,7 @@ function themeHexChange(key, raw) {
         _themeVars[key] = clean;
         const safeKey = key.replace('--', '');
         const picker = document.getElementById(`thpick-${safeKey}`);
-        if (picker) picker.value = clean;
+        if (picker) picker.style.background = clean;
         _applyVarToDocument(key, clean);
         _updateResetBtn(key, clean);
         _themeSetStatus('');
@@ -2931,7 +3142,7 @@ function themeResetVar(key) {
     const picker = document.getElementById(`thpick-${safeKey}`);
     const hexInput = document.getElementById(`thhex-${safeKey}`);
     const resetBtn = document.getElementById(`threset-${safeKey}`);
-    if (picker) picker.value = defVal;
+    if (picker) picker.style.background = defVal;
     if (hexInput) hexInput.value = defVal;
     if (resetBtn) resetBtn.style.opacity = '0.25';
     _applyVarToDocument(key, defVal);
@@ -3627,11 +3838,109 @@ function openAppearanceModal() {
 function closeAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'none';
 }
+const _PLAT_PRIORITY_LABELS = { steam: 'Steam', gog: 'GOG', epic_games: 'Epic Games', ea_app: 'EA App', ubisoft: 'Ubisoft' };
+let _platPriority = {{ platform_priority | tojson }};
+let _platPriorityDragSrc = null, _platPriorityHover = null;
+
 function openLibraryModal() {
     document.getElementById('library-modal').style.display = 'flex';
+    _renderPlatformPriorityList();
 }
 function closeLibraryModal() {
     document.getElementById('library-modal').style.display = 'none';
+}
+
+function _renderPlatformPriorityList() {
+    const list = document.getElementById('platform-priority-list');
+    list.innerHTML = '';
+    _platPriority.forEach((plat, i) => {
+        const li = document.createElement('li');
+        li.dataset.plat = plat;
+        li.innerHTML = `<span class="plat-rank">${i + 1}</span><span style="pointer-events:none;">⠿</span><span style="flex:1; pointer-events:none;">${escHtml(_PLAT_PRIORITY_LABELS[plat] || plat)}</span>`;
+        li.addEventListener('mousedown', e => { e.preventDefault(); _platBeginDrag(li); });
+        list.appendChild(li);
+    });
+}
+
+function _platBeginDrag(li) {
+    const list = document.getElementById('platform-priority-list');
+    _platPriorityDragSrc = li;
+    li.classList.add('plat-dragging');
+    document.body.classList.add('plat-priority-dragging');
+
+    function onMove(e) {
+        list.querySelectorAll('.plat-drag-over').forEach(el => el.classList.remove('plat-drag-over'));
+        _platPriorityHover = null;
+        const items = Array.from(list.querySelectorAll('li:not(.plat-dragging)'));
+        for (const item of items) {
+            const r = item.getBoundingClientRect();
+            if (e.clientY >= r.top && e.clientY <= r.bottom) {
+                item.classList.add('plat-drag-over');
+                _platPriorityHover = item;
+                break;
+            }
+        }
+        if (!_platPriorityHover && items.length) {
+            const last = items[items.length - 1];
+            if (e.clientY > last.getBoundingClientRect().bottom) {
+                last.classList.add('plat-drag-over');
+                _platPriorityHover = last;
+            }
+        }
+    }
+
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        li.classList.remove('plat-dragging');
+        document.body.classList.remove('plat-priority-dragging');
+        list.querySelectorAll('.plat-drag-over').forEach(el => el.classList.remove('plat-drag-over'));
+        if (_platPriorityHover && _platPriorityHover !== li) {
+            const kids = Array.from(list.children);
+            if (kids.indexOf(li) < kids.indexOf(_platPriorityHover))
+                list.insertBefore(li, _platPriorityHover.nextSibling);
+            else
+                list.insertBefore(li, _platPriorityHover);
+        }
+        _platPriorityDragSrc = null;
+        _platPriorityHover = null;
+        _updatePlatRanks();
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+}
+
+function _updatePlatRanks() {
+    Array.from(document.getElementById('platform-priority-list').children).forEach((li, i) => {
+        li.querySelector('.plat-rank').textContent = i + 1;
+    });
+}
+
+async function savePlatformPriority() {
+    const order = Array.from(document.getElementById('platform-priority-list').children).map(li => li.dataset.plat);
+    const status = document.getElementById('plat-priority-status');
+    status.textContent = 'Saving…';
+    try {
+        const r1 = await fetch('/api/update_state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ platform_priority: order })
+        });
+        if (!r1.ok) { status.textContent = '✘ Save failed'; return; }
+        _platPriority = order;
+        status.textContent = 'Redetecting…';
+        const r2 = await fetch('/api/gog/detect-duplicates', { method: 'POST' });
+        const d = await r2.json();
+        if (r2.ok) {
+            status.textContent = `Saved — ${d.detected ?? 0} duplicate${d.detected !== 1 ? 's' : ''} detected`;
+            window.location.reload();
+        } else {
+            status.textContent = '✘ Detection failed';
+        }
+    } catch (e) {
+        status.textContent = '✘ Error: ' + e.message;
+    }
 }
 function openCommunityModal() {
     document.getElementById('community-modal').style.display = 'flex';
@@ -3704,7 +4013,7 @@ function closeGamepadDiag() {
 
 function _gpdRefreshStatic() {
     // Suppression
-    const suppressed = sessionStorage.getItem('pd_game_running') === '1';
+    const suppressed = safeSession.getItem('pd_game_running') === '1';
     const supEl = document.getElementById('gpd-suppression');
     const clearBtn = document.getElementById('gpd-clear-btn');
     if (suppressed) {
@@ -3740,7 +4049,7 @@ function _gpdStartPoll() {
         // Navigation active
         const activeEl = document.getElementById('gpd-active');
         const isActive = window._inputMgr
-            ? (sessionStorage.getItem('pd_game_running') !== '1')
+            ? (safeSession.getItem('pd_game_running') !== '1')
             : false;
         activeEl.textContent = isActive ? 'Ready' : 'Suppressed or unavailable';
         activeEl.style.color = isActive ? 'var(--accent-positive)' : 'var(--text-danger)';
@@ -4014,7 +4323,8 @@ async function exportSelectedFilter() {
         status.className   = 'tool-status error';
         return;
     }
-    const tree = (typeof _savedFilters !== 'undefined' ? _savedFilters : {})[name];
+    const entry = (typeof _savedFilters !== 'undefined' ? _savedFilters : {})[name];
+    const tree = (entry && typeof entry === 'object' && 'tree' in entry) ? entry.tree : entry;
     if (!tree) {
         status.textContent = 'Filter not found.';
         status.className   = 'tool-status error';
@@ -4174,7 +4484,7 @@ async function _saveImportedFilter(name, tree) {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            if (typeof _savedFilters !== 'undefined') _savedFilters[name] = tree;
+            if (typeof _savedFilters !== 'undefined') _savedFilters[name] = {id: null, tree};
             _populateFilterExportSelect();
             const filterSel = document.getElementById('saved-filters-select');
             if (filterSel && filterSel._addOption) filterSel._addOption(name, name);

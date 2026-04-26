@@ -122,11 +122,17 @@ def _fix_window_icon(window):
                 app = Gtk.Application.get_default()
                 if app:
                     app.set_application_id('playdate')
+                main_gtk_win = getattr(window, 'native', None)
+                pixbuf = GdkPixbuf.Pixbuf.new_from_file(ICON_PATH) if os.path.exists(ICON_PATH) else None
                 for gtk_window in Gtk.Window.list_toplevels():
+                    # Only touch the main window — applying wmclass/role/icon to other
+                    # windows (WebKit offscreen, GtkTooltipWindow, etc.) causes KDE to
+                    # render them as visible PlayDate app windows.
+                    if main_gtk_win is not None and gtk_window is not main_gtk_win:
+                        continue
                     gtk_window.set_wmclass('playdate', 'PlayDate')
                     gtk_window.set_role('PlayDate')
-                    if os.path.exists(ICON_PATH):
-                        pixbuf = GdkPixbuf.Pixbuf.new_from_file(ICON_PATH)
+                    if pixbuf:
                         gtk_window.set_icon(pixbuf)
             except Exception as e:
                 log.warning(f"Icon patch failed: {e}")
@@ -424,8 +430,13 @@ if __name__ == '__main__':
     # 2. Initialise DB
     try:
         migrate_to_multi_account()
-        init_db()
+        needs_redetect = init_db()
         migrate_image_files()
+        if needs_redetect:
+            from gog import auto_detect_duplicates
+            from config import load_state
+            priority = load_state().get('platform_priority')
+            auto_detect_duplicates(platform_priority=priority)
     except Exception as e:
         log.critical(f"Database initialization failed: {e}", exc_info=True)
         raise

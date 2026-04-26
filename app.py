@@ -606,6 +606,13 @@ def create_app(template_folder=None, static_folder=None):
             for g in random.sample(games, min(NUM_PICKS, len(games))):
                 picks.append({"game": g, "reason": None})
 
+        from library import _compute_outline_colors
+        _outlines_cfg = state.get('card_outlines', {})
+        pick_games = [p['game'] for p in picks]
+        outline_map = _compute_outline_colors(pick_games, state) if _outlines_cfg.get('enabled', {}).get('pick6', True) else {}
+        for p in picks:
+            p['outline_color'] = outline_map.get(str(p['game']['appid']))
+
         return jsonify({
             "status":                "success",
             "picks":                 picks,
@@ -1584,7 +1591,7 @@ def create_app(template_folder=None, static_folder=None):
         try:
             db = get_db()
             db.execute(
-                "UPDATE games SET duplicate_of = ? WHERE appid = ?",
+                "UPDATE games SET duplicate_of = ?, duplicate_auto = 0 WHERE appid = ?",
                 (str(duplicate_of) if duplicate_of else None, appid)
             )
             db.commit()
@@ -1595,10 +1602,12 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/gog/detect-duplicates', methods=['POST'])
     def gog_detect_duplicates():
-        """Re-run duplicate auto-detection for all GOG games."""
+        """Re-run duplicate auto-detection across all platforms."""
         try:
             from gog import auto_detect_duplicates
-            count = auto_detect_duplicates()
+            from config import load_state
+            priority = load_state().get('platform_priority')
+            count = auto_detect_duplicates(platform_priority=priority)
             return jsonify({'status': 'ok', 'detected': count})
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -1624,14 +1633,15 @@ def create_app(template_folder=None, static_folder=None):
     def game_description(appid):
         import requests as _r
         db = get_db()
-        row = db.execute("SELECT platform FROM games WHERE appid = ?", (appid,)).fetchone()
+        row = db.execute("SELECT platform, platform_id FROM games WHERE appid = ?", (appid,)).fetchone()
         db.close()
         if not row:
             return jsonify({'status': 'error', 'message': 'Game not found'}), 404
         platform = row['platform'] or 'steam'
         try:
             if platform == 'gog':
-                resp = _r.get(f'https://api.gog.com/products/{abs(appid)}?expand=description', timeout=10)
+                gog_id = row['platform_id'] or str(abs(appid))
+                resp = _r.get(f'https://api.gog.com/products/{gog_id}?expand=description', timeout=10)
                 if resp.ok:
                     d = resp.json()
                     desc = (d.get('description') or {}).get('lead') or (d.get('description') or {}).get('full', '')
@@ -1769,7 +1779,8 @@ def create_app(template_folder=None, static_folder=None):
                 where = BUILTIN_FILTERS[filter_key]['where']
             elif filter_key in saved_filters:
                 from index import _filter_tree_to_sql
-                where = _filter_tree_to_sql(saved_filters[filter_key])
+                sf = saved_filters[filter_key]
+                where = _filter_tree_to_sql(sf['tree'] if isinstance(sf, dict) and 'tree' in sf else sf)
             else:
                 where = '1=1'
 
@@ -1782,6 +1793,15 @@ def create_app(template_folder=None, static_folder=None):
             ).fetchall()
             db.close()
             games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or ''} for r in rows]
+            from library import _compute_outline_colors
+            _outlines_cfg = state.get('card_outlines', {})
+            outline_map = (
+                _compute_outline_colors(games, state)
+                if _outlines_cfg.get('enabled', {}).get('home', True)
+                else {}
+            )
+            for g in games:
+                g['outline_color'] = outline_map.get(str(g['appid']))
             return jsonify({'status': 'success', 'games': games})
         except Exception as e:
             log.exception(f"shuffle_shelf error for {shelf_id}: {e}")
@@ -1849,7 +1869,13 @@ def create_app(template_folder=None, static_folder=None):
             state = _load_state_unlocked()
             if 'saved_filters' not in state:
                 state['saved_filters'] = {}
-            state['saved_filters'][name] = tree
+            existing = state['saved_filters'].get(name, {})
+            existing_id = existing.get('id') if isinstance(existing, dict) else None
+            import uuid as _uuid
+            state['saved_filters'][name] = {
+                'id': existing_id or str(_uuid.uuid4()),
+                'tree': tree,
+            }
             _write_state_atomic(state)
         return jsonify({"status": "success"})
 
@@ -1883,6 +1909,63 @@ def create_app(template_folder=None, static_folder=None):
             state['saved_filters'] = filters
             _write_state_atomic(state)
         return jsonify({"status": "success"})
+
+    @app.route('/api/card-outlines', methods=['GET'])
+    def get_card_outlines():
+        from config import load_state
+        state = load_state()
+        outlines = state.get('card_outlines', {})
+        saved_filters = state.get('saved_filters', {})
+        saved_list = [
+            {'id': v['id'], 'name': k}
+            for k, v in saved_filters.items()
+            if isinstance(v, dict) and v.get('id')
+        ]
+        return jsonify({'status': 'success', 'card_outlines': outlines, 'saved_filters': saved_list})
+
+    @app.route('/api/card-outlines', methods=['POST'])
+    def save_card_outlines():
+        from config import _state_lock, _load_state_unlocked, _write_state_atomic
+        import uuid as _uuid
+        data = request.json or {}
+        outlines = data.get('card_outlines')
+        if outlines is None:
+            return jsonify({'status': 'error', 'message': 'Missing card_outlines'}), 400
+        # Assign UUIDs to any new rules missing them
+        for rule in outlines.get('rules', []):
+            if not rule.get('id'):
+                rule['id'] = str(_uuid.uuid4())
+        with _state_lock:
+            state = _load_state_unlocked()
+            state['card_outlines'] = outlines
+            _write_state_atomic(state)
+        return jsonify({'status': 'success'})
+
+    @app.route('/api/pick-screen-color')
+    def pick_screen_color():
+        """Fullscreen eyedropper overlay. Spawns color_picker.py as a subprocess
+        so each invocation gets a clean Tk instance."""
+        import subprocess, sys, os
+        if getattr(sys, 'frozen', False):
+            script = os.path.join(sys._MEIPASS, 'color_picker.py')
+        else:
+            script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'color_picker.py')
+        app.logger.info('pick_screen_color: launching %s', script)
+        try:
+            r = subprocess.run([sys.executable, script],
+                               capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            app.logger.warning('pick_screen_color: timed out')
+            return jsonify({'cancelled': True})
+        except Exception:
+            app.logger.exception('pick_screen_color: subprocess error')
+            return jsonify({'error': 'picker failed'}), 500
+        app.logger.info('pick_screen_color: exit=%d stdout=%r stderr=%r',
+                        r.returncode, r.stdout.strip(), r.stderr.strip()[:200])
+        color = r.stdout.strip()
+        if r.returncode == 0 and color:
+            return jsonify({'color': color})
+        return jsonify({'cancelled': True})
 
     @app.route('/api/export-filter', methods=['POST'])
     def export_filter_file():
@@ -2060,6 +2143,7 @@ def create_app(template_folder=None, static_folder=None):
     # Path to local supplement JSON file, relative to BASE_DIR.
     # Leave empty to skip supplement loading.
     _PAGYWOSG_SUPPLEMENT_PATH = 'pagywosg_supplement.json'
+    _SANTA_GIFTS_PATH = 'santa_gifts.json'
 
     @app.route('/api/pagywosg-auto')
     def pagywosg_auto():
@@ -2151,8 +2235,14 @@ def create_app(template_folder=None, static_folder=None):
                     _supplement = json.load(f)
             except Exception:
                 pass
-        _icaio_ga_dict = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
-        _icaio_wl_dict = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
+        _icaio_ga_dict  = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
+        _icaio_wl_dict  = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
+        _santa_gift_dict = {}
+        try:
+            with open(os.path.join(BASE_DIR, _SANTA_GIFTS_PATH), 'r', encoding='utf-8') as _sf:
+                _santa_gift_dict = {g['appid']: g['name'] for g in json.load(_sf)}
+        except Exception:
+            pass
 
         for base, cats in base_to_cats.items():
             pool = 'all' if base in all_pool_bases else 'wins'
@@ -2234,6 +2324,18 @@ def create_app(template_folder=None, static_folder=None):
             if 'icaio' in base and 'wishlist' in base.lower():
                 if _icaio_wl_dict:
                     _add_appids(_icaio_wl_dict, base, auto=True)
+                else:
+                    skipped.append(base)
+                continue
+
+            # Secret Santa / Snowballs Discord gift categories — always wins pool
+            if re.search(r'snowball|secret.santa', base, re.I):
+                if _santa_gift_dict:
+                    # Force wins pool regardless of suffix logic
+                    _real_pool = pool
+                    pool = 'wins'
+                    _add_appids(_santa_gift_dict, base, auto=True)
+                    pool = _real_pool
                 else:
                     skipped.append(base)
                 continue
@@ -2382,6 +2484,32 @@ def create_app(template_folder=None, static_folder=None):
             'groups': groups,
         })
 
+    @app.route('/api/santa-gifts', methods=['GET', 'POST'])
+    def santa_gifts():
+        path = os.path.join(BASE_DIR, _SANTA_GIFTS_PATH)
+        if request.method == 'POST':
+            data = request.json or {}
+            gifts = data.get('gifts', [])
+            if not isinstance(gifts, list):
+                return jsonify({'status': 'error', 'message': 'Invalid data.'}), 400
+            validated = [
+                {'appid': int(g['appid']), 'name': str(g['name'])}
+                for g in gifts
+                if isinstance(g, dict) and 'appid' in g and 'name' in g
+            ]
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(validated, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': str(e)}), 500
+            return jsonify({'status': 'success'})
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                gifts = json.load(f)
+        except Exception:
+            gifts = []
+        return jsonify({'status': 'success', 'gifts': gifts})
+
     @app.route('/api/pagywosg-tags')
     def pagywosg_tags():
         try:
@@ -2444,8 +2572,9 @@ def create_app(template_folder=None, static_folder=None):
     # ── BACKUP ────────────────────────────────────────────────────────────────
     def _fill_backup_zip(zf, include_art):
         import glob as _glob
-        for arcname, filepath in {'config.json': os.path.join(BASE_DIR, 'config.json'),
-                                   'state.json':  os.path.join(BASE_DIR, 'state.json')}.items():
+        for arcname, filepath in {'config.json':    os.path.join(BASE_DIR, 'config.json'),
+                                   'state.json':     os.path.join(BASE_DIR, 'state.json'),
+                                   'santa_gifts.json': os.path.join(BASE_DIR, 'santa_gifts.json')}.items():
             if os.path.exists(filepath):
                 zf.write(filepath, arcname)
         for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
@@ -2681,7 +2810,7 @@ def create_app(template_folder=None, static_folder=None):
                     return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
 
                 # Core files: restore to BASE_DIR
-                for arcname in ('config.json', 'state.json'):
+                for arcname in ('config.json', 'state.json', 'santa_gifts.json'):
                     if arcname in names:
                         dest = _safe_dest(arcname)
                         if not dest:
@@ -2882,6 +3011,11 @@ if __name__ == '__main__' or os.environ.get('FLASK_APP') == 'app':
 if __name__ == '__main__':
     from config import migrate_to_multi_account
     migrate_to_multi_account()
-    init_db()
+    needs_redetect = init_db()
     migrate_image_files()
+    if needs_redetect:
+        from gog import auto_detect_duplicates
+        from config import load_state
+        priority = load_state().get('platform_priority')
+        auto_detect_duplicates(platform_priority=priority)
     app.run(debug=os.environ.get('FLASK_DEBUG', '0') == '1', port=5000)
