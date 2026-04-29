@@ -91,12 +91,12 @@ os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
 # ── Imports ───────────────────────────────────────────────────────────────────
 import webview
 
+import migration
 from app import create_app, populate_cancel
-from config import BASE_DIR, migrate_to_multi_account
-from database import init_db, migrate_image_files
+from config import BASE_DIR
+from database import init_db
 from utils import (find_steam_path, start_steamapps_watcher, stop_steamapps_watcher,
-                   sync_local_install_status, start_gog_watcher, stop_gog_watcher,
-                   sync_gog_install_status)
+                   sync_local_install_status)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 PORT      = 5000
@@ -429,14 +429,8 @@ if __name__ == '__main__':
 
     # 2. Initialise DB
     try:
-        migrate_to_multi_account()
-        needs_redetect = init_db()
-        migrate_image_files()
-        if needs_redetect:
-            from gog import auto_detect_duplicates
-            from config import load_state
-            priority = load_state().get('platform_priority')
-            auto_detect_duplicates(platform_priority=priority)
+        migration.run()
+        init_db()
     except Exception as e:
         log.critical(f"Database initialization failed: {e}", exc_info=True)
         raise
@@ -448,8 +442,9 @@ if __name__ == '__main__':
     else:
         log.warning("Steam path not found — steamapps watcher not started")
 
-    from gog import GOG_INSTALL_BASE
-    start_gog_watcher(GOG_INSTALL_BASE)  # no-op if dir doesn't exist yet
+    import plugins
+    for _p in plugins.loaded().values():
+        _p.on_startup()
 
     def _run_install_sync():
         try:
@@ -457,11 +452,6 @@ if __name__ == '__main__':
             log.info(f"Steam install status synced on startup: {count} games installed")
         except Exception as e:
             log.warning(f"Startup Steam install sync failed: {e}")
-        try:
-            sync_gog_install_status()
-            log.info("GOG install status synced on startup")
-        except Exception as e:
-            log.warning(f"Startup GOG install sync failed: {e}")
 
     threading.Thread(target=_run_install_sync, daemon=True).start()
 
@@ -591,4 +581,6 @@ if __name__ == '__main__':
     # 8. Clean exit
     log.info("Window closed. PlayDate exiting.")
     stop_steamapps_watcher()
+    for _p in plugins.loaded().values():
+        _p.on_shutdown()
     os._exit(0)  # hard kill — sys.exit() waits for non-daemon threads (e.g. populate workers)

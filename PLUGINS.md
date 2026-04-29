@@ -1,0 +1,487 @@
+# Writing a PlayDate Plugin
+
+Plugins add non-Steam library sources (GOG, Epic, EA App, etc.) to PlayDate. Each plugin lives in its own subdirectory under `plugins/` and is auto-discovered at startup.
+
+## Installing a plugin
+
+Users can install plugins three ways:
+
+1. **Plugins modal → Install from Zip** (hamburger menu → Plugins) — select a `.zip` file; the server validates it, extracts it to `plugins/<id>/`, and prompts for restart.
+2. **Plugins modal → Install from GitHub** — paste a GitHub repo URL (`github.com/owner/repo` or `owner/repo`); PlayDate fetches the latest release zip and installs it automatically.
+3. **Manual drop** — copy the plugin folder directly into `plugins/` and restart.
+
+The zip can be either flat (`plugin.json` at root) or wrapped in a single top-level folder (`myplugin/plugin.json`). The plugin `id` in `plugin.json` must be alphanumeric + underscores and determines the destination folder name.
+
+If a plugin is hosted on GitHub and its `plugin.json` includes a `source` field, PlayDate will check for updates when the Plugins modal is opened and show a one-click update button when a newer release is available.
+
+## Directory layout
+
+```
+plugins/
+  myplugin/
+    __init__.py    # plugin class + singleton
+    plugin.json    # manifest
+    routes.py      # Flask Blueprint
+    templates/     # optional UI fragments (see below)
+    static/        # optional static assets (CSS, JS, images)
+    watcher.py     # optional filesystem watcher
+```
+
+## plugin.json
+
+```json
+{
+  "id":       "myplugin",
+  "name":     "My Platform",
+  "version":  "1.0.0",
+  "platform": "myplugin",
+  "author":   "",
+  "source":   "github:owner/myplugin-repo"
+}
+```
+
+The `id` and `platform` values must be unique across all plugins and must match the string you store in the `platform` column of the `games` table.
+
+### `launcher` field (optional)
+
+If your plugin needs a separate launcher application (e.g. Epic Games Store, EA App) to run games, declare it:
+
+```json
+"launcher": {
+  "required": true,
+  "name": "Epic Games Store",
+  "exe_name": "EpicGamesLauncher.exe",
+  "config_paths": ["~/.config/Epic/EpicGamesLauncher", "~/.wine-epic/drive_c/..."]
+}
+```
+
+Set `"required": false` (or omit the field entirely) if your plugin can launch games without a separate launcher process. Core reads this field to drive launcher configuration UI -- no code changes are needed in the plugin itself beyond declaring it.
+
+The optional `source` field enables update checking. Set it to `github:owner/repo` pointing to the GitHub repository where releases are published. PlayDate compares the installed `version` against the latest release tag (stripping a leading `v`) and surfaces an update link in the Plugins modal when a newer version is available. Updates download and overwrite the plugin folder in-place; a restart is required to load the new code.
+
+## __init__.py — the plugin class
+
+`plugins/__init__.py` calls `mod.plugin` on your package, so `__init__.py` must expose a `plugin` singleton.
+
+```python
+import logging
+
+log = logging.getLogger(__name__)
+
+
+class MyPlugin:
+    id       = 'myplugin'
+    name     = 'My Platform'   # fallback display label
+    label    = 'My Platform'   # display label used in platform_labels(); defaults to name if absent
+    platform = 'myplugin'
+
+    def register(self, app):
+        """Called once at startup. Register your Blueprint here."""
+        from .routes import bp
+        app.register_blueprint(bp)
+
+    def on_startup(self):
+        """Called after the Flask server and pywebview window are ready."""
+        # start background threads, filesystem watchers, etc.
+        pass
+
+    def on_shutdown(self):
+        """Called when the window closes. Stop any threads/watchers."""
+        pass
+
+    def sync(self):
+        """Optional. Called when the user triggers a library sync."""
+        pass
+
+    # Optional class attribute. If your platform has an external orders/activation page
+    # that the Tampermonkey date-import script should open, declare it here.
+    # Core collects these from all plugins whose games are in a bulk date-import selection
+    # and returns them as date_import_urls: [{url, label}] to the frontend.
+    # date_import_url = 'https://example.com/account/orders'
+
+    def launch_game(self, appid):
+        """
+        Optional. Called by core when the user clicks Play on a game with this platform.
+        appid is the integer PlayDate appid (negative for non-Steam games).
+        Must return a dict that will be JSON-serialised and sent to the frontend.
+        Common shapes:
+          {"status": "success", "last_played": <unix_ts>}
+          {"status": "installing", "message": "Installing…",
+           "install_poller": "_startMyInstallPoller"}   # JS fn name registered by your fragment
+          {"status": "error", "message": "…"}
+        Do NOT use platform-named flags like gog_install — use install_poller instead.
+        Core calls window[install_poller](appid) if that function exists.
+        If not implemented, core returns HTTP 501 for non-Steam platforms.
+        """
+        pass
+
+    def rescrape(self, appid):
+        """
+        Optional. Called by bulk_rescrape_games() for games on this platform.
+        Should fetch fresh metadata (name, genres, tags, achievements, etc.) and
+        return a dict ready to pass to update_game_data(**meta), or None on failure.
+        Include meta_fetched and cheevos_fetched date strings (YYYY-MM-DD) as needed.
+        If not implemented, the game is skipped during bulk rescrape.
+        """
+        pass
+
+    def fetch_description(self, appid, platform_id):
+        """
+        Optional. Called by GET /api/game-description/<appid> for non-Steam games.
+        Return a plain-text description string, or None if unavailable.
+        Core falls back to the Steam store API when this is not implemented.
+        """
+        pass
+
+    def launcher_status(self):
+        """
+        Optional. Implement this if plugin.json declares launcher.required: true.
+        Called at startup and on demand (POST /api/plugins/launcher-status/<platform>).
+        Must return a dict: {"available": bool, "detail": str}
+        Example checks: is Wine installed? is the launcher .exe present in the configured prefix?
+        The result is cached and exposed via GET /api/plugins/launcher-status.
+        """
+        pass
+
+    def on_uninstall(self):
+        """Optional. Clean up credentials/tokens when the plugin is removed."""
+        pass
+
+    def js_api(self):
+        """Optional. Expose platform capabilities to core JS via window._PLUGIN_API."""
+        return {
+            'uninstall_url':     '/api/myplugin/uninstall/{appid}',  # POST; {appid} replaced at runtime
+            'uninstall_confirm': 'Uninstall this game?\n\nThis will delete the game files from disk.',
+            'scrape_url':        '/api/myplugin/scrape-single/{appid}',
+            'scrape_method':     'POST',   # or 'GET'
+            'store_url':         'https://example.com/game/{slug}',  # {slug} = platform_slug column
+            'store_label':       'View on My Platform Store ↗',
+            'appid_label':       'My Platform ID:',
+            'sync_label':        'Sync My Platform Data',
+        }
+
+    def manage_ui(self):
+        """
+        Optional. Declare the plugin's Manage modal using built-in building blocks.
+        Core renders the modal; a Manage button appears automatically on the plugin card.
+        The modal ID follows the convention: {plugin_id}-manage-modal.
+
+        Section fields:
+          title (str)         — label shown above the section
+          auth  (dict)        — optional; shows connected vs disconnected state
+            endpoint (str)      — GET endpoint returning {connected, username}
+            disconnected (list) — blocks shown when not connected
+            connected    (list) — blocks shown when connected
+          items (list)        — blocks shown unconditionally (use instead of auth)
+
+        Block types:
+          {type: 'text',           content: str}
+          {type: 'connected_label'}               -- "Connected as {username}"
+          {type: 'info_endpoint',  endpoint: str} -- GET returns {text, color}
+          {type: 'button',  label: str, variant: 'muted'?, action: <action>}
+          {type: 'buttons', items: [{label, variant?, action}]}
+          {type: 'status_output',  key: str}      -- id: {plugin_id}-manage-status-{key}
+
+        Action types:
+          {type: 'call',       fn: str}                           -- call named JS function
+          {type: 'open_url',   url: str}                          -- open in system browser
+          {type: 'post',       endpoint: str, on_success: str?}   -- on_success: 'refresh_auth'
+          {type: 'oauth_paste', title, url_endpoint, callback_endpoint,
+                                instructions, input_placeholder, open_label, submit_label}
+
+        Status output elements use the id pattern: {plugin_id}-manage-status-{key}.
+        Plugin JS (tools_scripts fragment) can reference these by that id.
+        """
+        return {
+            'sections': [
+                {
+                    'title': 'Account',
+                    'auth': {
+                        'endpoint': '/api/myplugin/status',
+                        'disconnected': [
+                            {'type': 'text', 'content': 'Connect your account to import your library.'},
+                            {'type': 'button', 'label': 'Connect', 'action': {
+                                'type': 'oauth_paste',
+                                'title': 'Connect My Platform',
+                                'url_endpoint': '/api/myplugin/auth-url',
+                                'callback_endpoint': '/api/myplugin/callback',
+                                'instructions': ['Open the login URL.', 'Log in.', 'Paste the redirect URL below.'],
+                                'input_placeholder': 'https://...',
+                                'open_label': 'Open Login',
+                                'submit_label': 'Connect',
+                            }},
+                        ],
+                        'connected': [
+                            {'type': 'connected_label'},
+                            {'type': 'buttons', 'items': [
+                                {'label': 'Sync Library', 'action': {'type': 'call', 'fn': 'myPluginSync'}},
+                                {'label': 'Disconnect', 'variant': 'muted', 'action': {'type': 'post', 'endpoint': '/api/myplugin/disconnect', 'on_success': 'refresh_auth'}},
+                            ]},
+                            {'type': 'status_output', 'key': 'main'},
+                        ],
+                    },
+                },
+            ],
+        }
+
+    def fragments(self):
+        """Optional. Map injection slot names to template filenames."""
+        return {
+            'base_head_styles':  'myplugin_base_head_styles.html',
+            'base_nav_items':    'myplugin_base_nav_items.html',
+            'base_body_scripts': 'myplugin_base_scripts.html',
+            'tools_scripts':     'myplugin_tools_scripts.html',
+        }
+
+
+plugin = MyPlugin()
+```
+
+All lifecycle methods except `register` are optional — omit the ones you don't need.
+
+## routes.py — Flask Blueprint
+
+Use a Blueprint with a `/api/<plugin-id>` prefix. Add `template_folder='templates'` so Jinja2 can find your fragment templates. If you have static assets (CSS, JS, images), add `static_folder='static'` and `static_url_path='/plugins/<id>/static'` — files will be served at that URL path.
+
+```python
+from flask import Blueprint, jsonify, request
+from database import get_db, update_game_data
+
+bp = Blueprint('myplugin', __name__, url_prefix='/api/myplugin',
+               template_folder='templates',
+               static_folder='static',
+               static_url_path='/plugins/myplugin/static')
+
+
+@bp.route('/status')
+def status():
+    return jsonify({'connected': False})
+
+
+@bp.route('/sync', methods=['POST'])
+def sync():
+    from .myplugin import sync_library
+    result = sync_library()
+    if 'error' in result:
+        return jsonify({'status': 'error', 'message': result['error']}), 400
+    return jsonify({'status': 'success', **result})
+```
+
+## UI fragments
+
+Plugins inject UI into core pages via named slots. Each slot is a small HTML or JS file in `plugins/myplugin/templates/`. The loader collects all registered fragments at startup; if no plugin registers a slot, nothing is rendered there.
+
+### Available slots
+
+| Slot | Rendered inside | Use for |
+|------|----------------|---------|
+| `base_head_styles` | `<style>` block in `<head>` | CSS for elements your nav fragment adds |
+| `base_nav_items` | Hamburger menu, after the populate button | Persistent status buttons (e.g. install progress) |
+| `base_body_scripts` | `<script>` block at end of `<body>` | JS that must exist on every page |
+| `tools_scripts` | `<script>` block in `modal_tools.html` | JS for the manage modal (sync handlers, etc.) |
+
+### Naming convention
+
+Prefix template filenames with your plugin id to avoid collisions across plugins:
+
+```
+plugins/myplugin/templates/
+  myplugin_base_head_styles.html
+  myplugin_base_nav_items.html
+  myplugin_base_scripts.html
+  myplugin_tools_scripts.html
+```
+
+### Example: adding a nav button
+
+`myplugin_base_nav_items.html`:
+```html
+<button id="myplugin-status-btn" class="hamburger-item" style="display:none;">MY PLATFORM: SYNCING...</button>
+```
+
+`myplugin_base_head_styles.html`:
+```css
+#myplugin-status-btn { color: var(--accent); font-weight: bold; }
+```
+
+`myplugin_base_scripts.html`:
+```js
+// JS that controls #myplugin-status-btn on every page
+```
+
+### Calling plugin functions from core JS
+
+Core templates use `typeof` guards for any soft calls into plugin JS, so missing plugins don't cause errors:
+
+```js
+if (typeof _myPluginRefresh === 'function') _myPluginRefresh();
+```
+
+Define complex sync handlers (e.g. `myPluginSync`) in your `tools_scripts` fragment and reference them by name in `manage_ui()` button actions using `{type: 'call', fn: 'myPluginSync'}`. Status output elements follow the id pattern `{plugin_id}-manage-status-{key}` so your JS can update them directly.
+
+## Database integration
+
+### Appid allocation
+
+Non-Steam games use **negative integer appids** to avoid collisions with Steam. Allocate the next available one inside a single DB connection:
+
+```python
+def _next_negative_appid(db):
+    row = db.execute('SELECT MIN(appid) FROM games WHERE appid < 0').fetchone()
+    return (row[0] - 1) if row[0] is not None else -1
+```
+
+### Inserting a game
+
+```python
+db.execute(
+    """INSERT OR IGNORE INTO games
+       (appid, name, platform, platform_id, platform_slug, date_added,
+        completion_status, installed,
+        art_fetched, meta_fetched, cheevos_fetched,
+        protondb_fetched, hltb_fetched)
+       VALUES (?, ?, ?, ?, ?, ?,
+               'Never Played', 0,
+               '0', '0', '0', '0', '0')""",
+    (next_appid, name, 'myplugin', platform_native_id, slug, date_added_unix_ts),
+)
+```
+
+Key columns:
+
+| Column | Notes |
+|--------|-------|
+| `appid` | Negative integer, allocated via `_next_negative_appid` |
+| `platform` | String matching your `plugin.json` `platform` field |
+| `platform_id` | The service's own identifier for the game (used for launch/sync) |
+| `platform_slug` | URL slug for building store links (optional) |
+| `date_added` | Unix timestamp (INTEGER) |
+| `completion_status` | Start with `'Never Played'` |
+| `installed` | `0` or `1` |
+| `art_fetched` / `meta_fetched` / `cheevos_fetched` | `'0'` until fetched; use `'YYYY-MM-DD'` once done |
+
+### Skipping blacklisted games
+
+Before inserting, check `platform_id` for games the user previously removed:
+
+```python
+blacklisted = {
+    row[0]
+    for row in db.execute(
+        "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
+    ).fetchall()
+}
+
+if str(platform_native_id) in blacklisted:
+    continue
+```
+
+### Updating game data
+
+```python
+from database import update_game_data
+update_game_data(appid, installed=1, install_path='/games/MyGame')
+```
+
+`update_game_data` accepts any column name as a keyword argument.
+
+## Optional: install watcher
+
+If your platform installs games to a known directory, watch it with `watchdog` and sync install status on change. Use `runners.watcher.PluginInstallWatcher` — it encapsulates the Observer lifecycle and only requires a name and a sync callback:
+
+```python
+from runners.watcher import PluginInstallWatcher
+
+def sync_install_status():
+    # reset installed=0 for your platform, then set installed=1 for found games
+    ...
+
+_watcher = PluginInstallWatcher('myplugin', sync_install_status)
+
+def start_watcher(watch_path):
+    _watcher.start(watch_path)   # no-op if already running or path missing
+
+def stop_watcher():
+    _watcher.stop()
+```
+
+The sync callback pattern:
+
+1. Reset all `installed` flags for your platform to `0`.
+2. Walk the install directory and set `installed = 1` for found games.
+
+## Shared runners
+
+Reusable helpers in `runners/` that plugins should use rather than rolling their own:
+
+### `runners/oauth2.py` — Generic OAuth2
+
+For plugins that authenticate via OAuth2 authorization code + refresh token flow.
+
+```python
+from runners.oauth2 import exchange_authorization_code, get_valid_session
+
+# Exchange code for tokens (returns raw token dict; raises ValueError on failure)
+token_data = exchange_authorization_code(
+    token_url, client_id, client_secret, code,
+    redirect_uri=None,     # include if the provider requires it
+    use_basic_auth=False,  # True for providers that use HTTP Basic auth (e.g. Epic)
+)
+
+# Get a requests.Session with a valid Bearer token (auto-refreshes; returns None if disconnected)
+session = get_valid_session(
+    'my_platform',         # key in config.json where tokens are stored
+    token_url, client_id, client_secret,
+    extra_headers=None,    # e.g. {'User-Agent': '...'}
+    use_basic_auth=False,
+)
+```
+
+Token storage convention: `config.json["my_platform"]` must contain `access_token`, `refresh_token`, `expires_at`. Any other keys (username, account_id, etc.) are preserved on refresh.
+
+### `runners/watcher.py` — `PluginInstallWatcher`
+
+See the install watcher section above.
+
+### `runners/wine.py` — Wine helpers
+
+```python
+from runners.wine import find_wine_binary, list_prefixes, create_prefix, run_in_prefix, launch_protocol_url
+
+# Open a Windows protocol URL (e.g. com.epicgames.launcher://...) inside a prefix
+launch_protocol_url(prefix_path, url, wine_bin=None)
+```
+
+## Checking for a plugin in templates
+
+`has_plugin(id)` is available in every Jinja2 template for cases where fragment slots aren't enough:
+
+```jinja2
+{% if has_plugin('myplugin') %}
+  <!-- platform-specific UI -->
+{% endif %}
+```
+
+## Checklist for a new plugin
+
+- [ ] `plugins/myplugin/` directory with `__init__.py`, `plugin.json`, `routes.py`
+- [ ] Unique `id` and `platform` string in `plugin.json` and plugin class
+- [ ] `source` set to `github:owner/repo` in `plugin.json` if the plugin is hosted on GitHub
+- [ ] `label` set on plugin class (display name used in `window._PLAT_LABELS`)
+- [ ] `template_folder='templates'` on the Blueprint if using fragments
+- [ ] `static_folder='static'` + `static_url_path='/plugins/<id>/static'` if serving static assets
+- [ ] `js_api()` implemented if the plugin needs uninstall, scrape, or store-link support in core UI
+- [ ] `manage_ui()` implemented if the plugin needs auth/sync controls (avoids writing modal HTML)
+- [ ] Negative appids allocated with `_next_negative_appid`
+- [ ] `platform` column set to your plugin id on every inserted row
+- [ ] `platform_id` stored for each game (needed for sync deduplication and blacklist)
+- [ ] `register(app)` registers the Blueprint
+- [ ] `on_startup` / `on_shutdown` manage any background threads
+- [ ] `on_uninstall()` clears credentials/tokens
+- [ ] `launch_game(appid)` implemented so the Play button works (returns a status dict); use `install_poller` key (not platform-named flags) when installation is triggered
+- [ ] `rescrape(appid)` implemented if the platform has a metadata API (enables bulk rescrape)
+- [ ] `fetch_description(appid, platform_id)` implemented if the platform has a description API
+- [ ] `date_import_url` declared if the platform has an orders page the Tampermonkey script should open
+- [ ] `launcher_status()` implemented if `plugin.json` sets `launcher.required: true`
+- [ ] Blacklist check before inserting games
+- [ ] Fragment template filenames prefixed with plugin id to avoid collisions

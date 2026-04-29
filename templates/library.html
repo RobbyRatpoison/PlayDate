@@ -595,9 +595,9 @@
     </style>
     {% set _non_default_sort = state.sort not in ('name', '') or state.order != 'ASC' %}
     {% set _has_plat_filter = hidden_platforms | length > 0 %}
-    {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_min': 'HLTB Time'} -%}
+    {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_min': 'HLTB Time', 'total_reviews': 'Total Reviews'} -%}
     {%- set _group_labels = {'installed': 'Installed', 'completion_status': 'Completion', 'release_date': 'Release Year', 'date_added': 'Year Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'platform': 'Platform'} -%}
-    {%- set _plat_labels = {'steam': 'Steam', 'gog': 'GOG', 'epic_games': 'Epic', 'ea_app': 'EA', 'ubisoft': 'Ubisoft'} -%}
+    {%- set _plat_labels = platform_labels() -%}
     {%- set ns = namespace(filter_label=none, has_real_filter=false) -%}
     {%- if state.filter_tree -%}
         {%- set ft = state.filter_tree -%}
@@ -896,6 +896,7 @@
 
     // ── Current filter tree from server (may already contain a name condition) ──
     const _serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
+    const _activeFilterName = {{ active_filter_name | tojson if active_filter_name is defined else 'null' }};
 
     // Strip the search quick-filter (name LIKE) from the top level of the active tree,
     // unwrapping a single wrapped base group if that's all that remains.
@@ -948,6 +949,7 @@
         review_percentage:   'DESC',
         weighted_percentage: 'DESC',
         hltb_min:            'ASC',
+        total_reviews:       'DESC',
     };
     function updateSort(column) {
         const order = _sortDefaultOrder[column] ?? 'ASC';
@@ -1042,9 +1044,9 @@
     const _GROUP_FIXED_ORDER = {
         installed: ['installed', 'not_installed'],
         completion_status: ['Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"],
-        platform: ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'],
+        platform: Object.keys(window._PLAT_LABELS),
     };
-    const _GROUP_PLAT_LABELS = { steam: 'Steam', gog: 'GOG', epic_games: 'Epic', ea_app: 'EA', ubisoft: 'Ubisoft' };
+    const _GROUP_PLAT_LABELS = window._PLAT_LABELS;
     const _GROUP_BY_LABELS = {
         installed: 'Installed', completion_status: 'Completion', release_date: 'Release Year',
         date_added: 'Year Added', review_percentage: 'Review Score',
@@ -2038,22 +2040,19 @@ async function startBulkDateImport() {
         return;
     }
 
-    if (data.total === 0 && !data.has_gog) {
+    const _dateUrls = data.date_import_urls || [];
+    if (data.total === 0 && !_dateUrls.length) {
         status.className = 'bulk-status-success';
         status.textContent = 'No games to process.';
         startBtn.disabled = false;
         return;
     }
 
-    // Open GOG orders page if any GOG games are in scope
-    if (data.has_gog) {
-        const _g = document.createElement('a');
-        _g.href = 'https://www.gog.com/en/account/settings/orders?ref=playdate';
-        _g.target = '_blank';
-        _g.rel = 'noopener';
-        document.body.appendChild(_g);
-        _g.click();
-        document.body.removeChild(_g);
+    // Open external date import pages (e.g. GOG orders) for any plugin that provides one
+    for (const {url} of _dateUrls) {
+        const _e = document.createElement('a');
+        _e.href = url; _e.target = '_blank'; _e.rel = 'noopener';
+        document.body.appendChild(_e); _e.click(); document.body.removeChild(_e);
     }
 
     // Open Steam Help page if any Steam games are in scope
@@ -2067,10 +2066,13 @@ async function startBulkDateImport() {
         document.body.removeChild(_a);
     }
 
-    // If only GOG games, re-enable the button and show a status
+    // If only plugin-handled games (no Steam queue), show status and stop
     if (data.total === 0) {
         status.className = 'bulk-status-success';
-        status.textContent = 'GOG orders page opened — check that tab for results.';
+        const _labels = _dateUrls.map(u => u.label).join(', ');
+        status.textContent = _labels
+            ? `${_labels} orders page opened — check that tab for results.`
+            : 'No games to process.';
         startBtn.disabled = false;
         return;
     }
@@ -2549,7 +2551,7 @@ function pickRandomGame() {
         if (existing) Object.assign(existing, game);
     }
 
-    const _PLAT_LABELS = { steam: 'Steam', gog: 'GOG', epic_games: 'Epic', ea_app: 'EA', ubisoft: 'Ubisoft' };
+    const _PLAT_LABELS = window._PLAT_LABELS;
 
     function openDetailPane(game) {
         _dpCurrentGame   = game;
@@ -2705,13 +2707,15 @@ function pickRandomGame() {
     async function dpSyncData() {
         const appid = _dpCurrentAppid;
         if (!appid) return;
-        const game   = _dpCurrentGame;
-        const isGog  = game?.platform === 'gog';
-        const btn    = document.querySelector('#detail-footer button[onclick="dpSyncData()"]');
+        const game    = _dpCurrentGame;
+        const platform = game?.platform || 'steam';
+        const api     = window._PLUGIN_API?.[platform];
+        const btn     = document.querySelector('#detail-footer button[onclick="dpSyncData()"]');
         if (btn) { btn.disabled = true; btn.textContent = 'Syncing...'; }
-        const url = isGog ? `/api/gog/scrape-single/${appid}` : `/api/scrape_single/${appid}`;
+        const url    = api?.scrape_url ? api.scrape_url.replace('{appid}', appid) : `/api/scrape_single/${appid}`;
+        const method = api?.scrape_method || 'GET';
         try {
-            const res    = await fetch(url, { method: isGog ? 'POST' : 'GET' });
+            const res    = await fetch(url, { method });
             const data   = await res.json();
             if (data.status === 'success' && data.data) {
                 const g = data.data;

@@ -12,6 +12,8 @@ memory/
 
 # --- Databases ---
 *.db
+*.db-wal
+*.db-shm
 *.csv
 
 # --- Logs ---

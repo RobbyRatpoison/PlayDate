@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.6 — 2026-04-29
+
+### Plugins
+
+- GOG support is now an optional plugin. The GOG and Epic Games plugins are included and update automatically from GitHub.
+- Additional plugins can be installed via zip file or GitHub URL.
+- Hamburger → Plugins manages installed plugins. An orange dot appears when plugin updates are available.
+
+### Epic Games
+
+- Connect your Epic Games account via Plugins → Epic Games → Manage. Sync your library to import games, cover art, tags, ratings, and store metadata.
+- Games launch via the Epic Games Launcher — natively on Windows/Mac, or via a Wine prefix on Linux.
+- On Linux, games can be uninstalled directly from PlayDate. On Windows/Mac, use the Epic Games Launcher to uninstall.
+
+### Library
+
+- New sort option: Total Reviews.
+
+### Fixes
+
+- PAGYWOSG & BLAEO renamed from "Community" in the hamburger menu.
+
+---
+
 ## v1.4.5 — 2026-04-26
 
 ### Card Outlines

@@ -122,13 +122,7 @@
         font-size: 0.82rem;
         letter-spacing: 0.04em;
     }
-    .hamburger-gog-install {
-        color: var(--accent);
-        font-weight: bold;
-        font-size: 0.82rem;
-        letter-spacing: 0.04em;
-        display: none;
-    }
+    {% for _t in plugin_fragments('base_head_styles') %}{% include _t %}{% endfor %}
     .hamburger-sep {
         height: 1px;
         background: #2a3f55;
@@ -153,6 +147,10 @@
     safeSession.setItem('_playdateFullscreen', '{{ "1" if initial_fullscreen else "0" }}');
     </script>
     <script>
+    window._PLAT_LABELS  = {{ platform_labels() | tojson }};
+    window._PLUGIN_API   = {{ plugin_js_api() | tojson }};
+    </script>
+    <script>
     // Reveal the body as soon as the DOM is ready
     document.addEventListener("DOMContentLoaded", function() {
         document.body.classList.add('loaded');
@@ -172,14 +170,15 @@
                 <button id="hamburger-btn" onclick="toggleHamburger()">☰<span id="update-dot"></span></button>
                 <div id="hamburger-menu">
                     <button id="add-button" class="hamburger-item hamburger-populate">POPULATE PLAYDATE</button>
-                    <button id="gog-install-btn" class="hamburger-item hamburger-gog-install">GOG: INSTALLING...</button>
+                    {% for _t in plugin_fragments('base_nav_items') %}{% include _t %}{% endfor %}
                     <div class="hamburger-sep"></div>
                     <button class="hamburger-item" onclick="closeHamburger();window.location.href='/?edit=1'">Edit Home Layout</button>
                     <div class="hamburger-sep"></div>
-                    <button class="hamburger-item" onclick="closeHamburger();openAccountsModal()">Accounts</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openAccountModal()">Steam Account</button>
                     <button class="hamburger-item" onclick="closeHamburger();openAppearanceModal()">Appearance</button>
                     <button class="hamburger-item" onclick="closeHamburger();openLibraryModal()">Library</button>
-                    <button class="hamburger-item" onclick="closeHamburger();openCommunityModal()">Community</button>
+                    <button class="hamburger-item" style="display:flex;align-items:center;" onclick="closeHamburger();openPluginsModal()">Plugins<span id="plugin-update-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#e67e22;visibility:hidden;margin-left:8px;vertical-align:middle;pointer-events:none;"></span></button>
+                    <button class="hamburger-item" onclick="closeHamburger();openCommunityModal()">PAGYWOSG &amp; BLAEO</button>
                     <button class="hamburger-item" onclick="closeHamburger();openDataModal()">Data</button>
                     <button class="hamburger-item" onclick="closeHamburger();openSystemModal()">System</button>
                     <button class="hamburger-item" onclick="closeHamburger();openBlacklistModal()">Manage</button>
@@ -247,8 +246,7 @@
             if (data.status === 'installing' || data.status === 'not_installed' || data.status === 'error') {
                 if (window._inputMgr) window._inputMgr.clearSuppression();
                 if (data.message) showLaunchToast(data.message);
-                // GOG install started — show progress in hamburger menu
-                if (data.gog_install) _startGogInstallPoller(appid);
+                if (data.install_poller && typeof window[data.install_poller] === 'function') window[data.install_poller](appid);
                 return;
             }
 
@@ -267,90 +265,7 @@
             }, 1500);
         }
 
-        // ── GOG install progress (hamburger button) ───────────────────────────
-        let _gogInstallPoller = null;
-        let _gogInstallAppid  = null;
-
-        function _resetGogInstallBtn() {
-            const btn = document.getElementById('gog-install-btn');
-            btn.style.display    = 'none';
-            btn.style.background = '';
-            btn.style.color      = '';
-            btn.disabled         = false;
-            btn.innerText        = 'GOG: INSTALLING...';
-            _gogInstallAppid     = null;
-        }
-
-        function _updateGogInstallBtn(d) {
-            const btn  = document.getElementById('gog-install-btn');
-            const name = d.name || 'GOG Game';
-            if (d.total > 0) {
-                const pct  = Math.round(d.done / d.total * 100);
-                const done = (d.done  / 1e6).toFixed(0);
-                const tot  = (d.total / 1e6).toFixed(0);
-                btn.innerText        = `CANCEL  ${name}  [${done}/${tot} MB]  ${pct}%`;
-                btn.style.background = `linear-gradient(to right, rgba(102,192,244,0.18) ${pct}%, transparent ${pct}%)`;
-            } else {
-                btn.innerText        = `CANCEL  ${name}  —  starting…`;
-                btn.style.background = '';
-            }
-        }
-
-        function _startGogInstallPoller(appid) {
-            _gogInstallAppid = appid;
-            const btn = document.getElementById('gog-install-btn');
-            btn.style.display = 'block';
-            btn.disabled      = false;
-            _gogInstallPoller = setInterval(async () => {
-                try {
-                    const r = await fetch(`/api/gog/install-status/${appid}`);
-                    const d = await r.json();
-                    if (d.status === 'running') {
-                        _updateGogInstallBtn(d);
-                    } else {
-                        clearInterval(_gogInstallPoller);
-                        _gogInstallPoller = null;
-                        if (d.status === 'success') {
-                            btn.innerText        = `✔ ${d.name || 'Game'} installed`;
-                            btn.style.background = '';
-                            btn.style.color      = 'var(--accent-positive)';
-                            setTimeout(() => { _resetGogInstallBtn(); location.reload(); }, 2000);
-                        } else if (d.status === 'cancelled') {
-                            btn.innerText        = 'Install cancelled';
-                            btn.style.background = '';
-                            btn.style.color      = 'var(--text-secondary)';
-                            if (window._inputMgr) window._inputMgr.clearSuppression();
-                            setTimeout(() => _resetGogInstallBtn(), 2000);
-                        } else {
-                            btn.innerText        = `✘ Install failed — ${d.message || ''}`;
-                            btn.style.background = '';
-                            btn.style.color      = 'var(--color-danger)';
-                            if (window._inputMgr) window._inputMgr.clearSuppression();
-                            setTimeout(() => _resetGogInstallBtn(), 4000);
-                        }
-                    }
-                } catch (_) {}
-            }, 2000);
-        }
-
-        document.getElementById('gog-install-btn').addEventListener('click', async () => {
-            if (!_gogInstallAppid) return;
-            const btn    = document.getElementById('gog-install-btn');
-            btn.innerText = 'Cancelling…';
-            btn.disabled  = true;
-            await fetch(`/api/gog/install/${_gogInstallAppid}/cancel`, { method: 'POST' });
-        });
-
-        // Resume tracking any in-progress install across page navigations
-        (async () => {
-            try {
-                const r = await fetch('/api/gog/active-install');
-                const d = await r.json();
-                if (d.appid !== null && d.appid !== undefined) {
-                    _startGogInstallPoller(d.appid);
-                }
-            } catch (_) {}
-        })();
+        {% for _t in plugin_fragments('base_body_scripts') %}{% include _t %}{% endfor %}
 
         let _populating = false;
         let _populatePoller = null;
@@ -704,6 +619,9 @@
                 }
             } catch (e) {}
         })();
+
+        // Check for plugin updates in the background on startup
+        setTimeout(() => { if (typeof _checkPluginUpdates === 'function') _checkPluginUpdates(); }, 15000);
 
         document.addEventListener('keydown', e => {
             if (e.key === 'F11') {

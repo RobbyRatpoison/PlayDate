@@ -749,7 +749,7 @@ function buildEditBarHTML(shelf, containerEl) {
     const atMax = groupSize >= 3;
     const addColBtn = !atMax ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="openSplitPicker('${sid}')">＋ Column</button>` : '';
 
-    const _platLabels = {steam:'Steam',gog:'GOG',epic_games:'Epic',ea_app:'EA',ubisoft:'Ubisoft'};
+    const _platLabels = window._PLAT_LABELS;
     const platHTML = (!isClock && _availablePlatforms.length > 1) ? `
         <div class="edit-sep"></div>
         ${_availablePlatforms.map(p => {

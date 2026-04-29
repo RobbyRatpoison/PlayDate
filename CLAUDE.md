@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-PlayDate is a local game library manager. It runs as a Flask web server wrapped in a native OS window via pywebview (no Electron). Users browse their Steam and GOG libraries, apply filters, track completion, and use a "Pick 6" feature to discover what to play next. Non-Steam games use negative integer appids; GOG integration includes OAuth2 auth, library sync, metadata/achievement scraping, content-system v2 install/download, and Proton-based launch.
+PlayDate is a local game library manager. It runs as a Flask web server wrapped in a native OS window via pywebview (no Electron). Users browse their Steam and GOG libraries, apply filters, track completion, and use a "Pick 6" feature to discover what to play next. Non-Steam games use negative integer appids. Non-Steam library sources (GOG, Epic, etc.) are optional plugins; GOG is the reference implementation and ships bundled.
 
 ## Running & Building
 
@@ -32,8 +32,12 @@ Flask + pywebview hybrid. Waitress WSGI (8 threads). `main.py` starts Flask in a
 | `utils.py` | Steam path detection, install sync, filesystem watcher, VDF parsing |
 | `images.py` | Cover art: Steam manifest → CDN → SteamGridDB fallback chain |
 | `imports.py` | Playnite backup import, generic SQLite column mapping |
-| `gog.py` | GOG OAuth2, library sync, metadata/achievements, install/launch |
+| `plugins/` | Optional non-Steam integrations; see `PLUGINS.md` |
+| `plugins/gog/` | GOG plugin — OAuth2, library sync, metadata/achievements, install/launch |
+| `plugins/epic_games/` | Epic Games plugin — OAuth2, library sync, metadata, art, Wine/native launch |
 | `runners/proton.py` | GE-Proton/official Proton detection, `proton run` launch |
+| `runners/wine.py` | Shared Wine helpers for plugins: `find_wine_binary()`, `list_prefixes()`, `create_prefix()`, `run_in_prefix()`, `launch_protocol_url()` |
+| `runners/launcher_installer.py` | Generic Wine-based launcher installer for plugins; reads `launcher.installer` from `plugin.json`; phases: creating_prefix → downloading → installing → verifying → done; saves launcher config on success |
 | `uninstall.py` | Standalone tkinter GUI uninstaller (no pip deps beyond stdlib) |
 | `steam_date_import.user.js` | Tampermonkey — scrapes activation dates from Steam Help + GOG orders |
 
@@ -63,6 +67,7 @@ All user data lives next to the exe (or project root when running from source). 
 - `duplicate_of`: TEXT appid of canonical version; `NOT NULL` = excluded from library by default
 - **GOG appids are negative integers.** Flask uses `SignedIntConverter` (`r'-?\d+'`) for routes; `appid_list` validation allows zero/negative.
 - `blacklist` table prevents repopulation of removed games
+- **Non-Steam platform columns:** `platform_id` = service-native catalog/item ID (e.g. Epic `catalogItemId`, GOG product ID); `platform_slug` = store URL slug (e.g. `epicgames.com/p/{slug}`); `platform_appname` = internal launch/install name where it differs from the slug (Epic only — `appName` used in protocol URLs and install dirs); `platform_ns` = catalog namespace (Epic only). For Epic, `platform_id` and `platform_appname` are both needed: `platform_id` is used for catalog API calls and dedup; `platform_appname` is used for launching and install detection. Epic's assets API can return multiple records with the same `catalogItemId` but different `appName`s (entitlement vs installable); the sync resolves the correct one via `releaseInfo[*].appId` where `platform` includes `'Windows'`.
 
 ## PyInstaller Path Handling (Critical)
 
@@ -128,6 +133,30 @@ Playnite uses LiteDB (not SQLite). `parse_playnite_dates()` uses proximity match
 
 ### Pick 6 Scoring
 Six signals: tag cosine similarity (playtime-weighted taste profile from beaten games), review score, staleness (capped 730d), completion bias, playtime (capped 3000min), release recency (capped 10yr). Falls back to top-50-most-played if no beaten games. Weighted random sampling, not sorted top-N.
+
+## Plugin System
+
+Non-Steam library sources are optional plugins in `plugins/<id>/`. See `PLUGINS.md` for the full developer guide. Key points:
+
+- **Auto-discovery:** any folder under `plugins/` with a `plugin.json` is loaded at startup via `plugins/__init__.py`.
+- **Jinja2 globals:** `has_plugin(id)`, `plugin_fragments(slot)`, `platform_labels()`, `plugin_js_api()` — available in all templates.
+- **`window._PLAT_LABELS`** — injected in `base.html`; maps platform key → display label. Use this instead of hardcoded dicts. Core provides `steam`, `epic_games`, `ea_app`, `ubisoft`; plugins add their own.
+- **`window._PLUGIN_API`** — injected in `base.html`; maps platform key → `{uninstall_url, scrape_url, scrape_method, store_url, store_label, appid_label, sync_label}`. Core templates use this for per-platform behavior; no platform-specific branches in core code.
+- **Management UI:** hamburger → Plugins; install via zip or GitHub URL, uninstall with optional game removal, restart-required notice.
+- **GitHub install:** `POST /api/plugins/install-from-github` accepts `{url}` (any `github.com/owner/repo` form), fetches the latest release zip asset (falls back to zipball), and installs via the shared `_install_plugin_zip(raw_bytes)` helper.
+- **Update checking:** `GET /api/plugins/check-updates` checks GitHub for each plugin whose `plugin.json` has `"source": "github:owner/repo"`; compares semver against installed `version`; 6-hour per-plugin cache in `_plugin_update_cache`. Fires automatically when the Plugins modal opens; shows a one-click update link on cards with newer releases.
+- **`launch_game(appid)`** — plugin lifecycle method; core `/api/launch/<appid>` dispatches non-Steam platforms to `plugin.launch_game(appid)` by matching the `platform` column. Returns 501 if no plugin claims the platform. When a game needs to install before launching, return `{"status": "installing", "install_poller": "<js_fn_name>", "message": "…"}` — core calls `window[install_poller](appid)` if that function exists. Do not use platform-named flags like `gog_install`.
+- **`rescrape(appid) -> dict | None`** — optional; called by `bulk_rescrape_games` for any non-Steam game whose platform has a plugin with this method. Must return a dict ready to pass to `update_game_data(**meta)` (including `meta_fetched`, `cheevos_fetched` if applicable), or `None` on failure. Replaces direct plugin imports in `scrapers.py`.
+- **`fetch_description(appid, platform_id) -> str | None`** — optional; called by `/api/game-description/<appid>` for non-Steam platforms. Return a plain-text description string, or `None` if unavailable. Core falls back to the Steam store API when no plugin implements this.
+- **`date_import_url` (class attribute, str)** — optional; declare this if the platform has an external orders/activation page that the Tampermonkey date-import script should open. Core collects these from all plugins whose games are in the selection and returns them as `date_import_urls: [{url, label}]` from the bulk date import start endpoint. The frontend opens each URL in a new tab generically.
+- **`launcher` field in `plugin.json`** — declares whether a plugin needs a separate launcher process (`"launcher": {"required": true, "name": "...", "exe_name": "..."}` or `{"required": false}`). Core reads this to drive launcher config UI; no code changes needed in the plugin.
+- **Launcher config:** `GET/POST /api/launcher-config/<platform_id>` stores `{wine_bin, prefix, mode}` under `config.json["launchers"]`. GET also returns `wine_bin_detected` from `runners.wine.find_wine_binary()`.
+- **`launcher_status()`** — optional plugin method returning `{"available": bool, "detail": str}`. Called at startup (3s delay) for all plugins that implement it; result cached in `_launcher_status_cache`. `GET /api/plugins/launcher-status` returns the full cache; `POST /api/plugins/launcher-status/<platform_id>` re-runs on demand.
+- **Launcher UI:** plugin cards in the Plugins modal show a green "Launcher ready" badge or amber warning + "Configure Launcher" button when `launcher.required` is true. The inline config panel auto-populates Wine binary from saved config or `find_wine_binary()`.
+- **`manage_ui()` button actions:** `type: 'call'` invokes a JS function by name; `type: 'post'` POSTs to an endpoint; `type: 'open_url'` opens a URL in the system browser. The rendered `onclick` attribute is built with `JSON.stringify`, so it must be passed through `escHtml()` before insertion into HTML — this is handled by `_buildManageBlockHtml` in `modal_tools.html`. Do not bypass it.
+- **Duplicate detection:** `auto_detect_duplicates(platform_priority=None)` lives in `database.py` and works across all platforms. The generic endpoint is `POST /api/detect-duplicates`. Plugins must not add their own per-platform duplicate detection routes.
+- **Platform validation:** `hidden_platforms` and `platform_priority` entries are validated with the regex `^[a-z][a-z0-9_]*$` — no hardcoded allowlists. Any platform string matching this pattern is accepted (values come from the DB and plugin registrations, so injection is not a practical concern). `_plat_order` for sorting available platforms is derived from `platform_labels()` which merges core + plugin labels.
+- **Steam is not a plugin.** It is the core.
 
 ## Frontend JS
 

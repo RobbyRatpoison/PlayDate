@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- none
+
 ## User requests and other things that need sorting
 
 - none
@@ -26,10 +28,10 @@
 
 ## Big Features
 
-- **Plugin system / non-Steam library support** — see `PLUGIN_SYSTEM_PLAN.md`
+- none
 
 ---
 
 ## Potential / Under Consideration
 
-- **Sort by total reviews** — sort by `total_reviews` to surface popular games or find obscure ones. Already in `SAFE_COLUMNS`, just needs a dropdown option.
+- none

@@ -22,9 +22,10 @@ def _ensure_dirs():
 def save_as_jpg(image_bytes, save_path):
     """
     Converts any image format (PNG, WEBP, etc.) to JPG and saves it.
-    Returns True on success, False on failure.
+    Creates parent directories if needed. Returns True on success, False on failure.
     """
     try:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         img = Image.open(io.BytesIO(image_bytes))
         if img.mode in ('RGBA', 'P', 'LA'):
             img = img.convert('RGB')

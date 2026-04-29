@@ -1,0 +1,84 @@
+// ── GOG install progress (hamburger button) ───────────────────────────
+let _gogInstallPoller = null;
+let _gogInstallAppid  = null;
+
+function _resetGogInstallBtn() {
+    const btn = document.getElementById('gog-install-btn');
+    btn.style.display    = 'none';
+    btn.style.background = '';
+    btn.style.color      = '';
+    btn.disabled         = false;
+    btn.innerText        = 'GOG: INSTALLING...';
+    _gogInstallAppid     = null;
+}
+
+function _updateGogInstallBtn(d) {
+    const btn  = document.getElementById('gog-install-btn');
+    const name = d.name || 'GOG Game';
+    if (d.total > 0) {
+        const pct  = Math.round(d.done / d.total * 100);
+        const done = (d.done  / 1e6).toFixed(0);
+        const tot  = (d.total / 1e6).toFixed(0);
+        btn.innerText        = `CANCEL  ${name}  [${done}/${tot} MB]  ${pct}%`;
+        btn.style.background = `linear-gradient(to right, rgba(102,192,244,0.18) ${pct}%, transparent ${pct}%)`;
+    } else {
+        btn.innerText        = `CANCEL  ${name}  —  starting…`;
+        btn.style.background = '';
+    }
+}
+
+function _startGogInstallPoller(appid) {
+    _gogInstallAppid = appid;
+    const btn = document.getElementById('gog-install-btn');
+    btn.style.display = 'block';
+    btn.disabled      = false;
+    _gogInstallPoller = setInterval(async () => {
+        try {
+            const r = await fetch(`/api/gog/install-status/${appid}`);
+            const d = await r.json();
+            if (d.status === 'running') {
+                _updateGogInstallBtn(d);
+            } else {
+                clearInterval(_gogInstallPoller);
+                _gogInstallPoller = null;
+                if (d.status === 'success') {
+                    btn.innerText        = `✔ ${d.name || 'Game'} installed`;
+                    btn.style.background = '';
+                    btn.style.color      = 'var(--accent-positive)';
+                    setTimeout(() => { _resetGogInstallBtn(); location.reload(); }, 2000);
+                } else if (d.status === 'cancelled') {
+                    btn.innerText        = 'Install cancelled';
+                    btn.style.background = '';
+                    btn.style.color      = 'var(--text-secondary)';
+                    if (window._inputMgr) window._inputMgr.clearSuppression();
+                    setTimeout(() => _resetGogInstallBtn(), 2000);
+                } else {
+                    btn.innerText        = `✘ Install failed — ${d.message || ''}`;
+                    btn.style.background = '';
+                    btn.style.color      = 'var(--color-danger)';
+                    if (window._inputMgr) window._inputMgr.clearSuppression();
+                    setTimeout(() => _resetGogInstallBtn(), 4000);
+                }
+            }
+        } catch (_) {}
+    }, 2000);
+}
+
+document.getElementById('gog-install-btn').addEventListener('click', async () => {
+    if (!_gogInstallAppid) return;
+    const btn    = document.getElementById('gog-install-btn');
+    btn.innerText = 'Cancelling…';
+    btn.disabled  = true;
+    await fetch(`/api/gog/install/${_gogInstallAppid}/cancel`, { method: 'POST' });
+});
+
+// Resume tracking any in-progress install across page navigations
+(async () => {
+    try {
+        const r = await fetch('/api/gog/active-install');
+        const d = await r.json();
+        if (d.appid !== null && d.appid !== undefined) {
+            _startGogInstallPoller(d.appid);
+        }
+    } catch (_) {}
+})();

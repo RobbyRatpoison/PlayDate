@@ -28,6 +28,7 @@
                 <option value="review_percentage" {{ 'selected' if state.sort == 'review_percentage' }}>Review Score</option>
                 <option value="weighted_percentage" {{ 'selected' if state.sort == 'weighted_percentage' }}>Weighted Score</option>
                 <option value="hltb_min" {{ 'selected' if state.sort == 'hltb_min' }}>HLTB Time</option>
+                <option value="total_reviews" {{ 'selected' if state.sort == 'total_reviews' }}>Total Reviews</option>
             </select>
             <button class="order-btn" onclick="vmToggleOrder()" data-modal-row="1"
                     data-tooltip="Toggle ascending/descending" data-tooltip-right
@@ -36,7 +37,7 @@
             </button>
         </div>
 
-        {% set _plat_labels = {'steam': 'Steam', 'gog': 'GOG', 'epic_games': 'Epic', 'ea_app': 'EA', 'ubisoft': 'Ubisoft'} %}
+        {% set _plat_labels = platform_labels() %}
         {% if available_platforms is defined and available_platforms | length > 1 %}
         <!-- Platforms -->
         <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.25rem;">
@@ -81,20 +82,6 @@
                 <option value="weighted_percentage" {{ 'selected' if state.get('group_by') == 'weighted_percentage' }}>Weighted Score</option>
                 <option value="platform" {{ 'selected' if state.get('group_by') == 'platform' }}>Platform</option>
             </select>
-        </div>
-
-        <!-- Card Outlines -->
-        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0;">
-            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Outlines</span>
-            <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                <button id="vm-outline-library" class="vm-outline-toggle" onclick="vmToggleOutline('library')" data-modal-row="5">Library</button>
-                <button id="vm-outline-home"    class="vm-outline-toggle" onclick="vmToggleOutline('home')"    data-modal-row="5">Home</button>
-                <button id="vm-outline-pick6"   class="vm-outline-toggle" onclick="vmToggleOutline('pick6')"   data-modal-row="5">Pick 6</button>
-                <button onclick="openCardOutlinesModal()" data-modal-row="5"
-                        style="height:2.25rem; padding:0 0.875rem; font-size:0.82rem; border-radius:0.375rem; background:#2a3f55; border:1px solid #3a5f7a; color:#c7d5e0; cursor:pointer; white-space:nowrap;">
-                    Edit Rules
-                </button>
-            </div>
         </div>
 
         {% else %}
@@ -162,24 +149,6 @@
     color: var(--accent);
     font-size: 0.9rem;
 }
-.vm-outline-toggle {
-    height: 2.25rem;
-    padding: 0 0.875rem;
-    font-size: 0.82rem;
-    border-radius: 0.375rem;
-    background: #333;
-    border: 1px solid #444;
-    color: white;
-    cursor: pointer;
-    transition: background 0.15s;
-    white-space: nowrap;
-}
-.vm-outline-toggle:hover { background: #444; }
-.vm-outline-toggle.vm-outline-on {
-    background: var(--accent);
-    color: #1b2838;
-    border-color: var(--accent);
-}
 </style>
 
 <script>
@@ -189,40 +158,6 @@ let _vmPendOrder = null;
 let _vmPendHiddenPlatforms = null; // Set when user has changed platforms
 let _vmPendView = null;
 let _vmPendGroupBy = undefined; // undefined = unchanged
-let _vmPendOutlineEnabled = null; // {library, home, pick6} or null if unchanged
-
-// Loaded from server on first open
-let _vmOutlineRules = null;
-let _vmOutlineEnabled = null;
-
-async function _vmLoadOutlines() {
-    if (_vmOutlineEnabled !== null) return;
-    try {
-        const r = await fetch('/api/card-outlines').then(r => r.json());
-        if (r.status === 'success') {
-            _vmOutlineEnabled = r.card_outlines.enabled || {library: true, home: true, pick6: true};
-            _vmOutlineRules = r.card_outlines.rules || [];
-        }
-    } catch (e) { /* ignore */ }
-    if (!_vmOutlineEnabled) _vmOutlineEnabled = {library: true, home: true, pick6: true};
-}
-
-function _vmSyncOutlineButtons(enabled) {
-    ['library', 'home', 'pick6'].forEach(k => {
-        const btn = document.getElementById('vm-outline-' + k);
-        if (btn) btn.classList.toggle('vm-outline-on', !!enabled[k]);
-    });
-}
-
-function vmToggleOutline(key) {
-    if (!_vmPendOutlineEnabled) {
-        const eff = _vmOutlineEnabled || {library: true, home: true, pick6: true};
-        _vmPendOutlineEnabled = {...eff};
-    }
-    _vmPendOutlineEnabled[key] = !_vmPendOutlineEnabled[key];
-    _vmSyncOutlineButtons(_vmPendOutlineEnabled);
-}
-
 const _vmServerOrder = '{{ state.order if state is defined and state.order is defined else "ASC" }}';
 
 function _vmSyncViewButtons(mode) {
@@ -238,7 +173,6 @@ function openViewModal() {
     _vmPendHiddenPlatforms = null;
     _vmPendView = null;
     _vmPendGroupBy = undefined;
-    _vmPendOutlineEnabled = null;
 
     // Reset order button to server state
     const orderBtn = document.querySelector('.order-btn');
@@ -261,8 +195,6 @@ function openViewModal() {
     // Reset sort/groupby dropdowns to server-rendered values (already correct from Jinja)
 
     document.getElementById('viewModal').style.display = 'flex';
-
-    _vmLoadOutlines().then(() => _vmSyncOutlineButtons(_vmOutlineEnabled));
 }
 
 function closeViewModal() {
@@ -322,35 +254,18 @@ async function applyViewModal() {
     if (_vmPendView !== null) updates.artwork_orientation = _vmPendView;
     if (_vmPendGroupBy !== undefined) updates.group_by = _vmPendGroupBy;
 
-    const saveOutline = _vmPendOutlineEnabled !== null;
-    if (saveOutline) {
-        const current = await fetch('/api/card-outlines').then(r => r.json());
-        const outlines = current.card_outlines || {};
-        outlines.enabled = _vmPendOutlineEnabled;
-        _vmOutlineEnabled = _vmPendOutlineEnabled;
-        await fetch('/api/card-outlines', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({card_outlines: outlines})
-        });
-    }
-
-    if (Object.keys(updates).length === 0 && !saveOutline) {
+    if (Object.keys(updates).length === 0) {
         closeViewModal();
         return;
     }
 
-    if (Object.keys(updates).length > 0) {
-        await sendStateUpdate(updates);
-    } else {
-        closeViewModal();
-    }
+    await sendStateUpdate(updates);
 }
 
 // ── Card Outlines Modal ───────────────────────────────────────────────────────
 
 function openCardOutlinesModal() {
-    closeViewModal();
+    closeAppearanceModal();
     _coLoad();
     document.getElementById('cardOutlinesModal').style.display = 'flex';
 }
@@ -381,8 +296,10 @@ async function _coLoad() {
     const r = await fetch('/api/card-outlines').then(r => r.json());
     _coRules = (r.card_outlines?.rules || []).map((rule, i) => ({...rule, priority: i}));
     _coSavedFilters = r.saved_filters || [];
-    _vmOutlineEnabled = r.card_outlines?.enabled || {library: true, home: true, pick6: true};
-    _vmOutlineRules = _coRules;
+    if (typeof _apOutlineEnabled !== 'undefined') {
+        _apOutlineEnabled = r.card_outlines?.enabled || {library: true, home: true, pick6: true};
+        if (typeof _apSyncOutlineButtons === 'function') _apSyncOutlineButtons(_apOutlineEnabled);
+    }
     _coRender();
 }
 

@@ -160,10 +160,10 @@
         }
     }
 
-    // GOG uninstall: called from .then() chain to avoid async/await issues in event listeners
-    async function doGogUninstall(appid) {
+    // Plugin uninstall: called from .then() chain to avoid async/await issues in event listeners
+    async function doPluginUninstall(appid, url) {
         try {
-            const r = await fetch(`/api/gog/uninstall/${appid}`, { method: 'POST' });
+            const r = await fetch(url, { method: 'POST' });
             const d = await r.json();
             if (d.status === 'success') {
                 showLaunchToast('Game uninstalled');
@@ -467,14 +467,19 @@
                 if (parseInt(appid) >= 0) {
                     // Steam: use steam:// URI
                     openUrl(`steam://uninstall/${appid}`);
-                } else if (_platform === 'gog') {
-                    // GOG: server-side delete of install folder + set installed=0
-                    const appidForUninstall = appid; // capture before async flow
-                    confirm('Uninstall this GOG game?\n\nThis will delete the game files from disk.')
-                        .then(confirmed => {
+                } else {
+                    const _api = window._PLUGIN_API?.[_platform];
+                    if (_api?.uninstall_native) {
+                        alert('To uninstall this game, use the Epic Games Launcher.');
+                    } else if (_api?.uninstall_url) {
+                        const _url = _api.uninstall_url.replace('{appid}', appid);
+                        const _msg = _api.uninstall_confirm || 'Uninstall this game?\n\nThis will delete the game files from disk.';
+                        const _aid = appid;
+                        confirm(_msg).then(confirmed => {
                             if (!confirmed) return;
-                            doGogUninstall(appidForUninstall);
+                            doPluginUninstall(_aid, _url);
                         });
+                    }
                 }
                 break;
 

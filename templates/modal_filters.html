@@ -456,7 +456,7 @@ const FM_FILTER_CONFIG = {
     'icon_source':           { label: 'Icon Source',           type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                                options: ['steam','sgdb_icon','custom','missing'] },
     'platform':              { label: 'Platform',              type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
-                               options: {'steam':'Steam','gog':'GOG','egs':'Epic Games','ea_app':'EA App','ubisoft':'Ubisoft'} },
+                               options: window._PLAT_LABELS },
 };
 
 // Operators that need no value input
@@ -553,6 +553,11 @@ function openFilterModal() {
     modal.style.display = 'flex';
 
     const tree = {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
+
+    // Seed _loadedSavedFilterName from the active named filter on first open this session
+    if (typeof _activeFilterName !== 'undefined' && _activeFilterName && !_loadedSavedFilterName) {
+        _loadedSavedFilterName = _activeFilterName;
+    }
 
     if (tree) {
         // If the active filter is a PAGYWOSG filter and we haven't loaded a saved tree
@@ -1581,21 +1586,39 @@ function collectTree() {
 // ── Apply / Clear ───────────────────────────────────────────────
 
 let _loadedSavedTree = null;
+let _loadedSavedFilterName = null;
+
+function _stripPagMeta(tree) {
+    if (!tree || typeof tree !== 'object') return tree;
+    const {pagywosg, pagywosg_event, pagywosg_verified, ...rest} = tree;
+    return rest;
+}
 
 async function applyFilters() {
-    const tree = collectTree();
+    const collected = collectTree();
     if (_loadedSavedTree && _loadedSavedTree.pagywosg) {
-        tree.pagywosg = _loadedSavedTree.pagywosg;
-        if (_loadedSavedTree.pagywosg_event) tree.pagywosg_event = _loadedSavedTree.pagywosg_event;
-        if (_loadedSavedTree.pagywosg_verified) tree.pagywosg_verified = _loadedSavedTree.pagywosg_verified;
+        collected.pagywosg = _loadedSavedTree.pagywosg;
+        if (_loadedSavedTree.pagywosg_event) collected.pagywosg_event = _loadedSavedTree.pagywosg_event;
+        if (_loadedSavedTree.pagywosg_verified) collected.pagywosg_verified = _loadedSavedTree.pagywosg_verified;
     }
-    updateActivePills(tree);
-    await sendStateUpdate({ filter_tree: tree });
+    updateActivePills(collected);
+
+    let filterToSave = collected;
+    if (_loadedSavedFilterName && _loadedSavedTree) {
+        const collectedStr = JSON.stringify(_stripPagMeta(collected));
+        const savedStr     = JSON.stringify(_stripPagMeta(_loadedSavedTree));
+        if (collectedStr === savedStr) {
+            filterToSave = { saved_filter: _loadedSavedFilterName };
+        }
+    }
+
+    await sendStateUpdate({ filter_tree: filterToSave });
     closeFilterModal();
 }
 
 function clearAllFilters() {
     _loadedSavedTree = null;
+    _loadedSavedFilterName = null;
     const searchInput = document.getElementById('library-search');
     if (searchInput) searchInput.value = '';
     setFilterMode('simple');
@@ -1613,6 +1636,7 @@ const _builtinFilterWheres = {{ builtin_filters | tojson if builtin_filters is d
 
 async function applyBuiltinFilter(key) {
     _loadedSavedTree = null;
+    _loadedSavedFilterName = null;
     const preset = _builtinFilterWheres[key];
     if (!preset || !preset.where) return;
     // "All Games" (where=1=1) means no filter — commit empty tree and close
@@ -1632,11 +1656,12 @@ async function applyBuiltinFilter(key) {
 
 function loadSavedFilterFromModal(selectEl) {
     const name = selectEl.value;
-    if (!name) return;
+    if (!name) { _loadedSavedFilterName = null; return; }
     const entry = _savedFilters[name];
     const tree = (entry && typeof entry === 'object' && 'tree' in entry) ? entry.tree : entry;
     if (tree) {
         _loadedSavedTree = tree;
+        _loadedSavedFilterName = name;
         populateModalFromTree(tree);
     }
 }

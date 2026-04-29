@@ -11,8 +11,10 @@ import threading
 import time
 import zlib
 import requests
-from config import CONFIG_PATH
+from config import CONFIG_PATH, load_config, _save_config_data
+from database import next_negative_appid
 from scrapers import _weighted_score
+from utils import review_score_label
 
 log = logging.getLogger(__name__)
 
@@ -32,24 +34,11 @@ _HEADERS = {
 
 # ── Config helpers ────────────────────────────────────────────────────────────
 
-def _load_cfg():
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def _save_cfg(data):
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(data, f, indent=4)
-
-
 # ── Token storage ─────────────────────────────────────────────────────────────
 
 def load_gog_tokens():
     """Return stored GOG tokens dict, or None if not connected."""
-    gog = _load_cfg().get('gog', {})
+    gog = (load_config() or {}).get('gog', {})
     if gog.get('access_token') and gog.get('refresh_token'):
         return gog
     return None
@@ -57,7 +46,7 @@ def load_gog_tokens():
 
 def _save_gog_tokens(access_token, refresh_token, expires_at, username=None, galaxy_user_id=None):
     """Persist GOG tokens (and optionally username / galaxy user ID) to config.json."""
-    data = _load_cfg()
+    data = load_config()
     if not data:
         return
     existing = data.get('gog', {})
@@ -68,14 +57,14 @@ def _save_gog_tokens(access_token, refresh_token, expires_at, username=None, gal
         'username':       username       if username       is not None else existing.get('username'),
         'galaxy_user_id': galaxy_user_id if galaxy_user_id is not None else existing.get('galaxy_user_id'),
     }
-    _save_cfg(data)
+    _save_config_data(data)
 
 
 def clear_gog_tokens():
     """Remove all GOG data from config.json."""
-    data = _load_cfg()
+    data = load_config() or {}
     data.pop('gog', None)
-    _save_cfg(data)
+    _save_config_data(data)
 
 
 def is_connected():
@@ -131,58 +120,14 @@ def exchange_code(code):
         return False, str(e)
 
 
-def _refresh_tokens():
-    """Use the stored refresh_token to obtain a new access_token. Returns True on success."""
-    tokens = load_gog_tokens()
-    if not tokens:
-        return False
-    try:
-        resp = requests.post(GOG_TOKEN_URL, data={
-            'client_id':     GOG_CLIENT_ID,
-            'client_secret': GOG_CLIENT_SECRET,
-            'grant_type':    'refresh_token',
-            'refresh_token': tokens['refresh_token'],
-        }, headers=_HEADERS, timeout=15)
-
-        if resp.status_code != 200:
-            log.warning(f'GOG token refresh failed: HTTP {resp.status_code}')
-            return False
-
-        data       = resp.json()
-        expires_at = int(time.time()) + int(data.get('expires_in', 3600))
-        _save_gog_tokens(
-            data['access_token'],
-            data.get('refresh_token', tokens['refresh_token']),
-            expires_at,
-        )
-        return True
-
-    except Exception as e:
-        log.error(f'GOG token refresh error: {e}')
-        return False
-
-
 def get_valid_session():
     """
     Return a requests.Session with a valid GOG Bearer token.
     Auto-refreshes if the token has expired. Returns None if not connected.
     """
-    tokens = load_gog_tokens()
-    if not tokens:
-        return None
-
-    # Refresh if expired or within 60 s of expiry
-    if int(time.time()) >= tokens.get('expires_at', 0) - 60:
-        if not _refresh_tokens():
-            return None
-        tokens = load_gog_tokens()
-        if not tokens:
-            return None
-
-    session = requests.Session()
-    session.headers.update(_HEADERS)
-    session.headers['Authorization'] = f'Bearer {tokens["access_token"]}'
-    return session
+    from runners.oauth2 import get_valid_session as _get_session
+    return _get_session('gog', GOG_TOKEN_URL, GOG_CLIENT_ID, GOG_CLIENT_SECRET,
+                        extra_headers=_HEADERS)
 
 
 # ── User info ─────────────────────────────────────────────────────────────────
@@ -268,12 +213,6 @@ def _fetch_all_products(session):
     return products, errors
 
 
-def _next_negative_appid(db):
-    """Return the next available negative appid."""
-    row = db.execute('SELECT MIN(appid) FROM games WHERE appid < 0').fetchone()
-    return (row[0] - 1) if (row[0] is not None) else -1
-
-
 def sync_library():
     """
     Fetch all owned GOG games and insert new ones into the DB.
@@ -321,7 +260,7 @@ def sync_library():
             if gog_id in existing or gog_id in blacklisted:
                 continue
 
-            next_appid = _next_negative_appid(db)
+            next_appid = next_negative_appid(db)
             name       = p.get('title', f'GOG Game {gog_id}')
             slug       = p.get('slug', '')
 
@@ -357,77 +296,12 @@ def sync_library():
 
     # Auto-detect duplicates for all unlinked GOG games (cheap DB scan, catches
     # cases where a matching Steam game was added after the GOG sync ran)
+    from database import auto_detect_duplicates
     result['duplicates_detected'] = auto_detect_duplicates()
 
     return result
 
 
-def _normalize_name_for_dup(name):
-    """Normalize a game name for duplicate detection (case-insensitive, edition-stripped)."""
-    name = name.lower()
-    # Strip common edition suffixes that differ between stores
-    name = re.sub(
-        r'\s*[-–:]\s*(goty|game of the year|complete edition|deluxe edition|gold edition|'
-        r'definitive edition|remastered|remaster|enhanced edition|anniversary edition|'
-        r'director\'?s cut|ultimate edition|premium edition)\s*$',
-        '', name, flags=re.IGNORECASE
-    )
-    # Remove punctuation except apostrophes, collapse whitespace
-    name = re.sub(r"[^\w\s']", ' ', name)
-    name = re.sub(r'\s+', ' ', name).strip()
-    return name
-
-
-PLATFORM_PRIORITY_DEFAULT = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']
-
-
-def auto_detect_duplicates(platform_priority=None):
-    """
-    Match games across platforms by normalized name and set duplicate_of.
-    Lower-priority platform versions are marked as duplicates of higher-priority ones.
-    Clears previously auto-detected duplicates before re-running.
-    Returns count of newly marked duplicates.
-    """
-    if platform_priority is None:
-        platform_priority = PLATFORM_PRIORITY_DEFAULT
-
-    from database import get_db
-    db = get_db()
-    try:
-        db.execute("UPDATE games SET duplicate_of = NULL, duplicate_auto = 0 WHERE duplicate_auto = 1")
-
-        games_by_platform = {}
-        for row in db.execute(
-            "SELECT appid, name, platform FROM games WHERE name IS NOT NULL"
-        ).fetchall():
-            plat = row['platform']
-            if plat not in games_by_platform:
-                games_by_platform[plat] = {}
-            norm = _normalize_name_for_dup(row['name'])
-            games_by_platform[plat][norm] = str(row['appid'])
-
-        updated = 0
-        for i, high_plat in enumerate(platform_priority):
-            if high_plat not in games_by_platform:
-                continue
-            high_games = games_by_platform[high_plat]
-            for low_plat in platform_priority[i + 1:]:
-                if low_plat not in games_by_platform:
-                    continue
-                for norm, low_appid in games_by_platform[low_plat].items():
-                    if norm in high_games:
-                        db.execute(
-                            "UPDATE games SET duplicate_of = ?, duplicate_auto = 1 WHERE appid = ?",
-                            (high_games[norm], low_appid)
-                        )
-                        log.info(f'Auto-duplicate ({low_plat}→{high_plat}): appid {low_appid} → {high_games[norm]}')
-                        updated += 1
-
-        if updated:
-            db.commit()
-        return updated
-    finally:
-        db.close()
 
 
 def _fetch_art_for_games(games):
@@ -453,34 +327,6 @@ def _fetch_art_for_games(games):
 _V2_GAMES_URL    = 'https://api.gog.com/v2/games/{gog_id}'
 _RATINGS_URL     = 'https://reviews.gog.com/v1/products/{gog_id}/averageRating'
 _ACHIEVEMENTS_URL = 'https://gameplay.gog.com/clients/{gog_id}/users/{galaxy_user_id}/achievements'
-
-
-def _gog_review_score(percent, total):
-    """
-    Map a 0-100 percentage + review count to a Steam-style review label.
-    Mirrors the threshold logic of Steam's review_score_desc.
-    """
-    if total == 0:
-        return 'No Reviews'
-    if total < 10:
-        return 'Not Enough Reviews'
-    if percent >= 95 and total >= 500:
-        return 'Overwhelmingly Positive'
-    if percent >= 80 and total >= 50:
-        return 'Very Positive'
-    if percent >= 80:
-        return 'Positive'
-    if percent >= 70:
-        return 'Mostly Positive'
-    if percent >= 40:
-        return 'Mixed'
-    if percent >= 20:
-        return 'Mostly Negative'
-    if total >= 500:
-        return 'Overwhelmingly Negative'
-    if total >= 50:
-        return 'Very Negative'
-    return 'Negative'
 
 
 def fetch_gog_metadata(gog_id):
@@ -558,7 +404,7 @@ def fetch_gog_metadata(gog_id):
             result['weighted_percentage'] = _weighted_score(percent, count)
             result['total_reviews']       = count
             result['positive_reviews']    = round(p * count)
-            result['review_score']        = _gog_review_score(percent, count)
+            result['review_score']        = review_score_label(percent, count)
     except Exception as e:
         log.warning(f'GOG metadata: ratings fetch failed for {gog_id}: {e}')
 

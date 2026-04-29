@@ -241,6 +241,13 @@ def build_tree_sql(node, params):
             return '1=1'
         return f"appid IN ({','.join(str(a) for a in safe)})"
 
+    if node_type == 'appid_list_ref':
+        from config import _get_supplement_source_appids
+        appids = sorted(_get_supplement_source_appids().get(node.get('source', ''), frozenset()))
+        if not appids:
+            return '1=1'
+        return f"appid IN ({','.join(str(a) for a in appids)})"
+
     if node_type == 'custom_expr':
         sql = node.get('sql', '').strip()
         if sql and is_safe_sql(sql):
@@ -291,7 +298,11 @@ def library():
     params = []
     where = "1=1"
 
-    filter_tree = state.get('filter_tree')
+    from config import resolve_active_filter_tree, _expand_appid_list_refs
+    _ft_raw = state.get('filter_tree')
+    active_filter_name = _ft_raw.get('saved_filter') if isinstance(_ft_raw, dict) and 'saved_filter' in _ft_raw else None
+    filter_tree = resolve_active_filter_tree(state)
+    state['filter_tree'] = filter_tree  # template sees resolved tree
 
     if filter_tree:
         # Custom SQL override — user typed their own WHERE clause
@@ -310,12 +321,12 @@ def library():
         dup_cond = "(duplicate_of IS NULL OR duplicate_of = '')"
         where = dup_cond if where == '1=1' else f"({where}) AND {dup_cond}"
 
-    _safe_platforms = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
-    hidden_platforms = [p for p in state.get('hidden_platforms', []) if p in _safe_platforms]
+    import re as _re
+    hidden_platforms = [p for p in state.get('hidden_platforms', []) if _re.match(r'^[a-z][a-z0-9_]*$', p or '')]
     if hidden_platforms:
         plat_conds = []
         if 'steam' in hidden_platforms:
-            plat_conds.append("NOT (platform IS NULL OR platform = '' OR platform = 'steam')")
+            plat_conds.append("platform != 'steam'")
         non_steam = [p for p in hidden_platforms if p != 'steam']
         if non_steam:
             placeholders = ','.join('?' for _ in non_steam)
@@ -364,15 +375,29 @@ def library():
         "SELECT COUNT(*) FROM games WHERE duplicate_of IS NOT NULL AND duplicate_of != ''"
     ).fetchone()[0]
     _plat_rows = total_db.execute(
-        "SELECT DISTINCT COALESCE(NULLIF(platform,''),'steam') as p FROM games ORDER BY p"
+        "SELECT DISTINCT platform as p FROM games ORDER BY p"
     ).fetchall()
     total_db.close()
 
-    _plat_order = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']
+    from plugins import platform_labels as _platform_labels
+    _plat_order = list(_platform_labels().keys())
     available_platforms = sorted(
         {r['p'] for r in _plat_rows},
         key=lambda p: _plat_order.index(p) if p in _plat_order else 99
     )
+
+    # Expand appid_list_ref nodes in saved filters before sending to browser.
+    # state.json stores refs for compactness; the JS filter tree builder only handles appid_list.
+    raw_saved = state.get('saved_filters', {})
+    expanded_saved = {}
+    for fname, entry in raw_saved.items():
+        if isinstance(entry, dict) and 'tree' in entry:
+            expanded_saved[fname] = {**entry, 'tree': _expand_appid_list_refs(entry['tree'])}
+        elif isinstance(entry, dict):
+            expanded_saved[fname] = _expand_appid_list_refs(entry)
+        else:
+            expanded_saved[fname] = entry
+    state = {**state, 'saved_filters': expanded_saved}
 
     return render_template('library.html', games=games, state=state,
                            unique_tags=tags, unique_groups=groups,
@@ -381,7 +406,8 @@ def library():
                            available_platforms=available_platforms,
                            hidden_platforms=hidden_platforms,
                            group_by=state.get('group_by'),
-                           outline_colors=outline_colors)
+                           outline_colors=outline_colors,
+                           active_filter_name=active_filter_name)
 
 
 @library_bp.route('/update_game', methods=['POST'])

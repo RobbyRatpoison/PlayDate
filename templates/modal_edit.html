@@ -164,13 +164,9 @@
 
         <p id="steam-appid-row" style="margin-bottom: 8px; color: #8f98a0; font-size: 0.85rem;">
             <span id="display-appid-label">AppID:</span> <span id="display-appid"></span>
-            <a id="steam-store-link" href="#" target="_blank"
+            <a id="store-link" href="#" target="_blank"
                style="color: var(--accent); font-size: 0.8rem; text-decoration: none; margin-left: 12px;">
-                View on Steam Store ↗
-            </a>
-            <a id="gog-store-link" href="#" target="_blank"
-               style="display:none; color: var(--accent); font-size: 0.8rem; text-decoration: none; margin-left: 12px;">
-                View on GOG Store ↗
+                View on Store ↗
             </a>
         </p>
 
@@ -762,7 +758,7 @@
     function openEditModal(game) {
         switchEditTab('stats');
         safeSet('edit-appid', game.appid);
-        safeSet('display-appid', (game.platform === 'gog' && game.platform_id) ? game.platform_id : game.appid, 'textContent');
+        safeSet('display-appid', (game.platform !== 'steam' && game.platform_id) ? game.platform_id : game.appid, 'textContent');
         safeSet('edit-name', game.name);
         safeSet('edit-dev', game.developers);
         safeSet('edit-pub', game.publishers);
@@ -792,21 +788,23 @@
         _loadArtPanel('icon',       `/static/img/library/icons/${parseInt(game.appid)}.jpg`,      game.icon_source);
         openArtTab('vertical');
 
-        const storeLink    = document.getElementById('steam-store-link');
-        const gogStoreLink = document.getElementById('gog-store-link');
-        const appidLabel   = document.getElementById('display-appid-label');
-        const isGog        = game.platform === 'gog';
-        if (appidLabel) appidLabel.textContent = isGog ? 'GOG ID:' : 'AppID:';
+        const storeLink  = document.getElementById('store-link');
+        const appidLabel = document.getElementById('display-appid-label');
+        const _api       = window._PLUGIN_API?.[game.platform];
+        if (appidLabel) appidLabel.textContent = _api?.appid_label || 'AppID:';
         if (storeLink) {
-            storeLink.href         = `https://store.steampowered.com/app/${game.appid}/`;
-            storeLink.style.display = isGog ? 'none' : '';
-        }
-        if (gogStoreLink) {
-            if (isGog && game.platform_slug) {
-                gogStoreLink.href         = `https://www.gog.com/en/game/${game.platform_slug}`;
-                gogStoreLink.style.display = '';
+            const pluginStoreUrl = _api?.store_url && game.platform_slug
+                ? _api.store_url.replace('{slug}', game.platform_slug) : null;
+            if (pluginStoreUrl) {
+                storeLink.href         = pluginStoreUrl;
+                storeLink.textContent  = _api.store_label || 'View on Store ↗';
+                storeLink.style.display = '';
+            } else if (game.platform === 'steam' || !game.platform) {
+                storeLink.href         = `https://store.steampowered.com/app/${game.appid}/`;
+                storeLink.textContent  = 'View on Steam Store ↗';
+                storeLink.style.display = '';
             } else {
-                gogStoreLink.style.display = 'none';
+                storeLink.style.display = 'none';
             }
         }
 
@@ -840,7 +838,7 @@ const achLink = document.getElementById('achievements-link');
         const metaBtn = document.getElementById('meta-btn');
         if (metaBtn) {
             metaBtn.style.display        = '';
-            metaBtn.textContent          = isGog ? 'Sync GOG Data' : 'Sync Steam Data';
+            metaBtn.textContent          = _api?.sync_label || 'Sync Steam Data';
             metaBtn.dataset.platform     = game.platform || 'steam';
         }
         ['steam-help-link', 'achievements-link'].forEach(id => {
@@ -1168,12 +1166,13 @@ const achLink = document.getElementById('achievements-link');
         const originalText = btn.textContent;
         btn.textContent = "Syncing...";
         btn.disabled = true;
-        const isGogGame = btn.dataset.platform === 'gog';
-        const url = isGogGame
-            ? `/api/gog/scrape-single/${appid}`
+        const _papi   = window._PLUGIN_API?.[btn.dataset.platform];
+        const url     = _papi?.scrape_url
+            ? _papi.scrape_url.replace('{appid}', appid)
             : `/api/scrape_single/${appid}`;
+        const method  = _papi?.scrape_method || 'GET';
         try {
-            const response = await fetch(url, { method: isGogGame ? 'POST' : 'GET' });
+            const response = await fetch(url, { method });
             const data = await response.json();
             if (data.status === 'success') {
                 const game = data.data;

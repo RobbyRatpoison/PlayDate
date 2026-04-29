@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.WARNING, handlers=[_handler_file, _handler_str
 
 # PlayDate modules at INFO
 for _name in ('__main__', 'app', 'config', 'database', 'library', 'index',
-              'scrapers', 'utils', 'images', 'imports', 'gog', 'runners.proton'):
+              'scrapers', 'utils', 'images', 'imports', 'runners.proton', 'plugins'):
     logging.getLogger(_name).setLevel(logging.INFO)
 
 log = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ from utils import sync_local_install_status, record_launch
 from config import BASE_DIR
 from imports import inspect_database, execute_import
 from scrapers import scrape_blaeo_games
-from database import get_db, init_db, migrate_image_files, update_game_data, add_to_blacklist, remove_from_blacklist, get_blacklist
+from database import get_db, init_db, update_game_data, add_to_blacklist, remove_from_blacklist, get_blacklist
 import re
 import scrapers
 import threading
@@ -81,6 +81,8 @@ _bulk_date_state = {
 
 # ── Update checking ───────────────────────────────────────────────────────────
 _update_cache = {}  # available, latest_version, installer_url, zipball_url, checked_at, error
+_plugin_update_cache = {}  # keyed by plugin_id: {update_available, latest_version, source, checked_at, error}
+_launcher_status_cache = {}  # keyed by platform: {available, detail, checked_at}
 _update_dl_state = {'status': 'idle', 'error': None, 'manual_url': None}  # idle|downloading|error
 
 def _validate_user_path(path: str) -> str | None:
@@ -131,6 +133,92 @@ def _do_update_check():
     except Exception as e:
         _update_cache.update({'available': False, 'checked_at': time.time(), 'error': str(e)})
         log.warning(f"Update check failed: {e}")
+
+
+def _parse_github_repo(url):
+    """Return (owner, repo) from a GitHub URL or 'owner/repo' slug, or (None, None)."""
+    import re
+    url = url.strip().rstrip('/')
+    m = re.match(r'(?:https?://)?(?:www\.)?github\.com/([^/]+)/([^/?#]+)', url)
+    if m:
+        return m.group(1), m.group(2).removesuffix('.git')
+    m = re.match(r'^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$', url)
+    if m:
+        return m.group(1), m.group(2)
+    return None, None
+
+
+def _fetch_github_plugin_release(owner, repo):
+    """Return (zip_url, tag_name) for the latest release. zip_url may be a release asset or zipball."""
+    import requests as _req
+    resp = _req.get(
+        f'https://api.github.com/repos/{owner}/{repo}/releases/latest',
+        headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    tag = data.get('tag_name', '?')
+    for asset in data.get('assets', []):
+        if asset.get('name', '').lower().endswith('.zip'):
+            return asset['browser_download_url'], tag
+    return data.get('zipball_url'), tag
+
+
+def _install_plugin_zip(raw_bytes):
+    """
+    Validate and extract a plugin from raw zip bytes.
+    Returns (plugin_id, plugin_name). Raises ValueError with a user-facing message on failure.
+    """
+    import zipfile, io, json as _json
+    buf = io.BytesIO(raw_bytes)
+    try:
+        zf_obj = zipfile.ZipFile(buf, 'r')
+    except zipfile.BadZipFile:
+        raise ValueError('File is not a valid zip archive.')
+    with zf_obj as zf:
+        names = zf.namelist()
+        if 'plugin.json' in names:
+            prefix = ''
+        else:
+            top_dirs = {n.split('/')[0] for n in names if '/' in n}
+            prefix = None
+            for d in top_dirs:
+                if f'{d}/plugin.json' in names:
+                    prefix = d + '/'
+                    break
+            if prefix is None:
+                raise ValueError('Invalid plugin zip: no plugin.json found.')
+
+        manifest = _json.loads(zf.read(f'{prefix}plugin.json'))
+        plugin_id = manifest.get('id', '').strip()
+        if not plugin_id or not plugin_id.replace('_', '').isalnum():
+            raise ValueError('Invalid or missing plugin id in plugin.json.')
+
+        plugins_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plugins')
+        dest = os.path.join(plugins_dir, plugin_id)
+        if not os.path.abspath(dest).startswith(os.path.abspath(plugins_dir) + os.sep):
+            raise ValueError('Invalid plugin id.')
+
+        os.makedirs(dest, exist_ok=True)
+        for member in names:
+            if not member.startswith(prefix):
+                continue
+            rel = member[len(prefix):]
+            if not rel:
+                continue
+            member_dest = os.path.join(dest, rel)
+            if not os.path.abspath(member_dest).startswith(os.path.abspath(dest) + os.sep) \
+                    and os.path.abspath(member_dest) != os.path.abspath(dest):
+                continue
+            if member.endswith('/'):
+                os.makedirs(member_dest, exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(member_dest), exist_ok=True)
+                with zf.open(member) as src, open(member_dest, 'wb') as dst:
+                    dst.write(src.read())
+
+    return plugin_id, manifest.get('name', plugin_id)
 
 
 # Module-level cancel event so main.py can signal it on window close.
@@ -255,11 +343,10 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/pick')
     def pick():
-        from config import load_state
+        from config import load_state, resolve_active_filter_tree
         state = load_state()
-        has_filters = bool(state.get('filter_tree') and (
-            state['filter_tree'].get('items') or state['filter_tree'].get('custom_sql')
-        ))
+        ft = resolve_active_filter_tree(state)
+        has_filters = bool(ft and (ft.get('items') or ft.get('custom_sql')))
         return render_template('pick.html', state=state, has_filters=has_filters)
 
     @app.route('/api/pick-game', methods=['POST'])
@@ -294,7 +381,8 @@ def create_app(template_folder=None, static_folder=None):
         where  = '1=1'
 
         if use_filtered:
-            filter_tree = state.get('filter_tree')
+            from config import resolve_active_filter_tree
+            filter_tree = resolve_active_filter_tree(state)
             if filter_tree:
                 custom_sql = _strip_sql_wrapper(filter_tree.get('custom_sql', ''))
                 if custom_sql:
@@ -800,20 +888,15 @@ def create_app(template_folder=None, static_folder=None):
                 log.info(f"Launched Steam appid {appid_int}")
             except Exception as e:
                 log.error(f"Failed to launch Steam appid {appid_int}: {e}")
-        elif game_platform == 'gog':
-            from gog import launch_gog_game, start_install, get_install_state
-            if is_installed:
-                result = launch_gog_game(appid_int)
-                return jsonify(result)
-            else:
-                # Start download in background; tell frontend to poll
-                start_install(appid_int)
-                return jsonify({
-                    'status':      'installing',
-                    'gog_install': True,
-                    'message':     f'Installing {game_name}\u2026',
-                })
         else:
+            import plugins as _plugin_registry
+            plugin_obj = next(
+                (p for p in _plugin_registry.loaded().values() if p.platform == game_platform),
+                None,
+            )
+            if plugin_obj and hasattr(plugin_obj, 'launch_game'):
+                result = plugin_obj.launch_game(appid_int)
+                return jsonify(result)
             return jsonify({"status": "not_supported",
                             "message": "Launch not yet supported for this platform"}), 501
 
@@ -1249,10 +1332,21 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'status': 'error', 'message': 'No games provided.'}), 400
         db.close()
 
-        # Split by platform: Steam games go through the per-page Help flow;
-        # GOG games are handled separately via the orders page Tampermonkey script.
-        has_gog   = any((r['platform'] or 'steam') == 'gog' for r in rows)
+        import plugins as _plugins
+        # Steam games go through the per-page Help flow; plugins with date_import_url
+        # (e.g. GOG) are handled via their external orders page + Tampermonkey script.
         steam_rows = [r for r in rows if (r['platform'] or 'steam') == 'steam']
+
+        seen_urls      = set()
+        date_import_urls = []
+        for r in rows:
+            plat   = r['platform'] or 'steam'
+            plugin = _plugins.get(plat)
+            if plugin and hasattr(plugin, 'date_import_url'):
+                url = plugin.date_import_url
+                if url not in seen_urls:
+                    seen_urls.add(url)
+                    date_import_urls.append({'url': url, 'label': getattr(plugin, 'label', plugin.name)})
 
         queue = [{'appid': r['appid'], 'name': r['name']} for r in steam_rows]
         if queue:
@@ -1263,11 +1357,11 @@ def create_app(template_folder=None, static_folder=None):
             log.info(f"Bulk date import started: {len(queue)} Steam games queued")
 
         return jsonify({
-            'status':      'ok',
-            'first_appid': queue[0]['appid'] if queue else None,
-            'first_name':  queue[0]['name']  if queue else None,
-            'total':       len(queue),
-            'has_gog':     has_gog,
+            'status':           'ok',
+            'first_appid':      queue[0]['appid'] if queue else None,
+            'first_name':       queue[0]['name']  if queue else None,
+            'total':            len(queue),
+            'date_import_urls': date_import_urls,
         })
 
     def _bulk_date_advance():
@@ -1331,234 +1425,6 @@ def create_app(template_folder=None, static_folder=None):
         log.info("Bulk date import cancelled")
         return jsonify({'status': 'ok'})
 
-    # ── GOG ──────────────────────────────────────────────────────────────────
-
-    @app.route('/api/gog/status')
-    def gog_status():
-        """Return GOG connection status and username."""
-        from gog import is_connected, get_username
-        if not is_connected():
-            return jsonify({'connected': False, 'username': None})
-        username = get_username()
-        return jsonify({'connected': True, 'username': username})
-
-    @app.route('/api/gog/auth-url')
-    def gog_auth_url():
-        """Return the GOG OAuth2 authorization URL."""
-        from gog import get_auth_url
-        return jsonify({'url': get_auth_url()})
-
-    @app.route('/api/gog/callback', methods=['POST'])
-    def gog_callback():
-        """Exchange an authorization code (or full redirect URL) for GOG tokens."""
-        raw = ((request.json or {}).get('code') or '').strip()
-        if not raw:
-            return jsonify({'status': 'error', 'message': 'code is required'}), 400
-        # Accept the full redirect URL and extract just the code parameter
-        from urllib.parse import parse_qs
-        if raw.startswith('http'):
-            qs   = parse_qs(urlparse(raw).query)
-            code = (qs.get('code') or [''])[0].strip()
-            if not code:
-                return jsonify({'status': 'error', 'message': 'No code= found in that URL'}), 400
-        else:
-            code = raw
-        from gog import exchange_code
-        ok, result = exchange_code(code)
-        if ok:
-            return jsonify({'status': 'success', 'username': result})
-        return jsonify({'status': 'error', 'message': result}), 400
-
-    @app.route('/api/gog/disconnect', methods=['POST'])
-    def gog_disconnect():
-        """Remove stored GOG tokens."""
-        from gog import clear_gog_tokens
-        clear_gog_tokens()
-        return jsonify({'status': 'success'})
-
-    @app.route('/api/gog/sync', methods=['POST'])
-    def gog_sync():
-        """Sync GOG library. Returns immediately with job result (sync is fast)."""
-        from gog import sync_library
-        result = sync_library()
-        if 'error' in result:
-            return jsonify({'status': 'error', 'message': result['error']}), 400
-        return jsonify({
-            'status':               'success',
-            'new_games':            result['new_games'],
-            'total_games':          result['total_games'],
-            'errors':               result.get('errors', []),
-            'duplicates_detected':  result.get('duplicates_detected', 0),
-        })
-
-    @app.route('/api/gog/sync-metadata', methods=['POST'])
-    def gog_sync_metadata():
-        """Start GOG metadata sync in a background thread.
-        Pass {force: true} in the request body to re-fetch all games; omit for new-only."""
-        from gog import start_meta_sync
-        force  = (request.json or {}).get('force', False)
-        result = start_meta_sync(force=force)
-        return jsonify(result)
-
-    @app.route('/api/gog/sync-metadata/status')
-    def gog_sync_metadata_status():
-        """Return current GOG metadata sync state."""
-        from gog import get_meta_sync_state
-        return jsonify(get_meta_sync_state())
-
-    @app.route('/api/gog/bulk-date-import', methods=['POST'])
-    def gog_bulk_date_import():
-        """Receive a {gog_id: unix_timestamp} map from the Tampermonkey script
-        and update date_added for matching GOG games in the library."""
-        dates = (request.json or {}).get('dates', {})
-        if not dates:
-            return jsonify({'status': 'error', 'message': 'No dates provided'}), 400
-
-        db = get_db()
-        rows = db.execute(
-            "SELECT appid, platform_id FROM games WHERE platform = 'gog'"
-        ).fetchall()
-        db.close()
-
-        # Build platform_id → appid map
-        gog_map = {row['platform_id']: row['appid'] for row in rows}
-
-        updated   = 0
-        not_found = 0
-        for gog_id, ts in dates.items():
-            appid = gog_map.get(str(gog_id))
-            if appid is None:
-                not_found += 1
-                continue
-            try:
-                update_game_data(appid, date_added=int(ts))
-                updated += 1
-            except Exception as e:
-                log.warning(f'GOG bulk-date-import: failed for gog_id={gog_id}: {e}')
-
-        return jsonify({'status': 'success', 'updated': updated, 'not_found': not_found})
-
-    @app.route('/api/gog/scrape-single/<int:appid>', methods=['POST'])
-    def gog_scrape_single(appid):
-        """Fetch and save GOG metadata + achievements for a single game."""
-        from gog import fetch_gog_metadata, fetch_gog_achievements, get_valid_session, get_galaxy_user_id
-        from database import ts_to_date
-        from datetime import date
-
-        db  = get_db()
-        row = db.execute(
-            "SELECT platform_id FROM games WHERE appid = ? AND platform = 'gog'", (appid,)
-        ).fetchone()
-        db.close()
-        if not row:
-            return jsonify({'status': 'error', 'message': 'GOG game not found'}), 404
-
-        gog_id = row['platform_id']
-        meta   = fetch_gog_metadata(gog_id)
-        if meta is None:
-            return jsonify({'status': 'error', 'message': 'Metadata fetch failed'}), 502
-
-        meta.pop('_category', None)
-        today          = date.today().isoformat()
-        meta['meta_fetched'] = today
-
-        session        = get_valid_session()
-        galaxy_user_id = get_galaxy_user_id()
-        if session and galaxy_user_id:
-            ach = fetch_gog_achievements(gog_id, galaxy_user_id, session)
-            if ach is not None:
-                meta.update(ach)
-                meta['cheevos_fetched'] = today
-
-        update_game_data(appid, **meta)
-
-        # Return the fields the modal cares about, with dates as strings
-        data_out = dict(meta)
-        if data_out.get('release_date'):
-            data_out['release_date'] = ts_to_date(data_out['release_date']) or ''
-        return jsonify({'status': 'success', 'data': data_out})
-
-    @app.route('/api/gog/install/<int:appid>', methods=['POST'])
-    def gog_install(appid):
-        """Start a GOG game install in the background."""
-        from gog import start_install
-        os_pref = (request.json or {}).get('os', 'auto')
-        result  = start_install(appid, os_pref=os_pref)
-        return jsonify(result)
-
-    @app.route('/api/gog/install-status/<int:appid>')
-    def gog_install_status(appid):
-        """Poll GOG install progress for a given appid."""
-        from gog import get_install_state
-        return jsonify(get_install_state(appid))
-
-    @app.route('/api/gog/active-install')
-    def gog_active_install():
-        """Return state of any currently running GOG install, or {appid: null}."""
-        from gog import get_active_install
-        return jsonify(get_active_install())
-
-    @app.route('/api/gog/install/<int:appid>/cancel', methods=['POST'])
-    def gog_install_cancel(appid):
-        """Cancel an in-progress GOG install."""
-        from gog import cancel_install
-        cancel_install(appid)
-        return jsonify({'status': 'ok'})
-
-    @app.route('/api/gog/uninstall/<int:appid>', methods=['POST'])
-    def gog_uninstall(appid):
-        """Delete a GOG game's install folder and set installed=0."""
-        from gog import GOG_INSTALL_BASE
-
-        db = get_db()
-        row = db.execute(
-            'SELECT name, install_path FROM games WHERE appid = ? AND platform = ?',
-            (appid, 'gog')
-        ).fetchone()
-        db.close()
-
-        if not row:
-            return jsonify({'status': 'error', 'message': 'GOG game not found'})
-
-        game_name = row['name']
-        install_path = row['install_path']
-
-        # Delete install directory if it exists
-        install_path = os.path.realpath(install_path) if install_path else None
-        if install_path and os.path.isdir(install_path):
-            try:
-                shutil.rmtree(install_path)
-                log.info(f'GOG uninstall: deleted {install_path}')
-            except Exception as e:
-                log.error(f'GOG uninstall: delete failed for {install_path} — {e}')
-                return jsonify({'status': 'error', 'message': f'Failed to delete game files: {e}'})
-
-        # Clear install metadata
-        update_game_data(
-            appid,
-            installed           = 0,
-            install_path        = None,
-            platform_executable = None,
-            runner_path         = None,
-            wine_prefix         = None,
-        )
-
-        log.info(f'GOG uninstall: {game_name!r} uninstalled')
-        return jsonify({'status': 'success'})
-
-    @app.route('/api/gog/proton-versions')
-    def gog_proton_versions():
-        """Return detected Proton installations and the host platform."""
-        try:
-            from runners.proton import find_proton_versions
-            return jsonify({
-                'status':   'ok',
-                'platform': platform.system(),
-                'versions': find_proton_versions(),
-            })
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
     @app.route('/api/games/search')
     def search_games():
         q        = request.args.get('q', '').strip()
@@ -1600,18 +1466,6 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
-    @app.route('/api/gog/detect-duplicates', methods=['POST'])
-    def gog_detect_duplicates():
-        """Re-run duplicate auto-detection across all platforms."""
-        try:
-            from gog import auto_detect_duplicates
-            from config import load_state
-            priority = load_state().get('platform_priority')
-            count = auto_detect_duplicates(platform_priority=priority)
-            return jsonify({'status': 'ok', 'detected': count})
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
     @app.route('/api/game/<int:appid>')
     def get_game(appid):
         try:
@@ -1631,6 +1485,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/game-description/<int:appid>')
     def game_description(appid):
+        import plugins as _plugins
         import requests as _r
         db = get_db()
         row = db.execute("SELECT platform, platform_id FROM games WHERE appid = ?", (appid,)).fetchone()
@@ -1639,14 +1494,10 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'status': 'error', 'message': 'Game not found'}), 404
         platform = row['platform'] or 'steam'
         try:
-            if platform == 'gog':
-                gog_id = row['platform_id'] or str(abs(appid))
-                resp = _r.get(f'https://api.gog.com/products/{gog_id}?expand=description', timeout=10)
-                if resp.ok:
-                    d = resp.json()
-                    desc = (d.get('description') or {}).get('lead') or (d.get('description') or {}).get('full', '')
-                    desc = re.sub(r'<[^>]+>', ' ', desc)
-                    desc = re.sub(r'\s+', ' ', desc).strip()
+            plugin = _plugins.get(platform)
+            if plugin is not None and hasattr(plugin, 'fetch_description'):
+                desc = plugin.fetch_description(appid, row['platform_id'])
+                if desc:
                     return jsonify({'status': 'success', 'description': desc})
             else:
                 resp = _r.get(
@@ -1857,7 +1708,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/save-filter', methods=['POST'])
     def save_filter():
-        from config import _state_lock, _load_state_unlocked, _write_state_atomic
+        from config import _state_lock, _load_state_unlocked, _write_state_atomic, _compact_tree_pv, _compact_appid_list_refs, _compact_shared_ids
         data = request.json
         name = (data.get('name') or '').strip()
         tree = data.get('filter_tree')
@@ -1865,6 +1716,7 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": "Name cannot be empty."}), 400
         if not tree:
             return jsonify({"status": "error", "message": "No filter to save."}), 400
+        tree = _compact_tree_pv(_compact_appid_list_refs(tree))
         with _state_lock:
             state = _load_state_unlocked()
             if 'saved_filters' not in state:
@@ -1876,6 +1728,7 @@ def create_app(template_folder=None, static_folder=None):
                 'id': existing_id or str(_uuid.uuid4()),
                 'tree': tree,
             }
+            _compact_shared_ids(state)
             _write_state_atomic(state)
         return jsonify({"status": "success"})
 
@@ -1888,6 +1741,9 @@ def create_app(template_folder=None, static_folder=None):
         with _state_lock:
             state = _load_state_unlocked()
             state.get('saved_filters', {}).pop(name, None)
+            ft = state.get('filter_tree')
+            if isinstance(ft, dict) and ft.get('saved_filter') == name:
+                state['filter_tree'] = None
             _write_state_atomic(state)
         return jsonify({"status": "success"})
 
@@ -1907,6 +1763,9 @@ def create_app(template_folder=None, static_folder=None):
                 return jsonify({"status": "error", "message": f'A filter named "{new_name}" already exists.'}), 400
             filters[new_name] = filters.pop(old_name)
             state['saved_filters'] = filters
+            ft = state.get('filter_tree')
+            if isinstance(ft, dict) and ft.get('saved_filter') == old_name:
+                state['filter_tree'] = {'saved_filter': new_name}
             _write_state_atomic(state)
         return jsonify({"status": "success"})
 
@@ -2425,9 +2284,13 @@ def create_app(template_folder=None, static_folder=None):
 
         def _serialise_pool(pool_dict, tags, conds):
             redundant = _redundant_set(pool_dict, tags, conds)
-            # Group appids by contributing category label for labeled appid_list nodes
+            # Group appids by contributing category label for labeled appid_list nodes.
+            # Only include appids present in the user's library — no point embedding
+            # thousands of unowned game IDs in the saved filter.
             source_map = {}   # {cat_label: {"appids": [...], "auto": bool}}
             for aid, v in pool_dict.items():
+                if aid not in in_library_set:
+                    continue
                 for cat_entry in v.get("categories", []):
                     label = cat_entry.get("cat", "")
                     if not label:
@@ -2436,9 +2299,9 @@ def create_app(template_folder=None, static_folder=None):
                         source_map[label] = {"appids": [], "auto": bool(cat_entry.get("auto"))}
                     source_map[label]["appids"].append(aid)
             appid_sources = [{"label": lbl, "appids": sorted(v["appids"]), "auto": v["auto"]}
-                             for lbl, v in source_map.items()]
+                             for lbl, v in source_map.items() if v["appids"]]
             return {
-                "appids": sorted(pool_dict.keys()),
+                "appids": sorted(aid for aid in pool_dict if aid in in_library_set),
                 "appid_sources": appid_sources,
                 "games":  sorted(
                     [{"appid": aid, "name": v["name"], "categories": v["categories"],
@@ -2501,7 +2364,8 @@ def create_app(template_folder=None, static_folder=None):
                 with open(path, 'w', encoding='utf-8') as f:
                     json.dump(validated, f, indent=2, ensure_ascii=False)
             except Exception as e:
-                return jsonify({'status': 'error', 'message': str(e)}), 500
+                app.logger.error('Failed to save gifts: %s', e)
+                return jsonify({'status': 'error', 'message': 'Failed to save gifts'}), 500
             return jsonify({'status': 'success'})
         try:
             with open(path, 'r', encoding='utf-8') as f:
@@ -2750,9 +2614,9 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/current-filter')
     def current_filter():
         """Return the active filter_tree from state — used by the tools page CSV exporter."""
-        from config import load_state
+        from config import load_state, resolve_active_filter_tree
         state       = load_state()
-        filter_tree = state.get('filter_tree')
+        filter_tree = resolve_active_filter_tree(state)
         return jsonify({"status": "success", "filter_tree": filter_tree})
 
     @app.route('/api/theme-to-path', methods=['POST'])
@@ -2859,6 +2723,16 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": f"Restore failed: {str(e)}"}), 500
 
         app.logger.info(f"Restore: complete — restored={restored}, skipped={skipped}")
+
+        # Run migrations and re-initialise the DB — the restored data may be
+        # from an older version that predates recent schema changes.
+        try:
+            import migration as _migration
+            _migration.run()
+            init_db()
+        except Exception as e:
+            app.logger.warning(f"Restore: post-restore migration failed: {e}", exc_info=True)
+
         return jsonify({
             "status":   "success",
             "restored": restored,
@@ -2989,6 +2863,210 @@ def create_app(template_folder=None, static_folder=None):
     def update_dl_status():
         return jsonify(_update_dl_state)
 
+    # ── Plugin management ─────────────────────────────────────────────────────
+    @app.route('/api/plugins')
+    def list_plugins():
+        import plugins as _plugins
+        db = get_db()
+        result = []
+        for pid, p in _plugins.loaded().items():
+            manifest = _plugins.plugin_manifest(pid)
+            row = db.execute(
+                'SELECT COUNT(*) FROM games WHERE platform = ?', (p.platform,)
+            ).fetchone()
+            result.append({
+                'id':         pid,
+                'name':       p.name,
+                'version':    manifest.get('version', '?'),
+                'platform':   p.platform,
+                'game_count': row[0] if row else 0,
+                'source':     manifest.get('source', ''),
+                'launcher':   manifest.get('launcher', {}),
+                'manage_ui':  p.manage_ui() if hasattr(p, 'manage_ui') else None,
+            })
+        return jsonify(result)
+
+    @app.route('/api/plugins/install', methods=['POST'])
+    def install_plugin():
+        if 'plugin_file' not in request.files:
+            return jsonify({'status': 'error', 'message': 'No file uploaded.'}), 400
+        f = request.files['plugin_file']
+        if not f.filename.lower().endswith('.zip'):
+            return jsonify({'status': 'error', 'message': 'File must be a .zip archive.'}), 400
+        try:
+            plugin_id, name = _install_plugin_zip(f.read())
+            return jsonify({'status': 'success', 'plugin_id': plugin_id, 'name': name})
+        except ValueError as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 400
+        except Exception as e:
+            log.error(f"Plugin install failed: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/plugins/install-from-github', methods=['POST'])
+    def install_plugin_from_github():
+        import requests as _req
+        data = request.get_json(silent=True) or {}
+        url = data.get('url', '').strip()
+        if not url:
+            return jsonify({'status': 'error', 'message': 'No URL provided.'}), 400
+        raw_url = url.removeprefix('github:')
+        owner, repo = _parse_github_repo(raw_url)
+        if not owner:
+            return jsonify({'status': 'error', 'message': 'Could not parse a GitHub owner/repo from that URL.'}), 400
+        try:
+            zip_url, tag = _fetch_github_plugin_release(owner, repo)
+            if not zip_url:
+                return jsonify({'status': 'error', 'message': 'No downloadable zip found in the latest release.'}), 400
+            resp = _req.get(zip_url, timeout=60)
+            resp.raise_for_status()
+            plugin_id, name = _install_plugin_zip(resp.content)
+            _plugin_update_cache.pop(plugin_id, None)
+            return jsonify({'status': 'success', 'plugin_id': plugin_id, 'name': name, 'tag': tag})
+        except ValueError as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 400
+        except Exception as e:
+            log.error(f"Plugin install from GitHub failed: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/plugins/check-updates')
+    def check_plugin_updates():
+        import time
+        import plugins as _plugins
+        import concurrent.futures
+
+        TTL = 6 * 3600
+
+        def _check_one(pid):
+            manifest = _plugins.plugin_manifest(pid)
+            source = manifest.get('source', '')
+            if not source:
+                return None
+            raw_url = source.removeprefix('github:')
+            owner, repo = _parse_github_repo(raw_url)
+            if not owner:
+                return {'id': pid, 'source': source, 'update_available': False, 'latest_version': None, 'error': 'Invalid source in plugin.json'}
+
+            cached = _plugin_update_cache.get(pid, {})
+            if cached.get('checked_at') and (time.time() - cached['checked_at']) < TTL:
+                return {'id': pid, 'source': source, **{k: cached[k] for k in ('update_available', 'latest_version', 'error')}}
+
+            try:
+                _, tag = _fetch_github_plugin_release(owner, repo)
+                latest = tag.lstrip('v')
+                installed = manifest.get('version', '0')
+
+                def _semver(v):
+                    try:
+                        return tuple(int(x) for x in v.split('.'))
+                    except Exception:
+                        return (0, 0, 0)
+
+                available = _semver(latest) > _semver(installed)
+                entry = {
+                    'update_available': available,
+                    'latest_version': latest,
+                    'error': None,
+                    'checked_at': time.time(),
+                }
+                _plugin_update_cache[pid] = entry
+                return {'id': pid, 'source': source, 'update_available': available, 'latest_version': latest, 'error': None}
+            except Exception as e:
+                entry = {'update_available': False, 'latest_version': None, 'error': str(e), 'checked_at': time.time()}
+                _plugin_update_cache[pid] = entry
+                return {'id': pid, 'source': source, 'update_available': False, 'latest_version': None, 'error': str(e)}
+
+        pids = list(_plugins.loaded().keys())
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            futures = [ex.submit(_check_one, pid) for pid in pids]
+            for fut in concurrent.futures.as_completed(futures, timeout=15):
+                try:
+                    r = fut.result()
+                    if r:
+                        results.append(r)
+                except Exception:
+                    pass
+
+        return jsonify(results)
+
+    @app.route('/api/plugins/launcher-status', methods=['GET'])
+    def get_launcher_status():
+        return jsonify(_launcher_status_cache)
+
+    @app.route('/api/plugins/launcher-status/<platform_id>', methods=['POST'])
+    def recheck_launcher_status(platform_id):
+        import plugins as _plugin_registry
+        plugin_obj = next(
+            (p for p in _plugin_registry.loaded().values() if p.platform == platform_id),
+            None,
+        )
+        if not plugin_obj or not hasattr(plugin_obj, 'launcher_status'):
+            return jsonify({'status': 'error', 'message': 'Plugin not found or does not support launcher_status'}), 404
+        try:
+            result = plugin_obj.launcher_status()
+            result['checked_at'] = time.time()
+            _launcher_status_cache[platform_id] = result
+            return jsonify({'status': 'success', 'launcher_status': result})
+        except Exception as e:
+            log.error(f"launcher_status failed for {platform_id}: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/plugins/<plugin_id>/uninstall', methods=['POST'])
+    def uninstall_plugin(plugin_id):
+        import shutil
+        import plugins as _plugins
+        p = _plugins.get(plugin_id)
+        if not p:
+            return jsonify({'status': 'error', 'message': 'Plugin not found'}), 404
+        path = _plugins.plugin_path(plugin_id)
+        if not path or not os.path.isdir(path):
+            return jsonify({'status': 'error', 'message': 'Plugin folder not found'}), 404
+        data = request.get_json(silent=True) or {}
+        try:
+            if hasattr(p, 'on_uninstall'):
+                p.on_uninstall()
+            if data.get('remove_games'):
+                db = get_db()
+                db.execute('DELETE FROM games WHERE platform = ?', (p.platform,))
+                db.commit()
+            if data.get('remove_launcher'):
+                from config import get_launcher_config
+                lc = get_launcher_config(p.platform)
+                prefix = lc.get('prefix', '').strip()
+                if prefix:
+                    prefix_path = os.path.expanduser(prefix)
+                    # Safety: must be absolute, exist as a dir, and have enough depth
+                    if (os.path.isabs(prefix_path) and
+                            os.path.isdir(prefix_path) and
+                            len(prefix_path.strip('/').split('/')) >= 2):
+                        shutil.rmtree(prefix_path, ignore_errors=True)
+            # Always clean up launcher config entry
+            try:
+                from config import load_config, _save_config_data
+                cfg = load_config()
+                if cfg and 'launchers' in cfg and p.platform in cfg['launchers']:
+                    del cfg['launchers'][p.platform]
+                    _save_config_data(cfg)
+            except Exception:
+                pass
+            shutil.rmtree(path)
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            log.error(f"Plugin uninstall failed: {plugin_id} — {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/detect-duplicates', methods=['POST'])
+    def detect_duplicates():
+        try:
+            from database import auto_detect_duplicates
+            from config import load_state
+            priority = load_state().get('platform_priority')
+            count = auto_detect_duplicates(platform_priority=priority)
+            return jsonify({'status': 'ok', 'detected': count})
+        except Exception as e:
+            log.error(f"detect-duplicates failed: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     # ── Background update check on startup ───────────────────────────────────
     def _startup_update_check():
         import time
@@ -2998,6 +3076,36 @@ def create_app(template_folder=None, static_folder=None):
             _do_update_check()
 
     threading.Thread(target=_startup_update_check, daemon=True).start()
+
+    import plugins as _plugins
+    _plugins.load_all(app)
+
+    # Set INFO on all plugin sub-modules so their logs are captured
+    for _pid, _p in _plugins.loaded().items():
+        _mod_prefix = f'plugins.{_pid}'
+        for _mname in list(sys.modules):
+            if _mname == _mod_prefix or _mname.startswith(_mod_prefix + '.'):
+                logging.getLogger(_mname).setLevel(logging.INFO)
+
+    def _startup_launcher_status_check():
+        import time as _time
+        _time.sleep(3)
+        for p in _plugins.loaded().values():
+            if not hasattr(p, 'launcher_status'):
+                continue
+            try:
+                result = p.launcher_status()
+                result['checked_at'] = _time.time()
+                _launcher_status_cache[p.platform] = result
+            except Exception as e:
+                log.warning(f"launcher_status failed for {p.platform}: {e}")
+                _launcher_status_cache[p.platform] = {'available': False, 'detail': str(e), 'checked_at': _time.time()}
+
+    threading.Thread(target=_startup_launcher_status_check, daemon=True).start()
+    app.jinja_env.globals['has_plugin']        = _plugins.has
+    app.jinja_env.globals['plugin_fragments']  = _plugins.fragments
+    app.jinja_env.globals['platform_labels']   = _plugins.platform_labels
+    app.jinja_env.globals['plugin_js_api']     = _plugins.plugin_js_api
 
     return app
 
@@ -3009,13 +3117,7 @@ if __name__ == '__main__' or os.environ.get('FLASK_APP') == 'app':
     app = create_app()
 
 if __name__ == '__main__':
-    from config import migrate_to_multi_account
-    migrate_to_multi_account()
-    needs_redetect = init_db()
-    migrate_image_files()
-    if needs_redetect:
-        from gog import auto_detect_duplicates
-        from config import load_state
-        priority = load_state().get('platform_priority')
-        auto_detect_duplicates(platform_priority=priority)
+    import migration
+    migration.run()
+    init_db()
     app.run(debug=os.environ.get('FLASK_DEBUG', '0') == '1', port=5000)

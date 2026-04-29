@@ -1,0 +1,18 @@
+{
+    "id": "epic_games",
+    "name": "Epic Games",
+    "version": "1.0.0",
+    "platform": "epic_games",
+    "author": "RobbyRatpoison",
+    "source": "github:RobbyRatpoison/playdate-plugin-epic-games",
+    "launcher": {
+        "required": true,
+        "name": "Epic Games Launcher",
+        "exe_name": "EpicGamesLauncher.exe",
+        "installer": {
+            "url": "https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/download/EpicGamesLauncherInstaller.msi",
+            "type": "msi",
+            "winearch": "win64"
+        }
+    }
+}

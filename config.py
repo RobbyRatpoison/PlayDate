@@ -10,7 +10,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.4.5"
+__version__ = "1.4.6"
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -304,12 +304,13 @@ def resolve_vanity_url(api_key, steam_id):
 
 def _active_platform_priority(state):
     """Return platform_priority filtered to platforms that actually exist in the DB."""
-    priority = state.get('platform_priority', ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'])
+    from database import PLATFORM_PRIORITY_DEFAULT
+    priority = state.get('platform_priority', PLATFORM_PRIORITY_DEFAULT)
     try:
         from database import get_db
         db = get_db()
         rows = db.execute(
-            "SELECT DISTINCT COALESCE(NULLIF(platform,''),'steam') AS p FROM games"
+            "SELECT DISTINCT platform AS p FROM games"
         ).fetchall()
         db.close()
         present = {r['p'] for r in rows}
@@ -376,52 +377,6 @@ def get_active_db_path():
         if active_id:
             return os.path.join(BASE_DIR, f'games_{active_id}.db')
     return os.path.join(BASE_DIR, 'games_default.db')
-
-def migrate_to_multi_account():
-    """
-    One-time migration from flat {steam_id, api_key, sgdb_key} config to the
-    multi-account structure {active_account, sgdb_key, accounts: {...}}.
-    Renames games.db → games_<steamid>.db.  Idempotent — safe to call on every launch.
-    """
-    if not os.path.exists(CONFIG_PATH):
-        return  # Fresh install — nothing to migrate
-
-    with open(CONFIG_PATH, 'r') as f:
-        data = json.load(f)
-
-    if 'accounts' in data:
-        return  # Already migrated
-
-    steam_id = data.get('steam_id', '').strip()
-    api_key  = data.get('api_key', '').strip()
-    sgdb_key = data.get('sgdb_key', '').strip()
-
-    if not steam_id:
-        # Partial legacy config with no steam_id
-        new_config = {'active_account': None, 'sgdb_key': sgdb_key, 'accounts': {}}
-        with open(CONFIG_PATH, 'w') as f:
-            json.dump(new_config, f, indent=4)
-        return
-
-    # Rename games.db → games_<steamid>.db if the old file still exists
-    old_db = os.path.join(BASE_DIR, 'games.db')
-    new_db = os.path.join(BASE_DIR, f'games_{steam_id}.db')
-    if os.path.exists(old_db) and not os.path.exists(new_db):
-        os.rename(old_db, new_db)
-
-    new_config = {
-        'active_account': steam_id,
-        'sgdb_key': sgdb_key,
-        'accounts': {
-            steam_id: {
-                'steam_id': steam_id,
-                'api_key': api_key,
-                'label': steam_id,
-            }
-        }
-    }
-    with open(CONFIG_PATH, 'w') as f:
-        json.dump(new_config, f, indent=4)
 
 @config_bp.route('/api/detect-steam-id')
 def detect_steam_id_route():
@@ -537,6 +492,70 @@ def _load_state_unlocked():
             val['id'] = str(uuid.uuid4())
             dirty = True
 
+    # Trim pagywosg_verified to library appids only — removes non-owned games stored by older builds
+    def _pv_bloated(tree):
+        return isinstance(tree, dict) and len(tree.get('pagywosg_verified') or {}) > 200
+
+    _needs_pv_trim = _pv_bloated(state.get('filter_tree') or {}) or any(
+        _pv_bloated(sf.get('tree') if isinstance(sf, dict) else sf)
+        for sf in state.get('saved_filters', {}).values()
+    )
+    if _needs_pv_trim:
+        try:
+            from database import get_db as _get_db_cfg
+            _db_cfg = _get_db_cfg()
+            _lib_ids = {str(r[0]) for r in _db_cfg.execute("SELECT appid FROM games").fetchall()}
+            _db_cfg.close()
+
+            def _trim_pv(tree):
+                pv = tree.get('pagywosg_verified') if isinstance(tree, dict) else None
+                if not pv:
+                    return tree, False
+                trimmed = {k: v for k, v in pv.items() if k in _lib_ids}
+                if len(trimmed) == len(pv):
+                    return tree, False
+                return {**tree, 'pagywosg_verified': trimmed}, True
+
+            ft = state.get('filter_tree')
+            if ft:
+                ft2, ch = _trim_pv(ft)
+                if ch:
+                    state['filter_tree'] = ft2
+                    dirty = True
+
+            for _sname, _sf in list(state.get('saved_filters', {}).items()):
+                _tree = _sf.get('tree') if isinstance(_sf, dict) else _sf
+                if isinstance(_tree, dict):
+                    _tree2, _ch = _trim_pv(_tree)
+                    if _ch:
+                        state['saved_filters'][_sname] = {**_sf, 'tree': _tree2}
+                        dirty = True
+        except Exception:
+            pass  # Skip if DB not ready yet; will retry on next load
+
+    # Compact pagywosg_verified and appid_list_ref in saved filters
+    for _sname, _sf in list(state.get('saved_filters', {}).items()):
+        _stree = _sf.get('tree') if isinstance(_sf, dict) and 'tree' in _sf else None
+        if _stree:
+            _stree2 = _compact_tree_pv(_compact_appid_list_refs(_stree))
+            if _stree2 is not _stree:
+                state['saved_filters'][_sname] = {**_sf, 'tree': _stree2}
+                dirty = True
+
+    # Lift duplicate _c id lists to shared storage
+    if _compact_shared_ids(state):
+        dirty = True
+
+    # Replace full filter_tree with a saved_filter sentinel when it duplicates a saved filter
+    ft = state.get('filter_tree')
+    if isinstance(ft, dict) and 'saved_filter' not in ft:
+        for _sname, _sf in state.get('saved_filters', {}).items():
+            _stree = _sf.get('tree') if isinstance(_sf, dict) and 'tree' in _sf else _sf
+            if isinstance(_stree, dict) and ft == _stree:
+                state['filter_tree'] = {'saved_filter': _sname}
+                dirty = True
+                break
+
     # Seed card_outlines with defaults on first run
     if 'card_outlines' not in state:
         import copy
@@ -550,6 +569,203 @@ def _load_state_unlocked():
         _write_state_atomic(state)
     return state
 
+def _compact_pv(pv):
+    """Compact pagywosg_verified by grouping appids with identical entry lists under _c key."""
+    if not isinstance(pv, dict) or '_c' in pv or len(pv) < 5:
+        return pv
+    by_sig = {}
+    for appid, entries in pv.items():
+        sig = json.dumps(sorted(entries, key=lambda e: json.dumps(e, sort_keys=True)), sort_keys=True, separators=(',', ':'))
+        if sig not in by_sig:
+            by_sig[sig] = {'entries': entries, 'appids': []}
+        by_sig[sig]['appids'].append(appid)
+    compact = []
+    flat = {}
+    for sig, group in by_sig.items():
+        if len(group['appids']) >= 5:
+            compact.append({'e': group['entries'], 'ids': sorted(int(a) for a in group['appids'])})
+        else:
+            for appid in group['appids']:
+                flat[appid] = pv[appid]
+    if not compact:
+        return pv
+    return {**flat, '_c': compact}
+
+
+def _expand_pv(pv, shared_ids=None):
+    """Expand compact pagywosg_verified back to a flat {appid_str: entries} dict.
+    shared_ids: optional {key: [ids]} from state['_shared_ids'] for resolving 'r' refs."""
+    if not isinstance(pv, dict) or '_c' not in pv:
+        return pv
+    result = {k: v for k, v in pv.items() if k != '_c'}
+    for group in pv['_c']:
+        entries = group['e']
+        ids = (shared_ids or {}).get(group['r']) if 'r' in group else group.get('ids', [])
+        for appid in (ids or []):
+            key = str(appid)
+            existing = result.get(key)
+            if existing:
+                result[key] = existing + [e for e in entries if e not in existing]
+            else:
+                result[key] = entries
+    return result
+
+
+_SOURCE_NAMES = {
+    'icaio_ga': 'icaio GA matches',
+    'icaio_wl': 'icaio wishlist matches',
+}
+
+def _name_for_ids(ids):
+    """Return a descriptive key for an id list by matching against supplement sources."""
+    id_set = frozenset(ids)
+    for source, source_ids in _get_supplement_source_appids().items():
+        if source_ids and id_set <= source_ids:
+            return _SOURCE_NAMES.get(source, source)
+    return None
+
+
+def _compact_shared_ids(state):
+    """Lift duplicate _c id lists across saved filters into state['_shared_ids'].
+    Returns True if state was modified."""
+    dirty = False
+    # Collect all _c groups with inline ids lists across all saved filter trees
+    all_groups = []
+    for sf in state.get('saved_filters', {}).values():
+        tree = sf.get('tree') if isinstance(sf, dict) and 'tree' in sf else None
+        pv = tree.get('pagywosg_verified') if isinstance(tree, dict) else None
+        if not isinstance(pv, dict):
+            continue
+        for group in pv.get('_c', []):
+            if 'ids' in group:
+                all_groups.append(group)
+
+    # Find lists appearing more than once
+    sig_to_ids = {}
+    sig_counts = {}
+    for group in all_groups:
+        sig = json.dumps(group['ids'], separators=(',', ':'))
+        sig_to_ids[sig] = group['ids']
+        sig_counts[sig] = sig_counts.get(sig, 0) + 1
+
+    shared_sigs = {sig for sig, count in sig_counts.items() if count > 1}
+    if not shared_sigs:
+        return False
+
+    existing = state.get('_shared_ids', {})
+    # Build reverse map: sig -> existing key
+    existing_by_sig = {json.dumps(ids, separators=(',', ':')): key for key, ids in existing.items()}
+
+    for group in all_groups:
+        sig = json.dumps(group['ids'], separators=(',', ':'))
+        if sig not in shared_sigs:
+            continue
+        # Reuse existing key or assign a new descriptive one
+        key = existing_by_sig.get(sig) or _name_for_ids(group['ids']) or f"s{len(existing)}"
+        if key not in existing or existing[key] != group['ids']:
+            existing = {**existing, key: group['ids']}
+            existing_by_sig[sig] = key
+            dirty = True
+        group.pop('ids')
+        group['r'] = key
+        dirty = True
+
+    if dirty:
+        state['_shared_ids'] = existing
+    return dirty
+
+
+def _compact_tree_pv(tree):
+    """Compact pagywosg_verified inside a filter tree dict, if present."""
+    if not isinstance(tree, dict) or 'pagywosg_verified' not in tree:
+        return tree
+    pv2 = _compact_pv(tree['pagywosg_verified'])
+    return tree if pv2 is tree['pagywosg_verified'] else {**tree, 'pagywosg_verified': pv2}
+
+
+_supplement_appids_cache = None  # {source: frozenset(appids)}
+
+def _get_supplement_source_appids():
+    """Return cached {source_key: frozenset} for known supplement appid lists."""
+    global _supplement_appids_cache
+    if _supplement_appids_cache is not None:
+        return _supplement_appids_cache
+    result = {}
+    try:
+        path = os.path.join(BASE_DIR, 'pagywosg_supplement.json')
+        with open(path) as f:
+            sup = json.load(f)
+        result['icaio_ga'] = frozenset(g['appid'] for g in sup.get('icaio_giveaways', []))
+        result['icaio_wl'] = frozenset(int(k) for k in sup.get('icaio_wishlist', {}))
+    except Exception:
+        pass
+    _supplement_appids_cache = result
+    return result
+
+
+def _compact_appid_list_refs(tree):
+    """Replace auto appid_list nodes with appid_list_ref when appids are a subset of a supplement source."""
+    if not isinstance(tree, dict):
+        return tree
+    if tree.get('type') == 'appid_list' and tree.get('auto'):
+        node_ids = frozenset(a for a in tree.get('appids', []) if isinstance(a, int))
+        for source, source_ids in _get_supplement_source_appids().items():
+            if source_ids and node_ids <= source_ids:
+                return {'type': 'appid_list_ref', 'label': tree.get('label', ''), 'source': source}
+    if tree.get('type') == 'group':
+        new_items = [_compact_appid_list_refs(item) for item in tree.get('items', [])]
+        if new_items != tree.get('items', []):
+            return {**tree, 'items': new_items}
+    return tree
+
+
+def _expand_appid_list_refs(tree):
+    """Replace appid_list_ref nodes with full appid_list nodes using supplement data.
+    Used before sending saved filter trees to the browser."""
+    if not isinstance(tree, dict):
+        return tree
+    if tree.get('type') == 'appid_list_ref':
+        source = tree.get('source', '')
+        appids = sorted(_get_supplement_source_appids().get(source, frozenset()))
+        return {'type': 'appid_list', 'appids': appids, 'label': tree.get('label', ''), 'auto': True}
+    if tree.get('type') == 'group':
+        new_items = [_expand_appid_list_refs(item) for item in tree.get('items', [])]
+        if new_items != tree.get('items', []):
+            return {**tree, 'items': new_items}
+    return tree
+
+
+def _expand_tree_pv(tree):
+    """Expand compact pagywosg_verified inside a filter tree dict, if present."""
+    if not isinstance(tree, dict) or 'pagywosg_verified' not in tree:
+        return tree
+    pv2 = _expand_pv(tree['pagywosg_verified'])
+    return tree if pv2 is tree['pagywosg_verified'] else {**tree, 'pagywosg_verified': pv2}
+
+
+def _expand_tree_pv_with_shared(tree, shared_ids):
+    """Expand compact pagywosg_verified (including shared-id refs) inside a filter tree dict."""
+    if not isinstance(tree, dict) or 'pagywosg_verified' not in tree:
+        return tree
+    pv2 = _expand_pv(tree['pagywosg_verified'], shared_ids)
+    return tree if pv2 is tree['pagywosg_verified'] else {**tree, 'pagywosg_verified': pv2}
+
+
+def resolve_active_filter_tree(state):
+    """Resolve a {saved_filter: name} sentinel to the actual tree, or return tree as-is.
+    Always expands compact pagywosg_verified and appid_list_ref nodes before returning."""
+    shared_ids = state.get('_shared_ids', {})
+    ft = state.get('filter_tree')
+    if isinstance(ft, dict) and 'saved_filter' in ft:
+        name = ft['saved_filter']
+        sf = state.get('saved_filters', {}).get(name)
+        if sf:
+            tree = sf.get('tree') if isinstance(sf, dict) and 'tree' in sf else sf
+            return _expand_appid_list_refs(_expand_tree_pv_with_shared(tree, shared_ids))
+        return None  # referenced filter was deleted/renamed
+    return _expand_appid_list_refs(_expand_tree_pv_with_shared(ft, shared_ids))
+
+
 def load_state():
     """Loads the current state or creates it if missing."""
     with _state_lock:
@@ -562,26 +778,41 @@ def save_state(updates):
         _PASSTHROUGH = {"filter_tree", "sort", "order", "artwork_orientation", "card_height",
                         "check_for_updates", "window_state", "fullscreen",
                         "pagywosg_sg_group", "shelves", "group_by",
-                        "store_date_migration_done", "card_outlines"}
+                        "card_outlines"}
         for key in _PASSTHROUGH:
             if key in updates:
-                state[key] = updates[key]
+                val = updates[key]
+                if key == 'filter_tree' and isinstance(val, dict) and 'saved_filter' not in val:
+                    val = _compact_tree_pv(_compact_appid_list_refs(val))
+                state[key] = val
         if "hltb_match_threshold" in updates:
             state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
         if "hide_duplicates" in updates:
             state["hide_duplicates"] = bool(updates["hide_duplicates"])
         if "platform_priority" in updates:
-            _valid = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
-            incoming = [p for p in (updates["platform_priority"] or []) if p in _valid]
-            # Append any known platforms not in the incoming list (preserves all entries)
-            for p in ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']:
-                if p not in incoming:
+            import re as _re
+            _plat_re = _re.compile(r'^[a-z][a-z0-9_]*$')
+            incoming = [p for p in (updates["platform_priority"] or []) if _plat_re.match(p or '')]
+            # Append any DB platforms not already present (keeps the list complete)
+            try:
+                from database import get_db as _get_db
+                _db = _get_db()
+                _known = [r[0] for r in _db.execute(
+                    "SELECT DISTINCT platform FROM games WHERE platform IS NOT NULL AND platform != ''"
+                ).fetchall()]
+                _db.close()
+            except Exception:
+                _known = []
+            for p in ['steam'] + _known:
+                if p and p not in incoming:
                     incoming.append(p)
             state["platform_priority"] = incoming
         if "hidden_platforms" in updates:
-            safe = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
-            state["hidden_platforms"] = [p for p in (updates["hidden_platforms"] or []) if p in safe]
+            import re as _re
+            _plat_re = _re.compile(r'^[a-z][a-z0-9_]*$')
+            state["hidden_platforms"] = [p for p in (updates["hidden_platforms"] or []) if _plat_re.match(p or '')]
 
+        _compact_shared_ids(state)
         _write_state_atomic(state)
         return state
 
@@ -695,3 +926,72 @@ def save_sg_username():
     config_data['sg_username'] = username
     _save_config_data(config_data)
     return jsonify({'status': 'success'})
+
+
+# ── Launcher config ───────────────────────────────────────────────────────────
+
+def get_launcher_config(platform_id):
+    """Return launcher config dict for platform_id, or {} if not set."""
+    config = load_config() or {}
+    return config.get('launchers', {}).get(platform_id, {})
+
+
+def save_launcher_config(platform_id, cfg):
+    """Persist launcher config for platform_id into config.json['launchers']."""
+    config_data = load_config()
+    if not config_data:
+        config_data = {'active_account': None, 'sgdb_key': '', 'accounts': {}}
+    launchers = config_data.setdefault('launchers', {})
+    launchers[platform_id] = cfg
+    _save_config_data(config_data)
+
+
+@config_bp.route('/api/launcher-config/<platform_id>', methods=['GET'])
+def get_launcher_config_route(platform_id):
+    import plugins
+    from runners.wine import find_wine_binary
+    from runners.launcher_installer import default_prefix
+    cfg = get_launcher_config(platform_id)
+    manifest = plugins.plugin_manifest(platform_id)
+    installer_cfg = manifest.get('launcher', {}).get('installer')
+    return jsonify({
+        'status':              'success',
+        'config':              cfg,
+        'wine_bin_detected':   find_wine_binary(),
+        'installer_available': installer_cfg is not None,
+        'default_prefix':      default_prefix(platform_id),
+    })
+
+
+@config_bp.route('/api/launcher-config/<platform_id>', methods=['POST'])
+def save_launcher_config_route(platform_id):
+    data = request.get_json(silent=True) or {}
+    allowed = {'wine_bin', 'prefix', 'mode'}
+    cfg = {k: v for k, v in data.items() if k in allowed}
+    save_launcher_config(platform_id, cfg)
+    return jsonify({'status': 'success'})
+
+
+@config_bp.route('/api/launcher-install/<platform_id>', methods=['POST'])
+def start_launcher_install_route(platform_id):
+    import plugins
+    from runners.launcher_installer import start_install, default_prefix
+    manifest = plugins.plugin_manifest(platform_id)
+    launcher = manifest.get('launcher', {})
+    installer_cfg = launcher.get('installer')
+    if not installer_cfg:
+        return jsonify({'status': 'error', 'message': 'No installer configured for this plugin'}), 400
+    installer_cfg = dict(installer_cfg)
+    if 'exe_name' not in installer_cfg and launcher.get('exe_name'):
+        installer_cfg['exe_name'] = launcher['exe_name']
+    data     = request.get_json(silent=True) or {}
+    prefix   = (data.get('prefix') or '').strip() or default_prefix(platform_id)
+    wine_bin = (data.get('wine_bin') or '').strip() or None
+    started = start_install(platform_id, installer_cfg, prefix, wine_bin)
+    return jsonify({'status': 'started' if started else 'already_running'})
+
+
+@config_bp.route('/api/launcher-install/<platform_id>/status', methods=['GET'])
+def get_launcher_install_status_route(platform_id):
+    from runners.launcher_installer import get_state
+    return jsonify(get_state(platform_id))

@@ -62,13 +62,12 @@ def _build_shelf_query(shelf, saved_filters):
     else:
         where = '1=1'
 
-    # Platform filter — values are whitelisted so safe to inline
-    _safe_platforms = {'steam', 'gog', 'epic_games', 'ea_app', 'ubisoft'}
-    shelf_hidden = [p for p in (shelf.get('hidden_platforms') or []) if p in _safe_platforms]
+    # Platform filter — values are validated to prevent SQL injection
+    shelf_hidden = [p for p in (shelf.get('hidden_platforms') or []) if re.match(r'^[a-z][a-z0-9_]*$', p or '')]
     if shelf_hidden:
         plat_conds = []
         if 'steam' in shelf_hidden:
-            plat_conds.append("NOT (platform IS NULL OR platform = '' OR platform = 'steam')")
+            plat_conds.append("platform != 'steam'")
         non_steam = [p for p in shelf_hidden if p != 'steam']
         if non_steam:
             inlist = ','.join(f"'{p}'" for p in non_steam)
@@ -159,10 +158,11 @@ def index():
 
     db3 = get_db()
     db3.row_factory = sqlite3.Row
-    _plat_order = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']
+    from plugins import platform_labels as _platform_labels
+    _plat_order = list(_platform_labels().keys())
     try:
         _plat_rows = db3.execute(
-            "SELECT DISTINCT COALESCE(NULLIF(platform,''),'steam') as p FROM games ORDER BY p"
+            "SELECT DISTINCT platform as p FROM games ORDER BY p"
         ).fetchall()
         available_platforms = sorted(
             {r['p'] for r in _plat_rows},

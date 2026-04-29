@@ -92,86 +92,6 @@ def stop_steamapps_watcher():
         _watcher_observer = None
 
 
-# ── GOG filesystem watcher ─────────────────────────────────────────────────────
-_gog_watcher_observer = None
-
-
-def sync_gog_install_status():
-    """Update installed flags for all GOG games based on whether their install_path exists on disk."""
-    global _install_status_dirty
-    db = get_db()
-    rows = db.execute("SELECT appid, install_path FROM games WHERE platform = 'gog'").fetchall()
-    installed_ids = [row['appid'] for row in rows if row['install_path'] and os.path.isdir(row['install_path'])]
-    db.execute("UPDATE games SET installed = 0 WHERE platform = 'gog'")
-    if installed_ids:
-        db.executemany("UPDATE games SET installed = 1 WHERE appid = ?", [(a,) for a in installed_ids])
-    db.commit()
-    db.close()
-    _install_status_dirty = True
-
-
-def start_gog_watcher(gog_install_base: str):
-    """
-    Watch the GOG games folder for directory-level changes and automatically
-    update installed status in the DB.  Safe to call from any thread.
-    Returns the Observer instance (already started), or None if watchdog is
-    unavailable or the path doesn't exist.  No-ops if already running.
-    """
-    global _gog_watcher_observer
-
-    if _gog_watcher_observer is not None:
-        return _gog_watcher_observer
-
-    if not gog_install_base or not os.path.isdir(gog_install_base):
-        log.warning(f"GOG watcher: path not found — {gog_install_base!r}")
-        return None
-
-    try:
-        from watchdog.observers import Observer
-        from watchdog.events import FileSystemEventHandler
-    except ImportError:
-        log.warning("watchdog not installed — GOG filesystem watcher disabled")
-        return None
-
-    class _GogInstallHandler(FileSystemEventHandler):
-        def _on_change(self, event_type: str, path: str):
-            log.info(f"GOG watcher: {event_type} — {os.path.basename(path)} — syncing install status")
-            try:
-                sync_gog_install_status()
-            except Exception as e:
-                log.error(f"GOG watcher: sync failed — {e}")
-
-        def on_created(self, event):
-            if event.is_directory:
-                self._on_change("created", event.src_path)
-
-        def on_deleted(self, event):
-            if event.is_directory:
-                self._on_change("deleted", event.src_path)
-
-        def on_moved(self, event):
-            if event.is_directory:
-                self._on_change("moved", event.dest_path)
-
-    observer = Observer()
-    observer.schedule(_GogInstallHandler(), path=gog_install_base, recursive=False)
-    observer.start()
-    _gog_watcher_observer = observer
-    log.info(f"GOG watcher started on: {gog_install_base}")
-    return observer
-
-
-def stop_gog_watcher():
-    global _gog_watcher_observer
-    if _gog_watcher_observer is not None:
-        try:
-            _gog_watcher_observer.stop()
-            _gog_watcher_observer.join(timeout=3)
-        except Exception as e:
-            log.warning(f"GOG watcher stop error: {e}")
-        _gog_watcher_observer = None
-
-
 def find_steam_path():
     """Attempts to locate the Steam installation path, prioritizing Linux."""
     defaults = [
@@ -414,7 +334,7 @@ def sync_local_install_status():
     # where the DB shows everything as uninstalled.
     # Scope to Steam games only — non-Steam install state is managed separately.
     db = get_db()
-    db.execute("UPDATE games SET installed = 0 WHERE platform = 'steam' OR platform IS NULL")
+    db.execute("UPDATE games SET installed = 0 WHERE platform = 'steam'")
     if local_ids:
         db.executemany("UPDATE games SET installed = 1 WHERE appid = ?",
                        [(a,) for a in local_ids])
@@ -646,3 +566,28 @@ def parse_appinfo():
 
     log.info(f"parse_appinfo: parsed {len(result)} entries from appinfo.vdf")
     return result
+
+
+def review_score_label(percent, total):
+    """Map a review percentage + count to a Steam-style label."""
+    if total == 0:
+        return 'No Reviews'
+    if total < 10:
+        return 'Not Enough Reviews'
+    if percent >= 95 and total >= 500:
+        return 'Overwhelmingly Positive'
+    if percent >= 80 and total >= 50:
+        return 'Very Positive'
+    if percent >= 80:
+        return 'Positive'
+    if percent >= 70:
+        return 'Mostly Positive'
+    if percent >= 40:
+        return 'Mixed'
+    if percent >= 20:
+        return 'Mostly Negative'
+    if total >= 500:
+        return 'Overwhelmingly Negative'
+    if total >= 50:
+        return 'Very Negative'
+    return 'Negative'

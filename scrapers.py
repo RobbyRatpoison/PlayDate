@@ -1330,29 +1330,24 @@ def sync_recent_playtime():
 def bulk_rescrape_games(appids, cancel_event, progress_cb):
     """
     Concurrent metadata re-scrape for a list of appids.
-    Routes GOG games to the GOG metadata API; Steam games use the Steam scrapers.
+    Non-Steam platforms are routed to their plugin's rescrape() method.
     Uses _PoolBackoff for rate limiting on Steam games; respects cancel_event.
     3 concurrent workers with 0.5s inter-game delay.
     """
-    from gog import fetch_gog_metadata, fetch_gog_achievements, get_valid_session, get_galaxy_user_id
+    import plugins as _plugins_mod
 
     backoff  = _PoolBackoff('bulk_rescrape')
     today    = datetime.now().strftime('%Y-%m-%d')
     _account = get_active_account() or {}
     has_key  = bool(_account.get('api_key'))
 
-    # Look up platform info for all appids upfront
     db = get_db()
     rows = db.execute(
-        f"SELECT appid, platform, platform_id FROM games WHERE appid IN ({','.join('?' * len(appids))})",
+        f"SELECT appid, platform FROM games WHERE appid IN ({','.join('?' * len(appids))})",
         appids,
     ).fetchall()
     db.close()
-    gog_info = {row['appid']: row['platform_id'] for row in rows if row['platform'] == 'gog'}
-
-    # GOG session + galaxy user ID (fetched once, shared across workers)
-    gog_session        = get_valid_session()
-    gog_galaxy_user_id = get_galaxy_user_id()
+    platform_map = {row['appid']: (row['platform'] or 'steam') for row in rows}
 
     q = queue.Queue()
     for appid in appids:
@@ -1371,33 +1366,23 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
             except queue.Empty:
                 return
 
+            platform = platform_map.get(appid, 'steam')
             try:
-                if appid in gog_info:
-                    # ── GOG game ──────────────────────────────────────────────
-                    gog_id = gog_info[appid]
-                    meta   = fetch_gog_metadata(gog_id)
-                    if meta is None:
+                plugin = _plugins_mod.get(platform)
+                if plugin is not None and hasattr(plugin, 'rescrape'):
+                    # ── Plugin-handled game ───────────────────────────────────
+                    meta = plugin.rescrape(appid)
+                    if meta:
+                        update_game_data(appid, **meta)
+                        with lock:
+                            counts['done'] += 1
+                        if progress_cb:
+                            progress_cb('done', appid, total)
+                    else:
                         with lock:
                             counts['failed'] += 1
                         if progress_cb:
                             progress_cb('failed', appid, total)
-                        time.sleep(0.5)
-                        continue
-
-                    meta.pop('_category', None)
-                    meta['meta_fetched'] = today
-
-                    if gog_session and gog_galaxy_user_id:
-                        ach = fetch_gog_achievements(gog_id, gog_galaxy_user_id, gog_session)
-                        if ach is not None:
-                            meta.update(ach)
-                            meta['cheevos_fetched'] = today
-
-                    update_game_data(appid, **meta)
-                    with lock:
-                        counts['done'] += 1
-                    if progress_cb:
-                        progress_cb('done', appid, total)
                     time.sleep(0.5)
 
                 else:
@@ -1648,12 +1633,12 @@ def sync_store_release_dates():
 
     Progress is tracked in release_date_migration.json so the migration can
     resume if interrupted. Once all games are processed the file is deleted and
-    state.json gets store_date_migration_done=True so this never runs again.
+    background migration v10 is marked done so this never runs again.
     """
-    from config import BASE_DIR, load_state, save_state
+    import migration
+    from config import BASE_DIR
 
-    state = load_state()
-    if state.get('store_date_migration_done'):
+    if not migration.needs_background(10):
         return
 
     progress_path = os.path.join(BASE_DIR, 'release_date_migration.json')
@@ -1675,7 +1660,7 @@ def sync_store_release_dates():
     pending = [str(r['appid']) for r in rows if str(r['appid']) not in done_ids]
 
     if not pending:
-        save_state({'store_date_migration_done': True})
+        migration.mark_background_done(10)
         try:
             os.remove(progress_path)
         except FileNotFoundError:
@@ -1733,7 +1718,7 @@ def sync_store_release_dates():
 
     remaining = [a for a in pending if a not in done_ids]
     if not remaining:
-        save_state({'store_date_migration_done': True})
+        migration.mark_background_done(10)
         try:
             os.remove(progress_path)
         except FileNotFoundError:

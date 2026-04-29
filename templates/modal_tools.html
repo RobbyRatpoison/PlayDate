@@ -414,6 +414,25 @@
     .settings-item:hover:not(:disabled) { background: var(--bg-surface); border-color: var(--accent); }
     .settings-item:disabled { opacity: 0.5; cursor: default; }
 
+    .ap-outline-toggle {
+        height: 2.25rem;
+        padding: 0 0.875rem;
+        font-size: 0.82rem;
+        border-radius: 0.375rem;
+        background: #333;
+        border: 1px solid #444;
+        color: white;
+        cursor: pointer;
+        transition: background 0.15s;
+        white-space: nowrap;
+    }
+    .ap-outline-toggle:hover { background: #444; }
+    .ap-outline-toggle.ap-outline-on {
+        background: var(--accent);
+        color: #1b2838;
+        border-color: var(--accent);
+    }
+
     .hltb-slider, #bg-opacity-slider {
         flex: 1;
         min-width: 0;
@@ -460,37 +479,34 @@
 
 <!-- ── SETTINGS MODAL ── -->
 <!-- ── ACCOUNTS MODAL ── -->
-<div id="accounts-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAccountsModal();">
-    <div class="modal-content" style="width:360px; max-height:90vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 style="margin:0; color:var(--text-primary);">Accounts</h2>
-            <button onclick="closeAccountsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+<!-- ── PLUGINS MODAL ── -->
+<div id="plugins-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePluginsModal();">
+    <div class="modal-content" style="width:400px; max-height:90vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h2 style="margin:0; color:var(--text-primary);">Plugins</h2>
+            <button onclick="closePluginsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
-        <div class="hub-section">
-            <div class="hub-section-label">Steam</div>
-            <button class="settings-item" data-modal-row="0" onclick="openAccountModal()">Steam Account</button>
+        <div style="display:flex;gap:8px;margin-bottom:20px;">
+            <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="0"
+                    onclick="document.getElementById('plugin-install-input').click()">Install from Zip</button>
+            <input type="file" id="plugin-install-input" accept=".zip" style="display:none"
+                   onchange="_installPluginFromFile(this)">
+            <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="0"
+                    onclick="_toggleGithubInput()">Install from GitHub</button>
         </div>
-        <div class="hub-section">
-            <div class="hub-section-label">GOG</div>
-            <div style="padding:8px 10px;">
-                <div id="gog-disconnected-ui">
-                    <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:8px;">Connect your GOG account to import your library.</div>
-                    <button class="nav-btn" onclick="gogStartConnect()">Connect GOG Account</button>
-                </div>
-                <div id="gog-connected-ui" style="display:none;">
-                    <div style="font-size:0.85rem; color:var(--text-primary); margin-bottom:8px;">
-                        Connected as <span id="gog-username-label" style="color:var(--accent);"></span>
-                    </div>
-                    <div id="gog-proton-label" style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:8px;"></div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-                        <button class="nav-btn" onclick="gogSync()">Sync Library</button>
-                        <button class="nav-btn" onclick="gogImportDates()">Import Purchase Dates</button>
-                        <button class="nav-btn" onclick="gogDetectDuplicates()">Detect Duplicates</button>
-                        <button class="nav-btn" style="color:var(--text-secondary);" onclick="gogDisconnect()">Disconnect</button>
-                    </div>
-                    <div id="gog-sync-status" class="tool-status"></div>
-                </div>
+        <div id="plugin-github-row" style="display:none;margin-bottom:12px;">
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="plugin-github-url" placeholder="github.com/owner/repo"
+                       style="flex:1;padding:6px 10px;font-size:0.82rem;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);"
+                       onkeydown="if(event.key==='Enter')_installPluginFromGithub()">
+                <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="0"
+                        onclick="_installPluginFromGithub()">Install</button>
             </div>
+        </div>
+        <div id="plugin-install-status" style="display:none;margin-bottom:12px;padding:8px 12px;border-radius:4px;font-size:0.82rem;"></div>
+        <div id="plugins-list-body"></div>
+        <div id="plugins-restart-notice" style="display:none; margin-top:16px; padding:10px 12px; background:rgba(255,165,0,0.12); border:1px solid rgba(255,165,0,0.35); border-radius:4px; font-size:0.82rem; color:#ffa500;">
+            Restart required for changes to take effect.
         </div>
     </div>
 </div>
@@ -506,6 +522,20 @@
             <button class="settings-item" data-modal-row="0" onclick="openBgModal()">Background &amp; Opacity</button>
             <button class="settings-item" data-modal-row="0" onclick="openThemePickerModal()">Theme</button>
             <button class="settings-item" data-modal-row="0" onclick="openThemeModal()">Theme Editor</button>
+        </div>
+        <div class="hub-section">
+            <div class="hub-section-label">Card Outlines</div>
+            <div style="padding:8px 10px;">
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                    <button id="ap-outline-library" class="ap-outline-toggle" onclick="apToggleOutline('library')" data-modal-row="1">Library</button>
+                    <button id="ap-outline-home"    class="ap-outline-toggle" onclick="apToggleOutline('home')"    data-modal-row="1">Home</button>
+                    <button id="ap-outline-pick6"   class="ap-outline-toggle" onclick="apToggleOutline('pick6')"   data-modal-row="1">Pick 6</button>
+                </div>
+                <button onclick="openCardOutlinesModal()" data-modal-row="1"
+                        style="height:2.25rem; padding:0 0.875rem; font-size:0.82rem; border-radius:0.375rem; background:#2a3f55; border:1px solid #3a5f7a; color:#c7d5e0; cursor:pointer; white-space:nowrap;">
+                    Edit Rules
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -533,6 +563,7 @@
                     <ul id="platform-priority-list"></ul>
                     <div style="display:flex; gap:8px; align-items:center;">
                         <button class="nav-btn" data-modal-row="0" onclick="savePlatformPriority()" style="font-size:0.8rem;">Save Order</button>
+                        <button class="nav-btn" data-modal-row="0" onclick="detectDuplicates()" style="font-size:0.8rem;">Detect Duplicates</button>
                         <div id="plat-priority-status" style="font-size:0.78rem; color:#8f98a0; min-height:1em;"></div>
                     </div>
                 </div>
@@ -718,33 +749,6 @@
 
         <div style="margin-top:14px; font-size:0.78rem; color:var(--text-secondary); line-height:1.5;">
             If no controller appears: press any button on the controller to activate the Gamepad API. On Steam Deck desktop mode, add PlayDate as a non-Steam game in Steam — this applies a gamepad layout instead of the default keyboard/mouse desktop layout.
-        </div>
-    </div>
-</div>
-
-<!-- ── GOG CONNECT MODAL ── -->
-<div id="gog-connect-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeGogConnectModal();">
-    <div class="modal-content" style="width:420px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-            <h2 style="margin:0; color:var(--text-primary);">Connect GOG Account</h2>
-            <button onclick="closeGogConnectModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
-        </div>
-        <ol style="font-size:0.85rem; color:var(--text-secondary); padding-left:1.2em; margin:0 0 14px; line-height:1.7;">
-            <li>Click <strong style="color:var(--text-primary);">Open GOG Login</strong> — your browser opens the GOG login page.</li>
-            <li>Log in to your GOG account.</li>
-            <li>You'll land on a blank page — copy the full URL from the address bar and paste it below.</li>
-        </ol>
-        <button class="nav-btn" style="margin-bottom:14px;" onclick="gogOpenAuthUrl()">Open GOG Login</button>
-        <div style="margin-bottom:8px;">
-            <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:3px;">Paste the URL from the address bar</label>
-            <input id="gog-auth-code" type="text" placeholder="https://embed.gog.com/on_login_success?origin=client&code=…"
-                style="width:100%; box-sizing:border-box; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
-                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
-                onkeydown="if(event.key==='Enter') gogSubmitCode()">
-        </div>
-        <div style="display:flex; align-items:center; gap:10px;">
-            <button class="nav-btn" onclick="gogSubmitCode()">Connect</button>
-            <div id="gog-connect-status" class="tool-status" style="margin:0;"></div>
         </div>
     </div>
 </div>
@@ -2178,8 +2182,8 @@ async function pagConfirmSave() {
     // Build verified lookup: {appid_str: [{cat, pool}]}
     const verifiedLookup = {};
     [
-        ..._pagWinsGames.map(g => ({...g, pool: 'wins'})),
-        ..._pagAllGames.map(g => ({...g, pool: 'all'}))
+        ..._pagWinsGames.filter(g => g.in_library).map(g => ({...g, pool: 'wins'})),
+        ..._pagAllGames.filter(g => g.in_library).map(g => ({...g, pool: 'all'}))
     ].forEach(({appid, categories, pool}) => {
         const key = String(appid);
         if (!verifiedLookup[key]) verifiedLookup[key] = [];
@@ -3825,20 +3829,50 @@ function openAccountModal() {
 function closeAccountModal() {
     document.getElementById('account-modal').style.display = 'none';
 }
-function openAccountsModal() {
-    document.getElementById('accounts-modal').style.display = 'flex';
-    _gogRefreshStatus();
-}
-function closeAccountsModal() {
-    document.getElementById('accounts-modal').style.display = 'none';
-}
 function openAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'flex';
+    _apLoadOutlines().then(() => _apSyncOutlineButtons(_apOutlineEnabled));
 }
 function closeAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'none';
 }
-const _PLAT_PRIORITY_LABELS = { steam: 'Steam', gog: 'GOG', epic_games: 'Epic Games', ea_app: 'EA App', ubisoft: 'Ubisoft' };
+
+let _apOutlineEnabled = null;
+
+async function _apLoadOutlines() {
+    if (_apOutlineEnabled !== null) return;
+    try {
+        const r = await fetch('/api/card-outlines').then(r => r.json());
+        if (r.status === 'success') {
+            _apOutlineEnabled = r.card_outlines.enabled || {library: true, home: true, pick6: true};
+        }
+    } catch (e) { /* ignore */ }
+    if (!_apOutlineEnabled) _apOutlineEnabled = {library: true, home: true, pick6: true};
+}
+
+function _apSyncOutlineButtons(enabled) {
+    ['library', 'home', 'pick6'].forEach(k => {
+        const btn = document.getElementById('ap-outline-' + k);
+        if (btn) btn.classList.toggle('ap-outline-on', !!enabled[k]);
+    });
+}
+
+async function apToggleOutline(key) {
+    if (!_apOutlineEnabled) _apOutlineEnabled = {library: true, home: true, pick6: true};
+    _apOutlineEnabled[key] = !_apOutlineEnabled[key];
+    _apSyncOutlineButtons(_apOutlineEnabled);
+    try {
+        const current = await fetch('/api/card-outlines').then(r => r.json());
+        const outlines = current.card_outlines || {};
+        outlines.enabled = _apOutlineEnabled;
+        await fetch('/api/card-outlines', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({card_outlines: outlines}),
+        });
+    } catch (e) { /* ignore */ }
+}
+const _PLAT_PRIORITY_LABELS = window._PLAT_LABELS;
 let _platPriority = {{ platform_priority | tojson }};
 let _platPriorityDragSrc = null, _platPriorityHover = null;
 
@@ -3848,6 +3882,617 @@ function openLibraryModal() {
 }
 function closeLibraryModal() {
     document.getElementById('library-modal').style.display = 'none';
+}
+
+// ── Plugin manage modal system ────────────────────────────────────────────────
+const _manageSpecs = {}; // {plugin_id: {name, spec}}
+
+const _manageOnOpen = {};  // id -> [callbacks] run each time the manage modal opens
+
+function _openManageModal(id) {
+    const entry = _manageSpecs[id];
+    if (!entry) return;
+    let modal = document.getElementById(`${id}-manage-modal`);
+    if (!modal) {
+        const frag = _buildManageModalHtml(id, entry.name, entry.spec);
+        document.body.insertAdjacentHTML('beforeend', frag);
+        modal = document.getElementById(`${id}-manage-modal`);
+    }
+    modal.style.display = 'flex';
+    _manageRefreshAuth(id);
+    _manageLoadLauncherConfig(id);
+    for (const cb of (_manageOnOpen[id] || [])) cb();
+}
+
+function _closeManageModal(id) {
+    const modal = document.getElementById(`${id}-manage-modal`);
+    if (modal) modal.style.display = 'none';
+}
+
+async function _manageRefreshAuth(id) {
+    const entry = _manageSpecs[id];
+    if (!entry) return;
+    for (const section of (entry.spec.sections || [])) {
+        if (!section.auth) continue;
+        try {
+            const r = await fetch(section.auth.endpoint);
+            const d = await r.json();
+            const disconnEl = document.getElementById(`${id}-manage-disconnected`);
+            const connEl    = document.getElementById(`${id}-manage-connected`);
+            const userEl    = document.getElementById(`${id}-manage-username`);
+            if (disconnEl) disconnEl.style.display = d.connected ? 'none' : '';
+            if (connEl)    connEl.style.display    = d.connected ? ''     : 'none';
+            if (userEl)    userEl.textContent       = d.username || '';
+            if (d.connected) _manageLoadInfoBlocks(id, section.auth.connected || []);
+        } catch (_) {}
+    }
+}
+
+async function _manageLoadInfoBlocks(id, items) {
+    let idx = 0;
+    for (const block of items) {
+        if (block.type === 'info_endpoint') {
+            try {
+                const r = await fetch(block.endpoint);
+                const d = await r.json();
+                const el = document.getElementById(`${id}-manage-info-${idx}`);
+                if (el) {
+                    el.textContent = d.text || '';
+                    el.style.color = d.color || 'var(--text-secondary)';
+                }
+            } catch (_) {}
+            idx++;
+        }
+    }
+}
+
+async function _managePost(id, endpoint, onSuccess) {
+    try {
+        await fetch(endpoint, {method: 'POST', headers: {'Content-Type': 'application/json'}});
+        if (onSuccess === 'refresh_auth') _manageRefreshAuth(id);
+    } catch (_) {}
+}
+
+async function _manageLoadLauncherConfig(id) {
+    const wineBinEl   = document.getElementById(`${id}-manage-launcher-wine-bin`);
+    const prefixEl    = document.getElementById(`${id}-manage-launcher-prefix`);
+    const installWrap = document.getElementById(`${id}-manage-launcher-install-wrap`);
+    if (!wineBinEl || !prefixEl) return;
+    try {
+        const r = await fetch(`/api/launcher-config/${encodeURIComponent(id)}`);
+        const d = await r.json();
+        const cfg = d.config || {};
+        wineBinEl.value = cfg.wine_bin || d.wine_bin_detected || '';
+        prefixEl.value  = cfg.prefix   || d.default_prefix || `~/.wine-${id}`;
+        if (installWrap) installWrap.style.display = d.installer_available ? '' : 'none';
+        if (d.installer_available) _manageLauncherInstallResume(id);
+    } catch(_) {}
+}
+
+async function _manageSaveLauncher(id) {
+    const wine_bin = document.getElementById(`${id}-manage-launcher-wine-bin`)?.value.trim();
+    const prefix   = document.getElementById(`${id}-manage-launcher-prefix`)?.value.trim();
+    const msgEl    = document.getElementById(`${id}-manage-launcher-msg`);
+    try {
+        const r = await fetch(`/api/launcher-config/${encodeURIComponent(id)}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({wine_bin, prefix, mode: 'wine'}),
+        });
+        const d = await r.json();
+        if (msgEl) {
+            msgEl.style.display = '';
+            msgEl.style.color   = d.status === 'success' ? '#6dc46d' : '#c74747';
+            msgEl.textContent   = d.status === 'success' ? 'Saved.' : (d.message || 'Save failed.');
+            setTimeout(() => { msgEl.style.display = 'none'; }, 2000);
+        }
+    } catch(e) {
+        if (msgEl) { msgEl.style.display = ''; msgEl.style.color = '#c74747'; msgEl.textContent = 'Save failed.'; }
+    }
+}
+
+async function _manageRecheckLauncher(id) {
+    const msgEl = document.getElementById(`${id}-manage-launcher-msg`);
+    if (msgEl) { msgEl.style.display = ''; msgEl.style.color = 'var(--text-secondary)'; msgEl.textContent = 'Checking...'; }
+    try {
+        const r = await fetch(`/api/plugins/launcher-status/${encodeURIComponent(id)}`, {method: 'POST'});
+        const d = await r.json();
+        if (msgEl && d.status === 'success') {
+            const ls = d.launcher_status;
+            msgEl.style.display = '';
+            msgEl.style.color   = ls.available ? '#6dc46d' : '#ffa500';
+            msgEl.textContent   = ls.available ? 'Launcher ready.' : (ls.detail || 'Launcher unavailable.');
+        }
+    } catch(e) {
+        if (msgEl) { msgEl.style.display = ''; msgEl.style.color = '#c74747'; msgEl.textContent = 'Check failed.'; }
+    }
+}
+
+const _launcherInstallPolls = {};
+
+async function _manageLauncherInstall(id) {
+    const stEl = document.getElementById(`${id}-manage-launcher-install-status`);
+    if (stEl) { stEl.style.color = 'var(--text-secondary)'; stEl.textContent = 'Starting...'; }
+    const wine_bin = document.getElementById(`${id}-manage-launcher-wine-bin`)?.value.trim() || '';
+    const prefix   = document.getElementById(`${id}-manage-launcher-prefix`)?.value.trim() || '';
+    try {
+        const r = await fetch(`/api/launcher-install/${encodeURIComponent(id)}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({wine_bin, prefix}),
+        });
+        const d = await r.json();
+        if (d.status === 'error') {
+            if (stEl) { stEl.style.color = 'var(--text-danger)'; stEl.textContent = d.message || 'Failed to start.'; }
+            return;
+        }
+    } catch (e) {
+        if (stEl) { stEl.style.color = 'var(--text-danger)'; stEl.textContent = `Error: ${e.message}`; }
+        return;
+    }
+    _manageLauncherInstallPoll(id);
+}
+
+function _manageLauncherInstallResume(id) {
+    fetch(`/api/launcher-install/${encodeURIComponent(id)}/status`)
+        .then(r => r.json())
+        .then(d => {
+            if (d.phase && !d.done && !d.error) _manageLauncherInstallPoll(id);
+        })
+        .catch(() => {});
+}
+
+function _manageLauncherInstallPoll(id) {
+    if (_launcherInstallPolls[id]) return;
+    const stEl = document.getElementById(`${id}-manage-launcher-install-status`);
+    _launcherInstallPolls[id] = setInterval(async () => {
+        try {
+            const r = await fetch(`/api/launcher-install/${encodeURIComponent(id)}/status`);
+            const d = await r.json();
+            if (stEl) {
+                if (d.error) {
+                    stEl.style.color = 'var(--text-danger)';
+                    stEl.textContent = d.error;
+                } else {
+                    stEl.style.color = d.done ? 'var(--accent-positive, #5c7e10)' : 'var(--text-secondary)';
+                    stEl.textContent = d.detail || d.phase || '';
+                }
+            }
+            if (d.done || d.error) {
+                clearInterval(_launcherInstallPolls[id]);
+                delete _launcherInstallPolls[id];
+                if (d.done) setTimeout(() => location.reload(), 1500);
+            }
+        } catch (_) {}
+    }, 1500);
+}
+
+function _manageOpenUrl(url) {
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function _manageOpenOauth(id) {
+    const modal = document.getElementById(`${id}-manage-oauth-modal`);
+    if (!modal) return;
+    document.getElementById(`${id}-manage-oauth-input`).value = '';
+    document.getElementById(`${id}-manage-oauth-status`).textContent = '';
+    modal.style.display = 'flex';
+}
+
+function _closeManageOauth(id) {
+    const modal = document.getElementById(`${id}-manage-oauth-modal`);
+    if (modal) modal.style.display = 'none';
+}
+
+async function _manageOauthOpenUrl(id) {
+    const entry = _manageSpecs[id];
+    if (!entry) return;
+    let urlEndpoint = null;
+    for (const section of (entry.spec.sections || [])) {
+        for (const block of (section.auth ? section.auth.disconnected : section.items || [])) {
+            if (block.type === 'button' && block.action && block.action.type === 'oauth_paste') {
+                urlEndpoint = block.action.url_endpoint;
+            }
+        }
+    }
+    if (!urlEndpoint) return;
+    try {
+        const r = await fetch(urlEndpoint);
+        const d = await r.json();
+        _manageOpenUrl(d.url);
+    } catch (e) {
+        const st = document.getElementById(`${id}-manage-oauth-status`);
+        if (st) st.textContent = 'Failed to get auth URL';
+    }
+}
+
+async function _manageOauthSubmit(id) {
+    const entry = _manageSpecs[id];
+    if (!entry) return;
+    let callbackEndpoint = null;
+    for (const section of (entry.spec.sections || [])) {
+        for (const block of (section.auth ? section.auth.disconnected : section.items || [])) {
+            if (block.type === 'button' && block.action && block.action.type === 'oauth_paste') {
+                callbackEndpoint = block.action.callback_endpoint;
+            }
+        }
+    }
+    if (!callbackEndpoint) return;
+    const input = document.getElementById(`${id}-manage-oauth-input`);
+    const st    = document.getElementById(`${id}-manage-oauth-status`);
+    const code  = input ? input.value.trim() : '';
+    if (!code) return;
+    if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = 'Connecting...'; }
+    try {
+        const r = await fetch(callbackEndpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code}),
+        });
+        const d = await r.json();
+        if (d.status === 'success') {
+            if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `Connected as ${escHtml(d.username || 'unknown')}`; }
+            setTimeout(() => { _closeManageOauth(id); _manageRefreshAuth(id); }, 1200);
+        } else {
+            if (st) { st.style.color = 'var(--text-danger)'; st.textContent = d.message || 'Connection failed'; }
+        }
+    } catch (e) {
+        if (st) { st.style.color = 'var(--text-danger)'; st.textContent = 'Network error'; }
+    }
+}
+
+function _buildManageBlockHtml(id, block, infoIdx) {
+    const eid = escHtml(id);
+    switch (block.type) {
+        case 'text':
+            return `<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">${escHtml(block.content)}</div>`;
+        case 'connected_label':
+            return `<div style="font-size:0.85rem;color:var(--text-primary);margin-bottom:8px;">Connected as <span id="${eid}-manage-username" style="color:var(--accent);"></span></div>`;
+        case 'info_endpoint':
+            return `<div id="${eid}-manage-info-${infoIdx}" style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:8px;"></div>`;
+        case 'button': {
+            const a = block.action || {};
+            let onclick = '';
+            if (a.type === 'call')       onclick = `${escHtml(a.fn)}()`;
+            else if (a.type === 'open_url')   onclick = `_manageOpenUrl(${JSON.stringify(a.url)})`;
+            else if (a.type === 'oauth_paste') onclick = `_manageOpenOauth('${eid}')`;
+            else if (a.type === 'post')        onclick = `_managePost('${eid}',${JSON.stringify(a.endpoint)},${JSON.stringify(a.on_success || '')})`;
+            const muted = block.variant === 'muted' ? ' style="color:var(--text-secondary);"' : '';
+            return `<button class="nav-btn"${muted} onclick="${escHtml(onclick)}">${escHtml(block.label)}</button>`;
+        }
+        case 'buttons': {
+            const btns = (block.items || []).map(btn => {
+                const a = btn.action || {};
+                let onclick = '';
+                if (a.type === 'call')        onclick = `${escHtml(a.fn)}()`;
+                else if (a.type === 'open_url')    onclick = `_manageOpenUrl(${JSON.stringify(a.url)})`;
+                else if (a.type === 'post')         onclick = `_managePost('${eid}',${JSON.stringify(a.endpoint)},${JSON.stringify(a.on_success || '')})`;
+                const muted = btn.variant === 'muted' ? ' style="color:var(--text-secondary);"' : '';
+                return `<button class="nav-btn"${muted} onclick="${escHtml(onclick)}">${escHtml(btn.label)}</button>`;
+            }).join('');
+            return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">${btns}</div>`;
+        }
+        case 'status_output':
+            return `<div id="${eid}-manage-status-${escHtml(block.key)}" class="tool-status"></div>`;
+        case 'launcher_config': {
+            const inputStyle = 'width:100%;box-sizing:border-box;margin-top:3px;padding:5px 8px;font-size:0.8rem;background:var(--bg-input);border:1px solid var(--border);border-radius:3px;color:var(--text-primary);';
+            return `<div style="display:flex;flex-direction:column;gap:8px;">
+            <label style="display:block;color:var(--text-primary);font-size:0.82rem;">Wine binary
+                <input type="text" id="${eid}-manage-launcher-wine-bin" style="${inputStyle}" placeholder="e.g. /usr/bin/wine64">
+            </label>
+            <label style="display:block;color:var(--text-primary);font-size:0.82rem;">Wine prefix path
+                <input type="text" id="${eid}-manage-launcher-prefix" style="${inputStyle}" placeholder="e.g. ~/.wine-${eid}">
+            </label>
+            <div id="${eid}-manage-launcher-msg" style="display:none;font-size:0.78rem;"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="0" onclick="_manageSaveLauncher('${eid}')">Save</button>
+                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="0" onclick="_manageRecheckLauncher('${eid}')">Re-check status</button>
+            </div>
+            <div id="${eid}-manage-launcher-install-wrap" style="display:none;">
+                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="0" onclick="_manageLauncherInstall('${eid}')">Install launcher</button>
+                <div id="${eid}-manage-launcher-install-status" class="tool-status" style="margin-top:6px;"></div>
+            </div>
+        </div>`;
+        }
+    }
+    return '';
+}
+
+function _buildManageSectionItems(id, items) {
+    let html = '';
+    let infoIdx = 0;
+    for (const block of (items || [])) {
+        html += _buildManageBlockHtml(id, block, infoIdx);
+        if (block.type === 'info_endpoint') infoIdx++;
+    }
+    return html;
+}
+
+function _buildManageOauthHtml(id, action) {
+    const eid  = escHtml(id);
+    const instructions = (action.instructions || []).map((s, i) => `<li>${s}</li>`).join('');
+    const closeStyle = 'background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;';
+    return `
+<div id="${eid}-manage-oauth-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)_closeManageOauth('${eid}')">
+  <div class="modal-content" style="width:420px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 style="margin:0;color:var(--text-primary);">${escHtml(action.title || 'Connect')}</h2>
+      <button onclick="_closeManageOauth('${eid}')" style="${closeStyle}">&#x2715;</button>
+    </div>
+    <ol style="font-size:0.85rem;color:var(--text-secondary);padding-left:1.2em;margin:0 0 14px;line-height:1.7;">${instructions}</ol>
+    <button class="nav-btn" style="margin-bottom:14px;" onclick="_manageOauthOpenUrl('${eid}')">${escHtml(action.open_label || 'Open Login')}</button>
+    <div style="margin-bottom:8px;">
+      <label style="font-size:0.78rem;color:var(--text-secondary);display:block;margin-bottom:3px;">Paste the URL from the address bar</label>
+      <input id="${eid}-manage-oauth-input" type="text" placeholder="${escHtml(action.input_placeholder || '')}"
+        style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:0.85rem;outline:none;"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')_manageOauthSubmit('${eid}')">
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="nav-btn" onclick="_manageOauthSubmit('${eid}')">${escHtml(action.submit_label || 'Connect')}</button>
+      <div id="${eid}-manage-oauth-status" class="tool-status" style="margin:0;"></div>
+    </div>
+  </div>
+</div>`;
+}
+
+function _buildManageModalHtml(id, name, spec) {
+    const eid = escHtml(id);
+    const closeStyle = 'background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;';
+    let sectionsHtml = '';
+    let oauthHtml    = '';
+
+    for (const section of (spec.sections || [])) {
+        let bodyHtml = '';
+        if (section.auth) {
+            const disconnHtml = _buildManageSectionItems(id, section.auth.disconnected);
+            const connHtml    = _buildManageSectionItems(id, section.auth.connected);
+            bodyHtml = `
+      <div id="${eid}-manage-disconnected"><div style="padding:8px 10px;">${disconnHtml}</div></div>
+      <div id="${eid}-manage-connected" style="display:none;"><div style="padding:8px 10px;">${connHtml}</div></div>`;
+
+            for (const block of (section.auth.disconnected || [])) {
+                if (block.type === 'button' && block.action && block.action.type === 'oauth_paste') {
+                    oauthHtml += _buildManageOauthHtml(id, block.action);
+                }
+            }
+        } else {
+            bodyHtml = `<div style="padding:8px 10px;">${_buildManageSectionItems(id, section.items)}</div>`;
+        }
+
+        const titleHtml = section.title
+            ? `<div class="hub-section-label">${escHtml(section.title)}</div>`
+            : '';
+        sectionsHtml += `<div class="hub-section">${titleHtml}${bodyHtml}</div>`;
+    }
+
+    return `
+<div id="${eid}-manage-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)_closeManageModal('${eid}')">
+  <div class="modal-content" style="width:380px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h2 style="margin:0;color:var(--text-primary);">${escHtml(name)}</h2>
+      <button onclick="_closeManageModal('${eid}')" style="${closeStyle}">&#x2715;</button>
+    </div>
+    ${sectionsHtml}
+  </div>
+</div>
+${oauthHtml}`;
+}
+
+function openPluginsModal() {
+    document.getElementById('plugins-modal').style.display = 'flex';
+    _renderPluginsList().then(() => _checkPluginUpdates());
+}
+function closePluginsModal() {
+    document.getElementById('plugins-modal').style.display = 'none';
+    document.getElementById('plugin-install-status').style.display = 'none';
+    document.getElementById('plugin-github-row').style.display = 'none';
+    document.getElementById('plugin-github-url').value = '';
+}
+function _toggleGithubInput() {
+    const row = document.getElementById('plugin-github-row');
+    const visible = row.style.display !== 'none';
+    row.style.display = visible ? 'none' : '';
+    if (!visible) document.getElementById('plugin-github-url').focus();
+}
+
+async function _renderPluginsList() {
+    const body = document.getElementById('plugins-list-body');
+    body.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">Loading...</div>';
+    try {
+        const [pluginsResp, statusResp] = await Promise.all([
+            fetch('/api/plugins'),
+            fetch('/api/plugins/launcher-status'),
+        ]);
+        const plugins = await pluginsResp.json();
+        const launcherStatus = await statusResp.json();
+        if (!plugins.length) {
+            body.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">No plugins installed.</div>';
+            return;
+        }
+        body.innerHTML = plugins.map(p => {
+            const needsLauncher = p.launcher && p.launcher.required;
+            const lstatus = launcherStatus[p.platform];
+            let launcherBadge = '';
+            if (needsLauncher) {
+                if (!lstatus) {
+                    launcherBadge = `<div style="margin-top:6px;font-size:0.78rem;color:#ffa500;">&#9888; Launcher not yet checked</div>`;
+                } else if (lstatus.available) {
+                    launcherBadge = `<div style="margin-top:6px;font-size:0.78rem;color:#6dc46d;">&#10003; Launcher ready</div>`;
+                } else {
+                    launcherBadge = `<div style="margin-top:6px;font-size:0.78rem;color:#ffa500;">&#9888; ${escHtml(lstatus.detail || 'Launcher unavailable')}</div>`;
+                }
+            }
+            if (p.manage_ui) _manageSpecs[p.id] = {name: p.name, spec: p.manage_ui};
+            const manageBtn = p.manage_ui
+                ? `<button class="nav-btn" style="font-size:0.78rem;flex-shrink:0;margin-left:8px;" data-modal-row="0" onclick="_openManageModal('${escHtml(p.id)}')">Manage</button>`
+                : '';
+            return `
+            <div class="hub-section" id="plugin-row-${escHtml(p.id)}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div>
+                        <div style="font-size:0.95rem;color:var(--text-primary);font-weight:600;">${escHtml(p.name)}</div>
+                        <div style="font-size:0.75rem;color:#8f98a0;margin-top:2px;">v${escHtml(p.version)} &middot; platform: ${escHtml(p.platform)} &middot; ${p.game_count} game${p.game_count !== 1 ? 's' : ''}${p.source ? `<span id="plugin-update-${escHtml(p.id)}"></span>` : ''}</div>
+                    </div>
+                    <div style="display:flex;flex-shrink:0;margin-left:12px;gap:6px;">
+                        ${manageBtn}
+                        <button class="nav-btn" style="font-size:0.78rem;"
+                                data-modal-row="0"
+                                onclick="_showUninstallConfirm('${escHtml(p.id)}',${p.game_count},this)">
+                            Uninstall
+                        </button>
+                    </div>
+                </div>
+                ${launcherBadge}
+                <div id="plugin-confirm-${escHtml(p.id)}" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(199,71,71,0.1);border:1px solid rgba(199,71,71,0.3);border-radius:4px;font-size:0.82rem;">
+                    <div style="color:var(--text-primary);margin-bottom:8px;">Delete the <strong>${escHtml(p.name)}</strong> plugin folder?</div>
+                    ${p.game_count > 0 ? `
+                    <label style="display:flex;align-items:center;gap:8px;color:var(--text-primary);cursor:pointer;margin-bottom:8px;">
+                        <input type="checkbox" id="uninstall-rm-games-${escHtml(p.id)}" style="width:auto;margin:0;">
+                        Also remove ${p.game_count} game${p.game_count !== 1 ? 's' : ''} from library
+                    </label>` : ''}
+                    ${p.launcher && p.launcher.required ? `
+                    <label style="display:flex;align-items:center;gap:8px;color:var(--text-primary);cursor:pointer;margin-bottom:8px;">
+                        <input type="checkbox" id="uninstall-rm-launcher-${escHtml(p.id)}" style="width:auto;margin:0;" checked>
+                        Also delete launcher and installed games
+                    </label>` : ''}
+                    <div style="display:flex;gap:8px;">
+                        <button class="nav-btn" style="font-size:0.78rem;background:rgba(199,71,71,0.8);border-color:rgba(199,71,71,0.8);" data-modal-row="0"
+                                onclick="_doUninstallPlugin('${escHtml(p.id)}',${p.game_count})">Confirm</button>
+                        <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="0"
+                                onclick="_hideUninstallConfirm('${escHtml(p.id)}')">Cancel</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) {
+        body.innerHTML = '<div style="color:#c74747;font-size:0.85rem;">Failed to load plugins.</div>';
+    }
+}
+
+function _showUninstallConfirm(id, gameCount, btn) {
+    document.getElementById(`plugin-confirm-${id}`).style.display = '';
+    btn.style.display = 'none';
+}
+function _hideUninstallConfirm(id) {
+    document.getElementById(`plugin-confirm-${id}`).style.display = 'none';
+    const row = document.getElementById(`plugin-row-${id}`);
+    if (row) row.querySelector('.nav-btn').style.display = '';
+}
+
+async function _doUninstallPlugin(id, gameCount) {
+    const removeGames = gameCount > 0 && document.getElementById(`uninstall-rm-games-${id}`)?.checked;
+    const removeLauncher = document.getElementById(`uninstall-rm-launcher-${id}`)?.checked || false;
+    try {
+        const r = await fetch(`/api/plugins/${encodeURIComponent(id)}/uninstall`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({remove_games: removeGames, remove_launcher: removeLauncher}),
+        });
+        const d = await r.json();
+        if (d.status === 'success') {
+            const row = document.getElementById(`plugin-row-${id}`);
+            if (row) row.innerHTML = `<div style="font-size:0.85rem;color:#8f98a0;">${escHtml(id)} uninstalled.</div>`;
+            document.getElementById('plugins-restart-notice').style.display = '';
+        } else {
+            alert(d.message || 'Uninstall failed.');
+        }
+    } catch(e) {
+        alert('Uninstall failed.');
+    }
+}
+
+async function _installPluginFromFile(input) {
+    const file = input.files[0];
+    input.value = '';
+    if (!file) return;
+    _showPluginStatus(`Installing ${escHtml(file.name)}...`, 'loading');
+    const formData = new FormData();
+    formData.append('plugin_file', file);
+    try {
+        const r = await fetch('/api/plugins/install', { method: 'POST', body: formData });
+        const d = await r.json();
+        if (d.status === 'success') {
+            _showPluginStatus(`${escHtml(d.name)} installed. Restart to load it.`, 'success');
+            document.getElementById('plugins-restart-notice').style.display = '';
+        } else {
+            _showPluginStatus(d.message || 'Install failed.', 'error');
+        }
+    } catch(e) {
+        _showPluginStatus('Install failed.', 'error');
+    }
+}
+
+function _showPluginStatus(msg, type) {
+    const statusEl = document.getElementById('plugin-install-status');
+    statusEl.style.display = '';
+    const styles = {
+        loading: ['rgba(100,100,100,0.15)', '1px solid rgba(100,100,100,0.3)', 'var(--text-secondary)'],
+        success: ['rgba(100,200,100,0.1)',  '1px solid rgba(100,200,100,0.3)', '#6dc46d'],
+        error:   ['rgba(199,71,71,0.1)',    '1px solid rgba(199,71,71,0.3)',   '#c74747'],
+    };
+    const [bg, border, color] = styles[type] || styles.loading;
+    statusEl.style.background = bg;
+    statusEl.style.border = border;
+    statusEl.style.color = color;
+    statusEl.textContent = msg;
+}
+
+async function _doGithubInstall(url) {
+    _showPluginStatus('Fetching release from GitHub...', 'loading');
+    try {
+        const r = await fetch('/api/plugins/install-from-github', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url}),
+        });
+        const d = await r.json();
+        if (d.status === 'success') {
+            _showPluginStatus(`${escHtml(d.name)} (${escHtml(d.tag)}) installed. Restart to load it.`, 'success');
+            document.getElementById('plugins-restart-notice').style.display = '';
+        } else {
+            _showPluginStatus(d.message || 'Install failed.', 'error');
+        }
+    } catch(e) {
+        _showPluginStatus('Install failed.', 'error');
+    }
+}
+
+async function _installPluginFromGithub() {
+    const url = document.getElementById('plugin-github-url').value.trim();
+    if (!url) return;
+    document.getElementById('plugin-github-row').style.display = 'none';
+    document.getElementById('plugin-github-url').value = '';
+    await _doGithubInstall(url);
+}
+
+async function _updatePlugin(id, source) {
+    const updateEl = document.getElementById(`plugin-update-${id}`);
+    if (updateEl) updateEl.textContent = ' · updating...';
+    await _doGithubInstall(source.replace('github:', ''));
+    await _renderPluginsList();
+    _checkPluginUpdates();
+}
+
+async function _checkPluginUpdates() {
+    try {
+        const r = await fetch('/api/plugins/check-updates');
+        const updates = await r.json();
+        let anyUpdate = false;
+        for (const u of updates) {
+            if (u.update_available) {
+                anyUpdate = true;
+                const el = document.getElementById(`plugin-update-${u.id}`);
+                if (el) el.innerHTML = ` &middot; <a href="#" style="color:var(--accent);" onclick="event.preventDefault();_updatePlugin('${escHtml(u.id)}','${escHtml(u.source || '')}')">v${escHtml(u.latest_version)} available</a>`;
+            }
+        }
+        if (anyUpdate) {
+            document.getElementById('update-dot')?.classList.add('visible');
+            document.getElementById('plugin-update-dot')?.style.setProperty('visibility', 'visible');
+        }
+    } catch(e) { /* silent */ }
 }
 
 function _renderPlatformPriorityList() {
@@ -3930,7 +4575,7 @@ async function savePlatformPriority() {
         if (!r1.ok) { status.textContent = '✘ Save failed'; return; }
         _platPriority = order;
         status.textContent = 'Redetecting…';
-        const r2 = await fetch('/api/gog/detect-duplicates', { method: 'POST' });
+        const r2 = await fetch('/api/detect-duplicates', { method: 'POST' });
         const d = await r2.json();
         if (r2.ok) {
             status.textContent = `Saved — ${d.detected ?? 0} duplicate${d.detected !== 1 ? 's' : ''} detected`;
@@ -3942,6 +4587,23 @@ async function savePlatformPriority() {
         status.textContent = '✘ Error: ' + e.message;
     }
 }
+async function detectDuplicates() {
+    const status = document.getElementById('plat-priority-status');
+    status.textContent = 'Detecting…';
+    try {
+        const r = await fetch('/api/detect-duplicates', { method: 'POST' });
+        const d = await r.json();
+        if (r.ok) {
+            status.textContent = `${d.detected ?? 0} duplicate${d.detected !== 1 ? 's' : ''} detected`;
+            if ((d.detected ?? 0) > 0) setTimeout(() => window.location.reload(), 1200);
+        } else {
+            status.textContent = '✘ Detection failed';
+        }
+    } catch (e) {
+        status.textContent = '✘ Error: ' + e.message;
+    }
+}
+
 function openCommunityModal() {
     document.getElementById('community-modal').style.display = 'flex';
 }
@@ -4087,210 +4749,7 @@ function _gpdStopPoll() {
     if (_gpdRafId) { cancelAnimationFrame(_gpdRafId); _gpdRafId = null; }
 }
 
-// ── GOG ────────────────────────────────────────────────────────────────────
-
-async function _gogRefreshStatus() {
-    try {
-        const r = await fetch('/api/gog/status');
-        const d = await r.json();
-        document.getElementById('gog-disconnected-ui').style.display = d.connected ? 'none' : '';
-        document.getElementById('gog-connected-ui').style.display    = d.connected ? ''     : 'none';
-        if (d.connected) {
-            document.getElementById('gog-username-label').textContent = d.username || '(unknown)';
-            // Resume polling if a metadata sync is already in progress
-            const st = document.getElementById('gog-sync-status');
-            try {
-                const sr = await fetch('/api/gog/sync-metadata/status');
-                const sd = await sr.json();
-                if (sd.running) {
-                    st.style.color = 'var(--text-secondary)';
-                    st.textContent = _gogMetaStatusText(sd);
-                    _gogStartMetaPoll(st, (fd) => {
-                        if (fd.updated > 0 || fd.deleted > 0) setTimeout(() => location.reload(), 2000);
-                    });
-                } else {
-                    st.textContent = '';
-                }
-            } catch (_) { st.textContent = ''; }
-            // Show which runner will be used for Windows games
-            try {
-                const pr = await fetch('/api/gog/proton-versions');
-                const pd = await pr.json();
-                const lbl = document.getElementById('gog-proton-label');
-                lbl.style.color = '';
-                if (pd.platform === 'Windows') {
-                    lbl.textContent = 'Windows games run natively';
-                } else if (pd.versions && pd.versions.length > 0) {
-                    lbl.textContent = `Runner: ${pd.versions[0].name}`;
-                } else {
-                    lbl.textContent = 'No Proton found — Windows games will not run';
-                    lbl.style.color = 'var(--text-danger)';
-                }
-            } catch (_) {}
-        }
-    } catch (_) {}
-}
-
-async function gogStartConnect() {
-    document.getElementById('gog-auth-code').value = '';
-    document.getElementById('gog-connect-status').textContent = '';
-    document.getElementById('gog-connect-modal').style.display = 'flex';
-}
-
-function closeGogConnectModal() {
-    document.getElementById('gog-connect-modal').style.display = 'none';
-}
-
-async function gogOpenAuthUrl() {
-    try {
-        const r = await fetch('/api/gog/auth-url');
-        const d = await r.json();
-        // Open in system browser via pywebview API, same pattern as other external links
-        const a = document.createElement('a');
-        a.href = d.url; a.target = '_blank';
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    } catch (e) {
-        document.getElementById('gog-connect-status').textContent = 'Failed to get auth URL';
-    }
-}
-
-async function gogSubmitCode() {
-    const code = document.getElementById('gog-auth-code').value.trim();
-    if (!code) return;
-    const st = document.getElementById('gog-connect-status');
-    st.textContent = 'Connecting...';
-    st.style.color = 'var(--text-secondary)';
-    try {
-        const r = await fetch('/api/gog/callback', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code }),
-        });
-        const d = await r.json();
-        if (d.status === 'success') {
-            st.style.color = 'var(--accent-positive, #5c7e10)';
-            st.textContent = `Connected as ${d.username || 'unknown'}`;
-            setTimeout(() => {
-                closeGogConnectModal();
-            }, 1200);
-        } else {
-            st.style.color = 'var(--text-danger)';
-            st.textContent = d.message || 'Connection failed';
-        }
-    } catch (e) {
-        st.style.color = 'var(--text-danger)';
-        st.textContent = 'Network error';
-    }
-}
-
-let _gogMetaPollInterval = null;
-
-function _gogMetaStatusText(d, prefix) {
-    if (d.running) {
-        const pct = d.total > 0 ? ` (${d.done}/${d.total})` : '';
-        return `${prefix || 'Fetching metadata...'}${pct}`;
-    }
-    const parts = [`${d.updated} updated`];
-    if (d.deleted > 0) parts.push(`${d.deleted} non-game${d.deleted !== 1 ? 's' : ''} removed`);
-    if (d.errors  > 0) parts.push(`${d.errors} error${d.errors !== 1 ? 's' : ''}`);
-    return `Done — ${parts.join(', ')}`;
-}
-
-function _gogStartMetaPoll(st, onDone) {
-    if (_gogMetaPollInterval) return;
-    _gogMetaPollInterval = setInterval(async () => {
-        try {
-            const r = await fetch('/api/gog/sync-metadata/status');
-            const d = await r.json();
-            if (st) {
-                st.style.color = d.running ? 'var(--text-secondary)' : 'var(--accent-positive, #5c7e10)';
-                st.textContent  = _gogMetaStatusText(d);
-            }
-            if (!d.running) {
-                clearInterval(_gogMetaPollInterval);
-                _gogMetaPollInterval = null;
-                if (onDone) onDone(d);
-            }
-        } catch (_) {}
-    }, 1000);
-}
-
-async function gogSync() {
-    const st = document.getElementById('gog-sync-status');
-    st.style.color = 'var(--text-secondary)';
-    st.textContent = 'Syncing library...';
-    let newGames = 0, totalGames = 0, newDupes = 0;
-    try {
-        const r = await fetch('/api/gog/sync', { method: 'POST' });
-        const d = await r.json();
-        if (d.status !== 'success') {
-            st.style.color = 'var(--text-danger)';
-            st.textContent = d.message || 'Sync failed';
-            return;
-        }
-        newGames   = d.new_games;
-        totalGames = d.total_games;
-        newDupes   = d.duplicates_detected || 0;
-    } catch (e) {
-        st.style.color = 'var(--text-danger)';
-        st.textContent = 'Network error';
-        return;
-    }
-
-    st.style.color = 'var(--text-secondary)';
-    st.textContent = `Library synced (${newGames} new). Fetching metadata...`;
-    const _jsonHdr = { 'Content-Type': 'application/json' };
-    await fetch('/api/gog/sync-metadata', { method: 'POST', headers: _jsonHdr, body: JSON.stringify({ force: false }) });
-    _gogStartMetaPoll(st, (d) => {
-        const parts = [`${newGames} new game${newGames !== 1 ? 's' : ''} (${totalGames} total)`, `${d.updated} metadata updated`];
-        if (d.deleted > 0) parts.push(`${d.deleted} non-game${d.deleted !== 1 ? 's' : ''} removed`);
-        if (newDupes > 0) parts.push(`${newDupes} duplicate${newDupes !== 1 ? 's' : ''} detected`);
-        st.textContent = `Done — ${parts.join(', ')}`;
-        if (newGames > 0 || d.updated > 0 || d.deleted > 0) setTimeout(() => location.reload(), 2000);
-    });
-}
-
-async function gogSyncMetadata() {
-    const st = document.getElementById('gog-sync-status');
-    st.style.color = 'var(--text-secondary)';
-    st.textContent = 'Fetching metadata...';
-    await fetch('/api/gog/sync-metadata', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }) });
-    _gogStartMetaPoll(st, (d) => {
-        if (d.updated > 0 || d.deleted > 0) setTimeout(() => location.reload(), 2000);
-    });
-}
-
-function gogImportDates() {
-    // Open the GOG orders page with ?ref=playdate — the Tampermonkey script
-    // activates there, scrapes all order history, and POSTs dates to PlayDate.
-    const a = document.createElement('a');
-    a.href   = 'https://www.gog.com/en/account/settings/orders?ref=playdate';
-    a.target = '_blank';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-}
-
-async function gogDetectDuplicates() {
-    const status = document.getElementById('gog-sync-status');
-    if (status) status.textContent = 'Detecting duplicates…';
-    try {
-        const r = await fetch('/api/gog/detect-duplicates', { method: 'POST' });
-        const d = await r.json();
-        if (status) {
-            status.textContent = d.status === 'ok'
-                ? `Done — ${d.detected} duplicate${d.detected !== 1 ? 's' : ''} detected`
-                : `Error: ${d.message}`;
-        }
-    } catch (e) {
-        if (status) status.textContent = `Error: ${e.message}`;
-    }
-}
-
-async function gogDisconnect() {
-    await fetch('/api/gog/disconnect', { method: 'POST' });
-    _gogRefreshStatus();
-}
+{% for _t in plugin_fragments('tools_scripts') %}{% include _t %}{% endfor %}
 function openFilterIoModal() {
     document.getElementById('filter-io-modal').style.display = 'flex';
     document.getElementById('filter-export-status').textContent = '';
