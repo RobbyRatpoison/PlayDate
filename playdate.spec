@@ -22,6 +22,10 @@ datas = [
 
     # Static assets (CSS, JS, images, backgrounds, favicon)
     (os.path.join(ROOT, 'static'), 'static'),
+
+    # Plugin data files (plugin.json, assets, etc.) — Python code is bundled
+    # separately but the directory must exist on disk for load_all() to scan it
+    (os.path.join(ROOT, 'plugins'), 'plugins'),
 ]
 
 # Pull in any data files that flask, jinja2, waitress etc need

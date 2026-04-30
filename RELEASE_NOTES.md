@@ -1,5 +1,13 @@
 # Release Notes
 
+## v1.5.1 — 2026-04-30
+
+### Fixes
+
+- Fixed a crash on startup when the plugins folder was missing, which affected fresh installs and users who had downgraded.
+
+---
+
 ## v1.5.0 — 2026-04-29
 
 ### Plugins

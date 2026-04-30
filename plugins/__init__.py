@@ -14,6 +14,8 @@ _plugin_manifests: dict = {}
 def load_all(app):
     """Discover and register all plugins found in this directory."""
     plugins_dir = os.path.dirname(os.path.abspath(__file__))
+    if not os.path.isdir(plugins_dir):
+        return
     for entry in sorted(os.listdir(plugins_dir)):
         plugin_path    = os.path.join(plugins_dir, entry)
         manifest_path  = os.path.join(plugin_path, 'plugin.json')
