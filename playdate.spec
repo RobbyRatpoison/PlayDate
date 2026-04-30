@@ -71,6 +71,19 @@ hiddenimports = [
     'scrapers',
     'utils',
 
+    # runners package
+    'runners',
+    'runners.launcher_installer',
+    'runners.oauth2',
+    'runners.proton',
+    'runners.watcher',
+    'runners.wine',
+
+    # watchdog — lazy-imported in watcher.py and utils.py; needed for filesystem watching
+    'watchdog',
+    'watchdog.observers',
+    'watchdog.events',
+
     # Common stdlib / third-party used at runtime
     'sqlite3',
     'json',
