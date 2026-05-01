@@ -524,6 +524,21 @@
             <button class="settings-item" data-modal-row="0" onclick="openThemeModal()">Theme Editor</button>
         </div>
         <div class="hub-section">
+            <div class="hub-section-label">UI Scale</div>
+            <div style="padding:8px 10px;">
+                <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px;">Increase if text looks small on a high-DPI display.</div>
+                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                    <input type="range" id="ui-scale-slider" min="75" max="150" step="5" value="{{ ui_scale }}"
+                        oninput="_onUiScaleSlider(this)"
+                        class="hltb-slider">
+                    <span id="ui-scale-val" style="font-size:0.85rem; color:var(--text-primary); min-width:36px; text-align:right; flex-shrink:0;">{{ ui_scale }}%</span>
+                </div>
+                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="1" onclick="saveUiScale()">Save</button>
+                <button class="nav-btn" style="margin-top:8px; margin-left:6px; font-size:0.8rem;" data-modal-row="1" onclick="resetUiScale()">Reset</button>
+                <div id="ui-scale-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
+            </div>
+        </div>
+        <div class="hub-section">
             <div class="hub-section-label">Card Outlines</div>
             <div style="padding:8px 10px;">
                 <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
@@ -567,6 +582,19 @@
                         <div id="plat-priority-status" style="font-size:0.78rem; color:#8f98a0; min-height:1em;"></div>
                     </div>
                 </div>
+            </div>
+        </div>
+        <div class="hub-section">
+            <div class="hub-section-label">Completion Sync</div>
+            <div style="padding:8px 10px;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary);">
+                    <input type="checkbox" id="auto-promote-unfinished-cb"
+                           {% if auto_promote_unfinished %}checked{% endif %}
+                           onchange="sendStateUpdate({auto_promote_unfinished: this.checked}, false)"
+                           style="width:auto; margin:0;">
+                    Mark games as Unfinished when playtime &gt; 0
+                </label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">On startup, promotes Never Played games to Unfinished if Steam shows any playtime. Disable if you use BLAEO to manage Never Played status.</div>
             </div>
         </div>
         <div class="hub-section">
@@ -686,7 +714,10 @@
     <div class="modal-content" style="width:360px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <h2 style="margin:0; color:var(--text-primary);">System</h2>
-            <button onclick="closeSystemModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:0.78rem; color:var(--text-secondary);">v{{ app_version }}</span>
+                <button onclick="closeSystemModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">Updates</div>
@@ -3837,6 +3868,27 @@ function closeAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'none';
 }
 
+function _onUiScaleSlider(el) {
+    document.getElementById('ui-scale-val').textContent = el.value + '%';
+    document.getElementById('ui-scale-style').textContent = 'html { zoom: ' + el.value + '%; }';
+}
+function saveUiScale() {
+    const val = parseInt(document.getElementById('ui-scale-slider').value, 10);
+    const status = document.getElementById('ui-scale-status');
+    savePreference({ ui_scale: val });
+    status.textContent = 'Saved.';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+}
+function resetUiScale() {
+    const slider = document.getElementById('ui-scale-slider');
+    slider.value = 100;
+    _onUiScaleSlider(slider);
+    savePreference({ ui_scale: 100 });
+    const status = document.getElementById('ui-scale-status');
+    status.textContent = 'Reset to 100%.';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+}
+
 let _apOutlineEnabled = null;
 
 async function _apLoadOutlines() {
@@ -4086,13 +4138,76 @@ function _closeManageOauth(id) {
     if (modal) modal.style.display = 'none';
 }
 
+// Called by pywebview after open_auth_popup() completes (success or failure).
+window._authPopupDone = function(result) {
+    const id = window._authPopupPendingId;
+    if (!id) return;
+    window._authPopupPendingId = null;
+    const st = document.getElementById(`${id}-manage-popup-status`);
+    if (result.status === 'success') {
+        if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `Connected as ${escHtml(result.username || 'unknown')}`; }
+        setTimeout(() => _manageRefreshAuth(id), 1000);
+    } else {
+        if (st) { st.style.color = 'var(--text-danger)'; st.textContent = result.message || 'Connection failed'; }
+    }
+};
+
+async function _manageOpenAuthPopup(id) {
+    const entry = _manageSpecs[id];
+    if (!entry) return;
+    let action = null;
+    for (const section of (entry.spec.sections || [])) {
+        for (const block of (section.auth ? section.auth.disconnected : section.items || [])) {
+            if (block.type === 'button' && block.action && block.action.type === 'oauth_popup') {
+                action = block.action;
+            }
+        }
+    }
+    if (!action) return;
+
+    // Fallback: no pywebview — open paste modal instead
+    if (!window.pywebview) {
+        _manageOpenOauth(id);
+        return;
+    }
+
+    const st = document.getElementById(`${id}-manage-popup-status`);
+    if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = 'Opening login window...'; }
+
+    let loginUrl;
+    try {
+        const r = await fetch(action.url_endpoint);
+        const d = await r.json();
+        loginUrl = d.url;
+    } catch (e) {
+        if (st) { st.style.color = 'var(--text-danger)'; st.textContent = 'Failed to get login URL'; }
+        return;
+    }
+
+    window._authPopupPendingId = id;
+    if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = 'Waiting for login...'; }
+
+    try {
+        window.pywebview.api.open_auth_popup(
+            loginUrl,
+            action.redirect_pattern,
+            action.code_js,
+            action.callback_endpoint,
+        );
+    } catch (e) {
+        window._authPopupPendingId = null;
+        if (st) { st.style.color = 'var(--text-danger)'; st.textContent = `Error: ${e.message}`; }
+    }
+}
+
 async function _manageOauthOpenUrl(id) {
     const entry = _manageSpecs[id];
     if (!entry) return;
     let urlEndpoint = null;
     for (const section of (entry.spec.sections || [])) {
         for (const block of (section.auth ? section.auth.disconnected : section.items || [])) {
-            if (block.type === 'button' && block.action && block.action.type === 'oauth_paste') {
+            if (block.type === 'button' && block.action &&
+                    (block.action.type === 'oauth_paste' || block.action.type === 'oauth_popup')) {
                 urlEndpoint = block.action.url_endpoint;
             }
         }
@@ -4114,7 +4229,8 @@ async function _manageOauthSubmit(id) {
     let callbackEndpoint = null;
     for (const section of (entry.spec.sections || [])) {
         for (const block of (section.auth ? section.auth.disconnected : section.items || [])) {
-            if (block.type === 'button' && block.action && block.action.type === 'oauth_paste') {
+            if (block.type === 'button' && block.action &&
+                    (block.action.type === 'oauth_paste' || block.action.type === 'oauth_popup')) {
                 callbackEndpoint = block.action.callback_endpoint;
             }
         }
@@ -4155,12 +4271,16 @@ function _buildManageBlockHtml(id, block, infoIdx) {
         case 'button': {
             const a = block.action || {};
             let onclick = '';
-            if (a.type === 'call')       onclick = `${escHtml(a.fn)}()`;
-            else if (a.type === 'open_url')   onclick = `_manageOpenUrl(${JSON.stringify(a.url)})`;
+            if (a.type === 'call')        onclick = `${escHtml(a.fn)}()`;
+            else if (a.type === 'open_url')    onclick = `_manageOpenUrl(${JSON.stringify(a.url)})`;
             else if (a.type === 'oauth_paste') onclick = `_manageOpenOauth('${eid}')`;
+            else if (a.type === 'oauth_popup') onclick = `_manageOpenAuthPopup('${eid}')`;
             else if (a.type === 'post')        onclick = `_managePost('${eid}',${JSON.stringify(a.endpoint)},${JSON.stringify(a.on_success || '')})`;
             const muted = block.variant === 'muted' ? ' style="color:var(--text-secondary);"' : '';
-            return `<button class="nav-btn"${muted} onclick="${escHtml(onclick)}">${escHtml(block.label)}</button>`;
+            const popupStatus = a.type === 'oauth_popup'
+                ? `<div id="${eid}-manage-popup-status" class="tool-status" style="margin-top:6px;"></div>`
+                : '';
+            return `<button class="nav-btn"${muted} onclick="${escHtml(onclick)}">${escHtml(block.label)}</button>${popupStatus}`;
         }
         case 'buttons': {
             const btns = (block.items || []).map(btn => {
@@ -4254,7 +4374,8 @@ function _buildManageModalHtml(id, name, spec) {
       <div id="${eid}-manage-connected" style="display:none;"><div style="padding:8px 10px;">${connHtml}</div></div>`;
 
             for (const block of (section.auth.disconnected || [])) {
-                if (block.type === 'button' && block.action && block.action.type === 'oauth_paste') {
+                if (block.type === 'button' && block.action &&
+                        (block.action.type === 'oauth_paste' || block.action.type === 'oauth_popup')) {
                     oauthHtml += _buildManageOauthHtml(id, block.action);
                 }
             }

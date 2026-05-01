@@ -119,13 +119,23 @@
     <!-- Footer -->
     <div style="padding:0.875rem 1.5rem; border-top:1px solid #2a3f55; display:flex; flex-direction:column; gap:0.625rem; flex-shrink:0;">
         <!-- Quick filters (built-in presets) -->
+        {% set _btn_style = "background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:1.25rem; padding:0.1875rem 0.75rem; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;" %}
+        {% set _btn_over = "this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" %}
+        {% set _btn_out  = "this.style.borderColor='#2a3f55';this.style.color='#8f98a0'" %}
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="color:#4a6a8a; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;">Quick:</span>
-            {% for key, f in builtin_filters.items() if f.where is not none %}
+            {% for key, f in builtin_filters.items() if f.where is not none and f.get('group') == 'general' %}
             <button onclick="applyBuiltinFilter('{{ key }}')" data-modal-row="2"
-                style="background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:1.25rem; padding:0.1875rem 0.75rem; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;"
-                onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
-                onmouseout="this.style.borderColor='#2a3f55';this.style.color='#8f98a0'">
+                style="{{ _btn_style }}" onmouseover="{{ _btn_over }}" onmouseout="{{ _btn_out }}">
+                {{ f.label }}
+            </button>
+            {% endfor %}
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="color:#4a6a8a; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;">Status:</span>
+            {% for key, f in builtin_filters.items() if f.where is not none and f.get('group') == 'status' %}
+            <button onclick="applyBuiltinFilter('{{ key }}')" data-modal-row="2"
+                style="{{ _btn_style }}" onmouseover="{{ _btn_over }}" onmouseout="{{ _btn_out }}">
                 {{ f.label }}
             </button>
             {% endfor %}

@@ -236,6 +236,14 @@ def _m5_backfill_fetched_columns():
         conn = sqlite3.connect(db_path, timeout=10)
         try:
             cursor = conn.cursor()
+            # Ensure columns exist before backfilling — init_db() runs after migrations
+            for col in ('protondb_fetched', 'protondb_tier', 'protondb_confidence',
+                        'hltb_fetched', 'hltb_id', 'hltb_matched_name', 'hltb_match_score',
+                        'hltb_main', 'hltb_extras', 'hltb_completionist'):
+                try:
+                    cursor.execute(f"ALTER TABLE games ADD COLUMN {col} TEXT")
+                except sqlite3.OperationalError:
+                    pass  # column already exists
             cursor.execute("""
                 UPDATE games SET meta_fetched = ?
                 WHERE meta_fetched IS NULL

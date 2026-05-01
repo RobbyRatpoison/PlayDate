@@ -85,7 +85,7 @@ Requires Python 3.10+ and the WebKit/GTK bindings for your distro:
 
 ```bash
 # Debian, Ubuntu, Mint, Pop!_OS, etc.
-sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0
+sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0 python3-venv python3-pip python3-tk
 
 # Fedora, Nobara, Ultramarine, etc.
 sudo dnf install python3-gobject webkit2gtk4.0

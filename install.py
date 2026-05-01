@@ -326,7 +326,24 @@ class InstallerApp(tk.Tk):
             if SYSTEM == "Linux":
                 args.append("--system-site-packages")
             args.append(VENV_DIR)
-            subprocess.check_call(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            result = subprocess.run(args, capture_output=True, text=True)
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "").strip()
+                if err:
+                    for ln in err.splitlines():
+                        self._log_line(f"  {ln}", "err")
+                # Give a targeted hint for the most common failure on Debian/Ubuntu
+                hint = ""
+                if SYSTEM == "Linux":
+                    os_release = self._os_release
+                    if any(d in os_release for d in ("debian", "ubuntu", "mint", "pop")):
+                        ver = f"{sys.version_info.major}.{sys.version_info.minor}"
+                        hint = (
+                            f"\n\nOn Debian/Ubuntu, the venv module is a separate package.\n"
+                            f"Run this command, then re-run the installer:\n\n"
+                            f"    sudo apt install python3-venv python3-pip python3-tk python3.{sys.version_info.minor}-venv\n"
+                        )
+                raise RuntimeError(f"Could not create virtual environment.{hint}")
             self._log_line("✔  Virtual environment created", "ok")
         self._advance("Step 3 — Virtual environment ready")
 

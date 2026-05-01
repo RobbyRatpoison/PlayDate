@@ -1174,11 +1174,18 @@ def scrape_blaeo_games(today=None):
                     updated_groups_set = existing_groups_set.union(set(blaeo_groups))
                     new_groups_str = ",".join(sorted(updated_groups_set))
 
-                    # Don't downgrade: keep the higher status, and never touch "Won't Play"
                     current_status = db_row['completion_status'] or 'Never Played'
                     if current_status == "Won't Play":
+                        # Never overwrite an existing Won't Play
                         effective_status = current_status
+                    elif clean_status == "Won't Play":
+                        # Apply Won't Play from BLAEO unless game is already Beaten/Completed
+                        if current_status in ("Beaten", "Completed"):
+                            effective_status = current_status
+                        else:
+                            effective_status = clean_status
                     else:
+                        # Don't downgrade within the normal progression
                         effective_status = clean_status if (
                             status_rank.get(clean_status, -1) >= status_rank.get(current_status, 0)
                         ) else current_status
@@ -1218,7 +1225,7 @@ def sync_recent_playtime():
 
     For games where playtime_forever increased, also fetches achievements (if an
     API key is configured) and updates completion_status:
-      - Never Played + playtime > 0  → Unfinished
+      - Never Played + playtime > 0  → Unfinished (if auto_promote_unfinished is enabled)
       - 100% achievements unlocked   → Completed (any status)
       - Won't Play                   → only changed if 100% achievements
       - Beaten                       → never downgraded; upgraded to Completed if 100%
@@ -1293,7 +1300,7 @@ def sync_recent_playtime():
 
             if hundred_pct:
                 new_status = 'Completed'
-            elif current_status == 'Never Played' and new_playtime > 0:
+            elif current_status == 'Never Played' and new_playtime > 0 and load_state().get('auto_promote_unfinished', True):
                 new_status = 'Unfinished'
             else:
                 new_status = None  # Beaten / Won't Play (without 100%) / Unfinished left alone

@@ -15,6 +15,7 @@
         }
     </style>
     {% endif %}
+    <style id="ui-scale-style">html { zoom: {{ ui_scale }}%; }</style>
     {% if background_ts %}
     <style>body::before { background-image: url('/static/img/backgrounds/background.jpg?v={{ background_ts }}'); }</style>
     {% endif %}

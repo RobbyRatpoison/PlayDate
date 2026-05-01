@@ -10,7 +10,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
@@ -118,17 +118,17 @@ def rename_named_theme(old_name, new_name):
     return True
 
 BUILTIN_FILTERS = {
-    "all_games":     {"label": "All Games",      "where": "1=1"},
-    "installed":     {"label": "Installed",       "where": "installed = 1"},
-    "not_installed": {"label": "Not Installed",   "where": "installed = 0"},
-    "never_played":  {"label": "Never Played",    "where": "completion_status = 'Never Played'"},
-    "unfinished":    {"label": "Unfinished",      "where": "completion_status = 'Unfinished'"},
-    "not_beaten":    {"label": "Not Beaten",      "where": "completion_status IN ('Never Played', 'Unfinished')"},
-    "beaten":        {"label": "Beaten",          "where": "completion_status IN ('Beaten', 'Completed')"},
-    # Individual completion statuses (used by card outline defaults)
-    "completed":     {"label": "Completed",       "where": "completion_status = 'Completed'"},
-    "beaten_only":   {"label": "Beaten",          "where": "completion_status = 'Beaten'"},
-    "wont_play":     {"label": "Won't Play",      "where": "completion_status = 'Won''t Play'"},
+    "all_games":     {"label": "All Games",         "where": "1=1",                                                    "group": "general"},
+    "installed":     {"label": "Installed",          "where": "installed = 1",                                          "group": "general"},
+    "not_installed": {"label": "Not Installed",      "where": "installed = 0",                                          "group": "general"},
+    "not_beaten":    {"label": "Never Played / Unfinished", "where": "completion_status IN ('Never Played', 'Unfinished')", "group": "general"},
+    "beaten":        {"label": "Beaten / Completed",       "where": "completion_status IN ('Beaten', 'Completed')",      "group": "general"},
+    # Individual completion statuses
+    "never_played":  {"label": "Never Played",       "where": "completion_status = 'Never Played'",                    "group": "status"},
+    "unfinished":    {"label": "Unfinished",         "where": "completion_status = 'Unfinished'",                      "group": "status"},
+    "beaten_only":   {"label": "Beaten",             "where": "completion_status = 'Beaten'",                          "group": "status"},
+    "completed":     {"label": "Completed",          "where": "completion_status = 'Completed'",                       "group": "status"},
+    "wont_play":     {"label": "Won't Play",         "where": "completion_status = 'Won''t Play'",                     "group": "status"},
     # Widget presets — no SQL
     "clock":          {"label": "Clock",             "where": None},
     "completion_pie": {"label": "Completion Chart",  "where": None},
@@ -262,6 +262,8 @@ DEFAULT_STATE = {
     "window_state": None,
     "hltb_match_threshold": 99,
     "group_by": None,
+    "ui_scale": 100,
+    "auto_promote_unfinished": True,
 }
 
 def validate_steam_creds(api_key, steam_id):
@@ -345,6 +347,8 @@ def inject_config_status():
         initial_fullscreen=state.get('fullscreen', False),
         hltb_match_threshold=state.get('hltb_match_threshold', 99),
         hide_duplicates=state.get('hide_duplicates', True),
+        ui_scale=state.get('ui_scale', 100),
+        auto_promote_unfinished=state.get('auto_promote_unfinished', True),
         platform_priority=_active_platform_priority(state),
         app_version=__version__,
     )
@@ -787,6 +791,10 @@ def save_state(updates):
                 state[key] = val
         if "hltb_match_threshold" in updates:
             state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
+        if "ui_scale" in updates:
+            state["ui_scale"] = max(75, min(200, int(updates["ui_scale"])))
+        if "auto_promote_unfinished" in updates:
+            state["auto_promote_unfinished"] = bool(updates["auto_promote_unfinished"])
         if "hide_duplicates" in updates:
             state["hide_duplicates"] = bool(updates["hide_duplicates"])
         if "platform_priority" in updates:
