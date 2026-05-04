@@ -355,6 +355,38 @@ def _protondb_worker(normal_q, priority_q, cancel_event, today, progress_cb):
 
 # ── HLTB fetch functions ──────────────────────────────────────────────────────
 
+_STEAM_HLTB_MAP = None  # {steam_appid_str: hltb_id_int}
+
+def _load_steam_hltb_map():
+    """
+    Load and cache the Steam→HLTB ID mapping from zpangwin/sg-data on GitHub.
+    Cached locally for 7 days; refreshed on startup.
+    """
+    global _STEAM_HLTB_MAP
+    if _STEAM_HLTB_MAP is not None:
+        return _STEAM_HLTB_MAP
+
+    from config import BASE_DIR
+    cache_path = os.path.join(BASE_DIR, 'steam_hltb_map.json')
+    url = 'https://raw.githubusercontent.com/zpangwin/sg-data/master/steam-to-hltb-mappings/steam-to-hltb-map.min.json'
+
+    try:
+        age = time.time() - os.path.getmtime(cache_path) if os.path.exists(cache_path) else float('inf')
+        if age > 7 * 86400:
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            with open(cache_path, 'w', encoding='utf-8') as f:
+                f.write(resp.text)
+            log.info('[hltb] steam_hltb_map refreshed from GitHub')
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            _STEAM_HLTB_MAP = json.load(f)
+    except Exception as e:
+        log.warning(f'[hltb] could not load steam_hltb_map: {e}')
+        _STEAM_HLTB_MAP = {}
+
+    return _STEAM_HLTB_MAP
+
+
 def _hltb_clean_name(name):
     """
     Normalize a Steam game title for HLTB search queries.
@@ -1595,6 +1627,9 @@ def sync_hltb_unfetched():
     total = len(rows)
     log.info(f"sync_hltb_unfetched: fetching HLTB data for {total} game(s).")
 
+    steam_hltb_map = _load_steam_hltb_map()
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
     q = queue.Queue()
     for row in rows:
         q.put((row['appid'], row['name']))
@@ -1611,14 +1646,21 @@ def sync_hltb_unfetched():
             except queue.Empty:
                 return
             try:
-                info = fetch_hltb_data(name, threshold=threshold)
-                if info:
-                    update_game_data(appid, **info)
+                hltb_id = steam_hltb_map.get(str(appid))
+                if hltb_id:
+                    info = fetch_hltb_by_id(name, hltb_id)
+                    info.pop('times_available', None)
+                    update_game_data(appid, hltb_id=hltb_id, hltb_fetched=today,
+                                     hltb_match_score=100, **info)
                 else:
-                    update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
-                                     hltb_matched_name=None, hltb_match_score=None,
-                                     hltb_main=None, hltb_extras=None,
-                                     hltb_completionist=None)
+                    info = fetch_hltb_data(name, threshold=threshold)
+                    if info:
+                        update_game_data(appid, **info)
+                    else:
+                        update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
+                                         hltb_matched_name=None, hltb_match_score=None,
+                                         hltb_main=None, hltb_extras=None,
+                                         hltb_completionist=None)
                 with lock:
                     counts['done'] += 1
             except Exception as e:
@@ -1752,6 +1794,9 @@ def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
     ).fetchall()}
     db.close()
 
+    steam_hltb_map = _load_steam_hltb_map()
+    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
     q = queue.Queue()
     for appid in appids:
         q.put(appid)
@@ -1776,14 +1821,21 @@ def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
                     progress_cb('failed', appid, total)
                 continue
             try:
-                info = fetch_hltb_data(name, threshold=threshold)
-                if info:
-                    update_game_data(appid, **info)
+                hltb_id = steam_hltb_map.get(str(appid))
+                if hltb_id:
+                    info = fetch_hltb_by_id(name, hltb_id)
+                    info.pop('times_available', None)
+                    update_game_data(appid, hltb_id=hltb_id, hltb_fetched=today_str,
+                                     hltb_match_score=100, **info)
                 else:
-                    update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
-                                     hltb_matched_name=None, hltb_match_score=None,
-                                     hltb_main=None, hltb_extras=None,
-                                     hltb_completionist=None)
+                    info = fetch_hltb_data(name, threshold=threshold)
+                    if info:
+                        update_game_data(appid, **info)
+                    else:
+                        update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
+                                         hltb_matched_name=None, hltb_match_score=None,
+                                         hltb_main=None, hltb_extras=None,
+                                         hltb_completionist=None)
                 with lock:
                     counts['done'] += 1
                 if progress_cb:
