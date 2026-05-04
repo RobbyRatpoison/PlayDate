@@ -97,6 +97,20 @@ sudo pacman -S python-gobject webkit2gtk
 sudo zypper install python3-gobject typelib-1_0-WebKit2-4_0
 ```
 
+### Steam Deck
+
+```bash
+chmod +x install_steamdeck.sh && ./install_steamdeck.sh
+```
+
+You must have a sudo password set before running the script. If you haven't set one yet:
+
+```bash
+passwd
+```
+
+SteamOS system updates wipe installed packages. If PlayDate stops launching after an update, re-run `install_steamdeck.sh` — it's safe to run multiple times.
+
 ### macOS
 
 ```bash

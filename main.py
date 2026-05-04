@@ -57,19 +57,35 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
                         break
         except Exception:
             pass
-        if any(d in distro_id for d in ("debian", "ubuntu")):
+        if "steamos" in distro_id:
+            msg = (
+                "PlayDate requires WebKit2GTK, which was removed by a SteamOS system update.\n\n"
+                "Re-run install_steamdeck.sh (in the PlayDate folder) to reinstall it."
+            )
+        elif any(d in distro_id for d in ("debian", "ubuntu")):
             cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
+            msg = (
+                "PlayDate requires WebKit2GTK to display its interface.\n\n"
+                f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate."
+            )
         elif any(d in distro_id for d in ("fedora", "rhel", "centos")):
             cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
+            msg = (
+                "PlayDate requires WebKit2GTK to display its interface.\n\n"
+                f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate."
+            )
         elif "arch" in distro_id:
             cmd = "sudo pacman -S python-gobject webkit2gtk"
+            msg = (
+                "PlayDate requires WebKit2GTK to display its interface.\n\n"
+                f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate."
+            )
         else:
-            cmd = "See README.md for your distribution's install command."
-        msg = (
-            "PlayDate requires WebKit2GTK to display its interface.\n\n"
-            f"Install it with:\n\n    {cmd}\n\n"
-            "Then re-run PlayDate."
-        )
+            msg = (
+                "PlayDate requires WebKit2GTK to display its interface.\n\n"
+                "See README.md for your distribution's install command.\n\n"
+                "Then re-run PlayDate."
+            )
         log.critical(msg)
         # Show a plain tkinter dialog if possible, otherwise just print
         try:
@@ -352,6 +368,280 @@ class PyWebviewAPI:
         except Exception as e:
             log.warning(f"Save dialog failed: {e}")
         return None
+
+    def open_auth_popup(self, url, redirect_pattern, code_js, callback_endpoint):
+        """
+        Open a popup window for OAuth login.
+        Monitors navigation; when redirect_pattern appears in the URL, extracts the
+        authorization code, POSTs it to callback_endpoint, then calls
+        window._authPopupDone({status, username, message}) on the main window.
+        Returns immediately -- result arrives via the _authPopupDone JS callback.
+
+        Code extraction strategy (tried in order):
+        1. URL query param 'code=' via _on_loaded -- works for GOG and standard
+           OAuth redirects where the code appears in the redirect URL.
+        2. On Linux/GTK: WebKit isolated-world evaluate_javascript via _on_loaded --
+           reads document.body.innerText in an isolated JS world that bypasses CSP.
+           Used for Epic's /id/api/redirect which blocks eval() via CSP but returns
+           the authorizationCode as JSON in the response body.
+        3. On Linux/GTK: WebKit decide-policy hook -- intercepts navigation
+           before connection is attempted, only when code is in the URL.
+           Handles redirects to unreachable hosts like https://localhost.
+        """
+        import threading
+        import requests as _requests
+
+        def _run():
+            import json
+            result   = {'status': 'error', 'message': 'Login window closed'}
+            notified = threading.Event()
+
+            def _notify_main():
+                if notified.is_set():
+                    return
+                notified.set()
+                if _webview_window is None:
+                    return
+                js = f'window._authPopupDone && window._authPopupDone({json.dumps(result)})'
+                try:
+                    _webview_window.evaluate_js(js)
+                except Exception as e:
+                    log.warning(f'open_auth_popup: notify main failed: {e}')
+
+            def _exchange_and_close(code):
+                if notified.is_set():
+                    return
+                if not code:
+                    result.update({'status': 'error', 'message': 'Empty authorization code'})
+                    try:
+                        popup_ref[0].destroy()
+                    except Exception:
+                        pass
+                    return
+                try:
+                    resp = _requests.post(
+                        f'http://127.0.0.1:{PORT}{callback_endpoint}',
+                        json={'code': code},
+                        timeout=15,
+                    )
+                    data = resp.json()
+                    if data.get('status') == 'success':
+                        result.update({'status': 'success',
+                                       'username': data.get('username', '')})
+                    else:
+                        result.update({'status': 'error',
+                                       'message': data.get('message', 'Connection failed')})
+                except Exception as e:
+                    result.update({'status': 'error', 'message': f'Exchange failed: {e}'})
+                try:
+                    popup_ref[0].destroy()
+                except Exception:
+                    pass
+
+            def _code_from_url(uri):
+                from urllib.parse import urlparse, parse_qs
+                return parse_qs(urlparse(uri).query).get('code', [''])[0]
+
+            def _on_loaded():
+                if notified.is_set():
+                    return
+                w = popup_ref[0]
+                if w is None:
+                    return
+                try:
+                    current = w.get_current_url() or ''
+                except Exception:
+                    return
+                # Match against scheme+host+path only, not query string.
+                # Prevents false positives when redirect_pattern appears as an
+                # encoded query parameter in the initial login URL.
+                from urllib.parse import urlparse as _urlparse
+                _p = _urlparse(current)
+                base_url = _p.scheme + '://' + _p.netloc + _p.path
+                if redirect_pattern not in base_url:
+                    return
+                log.info(f'open_auth_popup: _on_loaded matched {current!r}')
+                # Strategy 1: code in URL query params (GOG and standard OAuth)
+                code = _code_from_url(current)
+                if code:
+                    threading.Thread(target=_exchange_and_close, args=(code,),
+                                     daemon=True).start()
+                    return
+                # Strategy 2: isolated-world evaluate_javascript (bypasses CSP).
+                # pywebview's evaluate_js wraps in eval() which CSP blocks;
+                # WebKit's isolated world runs directly in the engine.
+                body_js = code_js or 'document.body.innerText'
+                try:
+                    from gi.repository import GLib, Gtk
+                except ImportError:
+                    log.warning('open_auth_popup: gi not available, cannot read body')
+                    _exchange_and_close('')
+                    return
+
+                def _gtk_run_js():
+                    from urllib.parse import urlparse as _up
+                    wk = None
+                    for win in Gtk.Window.list_toplevels():
+                        candidate = _find_webkit_in_widget(win)
+                        if candidate is None:
+                            continue
+                        try:
+                            uri = candidate.get_uri() or ''
+                            pp = _up(uri)
+                            base = pp.scheme + '://' + pp.netloc + pp.path
+                            if redirect_pattern in base:
+                                wk = candidate
+                                break
+                        except Exception:
+                            pass
+                    if wk is None:
+                        log.warning('open_auth_popup: no WebKit view found for isolated JS')
+                        threading.Thread(target=_exchange_and_close, args=('',),
+                                         daemon=True).start()
+                        return False
+
+                    def _cb(wkview, async_result, *_):
+                        extracted = ''
+                        try:
+                            val = wkview.evaluate_javascript_finish(async_result)
+                            raw = (val.to_string() if val else '') or ''
+                            raw = raw.strip()
+                            log.info(f'open_auth_popup: isolated JS body ({len(raw)} chars): {raw[:120]!r}')
+                            if raw.startswith('{'):
+                                import json as _json
+                                data = _json.loads(raw)
+                                extracted = (data.get('authorizationCode')
+                                             or data.get('code') or '')
+                            if not extracted:
+                                extracted = raw
+                        except Exception as e:
+                            log.warning(f'open_auth_popup: isolated JS cb: {e}')
+                        threading.Thread(target=_exchange_and_close, args=(extracted,),
+                                         daemon=True).start()
+
+                    try:
+                        wk.evaluate_javascript(body_js, -1, 'PlayDateAuth',
+                                               None, None, _cb)
+                    except Exception as e:
+                        log.warning(f'open_auth_popup: evaluate_javascript: {e}')
+                        threading.Thread(target=_exchange_and_close, args=('',),
+                                         daemon=True).start()
+                    return False
+
+                GLib.idle_add(_gtk_run_js)
+
+            def _on_closed():
+                _notify_main()
+
+            popup_ref = [None]
+            try:
+                popup = webview.create_window(
+                    'Login',
+                    url,
+                    width=900,
+                    height=680,
+                    resizable=True,
+                )
+                popup_ref[0] = popup
+                popup.events.loaded += _on_loaded
+                popup.events.closed += _on_closed
+            except Exception as e:
+                result.update({'status': 'error', 'message': f'Could not open login window: {e}'})
+                _notify_main()
+                return
+
+            # Strategy 3 (Linux/GTK only): hook WebKit's decide-policy signal to
+            # intercept navigation to unreachable hosts before the connection fails.
+            _install_gtk_nav_interceptor(popup_ref, redirect_pattern,
+                                         _code_from_url, _exchange_and_close)
+
+        threading.Thread(target=_run, daemon=True).start()
+        return {'status': 'started'}
+
+
+def _find_webkit_in_widget(widget):
+    """Recursively search a GTK widget tree for a WebKit2.WebView."""
+    try:
+        from gi.repository import WebKit2
+        if isinstance(widget, WebKit2.WebView):
+            return widget
+        if hasattr(widget, 'get_children'):
+            for child in widget.get_children():
+                found = _find_webkit_in_widget(child)
+                if found is not None:
+                    return found
+    except Exception:
+        pass
+    return None
+
+
+def _install_gtk_nav_interceptor(popup_ref, redirect_pattern, code_from_url, exchange_and_close):
+    """
+    On Linux/GTK, connect WebKit's decide-policy signal to intercept navigation attempts
+    before a connection is made -- including attempts to unreachable hosts like
+    https://localhost used by Epic's auth flow.
+
+    We connect to EVERY WebKit view we can find (main window + popup) so we don't
+    miss the popup regardless of how pywebview structures its internals. The main
+    window's view won't match redirect_pattern so the handler is a no-op there.
+    We scan every 150ms for up to 3 seconds to catch the popup as it appears.
+    """
+    import sys
+    if sys.platform != 'linux':
+        return
+    try:
+        from gi.repository import GLib, WebKit2, Gtk
+    except ImportError:
+        return
+
+    import threading
+    connected_views = []   # list of (WebKit2.WebView, handler_id)
+    done = threading.Event()
+
+    def _on_decide_policy(view, decision, decision_type):
+        if decision_type == WebKit2.PolicyDecisionType.NAVIGATION_ACTION:
+            uri = (decision.get_navigation_action().get_request().get_uri() or '')
+            if redirect_pattern in uri:
+                code = code_from_url(uri)
+                if code:
+                    # Code is in the URL (e.g. redirect to unreachable localhost).
+                    # Intercept before connection attempt.
+                    done.set()
+                    decision.ignore()
+                    for v, hid in connected_views:
+                        try:
+                            v.disconnect(hid)
+                        except Exception:
+                            pass
+                    threading.Thread(target=exchange_and_close, args=(code,), daemon=True).start()
+                    return True
+                # No code in URL — let the navigation proceed so the page loads
+                # and _on_loaded can read the code from the response body.
+        decision.use()
+        return True
+
+    def _attempt(remaining):
+        if done.is_set():
+            return False
+        try:
+            for win in Gtk.Window.list_toplevels():
+                wk = _find_webkit_in_widget(win)
+                if wk is None:
+                    continue
+                if any(v is wk for v, _ in connected_views):
+                    continue
+                hid = wk.connect('decide-policy', _on_decide_policy)
+                connected_views.append((wk, hid))
+                log.info(f'open_auth_popup: GTK interceptor connected ({win.get_title()!r})')
+        except Exception as e:
+            log.warning(f'open_auth_popup: GTK interceptor scan error: {e}')
+        if not connected_views and remaining == 0:
+            log.warning('open_auth_popup: GTK interceptor: no WebKit views found after all retries')
+        if remaining > 0 and not done.is_set():
+            GLib.timeout_add(150, _attempt, remaining - 1)
+        return False
+
+    GLib.timeout_add(150, _attempt, 20)
 
 
 def _load_window_state():
