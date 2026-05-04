@@ -2252,7 +2252,7 @@ async function pagConfirmSave() {
             const existingId = (existingEntry && typeof existingEntry === 'object' && existingEntry.id) ? existingEntry.id : null;
             _savedFilters[name] = {id: existingId, tree};
             const selectEl = document.getElementById('saved-filters-select');
-            if (selectEl && selectEl._addOption) selectEl._addOption(name, name);
+            if (selectEl && selectEl._addOption && !existingEntry) selectEl._addOption(name, name);
         } else {
             saveStatus.className = 'tool-status error';
             saveStatus.textContent = '✘ Could not save: ' + data.message;
