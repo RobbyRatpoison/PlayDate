@@ -58,17 +58,22 @@ def gog_disconnect():
 
 @bp.route('/sync', methods=['POST'])
 def gog_sync():
-    from .gog import sync_library
-    result = sync_library()
-    if 'error' in result:
-        return jsonify({'status': 'error', 'message': result['error']}), 400
-    return jsonify({
-        'status':               'success',
-        'new_games':            result['new_games'],
-        'total_games':          result['total_games'],
-        'errors':               result.get('errors', []),
-        'duplicates_detected':  result.get('duplicates_detected', 0),
-    })
+    from .gog import start_library_sync
+    result = start_library_sync()
+    return jsonify(result)
+
+
+@bp.route('/sync/status')
+def gog_sync_status():
+    from .gog import get_sync_state
+    return jsonify(get_sync_state())
+
+
+@bp.route('/sync/cancel', methods=['POST'])
+def gog_sync_cancel():
+    from .gog import cancel_library_sync
+    cancel_library_sync()
+    return jsonify({'status': 'ok'})
 
 
 @bp.route('/sync-metadata', methods=['POST'])

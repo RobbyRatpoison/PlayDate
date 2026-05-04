@@ -55,6 +55,13 @@ def epic_sync_status():
     return jsonify(get_sync_state())
 
 
+@bp.route('/sync/cancel', methods=['POST'])
+def epic_sync_cancel():
+    from .epic import cancel_library_sync
+    cancel_library_sync()
+    return jsonify({'status': 'ok'})
+
+
 @bp.route('/sync-metadata', methods=['POST'])
 def epic_sync_metadata():
     from .epic import start_meta_sync

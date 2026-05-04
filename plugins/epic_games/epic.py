@@ -187,7 +187,8 @@ _sync_state = {
     'running': False, 'phase': None, 'done': 0, 'total': 0,
     'new_games': 0, 'total_games': 0, 'duplicates_detected': 0, 'error': None,
 }
-_sync_lock = threading.Lock()
+_sync_lock   = threading.Lock()
+_sync_cancel = threading.Event()
 
 
 def get_sync_state():
@@ -200,12 +201,18 @@ def start_library_sync():
     with _sync_lock:
         if _sync_state['running']:
             return {'status': 'already_running'}
+        _sync_cancel.clear()
         _sync_state.update({
             'running': True, 'phase': 'fetching_assets', 'done': 0, 'total': 0,
             'new_games': 0, 'total_games': 0, 'duplicates_detected': 0, 'error': None,
         })
     threading.Thread(target=_run_sync_library, daemon=True).start()
     return {'status': 'started'}
+
+
+def cancel_library_sync():
+    """Signal the running library sync to stop."""
+    _sync_cancel.set()
 
 
 def _run_sync_library():
@@ -243,6 +250,25 @@ def _do_sync_library():
 
     log.info(f'Epic sync: {len(assets)} assets to process')
 
+    from database import get_db
+    from datetime import datetime, timezone
+
+    # Load existing/blacklisted cids up front so we can skip catalog API calls
+    # for games already in the DB -- avoids fetching 50+ batches on every re-sync.
+    db = get_db()
+    try:
+        existing = {row['platform_id'] for row in db.execute(
+            "SELECT platform_id FROM games WHERE platform = 'epic_games'"
+        ).fetchall()}
+        blacklisted = {
+            row[0]
+            for row in db.execute(
+                "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
+            ).fetchall()
+        }
+    finally:
+        db.close()
+
     # Collect all appNames per catalogItemId -- Epic often has multiple asset records
     # for the same game (entitlement + installable). We need to pick the right one.
     # Installable assets have a non-empty buildVersion; entitlement records do not.
@@ -252,11 +278,12 @@ def _do_sync_library():
         ns  = a.get('namespace', 'fn')
         cid = a.get('catalogItemId', '')
         aname = a.get('appName', '')
-        if cid and aname:
+        if cid and aname and cid not in existing and cid not in blacklisted:
             cid_appnames.setdefault(cid, []).append((aname, a.get('buildVersion', '')))
             by_ns.setdefault(ns, []).append((cid, aname))
 
     total_cids = sum(len(items) for items in by_ns.values())
+    log.info(f'Epic sync: {total_cids} new cids to fetch catalog for (skipped {len(assets) - total_cids} existing)')
     with _sync_lock:
         _sync_state.update({'phase': 'fetching_catalog', 'done': 0, 'total': total_cids})
 
@@ -267,6 +294,10 @@ def _do_sync_library():
         cids = [cid for cid, _ in items]
         url  = _CATALOG_URL_TMPL.format(ns=ns)
         for i in range(0, len(cids), 50):
+            if _sync_cancel.is_set():
+                with _sync_lock:
+                    _sync_state.update({'running': False, 'phase': 'cancelled'})
+                return
             batch = cids[i:i + 50]
             params = [('id', cid) for cid in batch]
             params += [('country', 'US'), ('locale', 'en'), ('includeDLCDetails', 'false')]
@@ -298,22 +329,8 @@ def _do_sync_library():
     with _sync_lock:
         _sync_state['phase'] = 'saving'
 
-    from database import get_db
-    from datetime import datetime, timezone
-
     db = get_db()
     try:
-        existing = {row['platform_id'] for row in db.execute(
-            "SELECT platform_id FROM games WHERE platform = 'epic_games'"
-        ).fetchall()}
-
-        blacklisted = {
-            row[0]
-            for row in db.execute(
-                "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
-            ).fetchall()
-        }
-
         new_games = []
         today_ts  = int(datetime.now(timezone.utc).timestamp())
         seen_cids = set()  # guard against processing the same catalogItemId twice

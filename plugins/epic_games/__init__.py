@@ -227,17 +227,18 @@ class EpicGamesPlugin:
                         'disconnected': [
                             {'type': 'text', 'content': 'Connect your Epic Games account to import your library.'},
                             {'type': 'button', 'label': 'Connect Epic Account', 'action': {
-                                'type': 'oauth_paste',
+                                'type': 'oauth_popup',
                                 'title': 'Connect Epic Account',
                                 'url_endpoint': '/api/epic_games/auth-url',
                                 'callback_endpoint': '/api/epic_games/callback',
+                                'redirect_pattern': 'epicgames.com/id/api/redirect',
+                                'code_js': '',
                                 'instructions': [
                                     'Click <strong>Open Epic Login</strong> — your browser opens the Epic login page.',
                                     'Log in to your Epic Games account.',
-                                    "You'll land on a page showing a JSON warning. That warning is about sharing your code with strangers — PlayDate only uses it locally on your computer.",
-                                    'Copy everything on that page and paste it below (or just the <code>authorizationCode</code> value).',
+                                    "You'll land on a page showing a code. Copy the value next to <code>authorizationCode</code> and paste it below.",
                                 ],
-                                'input_placeholder': 'Paste the page content or just the authorizationCode value',
+                                'input_placeholder': 'Paste the authorizationCode value',
                                 'open_label': 'Open Epic Login',
                                 'submit_label': 'Connect',
                             }},
@@ -246,8 +247,6 @@ class EpicGamesPlugin:
                             {'type': 'connected_label'},
                             {'type': 'buttons', 'items': [
                                 {'label': 'Sync Library', 'action': {'type': 'call', 'fn': 'epicSync'}},
-                                {'label': 'Sync Metadata', 'action': {'type': 'call', 'fn': 'epicSyncMetadata'}},
-                                {'label': 'Detect Duplicates', 'action': {'type': 'call', 'fn': 'epicDetectDuplicates'}},
                                 {'label': 'Disconnect', 'variant': 'muted', 'action': {
                                     'type': 'post', 'endpoint': '/api/epic_games/disconnect',
                                     'on_success': 'refresh_auth',

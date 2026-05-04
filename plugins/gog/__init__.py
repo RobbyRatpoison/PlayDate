@@ -28,8 +28,8 @@ class GogPlugin:
         stop_gog_watcher()
 
     def sync(self):
-        from .gog import sync_library
-        return sync_library()
+        from .gog import start_library_sync
+        return start_library_sync()
 
     date_import_url = 'https://www.gog.com/en/account/settings/orders?ref=playdate'
 
@@ -116,10 +116,12 @@ class GogPlugin:
                         'disconnected': [
                             {'type': 'text', 'content': 'Connect your GOG account to import your library.'},
                             {'type': 'button', 'label': 'Connect GOG Account', 'action': {
-                                'type': 'oauth_paste',
+                                'type': 'oauth_popup',
                                 'title': 'Connect GOG Account',
                                 'url_endpoint': '/api/gog/auth-url',
                                 'callback_endpoint': '/api/gog/callback',
+                                'redirect_pattern': 'embed.gog.com/on_login_success',
+                                'code_js': '',
                                 'instructions': [
                                     'Click <strong>Open GOG Login</strong> — your browser opens the GOG login page.',
                                     'Log in to your GOG account.',
@@ -136,7 +138,6 @@ class GogPlugin:
                             {'type': 'buttons', 'items': [
                                 {'label': 'Sync Library', 'action': {'type': 'call', 'fn': 'gogSync'}},
                                 {'label': 'Import Purchase Dates', 'action': {'type': 'open_url', 'url': 'https://www.gog.com/en/account/settings/orders?ref=playdate'}},
-                                {'label': 'Detect Duplicates', 'action': {'type': 'call', 'fn': 'gogDetectDuplicates'}},
                                 {'label': 'Disconnect', 'variant': 'muted', 'action': {'type': 'post', 'endpoint': '/api/gog/disconnect', 'on_success': 'refresh_auth'}},
                             ]},
                             {'type': 'status_output', 'key': 'main'},

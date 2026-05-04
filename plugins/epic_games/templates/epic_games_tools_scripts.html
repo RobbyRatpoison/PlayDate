@@ -7,6 +7,7 @@ function _epicSyncStatusText(d) {
     if (d.phase === 'fetching_assets')  return 'Fetching library list...';
     if (d.phase === 'fetching_catalog') return `Fetching game details... (${d.done}/${d.total})`;
     if (d.phase === 'saving')           return 'Saving...';
+    if (d.phase === 'cancelled')        return 'Sync cancelled';
     if (d.phase === 'error')            return d.error || 'Sync failed';
     return 'Syncing...';
 }
@@ -40,6 +41,25 @@ function _epicStartMetaPoll(st, onDone) {
     }, 1000);
 }
 
+function _epicSetSyncRunning(running) {
+    const btn = document.querySelector('button[onclick="epicSync()"]')
+             || document.querySelector('button[onclick="epicCancelSync()"]');
+    if (!btn) return;
+    if (running) {
+        btn.textContent = 'Cancel Sync';
+        btn.setAttribute('onclick', 'epicCancelSync()');
+    } else {
+        btn.textContent = 'Sync Library';
+        btn.setAttribute('onclick', 'epicSync()');
+    }
+}
+
+async function epicCancelSync() {
+    const st = document.getElementById('epic_games-manage-status-main');
+    if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = 'Cancelling...'; }
+    await fetch('/api/epic_games/sync/cancel', { method: 'POST' });
+}
+
 async function epicSync() {
     const st = document.getElementById('epic_games-manage-status-main');
     if (!st) return;
@@ -58,6 +78,7 @@ async function epicSync() {
         st.textContent = 'Network error';
         return;
     }
+    _epicSetSyncRunning(true);
     _epicStartSyncPoll(st);
 }
 
@@ -71,9 +92,10 @@ function _epicStartSyncPoll(st) {
                 st.style.color = d.phase === 'error' ? 'var(--text-danger)' : 'var(--text-secondary)';
                 st.textContent = _epicSyncStatusText(d);
             }
-            if (d.phase === 'done' || d.phase === 'error') {
+            if (d.phase === 'done' || d.phase === 'error' || d.phase === 'cancelled') {
                 clearInterval(_epicSyncPollInterval);
                 _epicSyncPollInterval = null;
+                _epicSetSyncRunning(false);
                 if (d.phase !== 'done') return;
                 const newGames = d.new_games, totalGames = d.total_games, newDupes = d.duplicates_detected || 0;
                 if (st) st.textContent = `Library synced (${newGames} new of ${totalGames}). Fetching metadata...`;
@@ -95,8 +117,9 @@ function _epicResumePolling() {
     fetch('/api/epic_games/sync/status')
         .then(r => r.json())
         .then(d => {
-            if (d.phase && d.phase !== 'done' && d.phase !== 'error') {
+            if (d.phase && d.phase !== 'done' && d.phase !== 'error' && d.phase !== 'cancelled') {
                 if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = _epicSyncStatusText(d); }
+                _epicSetSyncRunning(true);
                 _epicStartSyncPoll(st);
             } else if (d.phase === 'done') {
                 fetch('/api/epic_games/sync-metadata/status')
@@ -115,37 +138,4 @@ function _epicResumePolling() {
 
 if (typeof _manageOnOpen !== 'undefined') {
     (_manageOnOpen['epic_games'] = _manageOnOpen['epic_games'] || []).push(_epicResumePolling);
-}
-
-async function epicSyncMetadata() {
-    const st = document.getElementById('epic_games-manage-status-main');
-    if (!st) return;
-    st.style.color = 'var(--text-secondary)';
-    st.textContent = 'Fetching metadata for all games...';
-    const _h = {'Content-Type': 'application/json'};
-    try {
-        const r = await fetch('/api/epic_games/sync-metadata', {method: 'POST', headers: _h, body: JSON.stringify({force: true})});
-        const d = await r.json();
-        if (d.status === 'error') { st.style.color = 'var(--text-danger)'; st.textContent = d.message || 'Failed'; return; }
-    } catch (e) { st.style.color = 'var(--text-danger)'; st.textContent = 'Network error'; return; }
-    _epicStartMetaPoll(st, (md) => {
-        if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `Done — ${md.updated} updated`; }
-        if (md.updated > 0) setTimeout(() => location.reload(), 2000);
-    });
-}
-
-async function epicDetectDuplicates() {
-    const st = document.getElementById('epic_games-manage-status-main');
-    if (st) st.textContent = 'Detecting duplicates…';
-    try {
-        const r = await fetch('/api/detect-duplicates', { method: 'POST' });
-        const d = await r.json();
-        if (st) {
-            st.textContent = d.status === 'ok'
-                ? `Done — ${d.detected} duplicate${d.detected !== 1 ? 's' : ''} detected`
-                : `Error: ${d.message}`;
-        }
-    } catch (e) {
-        if (st) st.textContent = `Error: ${e.message}`;
-    }
 }

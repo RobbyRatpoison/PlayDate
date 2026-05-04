@@ -185,12 +185,64 @@ def get_galaxy_user_id():
 
 # ── Library sync ──────────────────────────────────────────────────────────────
 
-def _fetch_all_products(session):
-    """Fetch all owned GOG products across pages. Returns (products, errors)."""
+_sync_state = {
+    'running': False, 'phase': None,
+    'page': 0, 'total_pages': 0,
+    'new_games': 0, 'total_games': 0, 'duplicates_detected': 0, 'error': None,
+}
+_sync_lock   = threading.Lock()
+_sync_cancel = threading.Event()
+
+
+def get_sync_state():
+    with _sync_lock:
+        return dict(_sync_state)
+
+
+def start_library_sync():
+    """Start a background library sync. Returns {status: 'started'|'already_running'}."""
+    with _sync_lock:
+        if _sync_state['running']:
+            return {'status': 'already_running'}
+        _sync_cancel.clear()
+        _sync_state.update({
+            'running': True, 'phase': 'fetching_products', 'page': 0, 'total_pages': 0,
+            'new_games': 0, 'total_games': 0, 'duplicates_detected': 0, 'error': None,
+        })
+    threading.Thread(target=_run_sync_library, daemon=True).start()
+    return {'status': 'started'}
+
+
+def cancel_library_sync():
+    """Signal the running library sync to stop."""
+    _sync_cancel.set()
+
+
+def _run_sync_library():
+    try:
+        _do_sync_library()
+    except Exception as e:
+        log.error(f'GOG library sync thread: {e}', exc_info=True)
+        with _sync_lock:
+            _sync_state.update({'running': False, 'phase': 'error', 'error': str(e)})
+
+
+def _do_sync_library():
+    session = get_valid_session()
+    if not session:
+        with _sync_lock:
+            _sync_state.update({'running': False, 'phase': 'error',
+                                'error': 'Not connected to GOG — please reconnect'})
+        return
+
     products = []
     errors   = []
     page     = 1
     while True:
+        if _sync_cancel.is_set():
+            with _sync_lock:
+                _sync_state.update({'running': False, 'phase': 'cancelled'})
+            return
         try:
             resp = session.get(
                 'https://embed.gog.com/account/getFilteredProducts',
@@ -198,41 +250,30 @@ def _fetch_all_products(session):
                 timeout=20,
             )
             if resp.status_code == 401:
-                return None, ['GOG session expired — please reconnect']
+                with _sync_lock:
+                    _sync_state.update({'running': False, 'phase': 'error',
+                                        'error': 'GOG session expired — please reconnect'})
+                return
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
             errors.append(f'Page {page}: {e}')
             break
+        total_pages = data.get('totalPages', 1)
         products.extend(data.get('products', []))
-        log.info(f'GOG library: page {page}/{data.get("totalPages", "?")} — {len(data.get("products", []))} products')
-        if page >= data.get('totalPages', 1):
+        log.info(f'GOG library: page {page}/{total_pages} — {len(data.get("products", []))} products')
+        with _sync_lock:
+            _sync_state.update({'page': page, 'total_pages': total_pages})
+        if page >= total_pages:
             break
         page += 1
         time.sleep(0.3)
-    return products, errors
 
+    games = [p for p in products if p.get('isGame') and not p.get('isMovie')]
+    log.info(f'GOG sync: {len(games)} games from {len(products)} products')
 
-def sync_library():
-    """
-    Fetch all owned GOG games and insert new ones into the DB.
-    Downloads art for new games via SGDB.
-    Returns {'new_games': int, 'total_games': int, 'errors': [str]}.
-    """
-    session = get_valid_session()
-    if not session:
-        return {'error': 'Not connected to GOG — please reconnect'}
-
-    all_products, errors = _fetch_all_products(session)
-    if all_products is None:
-        return {'error': errors[0]}
-
-    # Only real games, not movies or non-game products
-    games = [p for p in all_products if p.get('isGame') and not p.get('isMovie')]
-    log.info(f'GOG sync: {len(games)} games from {len(all_products)} products')
-
-    if not games:
-        return {'new_games': 0, 'total_games': 0, 'errors': errors}
+    with _sync_lock:
+        _sync_state['phase'] = 'saving'
 
     from database import get_db
     from datetime import datetime, timezone
@@ -240,14 +281,12 @@ def sync_library():
     db = get_db()
     try:
         existing = {
-            row[0]
-            for row in db.execute(
+            row[0] for row in db.execute(
                 "SELECT platform_id FROM games WHERE platform = 'gog'"
             ).fetchall()
         }
         blacklisted = {
-            row[0]
-            for row in db.execute(
+            row[0] for row in db.execute(
                 "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
             ).fetchall()
         }
@@ -282,24 +321,28 @@ def sync_library():
     finally:
         db.close()
 
-    # Download art for new games in the background
     if new_games:
-        threading.Thread(
-            target=_fetch_art_for_games, args=(new_games,), daemon=True
-        ).start()
+        threading.Thread(target=_fetch_art_for_games, args=(new_games,), daemon=True).start()
 
-    result = {
-        'new_games':   len(new_games),
-        'total_games': len(games),
-        'errors':      errors,
-    }
-
-    # Auto-detect duplicates for all unlinked GOG games (cheap DB scan, catches
-    # cases where a matching Steam game was added after the GOG sync ran)
     from database import auto_detect_duplicates
-    result['duplicates_detected'] = auto_detect_duplicates()
+    dupes = auto_detect_duplicates()
 
-    return result
+    with _sync_lock:
+        _sync_state.update({
+            'running': False, 'phase': 'done',
+            'new_games': len(new_games), 'total_games': len(games),
+            'duplicates_detected': dupes,
+        })
+
+
+def sync_library():
+    """Legacy synchronous wrapper — kept for internal callers."""
+    start_library_sync()
+    # Wait for completion (used only in non-interactive contexts)
+    import time as _time
+    while get_sync_state().get('running'):
+        _time.sleep(0.5)
+    return get_sync_state()
 
 
 
