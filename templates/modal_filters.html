@@ -1618,14 +1618,21 @@ async function applyFilters() {
 
     let filterToSave = collected;
     if (_loadedSavedFilterName && _loadedSavedTree) {
-        const collectedStr = JSON.stringify(_stripPagMeta(collected));
-        const savedStr     = JSON.stringify(_stripPagMeta(_loadedSavedTree));
-        if (collectedStr === savedStr) {
-            filterToSave = { saved_filter: _loadedSavedFilterName };
-        }
+        // PAGYWOSG filters are never edited in the modal — always use the sentinel.
+        // Non-PAGYWOSG: compare stripped trees to detect user modifications.
+        const isPag = !!_loadedSavedTree.pagywosg;
+        const unchanged = isPag || (
+            JSON.stringify(_stripPagMeta(collected)) === JSON.stringify(_stripPagMeta(_loadedSavedTree))
+        );
+        if (unchanged) filterToSave = { saved_filter: _loadedSavedFilterName };
     }
 
     await sendStateUpdate({ filter_tree: filterToSave });
+    if (typeof window._onFiltersApplied === 'function') {
+        const appliedName = (filterToSave.saved_filter) || null;
+        const hasFilters  = !!(collected.items?.length || collected.custom_sql);
+        window._onFiltersApplied(appliedName, hasFilters);
+    }
     closeFilterModal();
 }
 
@@ -1664,6 +1671,7 @@ async function applyBuiltinFilter(key) {
     const tree = { type: 'group', logic: 'AND', items: [], custom_sql: preset.where };
     updateActivePills(tree);
     await sendStateUpdate({ filter_tree: tree });
+    if (typeof window._onFiltersApplied === 'function') window._onFiltersApplied(preset.label || null, true);
     closeFilterModal();
 }
 

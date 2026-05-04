@@ -504,9 +504,8 @@
                     <div class="toggle-track"></div>
                     <span class="toggle-desc">Use currently filtered games only</span>
                 </label>
-                {% if not has_filters %}
-                <span class="mode-desc">(No filter active)</span>
-                {% endif %}
+                <a id="pick-filter-link" onclick="openFilterModal()" data-has-filters="{{ '1' if has_filters else '0' }}" style="font-size:0.75rem; color:{% if has_filters %}#66c0f4{% else %}#8f98a0{% endif %}; cursor:pointer; text-decoration:none; white-space:nowrap; margin-left:4px;"
+                   onmouseover="this.style.color='#c7d5e0'" onmouseout="this.style.color=_pickFilterLinkColor()">{% if filter_name %}{{ filter_name }} →{% elif has_filters %}Active filter →{% else %}No filter →{% endif %}</a>
             </div>
 
             <!-- Completion status filters -->
@@ -533,6 +532,22 @@
 </div>
 
 <script>
+const _activeFilterName = {{ filter_name | tojson }};
+
+function _pickFilterLinkColor() {
+    const el = document.getElementById('pick-filter-link');
+    return el && el.dataset.hasFilters === '1' ? '#66c0f4' : '#8f98a0';
+}
+
+window._onFiltersApplied = function(filterName, hasFilters) {
+    const el = document.getElementById('pick-filter-link');
+    if (!el) return;
+    el.dataset.hasFilters = hasFilters ? '1' : '0';
+    el.style.color = hasFilters ? '#66c0f4' : '#8f98a0';
+    el.textContent = (filterName ? filterName : hasFilters ? 'Active filter' : 'No filter') + ' →';
+    document.getElementById('filtered-toggle').checked = hasFilters;
+};
+
 let currentMode = 'random';
 
 function toggleStatus(btn) {

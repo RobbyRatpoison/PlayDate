@@ -343,11 +343,23 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/pick')
     def pick():
-        from config import load_state, resolve_active_filter_tree
+        from config import load_state, resolve_active_filter_tree, BUILTIN_FILTERS
         state = load_state()
+        raw_ft = state.get('filter_tree')
         ft = resolve_active_filter_tree(state)
+        state['filter_tree'] = ft  # modal sees expanded tree (mirrors library.py)
         has_filters = bool(ft and (ft.get('items') or ft.get('custom_sql')))
-        return render_template('pick.html', state=state, has_filters=has_filters)
+        filter_name = None
+        if isinstance(raw_ft, dict):
+            if 'saved_filter' in raw_ft:
+                filter_name = raw_ft['saved_filter']
+            elif raw_ft.get('custom_sql'):
+                cs = raw_ft['custom_sql']
+                for bf in BUILTIN_FILTERS.values():
+                    if bf.get('where') == cs:
+                        filter_name = bf['label']
+                        break
+        return render_template('pick.html', state=state, has_filters=has_filters, filter_name=filter_name)
 
     @app.route('/api/pick-game', methods=['POST'])
     def pick_game():
