@@ -1230,6 +1230,7 @@ def sync_recent_playtime():
       - Won't Play                   → only changed if 100% achievements
       - Beaten                       → never downgraded; upgraded to Completed if 100%
     """
+    from config import load_state
     try:
         account = get_active_account()
         if not account:
