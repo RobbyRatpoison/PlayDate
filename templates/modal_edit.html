@@ -1429,9 +1429,9 @@ const achLink = document.getElementById('achievements-link');
             developers:  { LIKE:           [`Developer includes ${val}`,      g => _pagCsvContains(g.developers, val)] },
             publishers:  { LIKE:           [`Publisher includes ${val}`,      g => _pagCsvContains(g.publishers, val)] },
             release_date: {
-                STRFTIME_MONTH: [`Released in ${MONTHS[+val]||val}`,          g => (g.release_date||'').slice(5,7) === String(val).padStart(2,'0')],
-                STRFTIME_DAY:   [`Released on the ${val}${_ordSuffix(+val)}`, g => (g.release_date||'').slice(8,10) === String(val).padStart(2,'0')],
-                STRFTIME_YEAR:  [`Released in ${val}`,                        g => (g.release_date||'').slice(0,4) === String(val)],
+                STRFTIME_MONTH: [`Released in ${MONTHS[+val]||val}`,          g => _rdStr(g).slice(5,7) === String(val).padStart(2,'0')],
+                STRFTIME_DAY:   [`Released on the ${val}${_ordSuffix(+val)}`, g => _rdStr(g).slice(8,10) === String(val).padStart(2,'0')],
+                STRFTIME_YEAR:  [`Released in ${val}`,                        g => _rdStr(g).slice(0,4) === String(val)],
             },
         };
         const entry = map[col]?.[op];
@@ -1443,6 +1443,12 @@ const achLink = document.getElementById('achievements-link');
     function _ordSuffix(n) {
         const s = ['th','st','nd','rd'], v = n % 100;
         return s[(v - 20) % 10] || s[v] || s[0];
+    }
+    function _rdStr(g) {
+        const rd = g.release_date;
+        if (!rd) return '';
+        if (typeof rd === 'string') return rd;
+        return new Date(rd * 1000).toISOString().slice(0, 10);
     }
 
     const _PROTONDB_TIER_COLORS = {

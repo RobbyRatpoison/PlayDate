@@ -429,7 +429,12 @@ def update_game():
         db.close()
         game = dict(row) if row else {"appid": appid}
         state = load_state()
-        outline_map = _compute_outline_colors([game], state)
+        _outlines_cfg = state.get('card_outlines', {})
+        outline_map = (
+            _compute_outline_colors([game], state)
+            if _outlines_cfg.get('enabled', {}).get('library', True)
+            else {}
+        )
         return jsonify({
             "status": "success",
             "game": game,
