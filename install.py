@@ -55,13 +55,13 @@ class InstallerApp(tk.Tk):
         super().__init__()
         self.title("PlayDate Installer")
         self.configure(bg=BG)
-        self.resizable(False, False)
-        self._center(540, 400)
+        self.resizable(False, True)
 
         # Set window icon if available
         self._set_icon()
 
         self._build_ui()
+        self._autosize(540)
         self._steps_done = 0
         self._total_steps = self._count_steps()
 
@@ -85,6 +85,12 @@ class InstallerApp(tk.Tk):
         x  = (sw - w) // 2
         y  = (sh - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _autosize(self, w):
+        self.update_idletasks()
+        sh = self.winfo_screenheight()
+        h = min(self.winfo_reqheight(), sh - 80)
+        self._center(w, h)
 
     def _count_steps(self):
         return 6  # sanity, python, venv, deps, launcher, register
@@ -170,7 +176,7 @@ class InstallerApp(tk.Tk):
             font=("Segoe UI", 10, "bold"),
             relief="flat", cursor="arrow",
             state="disabled", padx=20, pady=8,
-            command=self.destroy
+            command=self._finish_close
         )
         self._btn_close.pack(side="left")
 
@@ -196,8 +202,17 @@ class InstallerApp(tk.Tk):
             self._prog["value"] = pct
         self.after(0, _do)
 
+    def _maybe_create_shortcut(self):
+        if self._shortcut_var.get():
+            self._register_desktop_shortcut()
+
     def _launch_and_close(self):
+        self._maybe_create_shortcut()
         subprocess.Popen([VENV_PYTHON, MAIN_PY])
+        self.destroy()
+
+    def _finish_close(self):
+        self._maybe_create_shortcut()
         self.destroy()
 
     def _finish_ok(self):
@@ -497,8 +512,6 @@ class InstallerApp(tk.Tk):
         elif SYSTEM == "Windows":
             self._set_step("Step 6 — Adding Start Menu shortcut…")
             self._register_windows()
-        if self._shortcut_var.get():
-            self._register_desktop_shortcut()
         self._advance("Step 6 — Registration complete")
 
     def _win_shortcut(self, dest_path, ok_msg, fail_msg):

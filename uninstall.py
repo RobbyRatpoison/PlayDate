@@ -53,13 +53,13 @@ class UninstallerApp(tk.Tk):
         super().__init__()
         self.title("PlayDate Uninstaller")
         self.configure(bg=BG)
-        self.resizable(False, False)
-        self._center(540, 520)
+        self.resizable(False, True)
         self._set_icon()
         self._phase = "confirm"   # "confirm" → "uninstalling" → "done"
         self._do_delete_folder = False
         self._uninstall_ok = False
         self._build_confirm_ui()
+        self._autosize(540)
 
     def _set_icon(self):
         icon = os.path.join(INSTALL_DIR, "static", "img", "favicon.png")
@@ -77,6 +77,12 @@ class UninstallerApp(tk.Tk):
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+
+    def _autosize(self, w):
+        self.update_idletasks()
+        sh = self.winfo_screenheight()
+        h = min(self.winfo_reqheight(), sh - 80)
+        self._center(w, h)
 
     # ── Phase 1: Confirmation screen ──────────────────────────────────────────
     def _build_confirm_ui(self):
