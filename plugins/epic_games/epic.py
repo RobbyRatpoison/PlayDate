@@ -344,16 +344,6 @@ def _do_sync_library():
 
             ns, entry = catalog.get(catalog_id, (a.get('namespace', ''), {}))
 
-            # Skip non-games (soundtracks, tools, DLC) -- base games have a PresenceId
-            # in customAttributes; non-game entitlements do not.
-            cats   = {c.get('path', '') for c in entry.get('categories', [])}
-            custom = entry.get('customAttributes', {})
-            if 'games' not in cats or 'PresenceId' not in custom:
-                log.debug(f'Epic sync: skipping {catalog_id!r} {entry.get("title")!r} '
-                          f'(cats={cats}, has_presence={"PresenceId" in custom})')
-                seen_cids.add(catalog_id)
-                continue
-
             app_name  = cid_best_appname.get(catalog_id, a.get('appName', ''))
             name      = entry.get('title') or app_name
             next_appid = next_negative_appid(db)
