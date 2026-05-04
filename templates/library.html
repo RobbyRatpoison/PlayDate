@@ -1031,7 +1031,7 @@
             if (fallback) img.onerror = () => { img.onerror = null; img.src = fallback; };
             else          img.onerror = () => { img.onerror = null; };
             img.src = img.dataset.src;
-        }, _initialLoad ? 0 : 200);
+        }, _initialLoad ? 0 : 100);
     }
 
     function openEditModalById(appid) {
@@ -1256,7 +1256,7 @@
         document.querySelectorAll('.game-card').forEach(c => _observer.observe(c));
     }
 
-    // Build on load
+    // Build on load — deferred so the browser can paint the page chrome first
     document.addEventListener('DOMContentLoaded', function() {
         if (_artOrientation === 'list') {
             _adjustListHeight();
@@ -1264,7 +1264,7 @@
             buildListView();
             window.addEventListener('resize', _adjustListHeight);
         } else {
-            buildGrid();
+            requestAnimationFrame(() => requestAnimationFrame(() => buildGrid()));
         }
     });
 

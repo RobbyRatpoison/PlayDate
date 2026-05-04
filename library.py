@@ -349,7 +349,19 @@ def library():
             games = [dict(row) for row in rows]
         except Exception:
             games = []
+
+    total_games  = db.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+    hidden_dupes = db.execute(
+        "SELECT COUNT(*) FROM games WHERE duplicate_of IS NOT NULL AND duplicate_of != ''"
+    ).fetchone()[0]
+    _plat_rows = db.execute("SELECT DISTINCT platform as p FROM games ORDER BY p").fetchall()
+
+    _grp_rows = db.execute("SELECT groups FROM games WHERE groups IS NOT NULL").fetchall()
+    _tag_rows = db.execute("SELECT tags   FROM games WHERE tags   IS NOT NULL").fetchall()
     db.close()
+
+    groups = sorted({v.strip() for row in _grp_rows for v in (row['groups'] or '').split(',') if v.strip()}, key=str.casefold)
+    tags   = sorted({v.strip() for row in _tag_rows for v in (row['tags']   or '').split(',') if v.strip()}, key=str.casefold)
 
     _outlines_cfg = state.get('card_outlines', {})
     outline_colors = (
@@ -366,19 +378,6 @@ def library():
         for col in ('last_played', 'date_added', 'release_date'):
             if g.get(col):
                 g[col] = ts_to_date(g[col])
-
-    groups = get_all_unique_groups()
-    tags   = get_all_unique_tags()
-
-    total_db = get_db()
-    total_games    = total_db.execute("SELECT COUNT(*) FROM games").fetchone()[0]
-    hidden_dupes   = total_db.execute(
-        "SELECT COUNT(*) FROM games WHERE duplicate_of IS NOT NULL AND duplicate_of != ''"
-    ).fetchone()[0]
-    _plat_rows = total_db.execute(
-        "SELECT DISTINCT platform as p FROM games ORDER BY p"
-    ).fetchall()
-    total_db.close()
 
     from plugins import platform_labels as _platform_labels
     _plat_order = list(_platform_labels().keys())

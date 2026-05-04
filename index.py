@@ -136,14 +136,9 @@ def index():
                 break
         shelf_games[shelf['id']] = games
 
-    db.close()
-
-    # Completion counts for pie widget
-    db2 = get_db()
-    db2.row_factory = sqlite3.Row
     completion_counts = {}
     try:
-        rows = db2.execute(
+        rows = db.execute(
             "SELECT completion_status, COUNT(*) as cnt FROM games "
             "WHERE completion_status IS NOT NULL "
             "GROUP BY completion_status"
@@ -154,14 +149,11 @@ def index():
                 completion_counts[str(key)] = row['cnt']
     except Exception:
         pass
-    db2.close()
 
-    db3 = get_db()
-    db3.row_factory = sqlite3.Row
     from plugins import platform_labels as _platform_labels
     _plat_order = list(_platform_labels().keys())
     try:
-        _plat_rows = db3.execute(
+        _plat_rows = db.execute(
             "SELECT DISTINCT platform as p FROM games ORDER BY p"
         ).fetchall()
         available_platforms = sorted(
@@ -170,7 +162,8 @@ def index():
         )
     except Exception:
         available_platforms = ['steam']
-    db3.close()
+
+    db.close()
 
     # Restore display order and attach games
     ordered_shelves = [

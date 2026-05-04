@@ -130,6 +130,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_last_played       ON games(last_played)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_playtime_forever  ON games(playtime_forever)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_platform          ON games(platform)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_name              ON games(name)")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS blacklist (
