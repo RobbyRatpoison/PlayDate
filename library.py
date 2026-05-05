@@ -427,6 +427,10 @@ def update_game():
         row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
         db.close()
         game = dict(row) if row else {"appid": appid}
+        from database import ts_to_date
+        for col in ('last_played', 'date_added', 'release_date'):
+            if game.get(col):
+                game[col] = ts_to_date(game[col])
         state = load_state()
         _outlines_cfg = state.get('card_outlines', {})
         outline_map = (
@@ -489,6 +493,19 @@ def bulk_edit_games(data):
             tree_sql = build_tree_sql(filter_tree, params)
             if tree_sql and tree_sql != '1=1':
                 where = tree_sql
+
+    hidden_platforms = [p for p in (data.get('hidden_platforms') or []) if _re.match(r'^[a-z][a-z0-9_]*$', p or '')]
+    if hidden_platforms:
+        plat_conds = []
+        if 'steam' in hidden_platforms:
+            plat_conds.append("platform != 'steam'")
+        non_steam = [p for p in hidden_platforms if p != 'steam']
+        if non_steam:
+            placeholders = ','.join('?' for _ in non_steam)
+            plat_conds.append(f"platform NOT IN ({placeholders})")
+            params.extend(non_steam)
+        plat_cond = ' AND '.join(plat_conds)
+        where = plat_cond if where == '1=1' else f"({where}) AND ({plat_cond})"
 
     DATE_COLUMNS = {'date_added', 'last_played', 'release_date'}
     if column in DATE_COLUMNS and value:

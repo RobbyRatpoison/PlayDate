@@ -510,6 +510,11 @@
             pointer-events: none; /* clicks go to card, not steam link */
         }
 
+        body.select-mode .list-row {
+            outline: 1px dashed var(--border);
+            outline-offset: -1px;
+        }
+
         .game-card.selected {
             outline: 3px solid var(--accent);
             outline-offset: -2px;
@@ -1438,6 +1443,13 @@ function _enterSelectMode() {
     document.querySelectorAll('.game-card[data-populated]').forEach(card => {
         card.addEventListener('click', onCardClick);
     });
+    // Clear the active list row highlight so it doesn't look pre-selected
+    document.querySelectorAll('.list-row.selected').forEach(r => r.classList.remove('selected'));
+}
+
+function _filteredAppids() {
+    return Array.from(document.querySelectorAll('.game-card[data-appid], .list-row[data-appid]'))
+               .map(c => parseInt(c.dataset.appid));
 }
 
 function _exitSelectMode() {
@@ -1445,7 +1457,7 @@ function _exitSelectMode() {
     _selectMode = false;
     document.body.classList.remove('select-mode');
     _selectedIds.clear();
-    document.querySelectorAll('.game-card.selected').forEach(c => c.classList.remove('selected'));
+    document.querySelectorAll('.game-card.selected, .list-row.selected').forEach(c => c.classList.remove('selected'));
     _updateSelectBadge();
     document.querySelectorAll('.game-card[data-populated]').forEach(card => {
         card.removeEventListener('click', onCardClick);
@@ -1681,6 +1693,7 @@ async function runBulkEdit() {
         payload.appids = Array.from(_selectedIds);
     } else if (scope === 'filtered') {
         payload.filter_tree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
+        if (_hiddenPlatforms.size) payload.hidden_platforms = Array.from(_hiddenPlatforms);
     }
     // scope === 'all': no appids and no filter_tree → backend uses WHERE 1=1
 
@@ -1747,7 +1760,7 @@ async function startBulkOp(op) {
             return;
         }
     } else if (scope === 'filtered') {
-        appids = Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+        appids = _filteredAppids();
     }
 
     const displayCount = scope === 'all' ? ALL_GAME_COUNT : appids.length;
@@ -1928,7 +1941,7 @@ async function runBulkDelete() {
 
     const appids = scope === 'selected'
         ? Array.from(_selectedIds)
-        : Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+        : _filteredAppids();
 
     try {
         const res = await fetch('/api/bulk-delete', {
@@ -2011,7 +2024,7 @@ async function startBulkDateImport() {
     if (scope === 'selected') {
         payload.appids = Array.from(_selectedIds);
     } else if (scope === 'filtered') {
-        payload.appids = Array.from(document.querySelectorAll('.game-card[data-appid]')).map(c => parseInt(c.dataset.appid));
+        payload.appids = _filteredAppids();
     }
 
     startBtn.disabled = true;
@@ -2406,8 +2419,17 @@ function pickRandomGame() {
         row.dataset.platform  = game.platform  || 'steam';
         row.dataset.installed = game.installed ? '1' : '0';
         // Resolve via _GAME_MAP at click time so edits are always reflected
-        row.addEventListener('click',    () => { const g = _GAME_MAP.get(game.appid); if (g) openDetailPane(g); });
-        row.addEventListener('dblclick', () => launchGame(game.appid));
+        row.addEventListener('click', () => {
+            if (_selectMode) {
+                const appid = game.appid;
+                if (_selectedIds.has(appid)) { _selectedIds.delete(appid); row.classList.remove('selected'); }
+                else                         { _selectedIds.add(appid);    row.classList.add('selected'); }
+                _updateSelectBadge();
+            } else {
+                const g = _GAME_MAP.get(game.appid); if (g) openDetailPane(g);
+            }
+        });
+        row.addEventListener('dblclick', () => { if (!_selectMode) launchGame(game.appid); });
         return row;
     }
 
@@ -2434,6 +2456,7 @@ function pickRandomGame() {
         row.appendChild(name);
         row.appendChild(status);
         row.dataset.populated = '1';
+        if (_selectedIds.has(appid)) row.classList.add('selected');
     }
 
     let _listObserver = null;
