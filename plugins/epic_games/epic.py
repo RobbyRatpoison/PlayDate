@@ -184,7 +184,7 @@ def get_valid_session():
 # ── Library sync ──────────────────────────────────────────────────────────────
 
 _sync_state = {
-    'running': False, 'phase': None, 'done': 0, 'total': 0,
+    'running': False, 'phase': None, 'done': 0, 'total': 0, 'current_game': '',
     'new_games': 0, 'total_games': 0, 'duplicates_detected': 0, 'error': None,
 }
 _sync_lock   = threading.Lock()
@@ -204,7 +204,8 @@ def start_library_sync():
         _sync_cancel.clear()
         _sync_state.update({
             'running': True, 'phase': 'fetching_assets', 'done': 0, 'total': 0,
-            'new_games': 0, 'total_games': 0, 'duplicates_detected': 0, 'error': None,
+            'current_game': '', 'new_games': 0, 'total_games': 0,
+            'duplicates_detected': 0, 'error': None,
         })
     threading.Thread(target=_run_sync_library, daemon=True).start()
     return {'status': 'started'}
@@ -225,6 +226,9 @@ def _run_sync_library():
 
 
 def _do_sync_library():
+    from database import get_db, update_game_data as _update_game_data
+    from datetime import datetime, timezone, date as _date
+
     session = get_valid_session()
     if not session:
         with _sync_lock:
@@ -250,9 +254,6 @@ def _do_sync_library():
 
     log.info(f'Epic sync: {len(assets)} assets to process')
 
-    from database import get_db
-    from datetime import datetime, timezone
-
     # Load existing/blacklisted cids up front so we can skip catalog API calls
     # for games already in the DB -- avoids fetching 50+ batches on every re-sync.
     db = get_db()
@@ -275,48 +276,14 @@ def _do_sync_library():
     cid_appnames = {}  # catalogItemId -> [(appName, buildVersion), ...]
     by_ns = {}
     for a in assets:
-        ns  = a.get('namespace', 'fn')
-        cid = a.get('catalogItemId', '')
+        ns    = a.get('namespace', 'fn')
+        cid   = a.get('catalogItemId', '')
         aname = a.get('appName', '')
         if cid and aname and cid not in existing and cid not in blacklisted:
             cid_appnames.setdefault(cid, []).append((aname, a.get('buildVersion', '')))
             by_ns.setdefault(ns, []).append((cid, aname))
 
-    total_cids = sum(len(items) for items in by_ns.values())
-    log.info(f'Epic sync: {total_cids} new cids to fetch catalog for (skipped {len(assets) - total_cids} existing)')
-    with _sync_lock:
-        _sync_state.update({'phase': 'fetching_catalog', 'done': 0, 'total': total_cids})
-
-    # catalog maps catalogItemId -> (namespace, entry_dict)
-    catalog = {}
-    done_cids = 0
-    for ns, items in by_ns.items():
-        cids = [cid for cid, _ in items]
-        url  = _CATALOG_URL_TMPL.format(ns=ns)
-        for i in range(0, len(cids), 50):
-            if _sync_cancel.is_set():
-                with _sync_lock:
-                    _sync_state.update({'running': False, 'phase': 'cancelled'})
-                return
-            batch = cids[i:i + 50]
-            params = [('id', cid) for cid in batch]
-            params += [('country', 'US'), ('locale', 'en'), ('includeDLCDetails', 'false')]
-            try:
-                r = session.get(url, params=params, timeout=20)
-                if r.status_code == 200:
-                    for cid, entry in r.json().items():
-                        catalog[cid] = (ns, entry)
-                else:
-                    log.warning(f'Epic catalog batch [{ns}]: HTTP {r.status_code}')
-            except Exception as e:
-                log.warning(f'Epic catalog batch fetch failed [{ns}]: {e}')
-            done_cids += len(batch)
-            with _sync_lock:
-                _sync_state['done'] = done_cids
-            time.sleep(0.3)
-
-    # For each catalogItemId, resolve the best appName for launching.
-    # Installable game assets have a non-empty buildVersion; entitlement records don't.
+    # Resolve best appName per cid before the main loop.
     cid_best_appname = {}
     for cid, entries in cid_appnames.items():
         with_build = [aname for aname, bv in entries if bv]
@@ -326,54 +293,114 @@ def _do_sync_library():
             all_names = [a for a, _ in entries]
             log.debug(f'Epic sync: {cid} has {len(entries)} appNames {all_names!r}, chose {best!r}')
 
+    total_new = len(cid_appnames)
+    log.info(f'Epic sync: {total_new} new games to process (skipped {len(assets) - total_new} existing)')
+
     with _sync_lock:
-        _sync_state['phase'] = 'saving'
+        _sync_state.update({'phase': 'processing', 'done': 0, 'total': total_new, 'current_game': ''})
+
+    today_ts       = int(datetime.now(timezone.utc).timestamp())
+    today          = _date.today().isoformat()
+    new_games_count = 0
+    seen_cids      = set()
+
+    # Per-namespace cache for store/ratings API calls (same ns = same data)
+    store_cache   = {}
+    ratings_cache = {}
 
     db = get_db()
     try:
-        new_games = []
-        today_ts  = int(datetime.now(timezone.utc).timestamp())
-        seen_cids = set()  # guard against processing the same catalogItemId twice
+        for ns, items in by_ns.items():
+            cids = [cid for cid, _ in items]
+            url  = _CATALOG_URL_TMPL.format(ns=ns)
 
-        for a in assets:
-            catalog_id = a.get('catalogItemId', '')
-            if not catalog_id:
-                continue
-            if catalog_id in seen_cids or catalog_id in existing or catalog_id in blacklisted:
-                continue
+            for i in range(0, len(cids), 50):
+                if _sync_cancel.is_set():
+                    with _sync_lock:
+                        _sync_state.update({'running': False, 'phase': 'stopped',
+                                            'new_games': new_games_count,
+                                            'total_games': len(assets)})
+                    return
 
-            ns, entry = catalog.get(catalog_id, (a.get('namespace', ''), {}))
+                batch = cids[i:i + 50]
+                params = [('id', cid) for cid in batch]
+                params += [('country', 'US'), ('locale', 'en'), ('includeDLCDetails', 'false')]
+                catalog_batch = {}
+                try:
+                    r = session.get(url, params=params, timeout=20)
+                    if r.status_code == 200:
+                        catalog_batch = r.json()
+                    else:
+                        log.warning(f'Epic catalog batch [{ns}]: HTTP {r.status_code}')
+                except Exception as e:
+                    log.warning(f'Epic catalog batch fetch failed [{ns}]: {e}')
 
-            app_name  = cid_best_appname.get(catalog_id, a.get('appName', ''))
-            name      = entry.get('title') or app_name
-            next_appid = next_negative_appid(db)
-            url_slug  = entry.get('urlSlug', '')
-            seen_cids.add(catalog_id)
+                for cid in batch:
+                    if cid in seen_cids or cid in existing or cid in blacklisted:
+                        continue
+                    seen_cids.add(cid)
 
-            db.execute(
-                """INSERT OR IGNORE INTO games
-                   (appid, name, platform, platform_id, platform_slug, platform_appname,
-                    platform_ns, date_added,
-                    completion_status, installed,
-                    art_fetched, meta_fetched, cheevos_fetched,
-                    protondb_fetched, hltb_fetched)
-                   VALUES (?, ?, 'epic_games', ?, ?, ?, ?, ?,
-                           'Never Played', 0,
-                           '0', '0', '0', '0', '0')""",
-                (next_appid, name, catalog_id, url_slug, app_name, ns, today_ts),
-            )
+                    entry    = catalog_batch.get(cid, {})
+                    app_name = cid_best_appname.get(cid, '')
+                    name     = entry.get('title') or app_name
+                    url_slug = entry.get('urlSlug', '')
 
-            key_images = entry.get('keyImages', [])
-            new_games.append({'appid': next_appid, 'name': name, 'key_images': key_images,
-                              'entry': entry, 'ns': ns})
-            log.info(f'Epic sync: added {name!r} as appid {next_appid}')
+                    with _sync_lock:
+                        _sync_state['current_game'] = name
 
-        db.commit()
+                    next_appid = next_negative_appid(db)
+                    db.execute(
+                        """INSERT OR IGNORE INTO games
+                           (appid, name, platform, platform_id, platform_slug, platform_appname,
+                            platform_ns, date_added,
+                            completion_status, installed,
+                            art_fetched, meta_fetched, cheevos_fetched,
+                            protondb_fetched, hltb_fetched)
+                           VALUES (?, ?, 'epic_games', ?, ?, ?, ?, ?,
+                                   'Never Played', 0,
+                                   '0', '0', '0', '0', '0')""",
+                        (next_appid, name, cid, url_slug, app_name, ns, today_ts),
+                    )
+                    db.commit()
+                    log.info(f'Epic sync: added {name!r} as appid {next_appid}')
+
+                    # Metadata from catalog entry + store/ratings API
+                    meta = _extract_metadata(entry)
+                    if ns not in store_cache:
+                        store_cache[ns] = _fetch_epic_store_data(ns)
+                    if ns not in ratings_cache:
+                        ratings_cache[ns] = _fetch_epic_ratings(ns)
+                    meta.update(store_cache[ns])
+                    meta.update(ratings_cache[ns])
+                    meta['meta_fetched'] = today
+                    try:
+                        _update_game_data(next_appid, **meta)
+                    except Exception as e:
+                        log.warning(f'Epic metadata: DB update failed for {name!r}: {e}')
+
+                    # Art from Epic CDN
+                    key_images = entry.get('keyImages', [])
+                    try:
+                        _download_epic_art(next_appid, key_images)
+                        _update_game_data(next_appid, art_fetched=today)
+                        log.info(f'Epic art: downloaded for {name!r} (appid {next_appid})')
+                    except Exception as e:
+                        log.warning(f'Epic art: failed for {name!r}: {e}')
+
+                    new_games_count += 1
+                    with _sync_lock:
+                        _sync_state['done'] += 1
+
+                    if _sync_cancel.is_set():
+                        with _sync_lock:
+                            _sync_state.update({'running': False, 'phase': 'stopped',
+                                                'new_games': new_games_count,
+                                                'total_games': len(assets)})
+                        return
+
+                time.sleep(0.3)
     finally:
         db.close()
-
-    if new_games:
-        threading.Thread(target=_fetch_art_for_games, args=(new_games,), daemon=True).start()
 
     # Re-run install detection now that platform_appname is correct for all records
     try:
@@ -385,10 +412,16 @@ def _do_sync_library():
     from database import auto_detect_duplicates
     dupes = auto_detect_duplicates()
 
+    if new_games_count > 0:
+        try:
+            import_purchase_dates()
+        except Exception as e:
+            log.warning(f'Epic sync: post-sync date import failed: {e}')
+
     with _sync_lock:
         _sync_state.update({
             'running': False, 'phase': 'done',
-            'new_games': len(new_games), 'total_games': len(assets),
+            'new_games': new_games_count, 'total_games': len(assets),
             'duplicates_detected': dupes,
         })
 
@@ -687,6 +720,92 @@ def start_meta_sync(force=False):
 
     threading.Thread(target=_run, daemon=True).start()
     return {'status': 'started'}
+
+
+def import_purchase_dates():
+    """
+    Fetch Epic entitlements and update date_added for all matched library games.
+    Returns {'updated': int, 'not_found': int} or {'error': str}.
+    """
+    from database import get_db, update_game_data
+    from datetime import datetime
+
+    tokens = load_epic_tokens()
+    if not tokens:
+        return {'error': 'Epic account not connected'}
+
+    account_id = tokens.get('account_id', '')
+    if not account_id:
+        return {'error': 'No account ID stored'}
+
+    session = get_valid_session()
+    if not session:
+        return {'error': 'Could not refresh Epic token'}
+
+    try:
+        r = session.get(
+            f'https://entitlement-public-service-prod08.ol.epicgames.com'
+            f'/entitlement/api/account/{account_id}/entitlements',
+            params={'count': 5000},
+            timeout=30,
+        )
+        r.raise_for_status()
+        entitlements = r.json()
+    except Exception as e:
+        log.warning(f'Epic import-dates: entitlements fetch failed: {e}')
+        return {'error': f'Failed to fetch entitlements: {e}'}
+
+    if not isinstance(entitlements, list):
+        return {'error': 'Unexpected entitlements response format'}
+
+    log.info(f'Epic import-dates: {len(entitlements)} entitlements received')
+
+    # Assets API and entitlements API use different catalogItemIds for the same game,
+    # but both share the same namespace. Match by namespace; catalogItemId as fallback.
+    # Exclude the top-level 'epic' namespace (platform-wide items, not individual games).
+    ns_date_map  = {}
+    cid_date_map = {}
+    for ent in entitlements:
+        ns  = ent.get('namespace', '')
+        cid = ent.get('catalogItemId', '')
+        raw_date = ent.get('grantDate') or ent.get('createdDate') or ent.get('created')
+        if not raw_date:
+            continue
+        try:
+            ts = int(datetime.fromisoformat(raw_date.replace('Z', '+00:00')).timestamp())
+        except Exception:
+            continue
+        if ns and ns != 'epic':
+            if ns not in ns_date_map or ts < ns_date_map[ns]:
+                ns_date_map[ns] = ts
+        if cid:
+            if cid not in cid_date_map or ts < cid_date_map[cid]:
+                cid_date_map[cid] = ts
+
+    db   = get_db()
+    rows = db.execute(
+        "SELECT appid, platform_id, platform_ns FROM games WHERE platform = 'epic_games'"
+    ).fetchall()
+    db.close()
+
+    updated   = 0
+    not_found = 0
+    for row in rows:
+        appid       = row['appid']
+        platform_id = row['platform_id'] or ''
+        platform_ns = row['platform_ns'] or ''
+        ts = cid_date_map.get(platform_id) or ns_date_map.get(platform_ns)
+        if ts is None:
+            not_found += 1
+            continue
+        try:
+            update_game_data(appid, date_added=ts)
+            updated += 1
+        except Exception as e:
+            log.warning(f'Epic import-dates: DB update failed for {platform_id}: {e}')
+
+    log.info(f'Epic import-dates: {updated} updated, {not_found} not in library')
+    return {'updated': updated, 'not_found': not_found}
 
 
 def _sync_metadata(force=False):
