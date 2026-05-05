@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PlayDate Date Importer
 // @namespace    playdate
-// @version      2.4
+// @version      2.6
 // @description  Imports Steam activation dates and GOG purchase dates into PlayDate
 // @match        https://help.steampowered.com/*
 // @match        https://www.gog.com/en/account/settings/orders*
