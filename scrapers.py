@@ -1353,6 +1353,7 @@ def sync_recent_playtime():
             " WHERE total_achievements > 0"
             "   AND unlocked_achievements = total_achievements"
             "   AND completion_status != 'Completed'"
+            "   AND (platform = 'steam' OR platform IS NULL)"
         )
         if result.rowcount:
             log.info(f"sync_recent_playtime: promoted {result.rowcount} game(s) to Completed via achievement sweep.")

@@ -565,12 +565,14 @@ def sync_gog_metadata(force=False):
     try:
         if force:
             rows = db.execute(
-                "SELECT appid, platform_id, name FROM games WHERE platform = 'gog'"
+                "SELECT appid, platform_id, name, meta_fetched FROM games WHERE platform = 'gog'"
             ).fetchall()
         else:
             rows = db.execute(
-                "SELECT appid, platform_id, name FROM games "
-                "WHERE platform = 'gog' AND (meta_fetched IS NULL OR meta_fetched = '0')"
+                "SELECT appid, platform_id, name, meta_fetched FROM games "
+                "WHERE platform = 'gog'"
+                "  AND (meta_fetched IS NULL OR meta_fetched = '0'"
+                "       OR cheevos_fetched IS NULL OR cheevos_fetched = '0')"
             ).fetchall()
 
         updated = 0
@@ -586,9 +588,27 @@ def sync_gog_metadata(force=False):
 
         from database import add_to_blacklist
         for row in rows:
-            appid  = row['appid']
-            gog_id = row['platform_id']
-            name   = row['name']
+            appid           = row['appid']
+            gog_id          = row['platform_id']
+            name            = row['name']
+            has_meta        = row['meta_fetched'] and row['meta_fetched'] != '0'
+
+            if has_meta:
+                # Metadata already fetched — only missing achievements
+                if not (session and galaxy_user_id):
+                    time.sleep(0.5)
+                    continue
+                ach = fetch_gog_achievements(gog_id, galaxy_user_id, session)
+                if ach is not None:
+                    try:
+                        update_game_data(appid, cheevos_fetched=today, **ach)
+                        log.info(f'GOG metadata: fetched achievements for {name!r}')
+                        updated += 1
+                    except Exception as e:
+                        log.error(f'GOG metadata: achievement update failed for {name!r}: {e}')
+                        errors += 1
+                time.sleep(0.5)
+                continue
 
             meta = fetch_gog_metadata(gog_id)
             if meta is None:
