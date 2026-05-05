@@ -679,6 +679,60 @@
     </script>
     {% block scripts %}{% endblock %}
 
+    <!-- What's New modal -->
+    <div id="whats-new-modal" style="display:none; position:fixed; inset:0; z-index:99998;
+         background:rgba(0,0,0,0.75); align-items:center; justify-content:center;">
+        <div style="background:var(--bg-raised,#1e2a35); border:1px solid var(--border,#2a3a47);
+                    border-radius:0.625rem; padding:1.75rem 2rem 1.5rem; max-width:36rem; width:92%;
+                    max-height:80vh; display:flex; flex-direction:column;
+                    box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:1rem; flex-shrink:0;">
+                <h3 style="margin:0; color:var(--accent,#66c0f4); font-size:1.1rem;">What's New</h3>
+            </div>
+            <div id="whats-new-body" style="overflow-y:auto; flex:1; padding-right:0.25rem; color:var(--text,#c7d5e0);"></div>
+            <div style="margin-top:1.25rem; flex-shrink:0;">
+                <button onclick="_dismissWhatsNew()"
+                        style="background:var(--accent,#66c0f4); color:#000; border:none;
+                               border-radius:0.3125rem; padding:0.5rem 1.375rem;
+                               cursor:pointer; font-weight:bold;">
+                    Got it
+                </button>
+            </div>
+        </div>
+    </div>
+    <style>
+        #whats-new-body .wn-version { margin-bottom:1.25rem; }
+        #whats-new-body .wn-version:last-child { margin-bottom:0; }
+        #whats-new-body .wn-version h3 { font-size:0.95rem; font-weight:bold; margin:0 0 0.5rem; color:var(--text,#c7d5e0); }
+        #whats-new-body .wn-date { font-size:0.8rem; font-weight:normal; color:var(--text-secondary,#8899aa); margin-left:0.4rem; }
+        #whats-new-body .wn-section { margin-bottom:0.6rem; }
+        #whats-new-body .wn-section h4 { font-size:0.8rem; font-weight:bold; letter-spacing:0.05em; text-transform:uppercase; color:var(--accent,#66c0f4); margin:0 0 0.3rem; }
+        #whats-new-body ul { margin:0; padding-left:1.25rem; }
+        #whats-new-body li { font-size:0.875rem; line-height:1.55; margin-bottom:0.2rem; }
+    </style>
+    <script>
+    (function () {
+        if (!_configExists) return;
+        function _dismissWhatsNew() {
+            document.getElementById('whats-new-modal').style.display = 'none';
+            fetch('/api/whats-new/dismiss', { method: 'POST' }).catch(() => {});
+        }
+        window._dismissWhatsNew = _dismissWhatsNew;
+        document.addEventListener('keydown', function(e) {
+            const modal = document.getElementById('whats-new-modal');
+            if (modal && modal.style.display !== 'none' && e.key === 'Escape') {
+                e.preventDefault();
+                _dismissWhatsNew();
+            }
+        });
+        fetch('/api/whats-new').then(r => r.json()).then(data => {
+            if (!data.show) return;
+            document.getElementById('whats-new-body').innerHTML = data.html;
+            document.getElementById('whats-new-modal').style.display = 'flex';
+        }).catch(() => {});
+    })();
+    </script>
+
     <!-- Rate-limit modal -->
     <div id="rate-limit-modal" style="display:none; position:fixed; inset:0; z-index:99999;
          background:rgba(0,0,0,0.7); align-items:center; justify-content:center;">

@@ -1,7 +1,9 @@
 import requests
 from flask import Blueprint, request, jsonify
+import html as _html
 import json
 import os
+import re
 import sys
 import threading
 import uuid
@@ -13,9 +15,11 @@ config_bp = Blueprint('config', __name__)
 __version__ = "1.5.2"
 
 if getattr(sys, 'frozen', False):
-    BASE_DIR = os.path.dirname(sys.executable)
+    BASE_DIR    = os.path.dirname(sys.executable)
+    _BUNDLE_DIR = sys._MEIPASS
 else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+    _BUNDLE_DIR = BASE_DIR
 
 CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
 STATE_PATH  = os.path.join(BASE_DIR, 'state.json')
@@ -1003,3 +1007,81 @@ def start_launcher_install_route(platform_id):
 def get_launcher_install_status_route(platform_id):
     from runners.launcher_installer import get_state
     return jsonify(get_state(platform_id))
+
+
+# ── What's New ────────────────────────────────────────────────────────────────
+
+def _parse_version_tuple(v):
+    v = v.lstrip('v')
+    try:
+        return tuple(int(x) for x in v.split('.'))
+    except ValueError:
+        return (0, 0, 0)
+
+
+def _build_whats_new_html(since_version=None):
+    notes_path = os.path.join(_BUNDLE_DIR, 'RELEASE_NOTES.md')
+    if not os.path.exists(notes_path):
+        return ''
+    with open(notes_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    since_tuple = _parse_version_tuple(since_version) if since_version else None
+    sections = re.split(r'\n(?=## v)', content)
+    parts = []
+
+    for section in sections:
+        m = re.match(r'^## (v[\d.]+)\s*[—\-]+\s*(.+)', section.strip())
+        if not m:
+            continue
+        ver_str, date = m.group(1), m.group(2).strip()
+        ver_tuple = _parse_version_tuple(ver_str)
+        if since_tuple and ver_tuple <= since_tuple:
+            continue
+
+        out = (f'<div class="wn-version">'
+               f'<h3>{_html.escape(ver_str)}'
+               f' <span class="wn-date">{_html.escape(date)}</span></h3>')
+
+        rest = section[m.end():].strip()
+        for sub in re.split(r'\n(?=### )', rest):
+            sm = re.match(r'^### (.+)\n', sub)
+            if not sm:
+                continue
+            sub_name = sm.group(1).strip()
+            items = [ln[2:].strip() for ln in sub[sm.end():].split('\n') if ln.startswith('- ')]
+            if not items:
+                continue
+            out += f'<div class="wn-section"><h4>{_html.escape(sub_name)}</h4><ul>'
+            for item in items:
+                out += f'<li>{_html.escape(item)}</li>'
+            out += '</ul></div>'
+
+        out += '</div>'
+        parts.append(out)
+
+    return ''.join(parts)
+
+
+@config_bp.route('/api/whats-new', methods=['GET'])
+def get_whats_new():
+    if not is_configured():
+        return jsonify({'show': False})
+    config_data = load_config() or {}
+    last_seen = config_data.get('last_seen_version')
+    if last_seen == __version__:
+        return jsonify({'show': False})
+    notes_html = _build_whats_new_html(since_version=last_seen)
+    if not notes_html:
+        return jsonify({'show': False})
+    return jsonify({'show': True, 'html': notes_html, 'version': __version__})
+
+
+@config_bp.route('/api/whats-new/dismiss', methods=['POST'])
+def dismiss_whats_new():
+    if not is_configured():
+        return jsonify({'status': 'ok'})
+    config_data = load_config() or {}
+    config_data['last_seen_version'] = __version__
+    _save_config_data(config_data)
+    return jsonify({'status': 'ok'})
