@@ -261,6 +261,10 @@ class EpicGamesPlugin:
             ],
         }
 
+    def fetch_description(self, appid, platform_id):
+        from .epic import fetch_description
+        return fetch_description(appid, platform_id)
+
     def rescrape(self, appid):
         from .epic import scrape_single
         return scrape_single(appid) or None

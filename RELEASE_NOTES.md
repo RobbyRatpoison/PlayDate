@@ -4,6 +4,7 @@
 
 ### Epic Games
 
+- Game descriptions now appear in list mode detail pane.
 - Library sync now fetches metadata and artwork for each game as it's added. Sync can be stopped mid-way and picks up where it left off on the next run.
 - Re-syncing your library now skips games already in PlayDate, making repeat syncs significantly faster.
 - Library sync now includes DLC, soundtracks, and tools alongside base games.

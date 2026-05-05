@@ -53,7 +53,7 @@ _SEARCH_STORE_QUERY = """
 query searchStoreQuery($namespace: String, $country: String!, $locale: String) {
   Catalog {
     searchStore(namespace: $namespace, country: $country, locale: $locale) {
-      elements { productSlug urlSlug tags { id } }
+      elements { productSlug urlSlug description tags { id } }
     }
   }
 }
@@ -522,10 +522,28 @@ def _fetch_epic_store_data(namespace):
         slug = (el.get('productSlug') or el.get('urlSlug') or '').strip()
         if slug:
             result['platform_slug'] = slug
+        desc = (el.get('description') or '').strip()
+        if desc:
+            result['_description'] = desc
         return result
     except Exception as e:
         log.warning(f'Epic store data fetch failed for {namespace!r}: {e}')
         return {}
+
+
+def fetch_description(appid, platform_id):
+    """Fetch a short description for an Epic game via the store GraphQL API."""
+    from database import get_db
+    db  = get_db()
+    row = db.execute(
+        "SELECT platform_ns FROM games WHERE appid = ? AND platform = 'epic_games'",
+        (appid,)
+    ).fetchone()
+    db.close()
+    if not row or not row['platform_ns']:
+        return None
+    data = _fetch_epic_store_data(row['platform_ns'])
+    return data.get('_description') or None
 
 
 def _fetch_epic_ratings(namespace):

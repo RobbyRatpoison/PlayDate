@@ -1511,7 +1511,7 @@ def create_app(template_folder=None, static_folder=None):
                 desc = plugin.fetch_description(appid, row['platform_id'])
                 if desc:
                     return jsonify({'status': 'success', 'description': desc})
-            else:
+            elif platform == 'steam':
                 resp = _r.get(
                     f'https://store.steampowered.com/api/appdetails?appids={appid}',
                     timeout=10
