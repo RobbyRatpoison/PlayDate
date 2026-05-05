@@ -6,18 +6,18 @@
 
 - Game descriptions now appear in list mode detail pane.
 - Library sync now fetches metadata and artwork for each game as it's added. Sync can be stopped mid-way and picks up where it left off on the next run.
-- Re-syncing your library now skips games already in PlayDate, making repeat syncs significantly faster.
+- Repeat syncs are significantly faster.
 - Library sync now includes DLC, soundtracks, and tools alongside base games.
 - Added an "Import Purchase Dates" button that fetches acquisition dates from Epic and updates your library.
 
 ### GOG
 
 - Library sync now fetches metadata and artwork for each game as it's added. Sync can be stopped mid-way and picks up where it left off.
-- GOG achievement data is now backfilled for existing library games on the next sync.
+- Achievement data is now tracked for existing library games.
 
 ### HLTB
 
-- How Long to Beat lookups for Steam games now use a community-maintained ID map for faster and more accurate results.
+- How Long to Beat lookups are now faster and more accurate.
 
 ### Library
 
