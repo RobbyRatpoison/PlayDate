@@ -12,7 +12,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.5.2"
+__version__ = "1.5.3"
 
 if getattr(sys, 'frozen', False):
     BASE_DIR    = os.path.dirname(sys.executable)
