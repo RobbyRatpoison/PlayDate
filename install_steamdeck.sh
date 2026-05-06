@@ -35,22 +35,27 @@ sudo rm -rf /var/cache/pacman/pkg/*.zst 2>/dev/null || true
 # (no --config arg, which SteamOS pacman may ignore), install the keyring
 # packages, then populate properly. Do NOT nuke /etc/pacman.d/gnupg before
 # steamos-keyring is installed or --populate holo will have nothing to read.
-echo "==> Patching pacman.conf to bypass signature checking..."
-sudo cp /etc/pacman.conf /etc/pacman.conf.playdate_bak
-sudo bash -c "grep -v 'SigLevel' /etc/pacman.conf.playdate_bak \
-    | sed '/^\[options\]/a SigLevel = Never' \
-    > /etc/pacman.conf"
+echo "==> Syncing package database..."
+sudo pacman -Sy
 
-echo "==> Syncing package database and installing dependencies..."
-sudo pacman -Sy --needed --noconfirm \
-    steamos-keyring archlinux-keyring python-gobject webkit2gtk
+# The SteamOS CI builder key is already in the keyring but marked as
+# unknown trust after a system update. Locally signing it is enough —
+# no keyring package needed.
+echo "==> Trusting SteamOS signing keys..."
+FPRINTS=$(sudo gpg --homedir /etc/pacman.d/gnupg --list-keys --with-colons \
+    "@steamos.cloud" 2>/dev/null | grep '^fpr' | cut -d: -f10)
+if [ -z "$FPRINTS" ]; then
+    echo "    Warning: no @steamos.cloud keys found in keyring — trying populate..."
+    sudo pacman-key --populate archlinux
+else
+    for fpr in $FPRINTS; do
+        echo "    lsign $fpr"
+        sudo pacman-key --lsign-key "$fpr"
+    done
+fi
 
-echo "==> Restoring pacman.conf..."
-sudo cp /etc/pacman.conf.playdate_bak /etc/pacman.conf
-sudo rm /etc/pacman.conf.playdate_bak
-
-echo "==> Populating keyring (steamos-keyring now installed)..."
-sudo pacman-key --populate archlinux holo
+echo "==> Installing Python/WebKit dependencies..."
+sudo pacman -S --needed --noconfirm python-gobject webkit2gtk
 
 echo "==> Re-locking filesystem..."
 sudo steamos-readonly enable
