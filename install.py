@@ -161,7 +161,7 @@ class InstallerApp(tk.Tk):
         btn_row.pack(pady=8)
 
         self._btn_launch = tk.Button(
-            btn_row, text="Launch PlayDate",
+            btn_row, text="Launch PlayDate" if SYSTEM == "Windows" else "Done",
             bg=SUCCESS, fg=BTN_FG,
             font=("Segoe UI", 10, "bold"),
             relief="flat", cursor="arrow",
@@ -208,7 +208,8 @@ class InstallerApp(tk.Tk):
 
     def _launch_and_close(self):
         self._maybe_create_shortcut()
-        subprocess.Popen([VENV_PYTHON, MAIN_PY])
+        if SYSTEM == "Windows":
+            subprocess.Popen([VENV_PYTHON, MAIN_PY])
         self.destroy()
 
     def _finish_close(self):
