@@ -34,7 +34,11 @@ sudo rm -rf /var/cache/pacman/pkg/*.zst 2>/dev/null || true
 # with SigLevel=Never to install everything we need, then rebuild the
 # keyring so normal pacman usage works afterwards.
 TMPCONF=$(mktemp /tmp/pacman-XXXXXX.conf)
-sed 's/SigLevel\s*=.*/SigLevel = Never/g' /etc/pacman.conf > "$TMPCONF"
+# Strip any existing SigLevel lines then inject SigLevel=Never into [options].
+# Replacing in-place doesn't work when the line is absent (SteamOS default
+# pacman.conf has no SigLevel entry, so the default Required applies).
+grep -v 'SigLevel' /etc/pacman.conf | \
+    sed '/^\[options\]/a SigLevel = Never' > "$TMPCONF"
 
 echo "==> Syncing package database..."
 sudo pacman --config "$TMPCONF" -Sy
