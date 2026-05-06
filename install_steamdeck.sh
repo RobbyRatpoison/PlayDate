@@ -26,9 +26,16 @@ fi
 echo "==> Unlocking read-only filesystem..."
 sudo steamos-readonly disable
 
-echo "==> Initialising pacman keyring..."
+echo "==> Clearing cached packages (avoids corrupt .zst errors)..."
+sudo rm -rf /var/cache/pacman/pkg/*.zst 2>/dev/null || true
+
+echo "==> Reinitialising pacman keyring..."
+sudo rm -rf /etc/pacman.d/gnupg
 sudo pacman-key --init
-sudo pacman-key --populate archlinux
+sudo pacman-key --populate archlinux holo
+
+echo "==> Syncing package databases..."
+sudo pacman -Sy
 
 echo "==> Installing Python/WebKit dependencies..."
 sudo pacman -S --noconfirm python-gobject webkit2gtk
