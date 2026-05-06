@@ -140,7 +140,7 @@ def index():
     try:
         rows = db.execute(
             "SELECT completion_status, COUNT(*) as cnt FROM games "
-            "WHERE completion_status IS NOT NULL "
+            "WHERE completion_status IS NOT NULL AND platform = 'steam' "
             "GROUP BY completion_status"
         ).fetchall()
         for row in rows:
