@@ -146,9 +146,6 @@ def _fix_window_icon(window):
 
         def apply_icon():
             try:
-                app = Gtk.Application.get_default()
-                if app:
-                    app.set_application_id('com.playdate.app')
                 main_gtk_win = getattr(window, 'native', None)
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file(ICON_PATH) if os.path.exists(ICON_PATH) else None
                 for gtk_window in Gtk.Window.list_toplevels():
