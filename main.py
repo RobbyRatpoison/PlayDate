@@ -148,7 +148,7 @@ def _fix_window_icon(window):
             try:
                 app = Gtk.Application.get_default()
                 if app:
-                    app.set_application_id('playdate')
+                    app.set_application_id('com.playdate.app')
                 main_gtk_win = getattr(window, 'native', None)
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file(ICON_PATH) if os.path.exists(ICON_PATH) else None
                 for gtk_window in Gtk.Window.list_toplevels():
@@ -157,7 +157,6 @@ def _fix_window_icon(window):
                     # render them as visible PlayDate app windows.
                     if main_gtk_win is not None and gtk_window is not main_gtk_win:
                         continue
-                    gtk_window.set_wmclass('playdate', 'PlayDate')
                     gtk_window.set_role('PlayDate')
                     if pixbuf:
                         gtk_window.set_icon(pixbuf)
