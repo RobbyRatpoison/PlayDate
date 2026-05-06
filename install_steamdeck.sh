@@ -34,7 +34,7 @@ sudo rm -rf /var/cache/pacman/pkg/*.zst 2>/dev/null || true
 # with SigLevel=Never to install everything we need, then rebuild the
 # keyring so normal pacman usage works afterwards.
 TMPCONF=$(mktemp /tmp/pacman-XXXXXX.conf)
-sed 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf > "$TMPCONF"
+sed 's/SigLevel\s*=.*/SigLevel = Never/g' /etc/pacman.conf > "$TMPCONF"
 
 echo "==> Syncing package database..."
 sudo pacman --config "$TMPCONF" -Sy
