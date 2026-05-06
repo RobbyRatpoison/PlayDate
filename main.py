@@ -45,7 +45,18 @@ sys.excepthook = handle_exception
 # ── Linux WebKit check — friendly error before pywebview blows up ─────────────
 if sys.platform == "linux" and not getattr(sys, 'frozen', False):
     try:
-        import webview as _webview_test  # noqa
+        import gi as _gi
+        _webkit_ok = False
+        for _v in ('4.1', '4.0', '6.0'):
+            try:
+                _gi.require_version('WebKit2', _v)
+                from gi.repository import WebKit2 as _wk2  # noqa
+                _webkit_ok = True
+                break
+            except Exception:
+                pass
+        if not _webkit_ok:
+            raise ImportError("WebKit2GTK not found")
     except Exception:
         import subprocess
         distro_id = ""
