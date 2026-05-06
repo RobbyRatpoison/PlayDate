@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- none
+- Fixed Steam Deck install failing after SteamOS system updates due to PGP signature trust errors
 
 ## User requests and other things that need sorting
 
