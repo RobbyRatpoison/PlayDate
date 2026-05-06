@@ -62,4 +62,4 @@ sudo steamos-readonly enable
 
 # ── Run installer ─────────────────────────────────────────────────────────────
 echo ""
-bash "$DIR/install.sh"
+bash "$DIR/launch.sh"

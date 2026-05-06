@@ -93,7 +93,7 @@ class InstallerApp(tk.Tk):
         self._center(w, h)
 
     def _count_steps(self):
-        return 6  # sanity, python, venv, deps, launcher, register
+        return 6 if SYSTEM == "Windows" else 4  # sanity, python, venv, deps (+ launcher, register on Windows)
 
     def _build_ui(self):
         # ── Header ────────────────────────────────────────────────────────────
@@ -248,8 +248,9 @@ class InstallerApp(tk.Tk):
             self._step_python()
             self._step_venv()
             self._step_deps()
-            self._step_launcher()
-            self._step_register()
+            if SYSTEM == "Windows":
+                self._step_launcher()
+                self._step_register()
             self._finish_ok()
         except Exception as e:
             self._finish_err(str(e))
@@ -537,9 +538,15 @@ class InstallerApp(tk.Tk):
                 self._log_line("⚠  ~/Desktop not found — skipping desktop shortcut", "warn")
                 return
             dest = os.path.join(desktop_dir, "PlayDate.desktop")
-            src  = os.path.join(os.path.expanduser("~/.local/share/applications"), "playdate.desktop")
+            launch_sh = os.path.join(INSTALL_DIR, "launch.sh")
             try:
-                shutil.copy(src, dest)
+                with open(dest, "w") as f:
+                    f.write(
+                        "[Desktop Entry]\nVersion=1.0\nType=Application\nName=PlayDate\n"
+                        "Comment=Your personal Steam library manager\n"
+                        f"Exec={launch_sh}\nIcon={ICON_PATH}\nTerminal=false\n"
+                        "Categories=Game;\nStartupWMClass=main.py\n"
+                    )
                 os.chmod(dest, 0o755)
                 self._log_line("✔  Desktop shortcut created", "ok")
             except Exception as e:
