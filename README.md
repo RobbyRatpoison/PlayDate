@@ -111,6 +111,8 @@ passwd
 
 SteamOS system updates wipe installed packages. If PlayDate stops launching after an update, re-run `install_steamdeck.sh` — it's safe to run multiple times.
 
+After a system update, pacman may refuse to install packages with a `signature is unknown trust` error. The script handles this automatically by locally signing the SteamOS signing keys that are already in the keyring but lose their trusted status after an update.
+
 ### macOS
 
 ```bash
