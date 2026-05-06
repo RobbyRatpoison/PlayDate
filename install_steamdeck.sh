@@ -29,23 +29,26 @@ sudo steamos-readonly disable
 echo "==> Clearing cached packages..."
 sudo rm -rf /var/cache/pacman/pkg/*.zst 2>/dev/null || true
 
-# Bootstrap the keyring update with signature checking disabled.
-# Without this, pacman refuses to install archlinux-keyring because the
-# existing keyring is too old to trust its signature — a chicken-and-egg
-# problem after SteamOS system updates.
-echo "==> Updating keyring packages (signature check bypassed for this step)..."
+# After a SteamOS system update the keyring trust database is broken and
+# pacman rejects every package signature. We use a temporary pacman.conf
+# with SigLevel=Never to install everything we need, then rebuild the
+# keyring so normal pacman usage works afterwards.
 TMPCONF=$(mktemp /tmp/pacman-XXXXXX.conf)
 sed 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf > "$TMPCONF"
-sudo pacman --config "$TMPCONF" -Sy --noconfirm archlinux-keyring
+
+echo "==> Syncing package database..."
+sudo pacman --config "$TMPCONF" -Sy
+
+echo "==> Installing Python/WebKit dependencies..."
+sudo pacman --config "$TMPCONF" -S --needed --noconfirm \
+    archlinux-keyring python-gobject webkit2gtk
+
 rm -f "$TMPCONF"
 
-echo "==> Rebuilding pacman keyring with fresh keys..."
+echo "==> Rebuilding pacman keyring (for future pacman use)..."
 sudo rm -rf /etc/pacman.d/gnupg
 sudo pacman-key --init
 sudo pacman-key --populate archlinux holo
-
-echo "==> Installing Python/WebKit dependencies..."
-sudo pacman -S --needed --noconfirm python-gobject webkit2gtk
 
 echo "==> Re-locking filesystem..."
 sudo steamos-readonly enable
