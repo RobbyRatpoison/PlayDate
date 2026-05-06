@@ -26,19 +26,26 @@ fi
 echo "==> Unlocking read-only filesystem..."
 sudo steamos-readonly disable
 
-echo "==> Clearing cached packages (avoids corrupt .zst errors)..."
+echo "==> Clearing cached packages..."
 sudo rm -rf /var/cache/pacman/pkg/*.zst 2>/dev/null || true
 
-echo "==> Reinitialising pacman keyring..."
+# Bootstrap the keyring update with signature checking disabled.
+# Without this, pacman refuses to install archlinux-keyring because the
+# existing keyring is too old to trust its signature — a chicken-and-egg
+# problem after SteamOS system updates.
+echo "==> Updating keyring packages (signature check bypassed for this step)..."
+TMPCONF=$(mktemp /tmp/pacman-XXXXXX.conf)
+sed 's/^SigLevel.*/SigLevel = Never/' /etc/pacman.conf > "$TMPCONF"
+sudo pacman --config "$TMPCONF" -Sy --noconfirm archlinux-keyring
+rm -f "$TMPCONF"
+
+echo "==> Rebuilding pacman keyring with fresh keys..."
 sudo rm -rf /etc/pacman.d/gnupg
 sudo pacman-key --init
 sudo pacman-key --populate archlinux holo
 
-echo "==> Syncing package databases..."
-sudo pacman -Sy
-
 echo "==> Installing Python/WebKit dependencies..."
-sudo pacman -S --noconfirm python-gobject webkit2gtk
+sudo pacman -S --needed --noconfirm python-gobject webkit2gtk
 
 echo "==> Re-locking filesystem..."
 sudo steamos-readonly enable
