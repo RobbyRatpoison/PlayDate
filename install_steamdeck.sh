@@ -29,29 +29,27 @@ sudo steamos-readonly disable
 echo "==> Clearing cached packages..."
 sudo rm -rf /var/cache/pacman/pkg/*.zst 2>/dev/null || true
 
-# After a SteamOS system update the keyring trust database is broken and
-# pacman rejects every package signature. We use a temporary pacman.conf
-# with SigLevel=Never to install everything we need, then rebuild the
-# keyring so normal pacman usage works afterwards.
-TMPCONF=$(mktemp /tmp/pacman-XXXXXX.conf)
-# Strip any existing SigLevel lines then inject SigLevel=Never into [options].
-# Replacing in-place doesn't work when the line is absent (SteamOS default
-# pacman.conf has no SigLevel entry, so the default Required applies).
-grep -v 'SigLevel' /etc/pacman.conf | \
-    sed '/^\[options\]/a SigLevel = Never' > "$TMPCONF"
+# After a SteamOS system update, steamos-keyring may not be installed, so
+# pacman-key --populate holo is a no-op and SteamOS-signed packages are
+# rejected as untrusted. Fix: patch SigLevel=Never into the real pacman.conf
+# (no --config arg, which SteamOS pacman may ignore), install the keyring
+# packages, then populate properly. Do NOT nuke /etc/pacman.d/gnupg before
+# steamos-keyring is installed or --populate holo will have nothing to read.
+echo "==> Patching pacman.conf to bypass signature checking..."
+sudo cp /etc/pacman.conf /etc/pacman.conf.playdate_bak
+sudo bash -c "grep -v 'SigLevel' /etc/pacman.conf.playdate_bak \
+    | sed '/^\[options\]/a SigLevel = Never' \
+    > /etc/pacman.conf"
 
-echo "==> Syncing package database..."
-sudo pacman --config "$TMPCONF" -Sy
+echo "==> Syncing package database and installing dependencies..."
+sudo pacman -Sy --needed --noconfirm \
+    steamos-keyring archlinux-keyring python-gobject webkit2gtk
 
-echo "==> Installing Python/WebKit dependencies..."
-sudo pacman --config "$TMPCONF" -S --needed --noconfirm \
-    archlinux-keyring python-gobject webkit2gtk
+echo "==> Restoring pacman.conf..."
+sudo cp /etc/pacman.conf.playdate_bak /etc/pacman.conf
+sudo rm /etc/pacman.conf.playdate_bak
 
-rm -f "$TMPCONF"
-
-echo "==> Rebuilding pacman keyring (for future pacman use)..."
-sudo rm -rf /etc/pacman.d/gnupg
-sudo pacman-key --init
+echo "==> Populating keyring (steamos-keyring now installed)..."
 sudo pacman-key --populate archlinux holo
 
 echo "==> Re-locking filesystem..."
