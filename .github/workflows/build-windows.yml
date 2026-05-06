@@ -80,13 +80,24 @@ jobs:
             exit 1
           }
 
-      # ── 7. Install Inno Setup ─────────────────────────────────────────────────
+      # ── 7. Create portable zip ────────────────────────────────────────────────
+      - name: Create portable zip
+        shell: powershell
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = if ($tag -match '^v?(\d+\.\d+\.\d+)') { $matches[1] } else { "0.0.0" }
+          $zip = "PlayDate-$ver-Windows-Portable.zip"
+          Compress-Archive -Path "dist\PlayDate\*" -DestinationPath $zip
+          Write-Host "✔ Created $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
+          echo "PORTABLE_ZIP=$zip" >> $env:GITHUB_ENV
+
+      # ── 8. Install Inno Setup ─────────────────────────────────────────────────
       - name: Install Inno Setup 6
         run: |
           choco install innosetup --yes --no-progress
         shell: powershell
 
-      # ── 8. Build installer with Inno Setup ────────────────────────────────────
+      # ── 9. Build installer with Inno Setup ────────────────────────────────────
       - name: Build installer with Inno Setup
         run: |
           $tag = "${{ github.ref_name }}"
@@ -96,7 +107,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         shell: powershell
 
-      # ── 9. Verify installer ────────────────────────────────────────────────────
+      # ── 10. Verify installer ───────────────────────────────────────────────────
       - name: Verify installer output
         run: |
           if (Test-Path "installer\PlayDate-Setup.exe") {
@@ -108,7 +119,7 @@ jobs:
             exit 1
           }
 
-      # ── 10. Upload installer as workflow artifact (always) ─────────────────────
+      # ── 11. Upload artifacts (always) ─────────────────────────────────────────
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
@@ -116,7 +127,14 @@ jobs:
           path: installer/PlayDate-Setup.exe
           retention-days: 30
 
-      # ── 11. Create GitHub Release (only on version tags) ──────────────────────
+      - name: Upload portable zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayDate-Windows-Portable
+          path: ${{ env.PORTABLE_ZIP }}
+          retention-days: 30
+
+      # ── 12. Create GitHub Release (only on version tags) ──────────────────────
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
@@ -127,3 +145,4 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: |
             installer/PlayDate-Setup.exe
+            ${{ env.PORTABLE_ZIP }}
