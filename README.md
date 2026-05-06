@@ -71,17 +71,15 @@ PlayDate pulls your Steam and GOG libraries, enriches them with metadata (tags, 
 
 ### Windows
 
-Download **PlayDate-Setup.exe** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest) and run it. The installer handles everything — no Python required.
+Download **PlayDate-Setup.exe** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest) and run it. No Python required.
+
+Prefer a portable install? Download **PlayDate-Windows-Portable.zip**, extract it anywhere, and run `PlayDate.exe` directly.
 
 **Requirements:** Windows 10 or 11 (64-bit). Microsoft Edge WebView2 Runtime is required — it comes pre-installed on Windows 10/11.
 
 ### Linux
 
-```bash
-chmod +x install.sh && ./install.sh
-```
-
-Requires Python 3.10+ and the WebKit/GTK bindings for your distro:
+Install the WebKit/GTK system dependencies for your distro first:
 
 ```bash
 # Debian, Ubuntu, Mint, Pop!_OS, etc.
@@ -97,27 +95,37 @@ sudo pacman -S python-gobject webkit2gtk
 sudo zypper install python3-gobject typelib-1_0-WebKit2-4_0
 ```
 
-### Steam Deck
+Then run:
 
 ```bash
-chmod +x install_steamdeck.sh && ./install_steamdeck.sh
+chmod +x launch.sh && ./launch.sh
 ```
 
-You must have a sudo password set before running the script. If you haven't set one yet:
+`launch.sh` sets up the virtual environment and installs Python dependencies automatically on first run, then launches PlayDate. It also registers a desktop entry so PlayDate appears in your app launcher. Re-running it after moving the folder keeps the entry up to date.
+
+### Steam Deck
+
+Set a sudo password first if you haven't already:
 
 ```bash
 passwd
 ```
 
-SteamOS system updates wipe installed packages. If PlayDate stops launching after an update, re-run `install_steamdeck.sh` — it's safe to run multiple times.
+Then run:
 
-After a system update, pacman may refuse to install packages with a `signature is unknown trust` error. The script handles this automatically by locally signing the SteamOS signing keys that are already in the keyring but lose their trusted status after an update.
+```bash
+chmod +x install_steamdeck.sh && ./install_steamdeck.sh
+```
+
+This installs the required system packages and runs `launch.sh` to complete setup. If PlayDate stops launching after a SteamOS system update, re-run `install_steamdeck.sh` — it's safe to run multiple times.
 
 ### macOS
 
 ```bash
-chmod +x install.sh && ./install.sh
+chmod +x launch.sh && ./launch.sh
 ```
+
+`launch.sh` sets up the virtual environment on first run and creates a `PlayDate.app` bundle in `~/Applications`. Re-running it after moving the folder keeps the bundle up to date.
 
 > macOS support is present but not yet fully tested. pywebview should work out of the box on recent macOS versions.
 
