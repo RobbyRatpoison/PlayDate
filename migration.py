@@ -297,6 +297,9 @@ def _m6_backfill_platform():
     for db_path in _all_db_files():
         conn = sqlite3.connect(db_path, timeout=10)
         try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(games)").fetchall()]
+            if 'platform' not in cols:
+                conn.execute("ALTER TABLE games ADD COLUMN platform TEXT")
             conn.execute("UPDATE games SET platform = 'steam' WHERE platform IS NULL")
             conn.commit()
         finally:
