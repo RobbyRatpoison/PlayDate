@@ -88,7 +88,8 @@ jobs:
           $ver = if ($tag -match '^v?(\d+\.\d+\.\d+)') { $matches[1] } else { "0.0.0" }
           $zip = "PlayDate-$ver-Windows-Portable.zip"
           Compress-Archive -Path "dist\PlayDate\*" -DestinationPath $zip
-          Write-Host "✔ Created $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
+          $sizeMB = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+          Write-Host "✔ Created $zip ($sizeMB MB)"
           echo "PORTABLE_ZIP=$zip" >> $env:GITHUB_ENV
 
       # ── 8. Install Inno Setup ─────────────────────────────────────────────────
