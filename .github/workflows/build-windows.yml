@@ -72,7 +72,7 @@ jobs:
       - name: Verify build output
         run: |
           if (Test-Path "dist\PlayDate\PlayDate.exe") {
-            Write-Host "✔ PlayDate.exe found"
+            Write-Host "PlayDate.exe found"
             $size = (Get-Item "dist\PlayDate\PlayDate.exe").Length / 1MB
             Write-Host "  Size: $([math]::Round($size, 1)) MB"
           } else {
@@ -89,7 +89,7 @@ jobs:
           $zip = "PlayDate-$ver-Windows-Portable.zip"
           Compress-Archive -Path "dist\PlayDate\*" -DestinationPath $zip
           $sizeMB = [math]::Round((Get-Item $zip).Length / 1MB, 1)
-          Write-Host "✔ Created $zip ($sizeMB MB)"
+          Write-Host "Created $zip ($sizeMB MB)"
           echo "PORTABLE_ZIP=$zip" >> $env:GITHUB_ENV
 
       # ── 8. Install Inno Setup ─────────────────────────────────────────────────
@@ -112,7 +112,7 @@ jobs:
       - name: Verify installer output
         run: |
           if (Test-Path "installer\PlayDate-Setup.exe") {
-            Write-Host "✔ PlayDate-Setup.exe found"
+            Write-Host "PlayDate-Setup.exe found"
             $size = (Get-Item "installer\PlayDate-Setup.exe").Length / 1MB
             Write-Host "  Size: $([math]::Round($size, 1)) MB"
           } else {
