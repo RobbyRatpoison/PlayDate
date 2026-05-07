@@ -2,10 +2,7 @@
 
 ## Unreleased
 
-- Fixed Steam Deck install failing after SteamOS system updates due to PGP signature trust errors
-- Added `launch.sh` as a single entry point for Linux and macOS — handles setup automatically on first run and keeps the desktop shortcut/app bundle up to date if the folder is moved
-- Added portable Windows zip to GitHub Actions release builds
-- Fixed missing WebKit2GTK not showing a friendly error message on Linux
+- none
 
 ## User requests and other things that need sorting
 
@@ -26,13 +23,13 @@
 
 ## Small Features
 
-- **Steam Deck installation** — see `STEAMDECK_PLAN.md`
+- none
 
 ---
 
 ## Big Features
 
-- none
+- More non-Steam library plugins
 
 ---
 
