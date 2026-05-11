@@ -42,11 +42,11 @@ sudo pacman -Sy
 # unknown trust after a system update. Locally signing it is enough —
 # no keyring package needed.
 echo "==> Trusting SteamOS signing keys..."
-FPRINTS=$(sudo gpg --homedir /etc/pacman.d/gnupg --list-keys --with-colons \
-    "@steamos.cloud" 2>/dev/null | grep '^fpr' | cut -d: -f10)
+FPRINTS=$(sudo gpg --homedir /etc/pacman.d/gnupg --no-autostart --batch --list-keys --with-colons \
+    "@steamos.cloud" 2>/dev/null | grep '^fpr' | cut -d: -f10) || true
 if [ -z "$FPRINTS" ]; then
     echo "    Warning: no @steamos.cloud keys found in keyring — trying populate..."
-    sudo pacman-key --populate archlinux
+    sudo pacman-key --populate archlinux holo
 else
     for fpr in $FPRINTS; do
         echo "    lsign $fpr"
