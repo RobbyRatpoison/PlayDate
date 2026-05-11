@@ -146,6 +146,7 @@
             padding-left: 9px;
         }
         .list-row.gamepad-focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .group-label.gamepad-focus { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
         .list-group-header {
             display: flex;
             align-items: center;
@@ -401,7 +402,8 @@
             transition: border-color 0.2s, box-shadow 0.2s;
         }
 
-        #library-search:focus {
+        #library-search:focus,
+        #library-search.gamepad-focus {
             border-color: var(--accent);
             box-shadow: 0 0 8px rgba(102, 192, 232, 0.3);
         }
@@ -826,6 +828,13 @@
         background:var(--bg-surface); border:1px solid var(--border);
         border-radius:7px; padding:9px 12px; max-width:320px;
         font-size:0.8rem; line-height:1.5; box-shadow:0 4px 18px rgba(0,0,0,0.45);
+    "></div>
+    <!-- PAGYWOSG gamepad tooltip (fixed to focused card) -->
+    <div id="pag-gamepad-tooltip" style="
+        display:none; position:fixed; left:0; top:0; z-index:9001; pointer-events:none;
+        background:var(--bg-surface); border:2px solid var(--accent);
+        border-radius:7px; padding:9px 12px; max-width:320px;
+        font-size:0.8rem; line-height:1.5; box-shadow:0 4px 18px rgba(0,0,0,0.55);
     "></div>
 
 
@@ -2172,9 +2181,10 @@ async function stopBulkDateImport() {
 (function() {
     if (!_serverFilterTree?.pagywosg) return;
 
-    const tooltip  = document.getElementById('pag-hover-tooltip');
-    const grid     = document.getElementById('game-grid');
-    const sgGroup  = _pagExtractSgGroup(_serverFilterTree);
+    const tooltip        = document.getElementById('pag-hover-tooltip');
+    const gpTooltip      = document.getElementById('pag-gamepad-tooltip');
+    const grid           = document.getElementById('game-grid');
+    const sgGroup        = _pagExtractSgGroup(_serverFilterTree);
 
     function _hltbMin(game) {
         const vals = [game.hltb_main, game.hltb_extras, game.hltb_completionist]
@@ -2233,7 +2243,62 @@ async function stopBulkDateImport() {
         _hoveredAppid = null;
     }
 
+    let _gpTooltipTimer = null;
+
+    function _hideGpTooltip() {
+        clearTimeout(_gpTooltipTimer);
+        gpTooltip.style.display = 'none';
+        gpTooltip.innerHTML = '';
+    }
+
+    function _showGpTooltip(card) {
+        const appid = parseInt(card.dataset.appid);
+        if (!appid || !card.dataset.populated) { _hideGpTooltip(); return; }
+        const game = _GAME_MAP.get(appid);
+        if (!game) { _hideGpTooltip(); return; }
+        const html = _buildTooltip(game);
+        if (!html) { _hideGpTooltip(); return; }
+
+        gpTooltip.innerHTML = html;
+        gpTooltip.style.display = 'block';
+
+        const rect = card.getBoundingClientRect();
+        const pad = 8;
+        const tw = gpTooltip.offsetWidth;
+        const th = gpTooltip.offsetHeight;
+
+        // Try to place below-right of the card; clamp to viewport
+        let x = rect.left;
+        let y = rect.bottom + pad;
+        if (x + tw > window.innerWidth - pad) x = window.innerWidth - tw - pad;
+        if (x < pad) x = pad;
+        if (y + th > window.innerHeight - pad) y = rect.top - th - pad;
+        if (y < pad) y = pad;
+
+        gpTooltip.style.left = x + 'px';
+        gpTooltip.style.top  = y + 'px';
+    }
+
+    // MutationObserver: watch for gamepad-focus class changes on game cards.
+    // A 350ms delay lets the card scroll into view before the tooltip appears.
+    const _gpFocusObserver = new MutationObserver(mutations => {
+        for (const m of mutations) {
+            if (m.type !== 'attributes' || m.attributeName !== 'class') continue;
+            const card = m.target;
+            if (!card.classList.contains('game-card')) continue;
+            if (card.classList.contains('gamepad-focus')) {
+                clearTimeout(_gpTooltipTimer);
+                _gpTooltipTimer = setTimeout(() => _showGpTooltip(card), 350);
+            } else {
+                clearTimeout(_gpTooltipTimer);
+                if (!grid.querySelector('.game-card.gamepad-focus')) _hideGpTooltip();
+            }
+        }
+    });
+    _gpFocusObserver.observe(grid, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
     grid.addEventListener('mouseover', e => {
+        if (window._inputMgr?.active) return;
         const card = e.target.closest('.game-card[data-appid]');
         const appid = card ? parseInt(card.dataset.appid) : null;
         if (appid === _hoveredAppid) return;
@@ -2256,6 +2321,7 @@ async function stopBulkDateImport() {
     document.addEventListener('pointerleave', () => _hideTooltip());
 
     document.addEventListener('mousemove', e => {
+        if (window._inputMgr?.active) { _hideTooltip(); return; }
         clearTimeout(_hideOnStopTimer);
         if (e.clientY >= window.innerHeight - 4) {
             _hideOnStopTimer = setTimeout(() => _hideTooltip(), 150);
@@ -2298,8 +2364,16 @@ function _preloadCardsInArea(scrollTop) {
 function pickRandomGame() {
     if (!GAMES.length) return;
     const game = GAMES[Math.floor(Math.random() * GAMES.length)];
+
+    if (_artOrientation === 'list') {
+        openDetailPane(game);
+        return;
+    }
+
     const card = document.querySelector(`.game-card[data-appid="${game.appid}"]`);
     if (!card) return;
+
+    window._inputMgr?.focusLibraryCard(game.appid);
 
     document.querySelectorAll('.game-card.dice-picked').forEach(c => c.classList.remove('dice-picked'));
 
@@ -2586,7 +2660,27 @@ function pickRandomGame() {
         const row = document.querySelector(`.list-row[data-appid="${game.appid}"]`);
         if (row) {
             row.classList.add('selected');
-            row.scrollIntoView({ block: 'nearest' });
+            const gameList = document.getElementById('game-list');
+            if (gameList) {
+                const listRect = gameList.getBoundingClientRect();
+                const rowRect  = row.getBoundingClientRect();
+                const rowH     = row.offsetHeight;
+                const listH    = gameList.clientHeight;
+                const target   = Math.max(0, gameList.scrollTop + rowRect.top - listRect.top - (listH - rowH) / 2);
+                const start    = gameList.scrollTop;
+                const dist     = target - start;
+                const duration = 1000;
+                const t0       = performance.now();
+                const step = (now) => {
+                    const p    = Math.min((now - t0) / duration, 1);
+                    const ease = 1 - Math.pow(1 - p, 3);
+                    gameList.scrollTop = start + dist * ease;
+                    if (p < 1) requestAnimationFrame(step);
+                };
+                requestAnimationFrame(step);
+            } else {
+                row.scrollIntoView({ block: 'nearest' });
+            }
         }
 
         // Vertical cover art (right sidebar)
