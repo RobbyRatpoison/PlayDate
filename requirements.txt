@@ -24,7 +24,7 @@ aiohttp==3.13.5
 aiounittest==1.5.0
 fake-useragent==2.2.0
 soupsieve==2.8.3
-urllib3==2.6.3
+urllib3==2.7.0
 certifi==2026.2.25
 charset-normalizer==3.4.4
 idna==3.11
