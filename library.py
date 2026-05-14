@@ -113,7 +113,7 @@ def is_safe_sql(sql: str) -> bool:
     # Strip string literals (single-quoted) and numeric literals before tokenising
     # so their contents don't trip up the keyword check.
     # Handle escaped single quotes ('') inside literals (e.g. 'Won''t Play').
-    scrubbed = _re.sub(r"'(?:[^']|'')*'", 'STRING', sql)
+    scrubbed = _re.sub(r"'[^']*(?:''[^']*)*'", 'STRING', sql)
     scrubbed = _re.sub(r'\b\d+(\.\d+)?\b', 'NUMBER', scrubbed)
 
     # Tokenise: split on whitespace and punctuation, keep tokens only

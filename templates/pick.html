@@ -725,7 +725,7 @@ function makeCard(game, reason, boundsRelaxed, outlineColor) {
         </div>
         <div class="result-info">
             <div class="result-title">${escaped}</div>
-            ${reason ? `<div class="result-reason">${reason}</div>` : ''}
+            ${reason ? `<div class="result-reason">${escHtml(reason)}</div>` : ''}
         </div>`;
     return card;
 }
