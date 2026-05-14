@@ -140,7 +140,6 @@
 
     let _gamepadEnabled = window._GAMEPAD_ENABLED !== false;
     let _capturing      = false; // true while remap modal is waiting for a button press
-    console.log('[input.js] _gamepadEnabled=' + _gamepadEnabled + ' _gameSuppressed=' + (safeSession.getItem('pd_game_running') === '1'));
 
     let _userRemap = {};
     (function() {
