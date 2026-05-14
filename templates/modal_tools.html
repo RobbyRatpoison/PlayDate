@@ -772,13 +772,36 @@
             <div class="hub-section-label">Gamepad</div>
             <button id="gamepad-enabled-btn" class="settings-item" data-modal-row="1" onclick="toggleGamepadEnabled()">Gamepad input (experimental): OFF</button>
             <button id="gamepad-suppress-btn" class="settings-item" data-modal-row="2" onclick="toggleGamepadSuppress()">Pause gamepad on launch: ON</button>
-            <button class="settings-item" data-modal-row="3" onclick="openGamepadDiag()">Gamepad Diagnostics</button>
+            <button class="settings-item" data-modal-row="3" onclick="openGamepadRemap()">Gamepad Controls</button>
+            <button class="settings-item" data-modal-row="4" onclick="openGamepadDiag()">Gamepad Diagnostics</button>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">Testing</div>
             <div style="padding:8px 10px; display:flex; flex-direction:column; gap:8px;">
-                <button class="nav-btn" data-modal-row="4" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
+                <button class="nav-btn" data-modal-row="5" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── GAMEPAD REMAP MODAL ── -->
+<div id="gamepad-remap-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeGamepadRemap();">
+    <div class="modal-content" style="width:480px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h2 style="margin:0; color:var(--text-primary);">Gamepad Controls</h2>
+            <button onclick="closeGamepadRemap()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
+        </div>
+
+        <div id="grm-controller" style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:14px;">No controller detected</div>
+
+        <div id="grm-rows" style="display:flex; flex-direction:column; gap:4px; margin-bottom:16px;"></div>
+
+        <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:14px; line-height:1.5;">
+            B always exits text fields. Up/Down always work in number fields.
+        </div>
+
+        <div style="display:flex; justify-content:flex-end;">
+            <button class="nav-btn" data-modal-row="99" onclick="grmResetDefaults()" style="font-size:0.82rem;">Reset to Defaults</button>
         </div>
     </div>
 </div>
@@ -5161,6 +5184,172 @@ function _gpdStartPoll() {
 
 function _gpdStopPoll() {
     if (_gpdRafId) { cancelAnimationFrame(_gpdRafId); _gpdRafId = null; }
+}
+
+// ── Gamepad Remap ─────────────────────────────────────────────────────────────
+const _REMAP_ACTIONS = [
+    { action: 'a',     defaultBtn: 0,  label: 'Confirm / Select' },
+    { action: 'b',     defaultBtn: 1,  label: 'Back / Cancel' },
+    { action: 'x',     defaultBtn: 2,  label: 'Context Menu' },
+    { action: 'y',     defaultBtn: 3,  label: 'Filter / Search' },
+    { action: 'lb',    defaultBtn: 4,  label: 'Previous Page' },
+    { action: 'rb',    defaultBtn: 5,  label: 'Next Page' },
+    { action: 'back',  defaultBtn: 8,  label: 'Open Menu' },
+    { action: 'start', defaultBtn: 9,  label: 'System' },
+    { action: 'up',    defaultBtn: 12, label: 'Navigate Up' },
+    { action: 'down',  defaultBtn: 13, label: 'Navigate Down' },
+    { action: 'left',  defaultBtn: 14, label: 'Navigate Left' },
+    { action: 'right', defaultBtn: 15, label: 'Navigate Right' },
+];
+
+// Map<action, physicalBtnIdx> — UI working state
+let _remapState = new Map();
+let _captureAction = null;
+let _grmRafId = null;
+let _grmPrevBtns = {};
+
+function _grmBtnLabel(physIdx) {
+    return BTN_LABELS[physIdx] !== undefined ? BTN_LABELS[physIdx] : String(physIdx);
+}
+
+function _grmBuildState() {
+    _remapState = new Map();
+    const saved = window._BUTTON_REMAPS || {};
+    // saved format: {physIdx: actionName} -- invert to Map<action, physIdx>
+    const inverted = {};
+    for (const [k, v] of Object.entries(saved)) inverted[v] = parseInt(k, 10);
+    for (const { action, defaultBtn } of _REMAP_ACTIONS) {
+        _remapState.set(action, inverted[action] !== undefined ? inverted[action] : defaultBtn);
+    }
+}
+
+function _grmStateToStorage() {
+    const out = {};
+    for (const { action, defaultBtn } of _REMAP_ACTIONS) {
+        const assigned = _remapState.get(action);
+        if (assigned !== defaultBtn) out[String(assigned)] = action;
+    }
+    return out;
+}
+
+function _grmRenderRows() {
+    const container = document.getElementById('grm-rows');
+    if (!container) return;
+    let html = '';
+    for (const { action, label } of _REMAP_ACTIONS) {
+        const physIdx = _remapState.get(action);
+        const btnLabel = _grmBtnLabel(physIdx);
+        const isCapturing = _captureAction === action;
+        html += `<div style="display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius:6px; background:rgba(255,255,255,0.04);">
+            <div style="flex:1; font-size:0.88rem; color:var(--text-primary);">${escHtml(label)}</div>
+            ${isCapturing
+                ? `<span style="font-size:0.8rem; color:var(--accent); font-style:italic;">Press any button...</span>
+                   <button class="nav-btn" data-modal-row="${_REMAP_ACTIONS.findIndex(a=>a.action===action)}" onclick="grmCancelCapture()" style="font-size:0.78rem; padding:3px 10px;">Cancel</button>`
+                : `<span style="display:inline-block; min-width:38px; text-align:center; padding:3px 8px; border-radius:4px; background:rgba(255,255,255,0.1); font-size:0.8rem; color:var(--text-primary);">${escHtml(btnLabel)}</span>
+                   <button class="nav-btn" data-modal-row="${_REMAP_ACTIONS.findIndex(a=>a.action===action)}" onclick="grmStartCapture('${action}')" style="font-size:0.78rem; padding:3px 10px;">Change</button>`
+            }
+        </div>`;
+    }
+    container.innerHTML = html;
+}
+
+function _grmSave() {
+    const storage = _grmStateToStorage();
+    window._BUTTON_REMAPS = storage;
+    savePreference({ button_remaps: storage });
+    if (window._inputMgr) window._inputMgr.setButtonRemaps(storage);
+}
+
+function openGamepadRemap() {
+    _grmBuildState();
+    _captureAction = null;
+    _grmPrevBtns = {};
+    document.getElementById('gamepad-remap-modal').style.display = 'flex';
+    _grmRenderRows();
+    _grmStartPoll();
+}
+
+function closeGamepadRemap() {
+    _captureAction = null;
+    if (window._inputMgr) window._inputMgr.setCapturing(false);
+    _grmStopPoll();
+    document.getElementById('gamepad-remap-modal').style.display = 'none';
+}
+
+function grmStartCapture(action) {
+    _captureAction = action;
+    _grmPrevBtns = {};
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const g of gamepads) {
+        if (g) { g.buttons.forEach((b, i) => { _grmPrevBtns[i] = b.pressed || b.value > 0.5; }); break; }
+    }
+    if (window._inputMgr) window._inputMgr.setCapturing(true);
+    _grmRenderRows();
+}
+
+function grmCancelCapture() {
+    if (!_captureAction) return;
+    _captureAction = null;
+    if (window._inputMgr) window._inputMgr.setCapturing(false);
+    _grmRenderRows();
+}
+
+function grmResetDefaults() {
+    _grmBuildState();
+    // Defaults are already set; clear storage
+    window._BUTTON_REMAPS = {};
+    savePreference({ button_remaps: {} });
+    if (window._inputMgr) window._inputMgr.setButtonRemaps({});
+    _captureAction = null;
+    _grmRenderRows();
+}
+
+function _grmStartPoll() {
+    if (_grmRafId) return;
+    function poll() {
+        _grmRafId = requestAnimationFrame(poll);
+
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        let gp = null;
+        for (const g of gamepads) { if (g) { gp = g; break; } }
+
+        const ctrlEl = document.getElementById('grm-controller');
+        if (ctrlEl) {
+            ctrlEl.textContent = gp ? gp.id : 'No controller detected';
+            ctrlEl.style.color = gp ? 'var(--text-secondary)' : 'var(--text-danger)';
+        }
+
+        if (!gp || !_captureAction) return;
+
+        gp.buttons.forEach((btn, i) => {
+            const pressed = btn.pressed || btn.value > 0.5;
+            const wasPressed = !!_grmPrevBtns[i];
+            if (pressed && !wasPressed) {
+                // Assign this physical button to _captureAction; swap if already taken
+                const target = _captureAction;
+                const newPhys = i;
+                const oldPhys = _remapState.get(target);
+                // Find if newPhys is already used by another action
+                for (const [act, phys] of _remapState) {
+                    if (phys === newPhys && act !== target) {
+                        _remapState.set(act, oldPhys); // swap
+                        break;
+                    }
+                }
+                _remapState.set(target, newPhys);
+                _captureAction = null;
+                if (window._inputMgr) window._inputMgr.setCapturing(false);
+                _grmSave();
+                _grmRenderRows();
+            }
+            _grmPrevBtns[i] = pressed;
+        });
+    }
+    _grmRafId = requestAnimationFrame(poll);
+}
+
+function _grmStopPoll() {
+    if (_grmRafId) { cancelAnimationFrame(_grmRafId); _grmRafId = null; }
 }
 
 {% for _t in plugin_fragments('tools_scripts') %}{% include _t %}{% endfor %}

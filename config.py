@@ -349,8 +349,9 @@ def inject_config_status():
         accounts_list=accounts_list,
         active_steam_id=active_id or '',
         initial_fullscreen=state.get('fullscreen', False),
-        gamepad_enabled=state.get('gamepad_enabled', False),
+        gamepad_enabled=state.get('gamepad_enabled', True),
         gamepad_suppress_on_launch=state.get('gamepad_suppress_on_launch', True),
+        button_remaps=state.get('button_remaps', {}),
         hltb_match_threshold=state.get('hltb_match_threshold', 99),
         hide_duplicates=state.get('hide_duplicates', True),
         ui_scale=state.get('ui_scale', 100),
@@ -828,6 +829,20 @@ def save_state(updates):
         if "pagywosg_comp_defaults" in updates:
             _valid_cs = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
             state["pagywosg_comp_defaults"] = [s for s in (updates["pagywosg_comp_defaults"] or []) if s in _valid_cs]
+        if "gamepad_enabled" in updates:
+            state["gamepad_enabled"] = bool(updates["gamepad_enabled"])
+        if "gamepad_suppress_on_launch" in updates:
+            state["gamepad_suppress_on_launch"] = bool(updates["gamepad_suppress_on_launch"])
+        if "button_remaps" in updates:
+            _valid_actions = {'a','b','x','y','lb','rb','back','start','up','down','left','right'}
+            remaps = updates["button_remaps"]
+            if isinstance(remaps, dict):
+                state["button_remaps"] = {
+                    str(k): v for k, v in remaps.items()
+                    if str(k).lstrip('-').isdigit() and v in _valid_actions
+                }
+            else:
+                state["button_remaps"] = {}
 
         _compact_shared_ids(state)
         _write_state_atomic(state)

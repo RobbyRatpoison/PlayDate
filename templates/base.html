@@ -20,6 +20,11 @@
     <style>body::before { background-image: url('/static/img/backgrounds/background.jpg?v={{ background_ts }}'); }</style>
     {% endif %}
     <script src="{{ url_for('static', filename='js/playdate.js') }}?v={{ app_version }}"></script>
+    <script>
+    window._GAMEPAD_ENABLED            = {{ gamepad_enabled | tojson }};
+    window._GAMEPAD_SUPPRESS_ON_LAUNCH = {{ gamepad_suppress_on_launch | tojson }};
+    window._BUTTON_REMAPS              = {{ button_remaps | tojson }};
+    </script>
     <script src="{{ url_for('static', filename='js/input.js') }}?v={{ app_version }}"></script>
     <style>
     /* ── Launch toast ────────────────────────────────────────────────── */
@@ -150,8 +155,6 @@
     <script>
     window._PLAT_LABELS  = {{ platform_labels() | tojson }};
     window._PLUGIN_API   = {{ plugin_js_api() | tojson }};
-    window._GAMEPAD_ENABLED            = {{ gamepad_enabled | tojson }};
-    window._GAMEPAD_SUPPRESS_ON_LAUNCH = {{ gamepad_suppress_on_launch | tojson }};
     </script>
     <script>
     // Reveal the body as soon as the DOM is ready
@@ -252,7 +255,7 @@
 
             // Suppress gamepad only after confirming the game actually launched (is installed)
             if (window._inputMgr) {
-                if (!window._inputMgr.active || window._GAMEPAD_SUPPRESS_ON_LAUNCH !== false) {
+                if (window._GAMEPAD_SUPPRESS_ON_LAUNCH !== false) {
                     window._inputMgr.suppressForGame();
                 }
             }

@@ -119,6 +119,14 @@
             if (!val && _state.active) _deactivate();
             _clearGamepadState();
         },
+        setButtonRemaps(remaps) {
+            _userRemap = {};
+            if (remaps && typeof remaps === 'object') {
+                for (const [k, v] of Object.entries(remaps))
+                    _userRemap[parseInt(k, 10)] = v;
+            }
+        },
+        setCapturing(val) { _capturing = val; },
         // Dynamically register a lazily-created modal (e.g. plugin manage modals)
         registerModal(id) {
             if (_MODAL_IDS.includes(id)) return;
@@ -131,6 +139,17 @@
     };
 
     let _gamepadEnabled = window._GAMEPAD_ENABLED !== false;
+    let _capturing      = false; // true while remap modal is waiting for a button press
+    console.log('[input.js] _gamepadEnabled=' + _gamepadEnabled + ' _gameSuppressed=' + (safeSession.getItem('pd_game_running') === '1'));
+
+    let _userRemap = {};
+    (function() {
+        const r = window._BUTTON_REMAPS;
+        if (r && typeof r === 'object') {
+            for (const [k, v] of Object.entries(r))
+                _userRemap[parseInt(k, 10)] = v;
+        }
+    })();
 
     // Track whether a gamepad has ever been seen this session (persisted across page loads)
     let _gpEverSeen = safeSession.getItem('pd_gp_seen') === '1';
@@ -611,6 +630,7 @@
         'santa-modal',         // from community-modal
         'playnite-modal',      // from data-modal
         'filter-io-modal',     // from data-modal
+        'gamepad-remap-modal', // from system-modal
         'gamepad-diag-modal',  // from system-modal
         // Top-level hamburger modals
         'account-modal',
@@ -1647,7 +1667,9 @@
                         requestAnimationFrame(() => {
                             const candidates = _modalCandidates();
                             if (!_state.modalFocused || _state.modalFocused.offsetParent === null || !candidates.includes(_state.modalFocused)) {
-                                _state.modalFocused = candidates[0] ?? null;
+                                const prevRow = _state.modalFocused?.dataset?.modalRow;
+                                const sameRow = prevRow != null && candidates.find(c => c.dataset.modalRow === prevRow);
+                                _state.modalFocused = sameRow || candidates[0] || null;
                             }
                             _syncFocus();
                         });
@@ -1655,10 +1677,14 @@
                 } else {
                     el.click();
                     // Re-sync in rAF so if the click opened a sub-modal focus lands on its first element.
+                    // If the click caused the modal to re-render (removing the focused element), prefer a
+                    // candidate with the same data-modal-row before falling back to the first element.
                     requestAnimationFrame(() => {
                         const candidates = _modalCandidates();
                         if (!_state.modalFocused || _state.modalFocused.offsetParent === null || !candidates.includes(_state.modalFocused)) {
-                            _state.modalFocused = candidates[0] ?? null;
+                            const prevRow = _state.modalFocused?.dataset?.modalRow;
+                            const sameRow = prevRow != null && candidates.find(c => c.dataset.modalRow === prevRow);
+                            _state.modalFocused = sameRow || candidates[0] || null;
                         }
                         _syncFocus();
                     });
@@ -1929,6 +1955,7 @@
             ['import-modal',          'closeImportModal'],
             ['pagywosg-modal',        'closePagModal'],
             ['theme-modal',           'closeThemeModal'],
+            ['gamepad-remap-modal',   'closeGamepadRemap'],
             ['gamepad-diag-modal',    'closeGamepadDiag'],
             // top-level hamburger modals
             ['account-modal',         'closeAccountModal'],
@@ -2173,13 +2200,28 @@
     }
 
     function _handleBack() {
-        // Home page: toggle edit mode
-        if (PAGE === 'home') {
-            if (document.body.classList.contains('edit-mode')) {
-                if (typeof exitEditMode === 'function') exitEditMode();
-            } else {
-                if (typeof enterEditMode === 'function') enterEditMode();
+        // Don't touch the hamburger while any modal is open — let B handle closing.
+        if (_anyWatchedOpen()) return;
+        const hm = document.getElementById('hamburger-menu');
+        if (!hm) return;
+        if (hm.classList.contains('open')) {
+            hm.classList.remove('open');
+            if (_state.zone === 'dropdown') _popZone();
+            _syncFocus();
+        } else {
+            hm.classList.add('open');
+            // Activate if not already — _syncFocus() requires _state.active and
+            // _activate() would overwrite the zone we're about to push, so we do
+            // the activation steps manually here.
+            if (!_state.active) {
+                _state.active = true;
+                _hideCursor();
+                if (window._clearGameCardHover) window._clearGameCardHover();
+                if (window._cancelTooltipReshow) window._cancelTooltipReshow();
             }
+            _pushZone('dropdown');
+            _state.col = 0;
+            _syncFocus();
         }
     }
 
@@ -2250,12 +2292,14 @@
     // Buttons that use auto-repeat when held
     const _REPEAT_BTNS = new Set([BTN_IDX.up, BTN_IDX.down, BTN_IDX.left, BTN_IDX.right]);
 
-    // Buttons that fire immediately without needing activation first
+    // Buttons that fire immediately without needing nav activation first
     const _IMMEDIATE_BTNS = new Set([BTN_IDX.lb, BTN_IDX.rb, BTN_IDX.back]);
 
     function _onButton(rawIdx, isRepeat) {
-        const mappedAction = _activeMapping?.btns[rawIdx];
-        const effectiveIdx = mappedAction ? BTN_IDX[mappedAction] : rawIdx;
+        const userAction     = _userRemap[rawIdx];
+        const platformAction = !userAction && _activeMapping?.btns[rawIdx];
+        const resolvedAction = userAction || platformAction;
+        const effectiveIdx   = resolvedAction ? BTN_IDX[resolvedAction] : rawIdx;
         // While a text input has focus, only B is handled (to exit); everything else is typed.
         if (_state.zone === 'text-input' && effectiveIdx !== BTN_IDX.b) return;
         // While a number input has focus, only B/up/down are handled.
@@ -2307,6 +2351,19 @@
         const now = performance.now();
 
         // ── Buttons ───────────────────────────────────────────────────────────
+        // When the remap modal is capturing a button press, keep prev state updated
+        // so the remap RAF sees clean edges, but suppress all normal dispatch.
+        // Safety net: auto-clear if the remap modal is no longer visible.
+        if (_capturing) {
+            const remapModal = document.getElementById('gamepad-remap-modal');
+            if (!remapModal || remapModal.style.display === 'none') {
+                _capturing = false;
+            } else {
+                gp.buttons.forEach((btn, i) => { _gp.prev[i] = btn.pressed || btn.value > 0.5; });
+                return;
+            }
+        }
+
         gp.buttons.forEach((btn, i) => {
             const pressed    = btn.pressed || btn.value > 0.5;
             const wasPressed = !!_gp.prev[i];
@@ -2522,6 +2579,7 @@
         _watchModal('blacklist-modal');
 
         // Sub-modals (also registered so _anyWatchedOpen works correctly for nesting)
+        _watchModal('gamepad-remap-modal');
         _watchModal('gamepad-diag-modal');
         _watchModal('hltb-modal');
         _watchModal('theme-picker-modal');

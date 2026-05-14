@@ -18,7 +18,8 @@
 ### Gamepad
 
 - Full gamepad controls are now enabled across the entire app — library, modals, settings, plugins, and Pick 6.
-- Added a "Pause gamepad input when launching a game" option in Tools → Gamepad (on by default).
+- Added a "Pause gamepad input when launching a game" option in Menu → System (on by default).
+- Added a Gamepad Controls screen (Menu → System → Gamepad Controls) to remap any action to a different physical button. Default layout: A=Confirm, B=Back, X=Context Menu, Y=Filter/Search, LB=Previous Page, RB=Next Page, Back=Open Menu, Start=System, D-pad=Navigate.
 - Fixed a grey circle appearing in the corner of the window when a game closed (KDE/Wayland).
 
 ### GOG
