@@ -6,7 +6,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between;">
             <div style="display:flex; align-items:baseline; gap:0.75rem;">
                 <h2 style="margin:0; color:#fff; font-size:1.1rem;">Library Filters</h2>
-                <a onclick="closeFilterModal(); openPagModal();" style="font-size:0.75rem; color:#66c0f4; cursor:pointer; text-decoration:none; white-space:nowrap;" onmouseover="this.style.color='#c7d5e0'" onmouseout="this.style.color='#66c0f4'">PAGYWOSG Builder →</a>
+                <a onclick="closeFilterModal(); openPagModal();" data-modal-row="0" style="font-size:0.75rem; color:#66c0f4; cursor:pointer; text-decoration:none; white-space:nowrap;" onmouseover="this.style.color='#c7d5e0'" onmouseout="this.style.color='#66c0f4'">PAGYWOSG Filter Builder →</a>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
                 <!-- Mode toggle -->
@@ -1618,12 +1618,8 @@ async function applyFilters() {
 
     let filterToSave = collected;
     if (_loadedSavedFilterName && _loadedSavedTree) {
-        // PAGYWOSG filters are never edited in the modal — always use the sentinel.
-        // Non-PAGYWOSG: compare stripped trees to detect user modifications.
-        const isPag = !!_loadedSavedTree.pagywosg;
-        const unchanged = isPag || (
-            JSON.stringify(_stripPagMeta(collected)) === JSON.stringify(_stripPagMeta(_loadedSavedTree))
-        );
+        const unchanged =
+            JSON.stringify(_stripPagMeta(collected)) === JSON.stringify(_stripPagMeta(_loadedSavedTree));
         if (unchanged) filterToSave = { saved_filter: _loadedSavedFilterName };
     }
 

@@ -183,10 +183,10 @@ def _setup_focus_handler(webview_window):
             _connected = set()
 
             def _on_gtk_focus_in(gtk_win, event):
-                # evaluate_js blocks waiting for the GTK main thread to process
-                # the JS result — but we ARE on the GTK main thread right now
-                # (signal handler), so calling it directly deadlocks. Run it in
-                # a separate thread so the GTK main thread stays free.
+                # For Steam games the JS watcher handles unsuppression via pgrep.
+                # focusInUnsuppress() is a no-op once pgrep has fired, so this
+                # only takes effect for non-Steam games where pgrep never detects
+                # anything and focus-in is the only reliable close signal.
                 def _do():
                     try:
                         webview_window.evaluate_js(_UNSUPPRESS_GAMEPAD_JS)
@@ -251,8 +251,8 @@ def _destroy_window():
 # ── Main ──────────────────────────────────────────────────────────────────────
 # Module-level window reference so Flask routes can call pywebview APIs
 _UNSUPPRESS_GAMEPAD_JS = (
-    'if(window._inputMgr && window._inputMgr.unsuppressGamepad)'
-    ' window._inputMgr.unsuppressGamepad();'
+    'if(window._inputMgr && window._inputMgr.focusInUnsuppress)'
+    ' window._inputMgr.focusInUnsuppress();'
 )
 
 _webview_window = None

@@ -10,17 +10,19 @@ index_bp = Blueprint('index', __name__)
 FILTER_QUERIES = BUILTIN_FILTERS
 
 SORT_COLUMNS = {
-    "name":                "Name",
+    "name":                "Alphabetical",
     "playtime_forever":    "Hours Played",
-    "last_played":         "Last Played",
+    "last_played":         "Recently Played",
     "release_date":        "Release Date",
     "date_added":          "Date Added",
     "review_percentage":   "Review Score",
     "weighted_percentage": "Weighted Score",
+    "hltb_min":            "HLTB Time",
+    "total_reviews":       "Total Reviews",
     "RANDOM()":            "Random",
 }
 
-from library import is_safe_sql, build_tree_sql
+from library import is_safe_sql, build_tree_sql, VIRTUAL_SORT_COLS
 
 
 def _filter_tree_to_sql(tree):
@@ -79,9 +81,13 @@ def _build_shelf_query(shelf, saved_filters):
     sort_col = shelf.get('sort_col')
     sort_dir = shelf.get('sort_dir') or 'DESC'
     if sort_col and sort_col in SORT_COLUMNS:
-        order = 'RANDOM()' if sort_col == 'RANDOM()' else f"{sort_col} {sort_dir}"
-    elif not custom:
-        order = 'name ASC'
+        if sort_col == 'RANDOM()':
+            order = 'RANDOM()'
+        elif sort_col in VIRTUAL_SORT_COLS:
+            expr = VIRTUAL_SORT_COLS[sort_col]['asc' if sort_dir == 'ASC' else 'desc']
+            order = f"({expr}) {sort_dir}"
+        else:
+            order = f"{sort_col} {sort_dir}"
     else:
         order = 'name ASC'
 

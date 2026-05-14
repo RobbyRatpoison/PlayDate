@@ -245,14 +245,12 @@ class EpicGamesPlugin:
                         ],
                         'connected': [
                             {'type': 'connected_label'},
-                            {'type': 'buttons', 'items': [
-                                {'label': 'Sync Library', 'action': {'type': 'call', 'fn': 'epicSync'}},
-                                {'label': 'Import Purchase Dates', 'action': {'type': 'call', 'fn': 'epicImportDates'}},
-                                {'label': 'Disconnect', 'variant': 'muted', 'action': {
-                                    'type': 'post', 'endpoint': '/api/epic_games/disconnect',
-                                    'on_success': 'refresh_auth',
-                                }},
-                            ]},
+                            {'type': 'button', 'label': 'Sync Library', 'action': {'type': 'call', 'fn': 'epicSync'}},
+                            {'type': 'button', 'label': 'Import Purchase Dates', 'action': {'type': 'call', 'fn': 'epicImportDates'}},
+                            {'type': 'button', 'label': 'Disconnect', 'variant': 'muted', 'action': {
+                                'type': 'post', 'endpoint': '/api/epic_games/disconnect',
+                                'on_success': 'refresh_auth',
+                            }},
                             {'type': 'status_output', 'key': 'main'},
                         ],
                     },

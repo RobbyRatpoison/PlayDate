@@ -155,6 +155,9 @@
                 <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--accent);">
                     Sync Data
                 </button>
+                <button type="button" onclick="openInstallDir()" id="install-dir-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--border);">
+                    Open Folder
+                </button>
                 <button type="button" onclick="deleteGame()" id="delete-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--color-danger); background: var(--color-danger); color: var(--text-bright);">
                     Delete Game
                 </button>
@@ -164,7 +167,7 @@
 
         <p id="steam-appid-row" style="margin-bottom: 8px; color: #8f98a0; font-size: 0.85rem;">
             <span id="display-appid-label">AppID:</span> <span id="display-appid"></span>
-            <a id="store-link" href="#" target="_blank"
+            <a id="store-link" href="#" target="_blank" data-modal-row="1"
                style="color: var(--accent); font-size: 0.8rem; text-decoration: none; margin-left: 12px;">
                 View on Store ↗
             </a>
@@ -174,12 +177,12 @@
         <div id="duplicate-row" style="display:none; margin-bottom: 12px; font-size: 0.85rem; color: #8f98a0; border-bottom: 1px solid #2a475e; padding-bottom: 10px;">
             <span style="margin-right: 8px;">Duplicate of:</span>
             <span id="dup-linked-name" style="display:none; color: var(--text-bright); margin-right: 8px;"></span>
-            <button type="button" id="dup-unlink-btn" onclick="setDuplicate(null)"
+            <button type="button" id="dup-unlink-btn" onclick="setDuplicate(null)" data-modal-row="1"
                     style="display:none; font-size:0.75rem; padding:2px 8px; background:transparent; border:1px solid #8f98a0; color:#8f98a0; border-radius:3px; cursor:pointer; margin-right: 12px;">
                 Unlink
             </button>
             <span id="dup-search-wrap" style="display:inline-block; position:relative;">
-                <input id="dup-search" type="text" placeholder="Search Steam library…"
+                <input id="dup-search" type="text" placeholder="Search Steam library…" data-modal-row="1"
                        style="font-size:0.8rem; padding:3px 8px; width:220px; background:#1b2838; border:1px solid #2a475e; color:var(--text-bright); border-radius:3px;"
                        autocomplete="off" oninput="dupSearchInput(this.value)">
                 <div id="dup-results" style="display:none; position:absolute; left:0; top:100%; z-index:9999; background:#1b2838; border:1px solid #2a475e; border-radius:3px; min-width:260px; max-height:180px; overflow-y:auto;"></div>
@@ -195,8 +198,8 @@
                 <div>
                     <!-- Tab strip -->
                     <div class="edit-tab-strip">
-                        <button type="button" id="edit-tab-btn-stats" class="edit-tab-btn active" onclick="switchEditTab('stats')">Stats</button>
-                        <button type="button" id="edit-tab-btn-info"  class="edit-tab-btn"        onclick="switchEditTab('info')">Info</button>
+                        <button type="button" id="edit-tab-btn-stats" class="edit-tab-btn active" onclick="switchEditTab('stats')" data-modal-row="2">Stats</button>
+                        <button type="button" id="edit-tab-btn-info"  class="edit-tab-btn"        onclick="switchEditTab('info')"  data-modal-row="2">Info</button>
                     </div>
 
                     <!-- INFO pane -->
@@ -206,22 +209,22 @@
                             <!-- Info left sub-col: game metadata + reviews -->
                             <div id="edit-info-left" style="display: flex; flex-direction: column;">
                                 <label>Game Title</label>
-                                <input type="text" name="name" id="edit-name">
+                                <input type="text" name="name" id="edit-name" data-modal-row="3">
 
                                 <label>Developers</label>
-                                <input type="text" name="developers" id="edit-dev">
+                                <input type="text" name="developers" id="edit-dev" data-modal-row="4">
 
                                 <label>Publishers</label>
-                                <input type="text" name="publishers" id="edit-pub">
+                                <input type="text" name="publishers" id="edit-pub" data-modal-row="5">
 
                                 <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px;">
                                     <div>
                                         <label>Release Date</label>
-                                        <input type="text" name="release_date" id="edit-rel" placeholder="YYYY-MM-DD">
+                                        <input type="text" name="release_date" id="edit-rel" placeholder="YYYY-MM-DD" data-modal-row="6">
                                     </div>
                                     <div>
                                         <label>Free to Play</label>
-                                        <select name="is_free" id="edit-is-free">
+                                        <select name="is_free" id="edit-is-free" data-modal-row="6">
                                             <option value="0">No</option>
                                             <option value="1">Yes</option>
                                         </select>
@@ -229,27 +232,27 @@
                                 </div>
 
                                 <label style="margin-top: 8px;">Review Score</label>
-                                <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive">
+                                <input type="text" name="review_score" id="edit-review-score" placeholder="e.g. Very Positive" data-modal-row="7">
 
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
                                     <div>
                                         <label>Review %</label>
-                                        <input type="number" name="review_percentage" id="edit-review-percentage" min="0" max="100">
+                                        <input type="number" name="review_percentage" id="edit-review-percentage" min="0" max="100" data-modal-row="8">
                                     </div>
                                     <div>
                                         <label data-tooltip="Review score adjusted for confidence. Low review counts are pulled toward 50 (neutral) rather than the raw score. Formula: score - (score - 0.5) × 2^(-log₁₀(reviews+1))">Weighted %</label>
-                                        <input type="number" name="weighted_percentage" id="edit-weighted-pct">
+                                        <input type="number" name="weighted_percentage" id="edit-weighted-pct" data-modal-row="8">
                                     </div>
                                 </div>
 
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;">
                                     <div>
                                         <label>Total Reviews</label>
-                                        <input type="number" name="total_reviews" id="edit-total-reviews">
+                                        <input type="number" name="total_reviews" id="edit-total-reviews" data-modal-row="8">
                                     </div>
                                     <div>
                                         <label>Positive Reviews</label>
-                                        <input type="number" name="positive_reviews" id="edit-positive-reviews">
+                                        <input type="number" name="positive_reviews" id="edit-positive-reviews" data-modal-row="8">
                                     </div>
                                 </div>
                             </div>
@@ -257,17 +260,17 @@
                             <!-- Info right sub-col: tags, genres, categories -->
                             <div id="edit-info-right" style="display: flex; flex-direction: column;">
                                 <label>Tags</label>
-                                <div class="pill-input-box" id="edit-tags-box" style="flex: 1; min-height: 38px; overflow-y: auto;"></div>
+                                <div class="pill-input-box" id="edit-tags-box" style="flex: 1; min-height: 38px; overflow-y: auto;" data-modal-row="6"></div>
                                 <input type="hidden" name="tags" id="edit-tags">
                                 <small class="pill-hint">Type a value and press Enter to add</small>
 
                                 <label style="margin-top: 8px;">Genres</label>
-                                <div class="pill-input-box" id="edit-genres-box" style="min-height: 38px; overflow-y: auto;"></div>
+                                <div class="pill-input-box" id="edit-genres-box" style="min-height: 38px; overflow-y: auto;" data-modal-row="7"></div>
                                 <input type="hidden" name="genres" id="edit-genres">
                                 <small class="pill-hint">Type a value and press Enter to add</small>
 
                                 <label style="margin-top: 8px;">Categories</label>
-                                <div class="pill-input-box" id="edit-categories-box" style="min-height: 38px; overflow-y: auto;"></div>
+                                <div class="pill-input-box" id="edit-categories-box" style="min-height: 38px; overflow-y: auto;" data-modal-row="8"></div>
                                 <input type="hidden" name="categories" id="edit-categories">
                                 <small class="pill-hint">Type a value and press Enter to add</small>
                             </div>
@@ -279,13 +282,13 @@
                                 <span id="edit-hltb-warn-i" style="font-size:0.75rem; color:#e6b450; display:none;" data-tooltip="Low match confidence — please verify">&#9888;</span>
                                 <a id="edit-hltb-link-i" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
                                 <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
-                                    <button type="button" id="edit-hltb-confirm-i" onclick="_confirmHLTB(this)"
+                                    <button type="button" id="edit-hltb-confirm-i" onclick="_confirmHLTB(this)" data-modal-row="13"
                                         style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
-                                    <button type="button" id="edit-hltb-other-i" onclick="_otherMatchHLTB(this)"
+                                    <button type="button" id="edit-hltb-other-i" onclick="_otherMatchHLTB(this)" data-modal-row="13"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
-                                    <button type="button" id="edit-hltb-clear-i" onclick="_clearHLTB(this)"
+                                    <button type="button" id="edit-hltb-clear-i" onclick="_clearHLTB(this)" data-modal-row="13"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
-                                    <button type="button" id="edit-hltb-refresh-i" onclick="_refreshHLTB(this)"
+                                    <button type="button" id="edit-hltb-refresh-i" onclick="_refreshHLTB(this)" data-modal-row="13"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
                                 </div>
                             </div>
@@ -300,7 +303,7 @@
 
                             <div>
                                 <label>Completion Status</label>
-                                <select name="completion_status" id="edit-status">
+                                <select name="completion_status" id="edit-status" data-modal-row="3">
                                     <option value="Never Played">Never Played</option>
                                     <option value="Unfinished">Unfinished</option>
                                     <option value="Beaten">Beaten</option>
@@ -311,7 +314,7 @@
 
                             <div>
                                 <label>Installed</label>
-                                <select name="installed" id="edit-installed">
+                                <select name="installed" id="edit-installed" data-modal-row="3">
                                     <option value="0">No</option>
                                     <option value="1">Yes</option>
                                 </select>
@@ -321,12 +324,12 @@
                                 <label>Playtime</label>
                                 <div style="display:flex; gap:6px; align-items:center;">
                                     <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
-                                        <input type="number" name="playtime_forever" id="edit-playtime" placeholder="mins" min="0" step="1">
+                                        <input type="number" name="playtime_forever" id="edit-playtime" placeholder="mins" min="0" step="1" data-modal-row="3">
                                         <span style="font-size:0.72rem; color:var(--text-secondary); padding-left:2px;">mins</span>
                                     </div>
                                     <span style="color:var(--text-secondary); padding-bottom:18px;">=</span>
                                     <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
-                                        <input type="number" id="edit-playtime-hrs" placeholder="hrs" min="0" step="0.1">
+                                        <input type="number" id="edit-playtime-hrs" placeholder="hrs" min="0" step="0.1" data-modal-row="3">
                                         <span style="font-size:0.72rem; color:var(--text-secondary); padding-left:2px;">hrs</span>
                                     </div>
                                 </div>
@@ -334,20 +337,20 @@
 
                             <div>
                                 <label>Last Played</label>
-                                <input type="text" name="last_played" id="edit-last-played" placeholder="YYYY-MM-DD">
+                                <input type="text" name="last_played" id="edit-last-played" placeholder="YYYY-MM-DD" data-modal-row="4">
                             </div>
 
                             <div>
                                 <label>Date Added <a id="steam-help-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
-                                <input type="text" name="date_added" id="edit-date-added" placeholder="YYYY-MM-DD">
+                                <input type="text" name="date_added" id="edit-date-added" placeholder="YYYY-MM-DD" data-modal-row="4">
                             </div>
 
                             <div style="grid-column: span 2;">
                                 <label>Achievements <a id="achievements-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none;">↗</a></label>
                                 <div style="display: flex; align-items: center; gap: 10px;">
-                                    <div style="flex: 1;"><input type="number" name="unlocked_achievements" id="edit-unlocked-ach" placeholder="Unlocked"></div>
+                                    <div style="flex: 1;"><input type="number" name="unlocked_achievements" id="edit-unlocked-ach" placeholder="Unlocked" data-modal-row="4"></div>
                                     <span>/</span>
-                                    <div style="flex: 1;"><input type="number" name="total_achievements" id="edit-total-ach" placeholder="Total"></div>
+                                    <div style="flex: 1;"><input type="number" name="total_achievements" id="edit-total-ach" placeholder="Total" data-modal-row="4"></div>
                                 </div>
                             </div>
                         </div>
@@ -355,7 +358,7 @@
                         <!-- Full-width rows within stats pane -->
                         <div style="margin-top:10px;">
                             <label>Groups</label>
-                            <div class="pill-input-box" id="edit-groups-box" style="min-height: 38px; max-height: 90px; overflow-y: auto;"></div>
+                            <div class="pill-input-box" id="edit-groups-box" style="min-height: 38px; max-height: 90px; overflow-y: auto;" data-modal-row="5"></div>
                             <input type="hidden" name="groups" id="edit-groups">
                             <small class="pill-hint">Type a value and press Enter to add</small>
                         </div>
@@ -366,7 +369,7 @@
                             <span id="edit-protondb-tier" style="font-size:0.82rem; font-weight:bold;"></span>
                             <span id="edit-protondb-weak" style="font-size:0.75rem; color:#8f98a0; display:none;">— few reports</span>
                             <a id="edit-protondb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; margin-left:auto; flex-shrink:0;">ProtonDB ↗</a>
-                            <button type="button" id="edit-protondb-refresh" onclick="_refreshProtonDB()"
+                            <button type="button" id="edit-protondb-refresh" onclick="_refreshProtonDB()" data-modal-row="6"
                                 style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer; flex-shrink:0;">Refresh</button>
                         </div>
                         {% endif %}
@@ -377,13 +380,13 @@
                                 <span id="edit-hltb-warn" style="font-size:0.75rem; color:#e6b450; display:none;" data-tooltip="Low match confidence — please verify">&#9888;</span>
                                 <a id="edit-hltb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
                                 <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
-                                    <button type="button" id="edit-hltb-confirm" onclick="_confirmHLTB(this)"
+                                    <button type="button" id="edit-hltb-confirm" onclick="_confirmHLTB(this)" data-modal-row="7"
                                         style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
-                                    <button type="button" id="edit-hltb-other" onclick="_otherMatchHLTB(this)"
+                                    <button type="button" id="edit-hltb-other" onclick="_otherMatchHLTB(this)" data-modal-row="7"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
-                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB(this)"
+                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB(this)" data-modal-row="7"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
-                                    <button type="button" id="edit-hltb-refresh" onclick="_refreshHLTB(this)"
+                                    <button type="button" id="edit-hltb-refresh" onclick="_refreshHLTB(this)" data-modal-row="7"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
                                 </div>
                             </div>
@@ -394,7 +397,7 @@
 
                     <!-- PAGYWOSG quals: below both panes -->
                     <div id="pag-quals-section" style="display:none; margin-top:14px; padding:10px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px;">
-                        <div style="font-size:0.75rem; font-weight:bold; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">PAGYWOSG Qualifications</div>
+                        <div id="pag-quals-header" style="font-size:0.75rem; font-weight:bold; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">PAGYWOSG Qualifications</div>
                         <div id="pag-quals-list" style="font-size:0.82rem; display:flex; flex-direction:column; gap:4px;"></div>
                     </div>
                 </div>
@@ -403,9 +406,9 @@
                 <div style="border-left: 1px solid #2a475e; padding-left: 20px; display:flex; flex-direction:column; gap:10px;">
                     <!-- Art type tabs -->
                     <div style="display:flex; gap:6px;">
-                        <button type="button" class="art-tab-btn active" onclick="openArtTab('vertical')"   id="art-tab-vertical">Vertical</button>
-                        <button type="button" class="art-tab-btn"        onclick="openArtTab('horizontal')" id="art-tab-horizontal">Horizontal</button>
-                        <button type="button" class="art-tab-btn"        onclick="openArtTab('icon')"       id="art-tab-icon">Icon</button>
+                        <button type="button" class="art-tab-btn active" onclick="openArtTab('vertical')"   id="art-tab-vertical"   data-modal-row="20">Vertical</button>
+                        <button type="button" class="art-tab-btn"        onclick="openArtTab('horizontal')" id="art-tab-horizontal" data-modal-row="20">Horizontal</button>
+                        <button type="button" class="art-tab-btn"        onclick="openArtTab('icon')"       id="art-tab-icon"       data-modal-row="20">Icon</button>
                     </div>
 
                     <!-- Vertical panel -->
@@ -418,14 +421,14 @@
                         </div>
                         <div class="art-source-label">Source: <span id="art-source-vertical">—</span></div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('vertical')"       data-modal-row="1">Re-scrape</button>
-                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('vertical')" data-modal-row="1">Custom URL</button>
-                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('vertical')" data-modal-row="1">Browse SGDB</button>{% endif %}
-                            {% if not existing_sgdb_key %}<a id="sgdb-link-vertical" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);">Browse SGDB ↗</a>{% endif %}
+                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('vertical')"       data-modal-row="21">Re-scrape</button>
+                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('vertical')" data-modal-row="21">Custom URL</button>
+                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('vertical')" data-modal-row="21">Browse SGDB</button>{% endif %}
+                            {% if not existing_sgdb_key %}<a id="sgdb-link-vertical" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);" data-modal-row="21">Browse SGDB ↗</a>{% endif %}
                         </div>
                         <div id="art-url-row-vertical" style="display:none; flex-direction:column; gap:6px;">
-                            <input type="text" id="art-url-vertical" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
-                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('vertical')" data-modal-row="1" style="width:100%;">Save</button>
+                            <input type="text" id="art-url-vertical" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
+                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('vertical')" data-modal-row="22" style="width:100%;">Save</button>
                         </div>
                         <div id="art-status-vertical" class="art-status"></div>
                     </div>
@@ -440,14 +443,14 @@
                         </div>
                         <div class="art-source-label">Source: <span id="art-source-horizontal">—</span></div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('horizontal')"       data-modal-row="1">Re-scrape</button>
-                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('horizontal')" data-modal-row="1">Custom URL</button>
-                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('horizontal')" data-modal-row="1">Browse SGDB</button>{% endif %}
-                            {% if not existing_sgdb_key %}<a id="sgdb-link-horizontal" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);">Browse SGDB ↗</a>{% endif %}
+                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('horizontal')"       data-modal-row="21">Re-scrape</button>
+                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('horizontal')" data-modal-row="21">Custom URL</button>
+                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('horizontal')" data-modal-row="21">Browse SGDB</button>{% endif %}
+                            {% if not existing_sgdb_key %}<a id="sgdb-link-horizontal" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);" data-modal-row="21">Browse SGDB ↗</a>{% endif %}
                         </div>
                         <div id="art-url-row-horizontal" style="display:none; flex-direction:column; gap:6px;">
-                            <input type="text" id="art-url-horizontal" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
-                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('horizontal')" data-modal-row="1" style="width:100%;">Save</button>
+                            <input type="text" id="art-url-horizontal" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
+                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('horizontal')" data-modal-row="22" style="width:100%;">Save</button>
                         </div>
                         <div id="art-status-horizontal" class="art-status"></div>
                     </div>
@@ -462,14 +465,14 @@
                         </div>
                         <div class="art-source-label">Source: <span id="art-source-icon">—</span></div>
                         <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('icon')"       data-modal-row="1">Re-scrape</button>
-                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('icon')" data-modal-row="1">Custom URL</button>
-                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('icon')" data-modal-row="1">Browse SGDB</button>{% endif %}
-                            {% if not existing_sgdb_key %}<a id="sgdb-link-icon" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);">Browse SGDB ↗</a>{% endif %}
+                            <button type="button" class="nav-btn art-action-btn" onclick="rescrapeArt('icon')"       data-modal-row="21">Re-scrape</button>
+                            <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('icon')" data-modal-row="21">Custom URL</button>
+                            {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('icon')" data-modal-row="21">Browse SGDB</button>{% endif %}
+                            {% if not existing_sgdb_key %}<a id="sgdb-link-icon" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);" data-modal-row="21">Browse SGDB ↗</a>{% endif %}
                         </div>
                         <div id="art-url-row-icon" style="display:none; flex-direction:column; gap:6px;">
-                            <input type="text" id="art-url-icon" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="1">
-                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('icon')" data-modal-row="1" style="width:100%;">Save</button>
+                            <input type="text" id="art-url-icon" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
+                            <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('icon')" data-modal-row="22" style="width:100%;">Save</button>
                         </div>
                         <div id="art-status-icon" class="art-status"></div>
                     </div>
@@ -477,8 +480,8 @@
             </div>
 
             <div style="display: flex; gap: 15px; margin-top: 20px; border-top: 1px solid #2a475e; padding-top: 15px;">
-                <button type="submit" class="btn-save" data-modal-row="2" style="flex: 2; margin: 0;">SAVE CHANGES</button>
-                <button type="button" onclick="closeModal()" class="nav-btn" data-modal-row="2" style="flex: 1; height: auto; padding: 12px;">CLOSE</button>
+                <button type="submit" class="btn-save" data-modal-row="25" style="flex: 2; margin: 0;">SAVE CHANGES</button>
+                <button type="button" onclick="closeModal()" class="nav-btn" data-modal-row="25" style="flex: 1; height: auto; padding: 12px;">CLOSE</button>
             </div>
         </form>
     </div>
@@ -1094,6 +1097,28 @@ const achLink = document.getElementById('achievements-link');
         openSgdbModal(appid, type, name);
     }
 
+    async function openInstallDir() {
+        const appid = document.getElementById('edit-appid').value;
+        const btn = document.getElementById('install-dir-btn');
+        const orig = btn.textContent;
+        btn.textContent = 'Opening…';
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/api/open-install-dir/${appid}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.status !== 'success') {
+                btn.textContent = 'Not Found';
+                setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+            } else {
+                btn.textContent = orig;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            btn.textContent = orig;
+            btn.disabled = false;
+        }
+    }
+
     function closeModal() {
         _dismissSuggestions();
         const form = document.getElementById('edit-game-form');
@@ -1643,20 +1668,24 @@ const achLink = document.getElementById('achievements-link');
                 const results = data.results || [];
                 const titleRowHtml = `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
                     <input data-hltb-search-input type="text" value="${_escHtml(query)}"
+                        data-modal-row="ehltb-s"
                         style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
                         onkeydown="if(event.key==='Enter'){event.preventDefault();_hltbResearch();}">
                     <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                        data-modal-row="ehltb-s"
                         onclick="_hltbResearch()">Search</button>
                 </div>`;
                 const manualHtml = `<div style="display:flex; align-items:center; gap:6px; padding:6px 0 2px; border-top:1px solid #2a475e; margin-top:4px;">
                     <input data-hltb-manual-input type="text" placeholder="Paste HLTB URL or game ID…"
+                        data-modal-row="ehltb-m"
                         style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
                         onkeydown="if(event.key==='Enter')_selectHLTBById()">
                     <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                        data-modal-row="ehltb-m"
                         onclick="_selectHLTBById()">Apply</button>
                 </div>`;
                 const resultsHtml = results.length
-                    ? results.map(r => {
+                    ? results.map((r, i) => {
                         const parts = [];
                         if (r.hltb_main   != null) parts.push(`Main: ${_fmtMins(r.hltb_main)}`);
                         if (r.hltb_extras != null) parts.push(`+Extras: ${_fmtMins(r.hltb_extras)}`);
@@ -1667,6 +1696,7 @@ const achLink = document.getElementById('achievements-link');
                             <span style="color:#8f98a0; flex-shrink:0;">${r.hltb_match_score}</span>
                             <span style="color:#8f98a0; flex:1; font-size:0.72rem;">${times}</span>
                             <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                                data-modal-row="ehltb-r-${i}"
                                 data-hltb-select="1" data-hltb-id="${r.hltb_id}"
                                 data-hltb-score="${r.hltb_match_score ?? ''}"
                                 data-hltb-name="${_escHtml(r.hltb_matched_name || '')}">Select</button>
@@ -1735,19 +1765,22 @@ const achLink = document.getElementById('achievements-link');
             .finally(() => { input.disabled = false; });
     }
 
-    function _pagRenderQuals(game) {
-        const section = document.getElementById('pag-quals-section');
-        const list    = document.getElementById('pag-quals-list');
-        const ft = typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null;
-        if (!ft?.pagywosg) { section.style.display = 'none'; return; }
+    function _pagEventMonthLabel(eventId) {
+        if (!eventId) return null;
+        const MONTHS = ['January','February','March','April','May','June',
+                        'July','August','September','October','November','December'];
+        const offset = eventId - 83;
+        const idx  = ((3 + offset) % 12 + 12) % 12;
+        const year = 2026 + Math.floor((3 + offset) / 12);
+        return `${MONTHS[idx]} ${year}`;
+    }
 
-        const results = [];
-        const sgGroup = _pagExtractSgGroup(ft);
+    function _buildPagQualResults(game, conds, verified, sgGroup) {
         const isWin = sgGroup ? _pagCsvContains(game.groups, sgGroup) : false;
-        const isSantaGift = (ft.pagywosg_verified?.[String(game.appid)] || []).some(e => e.auto && e.pool === 'wins');
+        const isSantaGift = (verified?.[String(game.appid)] || []).some(e => e.auto && e.pool === 'wins');
+        const results = [];
 
-        // Metadata conditions from filter tree
-        _pagExtractConds(ft).forEach(cond => {
+        conds.forEach(cond => {
             if (cond.pool === 'wins' && !isWin && !isSantaGift) return;
             const desc = _pagCheckCond(cond, game);
             if (desc) {
@@ -1757,30 +1790,72 @@ const achLink = document.getElementById('achievements-link');
             }
         });
 
-        // Community-verified games (skip auto+wins — shown via conditions above)
-        (ft.pagywosg_verified?.[String(game.appid)] || []).forEach(({cat, pool, verifier, auto}) => {
+        (verified?.[String(game.appid)] || []).forEach(({cat, pool, verifier, auto}) => {
             if (auto && pool === 'wins') return;
             if (pool === 'wins' && !isWin) return;
             results.push({desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifier: verifier || null});
         });
 
-        list.innerHTML = results.length
+        return results;
+    }
+
+    function _pagQualResultsHtml(results) {
+        return results.length
             ? results.map(r => {
                 const isSelf = r.verifier && _serverSgUsername &&
                     r.verifier.toLowerCase() === _serverSgUsername.toLowerCase();
                 const verifText = r.verified
-                    ? ` — mod verified${r.verifier ? (isSelf ? ' — already submitted' : ` — see ${r.verifier}'s entry`) : ''}`
+                    ? ` — mod verified${r.verifier ? (isSelf ? ' — already submitted' : ` — see ${escHtml(r.verifier)}'s entry`) : ''}`
                     : '';
                 return `<div style="color:var(--text-primary);">
-                    <span style="color:var(--accent-positive);">✓</span>
-                    ${r.desc}
-                    <span style="color:var(--text-secondary); font-size:0.76rem;">${r.label}${verifText}</span>
+                    <span style="color:var(--accent-positive);">&#x2713;</span>
+                    ${escHtml(r.desc)}
+                    <span style="color:var(--text-secondary); font-size:0.76rem;">${escHtml(r.label)}${verifText}</span>
                 </div>`;
             }).join('')
             : `<div style="color:var(--text-secondary);">No qualifying categories found for this game.</div>`;
+    }
 
+    function _pagRenderQuals(game) {
+        const section = document.getElementById('pag-quals-section');
+        const list    = document.getElementById('pag-quals-list');
+        const header  = document.getElementById('pag-quals-header');
+
+        const ft = (typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null);
+        const useFilter = ft?.pagywosg;
+        const source = useFilter ? null : (window._pagCurrentQuals || null);
+
+        if (!useFilter && !source) { section.style.display = 'none'; return; }
+
+        let conds, verified, sgGroup, monthLabel;
+        if (useFilter) {
+            conds      = _pagExtractConds(ft);
+            verified   = ft.pagywosg_verified;
+            sgGroup    = _pagExtractSgGroup(ft);
+            monthLabel = _pagEventMonthLabel(ft.pagywosg_event?.id) || 'PAGYWOSG';
+        } else {
+            conds      = source.conds || [];
+            verified   = source.verified || {};
+            sgGroup    = source.sg_group || null;
+            monthLabel = source.event?.month_label || 'PAGYWOSG';
+        }
+
+        if (header) header.textContent = `PAGYWOSG - ${monthLabel} QUALIFICATIONS`;
+
+        const results = _buildPagQualResults(game, conds, verified, sgGroup);
+        if (!results.length) { section.style.display = 'none'; return; }
+        list.innerHTML = _pagQualResultsHtml(results);
         section.style.display = 'block';
     }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (!window._pagCurrentQuals) {
+            fetch('/api/pagywosg-quals')
+                .then(r => r.json())
+                .then(data => { if (data.status === 'success') window._pagCurrentQuals = data; })
+                .catch(() => {});
+        }
+    });
 </script>
 
 <!-- ── SteamGridDB Browser Modal ───────────────────────────────────────────── -->

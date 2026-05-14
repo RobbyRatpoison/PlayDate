@@ -168,7 +168,9 @@ Non-Steam library sources are optional plugins in `plugins/<id>/`. See `PLUGINS.
 
 **`localStorage` and `sessionStorage` are not available as globals in pywebview's WebKit2GTK context.** Always use `safeLocal` / `safeSession` from `playdate.js` instead. These fall back to in-memory objects when the native APIs are unavailable.
 
-**`input.js`** — zone-based state machine (`nav`, `content`, `modal`, `ctx-menu`). Modal buttons need `data-modal-row`. Gamepad: XB layout, 400ms initial / 150ms repeat, 0.35 dead zone.
+**`input.js`** — zone-based state machine (`nav`, `content`, `modal`, `ctx-menu`). Modal buttons need `data-modal-row`. Gamepad: XB layout, 400ms initial / 150ms repeat, 0.35 dead zone. `input[type=range][data-modal-row]` is gamepad-navigable: left/right adjusts by the slider's `step` attribute. For checkboxes, use `div[data-modal-row]` with an onclick toggle (`var cb=this.querySelector('input');cb.checked=!cb.checked;`) and `onclick="event.stopPropagation()"` on the inner checkbox. **Never use the HTML `disabled` attribute on buttons that need gamepad navigation** — `disabled` excludes them from `_modalGrid()`; use CSS `opacity` + a JS guard in the handler instead.
+
+**File dialogs in pywebview:** `input[type=file].click()` is silently blocked when called from a gamepad RAF handler (non-user-gesture context). Use `window.pywebview.api.pick_open_path(filters)` instead, with a fallback to `.click()` for browser mode. After any native file dialog closes, WebKit2GTK fires a spurious click on the focused element, which reopens the dialog. Guard every file dialog function with `_fileDlgBusy` (a shared flag, 300ms `setTimeout` to clear) to absorb it.
 
 ## Home Page Shelves
 

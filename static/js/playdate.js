@@ -557,6 +557,8 @@ const _CP_PALETTE = [
 
 let _cpEl = null, _cpOnChange = null, _cpAnchor = null;
 let _cpH = 0, _cpS = 1, _cpV = 1; // working HSV state
+window._cpEyedropperBusy     = false;  // true while the eyedropper subprocess is running
+window._cpEyedropperCooldown = false;  // true for 500ms after it exits (absorbs stale B press)
 
 function _cpRgbToHsv(r, g, b) {
     r /= 255; g /= 255; b /= 255;
@@ -606,6 +608,9 @@ function openColorPicker(anchor, currentHex, onChange) {
     const [ir, ig, ib] = _cpHexToRgb(initHex);
     [_cpH, _cpS, _cpV] = _cpRgbToHsv(ir, ig, ib);
 
+    // Slider refs populated after creation; used by _cpFullUpdate closure below.
+    let _hueSlider = null, _satSlider = null, _valSlider = null;
+
     const pop = document.createElement('div');
     pop.id = '_color-picker-popover';
     pop.style.cssText = 'position:fixed;z-index:99999;background:#1b2838;border:1px solid #2a3f55;' +
@@ -644,6 +649,8 @@ function openColorPicker(anchor, currentHex, onChange) {
         _cpS = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
         _cpV = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
         _svUpdateCursor();
+        if (_satSlider) _satSlider.value = Math.round(_cpS * 100);
+        if (_valSlider) _valSlider.value = Math.round(_cpV * 100);
         _cpEmit();
     }
     let _svDrag = false;
@@ -671,6 +678,7 @@ function openColorPicker(anchor, currentHex, onChange) {
         _cpH = Math.max(0, Math.min(360, (e.clientX - r.left) / r.width * 360));
         _hueUpdateThumb();
         _svUpdateBg();
+        if (_hueSlider) _hueSlider.value = Math.round(_cpH);
         _cpEmit();
     }
     let _hueDrag = false;
@@ -680,12 +688,42 @@ function openColorPicker(anchor, currentHex, onChange) {
 
     pop.appendChild(hueTrack);
 
+    // ── H / S / V sliders (gamepad-navigable) ────────────────────────────
+    const hsvSection = document.createElement('div');
+    hsvSection.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+    const _sliderRowStyle = 'display:flex;align-items:center;gap:6px;';
+    const _sliderLblStyle = 'width:10px;font-size:0.72rem;color:#8f98a0;flex-shrink:0;text-align:right;font-family:monospace;';
+    const _sliderStyle    = 'flex:1;cursor:pointer;';
+    function _cpSliderFill(sl) {
+        const pct = (sl.value - sl.min) / (sl.max - sl.min) * 100;
+        sl.style.setProperty('--slider-pct', pct.toFixed(1) + '%');
+    }
+    [[0, 'H', 0, 360], [1, 'S', 0, 100], [2, 'V', 0, 100]].forEach(([row, lbl, min, max]) => {
+        const r = document.createElement('div');
+        r.style.cssText = _sliderRowStyle;
+        const l = document.createElement('span');
+        l.textContent = lbl;
+        l.style.cssText = _sliderLblStyle;
+        const sl = document.createElement('input');
+        sl.type = 'range'; sl.min = min; sl.max = max; sl.step = '1';
+        sl.dataset.modalRow = row;
+        sl.style.cssText = _sliderStyle;
+        if (lbl === 'H') { _hueSlider = sl; sl.value = Math.round(_cpH); sl.addEventListener('input', () => { _cpH = +sl.value; _cpSliderFill(sl); _svUpdateBg(); _hueUpdateThumb(); _cpEmit(); }); }
+        if (lbl === 'S') { _satSlider = sl; sl.value = Math.round(_cpS * 100); sl.addEventListener('input', () => { _cpS = sl.value / 100; _cpSliderFill(sl); _svUpdateCursor(); _cpEmit(); }); }
+        if (lbl === 'V') { _valSlider = sl; sl.value = Math.round(_cpV * 100); sl.addEventListener('input', () => { _cpV = sl.value / 100; _cpSliderFill(sl); _svUpdateCursor(); _cpEmit(); }); }
+        _cpSliderFill(sl);
+        r.append(l, sl);
+        hsvSection.appendChild(r);
+    });
+    pop.appendChild(hsvSection);
+
     // ── Bottom row: eyedropper + preview + hex ────────────────────────────
     const bottomRow = document.createElement('div');
     bottomRow.style.cssText = 'display:flex;align-items:center;gap:0.375rem;';
 
     const dropBtn = document.createElement('button');
     dropBtn.title = 'Pick colour from screen';
+    dropBtn.dataset.modalRow = 3;
     dropBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22l5-5M14.5 2.5l7 7-10 10-7-7 10-10z"/><path d="M7 17l-5 5"/></svg>';
     dropBtn.style.cssText = 'width:2rem;height:2rem;flex-shrink:0;background:#2a3f55;border:1px solid #3a5f7a;' +
         'color:#c7d5e0;border-radius:0.25rem;cursor:pointer;font-size:1rem;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;';
@@ -704,29 +742,39 @@ function openColorPicker(anchor, currentHex, onChange) {
         // Fallback: ask Python backend to open native system color dialog.
         // Hide all visible modals and the colour picker popup so the screenshot
         // shows the clean app window behind them.
+        window._cpEyedropperBusy = true;
         const _hidden = [];
         document.querySelectorAll('.modal-overlay').forEach(el => {
-            if (el.style.display !== 'none') { el.style.display = 'none'; _hidden.push(el); }
+            if (el.style.display !== 'none') {
+                _hidden.push({ el, display: el.style.display });
+                el.style.display = 'none';
+            }
         });
         const _cpPopEl = document.getElementById('_color-picker-popover');
         if (_cpPopEl) { _cpPopEl.style.visibility = 'hidden'; }
         // Wait two frames so pywebview repaints before the subprocess grabs the screen.
         await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+        let _pickedColor = null;
         try {
             const resp = await fetch('/api/pick-screen-color');
             if (resp.ok) {
                 const data = await resp.json();
-                if (data.color) {
-                    const [r, g, b] = _cpHexToRgb(data.color);
-                    [_cpH, _cpS, _cpV] = _cpRgbToHsv(r, g, b);
-                    _cpFullUpdate();
-                }
-                // data.cancelled or data.error → do nothing
+                if (data.color) _pickedColor = data.color;
             }
         } catch (_) {}
-        // Restore hidden elements.
-        _hidden.forEach(el => { el.style.display = ''; });
+        window._cpEyedropperBusy = false;
+        window._cpEyedropperCooldown = true;
+        setTimeout(() => { window._cpEyedropperCooldown = false; }, 500);
+        // Restore hidden elements to their exact previous display value.
+        _hidden.forEach(({ el, display }) => { el.style.display = display; });
         if (_cpPopEl) { _cpPopEl.style.visibility = ''; }
+        if (_pickedColor) {
+            const [r, g, b] = _cpHexToRgb(_pickedColor);
+            [_cpH, _cpS, _cpV] = _cpRgbToHsv(r, g, b);
+            _cpFullUpdate();
+        }
+        // Re-enter modal zone so gamepad focus returns to the color picker.
+        if (typeof window._gpRefocusModal === 'function') window._gpRefocusModal();
     });
     bottomRow.appendChild(dropBtn);
 
@@ -736,6 +784,7 @@ function openColorPicker(anchor, currentHex, onChange) {
     const hexInput = document.createElement('input');
     hexInput.type = 'text';
     hexInput.maxLength = 7;
+    hexInput.dataset.modalRow = 3;
     hexInput.style.cssText = 'flex:1;height:2rem;background:#101822;border:1px solid #2a3f55;color:#fff;' +
         'border-radius:0.25rem;font-size:0.82rem;padding:0 0.375rem;font-family:monospace;min-width:0;';
     hexInput.addEventListener('input', () => {
@@ -745,6 +794,9 @@ function openColorPicker(anchor, currentHex, onChange) {
             const [r, g, b] = _cpHexToRgb(v);
             [_cpH, _cpS, _cpV] = _cpRgbToHsv(r, g, b);
             _svUpdateBg(); _svUpdateCursor(); _hueUpdateThumb();
+            if (_hueSlider) _hueSlider.value = Math.round(_cpH);
+            if (_satSlider) _satSlider.value = Math.round(_cpS * 100);
+            if (_valSlider) _valSlider.value = Math.round(_cpV * 100);
             preview.style.background = v;
             _cpOnChange && _cpOnChange(v);
         }
@@ -757,8 +809,9 @@ function openColorPicker(anchor, currentHex, onChange) {
     // ── Palette ───────────────────────────────────────────────────────────
     const palette = document.createElement('div');
     palette.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:3px;';
-    _CP_PALETTE.forEach(hex => {
+    _CP_PALETTE.forEach((hex, idx) => {
         const sw = document.createElement('div');
+        sw.dataset.modalRow = 4 + Math.floor(idx / 6);
         sw.style.cssText = `aspect-ratio:1;border-radius:3px;background:${hex};cursor:pointer;` +
             'border:1px solid rgba(255,255,255,0.1);box-sizing:border-box;';
         sw.title = hex;
@@ -773,6 +826,15 @@ function openColorPicker(anchor, currentHex, onChange) {
     });
     pop.appendChild(palette);
 
+    // ── Done button ───────────────────────────────────────────────────────
+    const doneBtn = document.createElement('button');
+    doneBtn.textContent = 'Done';
+    doneBtn.dataset.modalRow = 8;
+    doneBtn.style.cssText = 'width:100%;padding:5px 0;background:#2a3f55;border:1px solid #3a5f7a;' +
+        'color:#c7d5e0;border-radius:0.25rem;cursor:pointer;font-size:0.8rem;';
+    doneBtn.addEventListener('click', closeColorPicker);
+    pop.appendChild(doneBtn);
+
     document.body.appendChild(pop);
     _cpEl = pop;
 
@@ -785,6 +847,9 @@ function openColorPicker(anchor, currentHex, onChange) {
 
     function _cpFullUpdate() {
         _svUpdateBg(); _svUpdateCursor(); _hueUpdateThumb();
+        if (_hueSlider) { _hueSlider.value = Math.round(_cpH); _cpSliderFill(_hueSlider); }
+        if (_satSlider) { _satSlider.value = Math.round(_cpS * 100); _cpSliderFill(_satSlider); }
+        if (_valSlider) { _valSlider.value = Math.round(_cpV * 100); _cpSliderFill(_valSlider); }
         _cpEmit();
     }
 
@@ -812,6 +877,7 @@ function openColorPicker(anchor, currentHex, onChange) {
 }
 
 function closeColorPicker() {
+    if (window._cpEyedropperBusy) return;
     if (_cpEl) { _cpEl.remove(); _cpEl = null; }
     document.removeEventListener('mousedown', _cpOutside, { capture: true });
 }

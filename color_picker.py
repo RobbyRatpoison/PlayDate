@@ -1,14 +1,22 @@
 """Standalone eyedropper: takes a screenshot, shows a fullscreen tkinter overlay,
 prints the picked hex color to stdout, or exits with code 1 on cancel/error."""
 import sys
+import threading
 import tkinter as tk
 from PIL import Image, ImageTk, ImageGrab
+
+DEAD_ZONE = 8000   # evdev axis dead zone (out of ±32767)
+SPEED_MAX = 12     # pixels per tick at full stick deflection
+TICK_MS   = 16     # ~60 fps gamepad poll interval
+
 
 def main():
     screenshot = ImageGrab.grab()
     sw, sh = screenshot.size
 
-    result = [None]
+    result  = [None]
+    gp_pos  = [sw // 2, sh // 2]  # virtual cursor tracked by gamepad
+    stick   = [0, 0]               # left-stick [x, y] raw evdev values
 
     root = tk.Tk()
     root.overrideredirect(True)
@@ -28,9 +36,9 @@ def main():
     OFFSET     = 24
     state      = {'items': [], 'mag_photo': None}
 
-    def _update(event):
-        x, y = event.x, event.y
-        px, py = max(0, min(x, sw - 1)), max(0, min(y, sh - 1))
+    def _redraw(x, y):
+        px = max(0, min(int(x), sw - 1))
+        py = max(0, min(int(y), sh - 1))
         r, g, b = screenshot.getpixel((px, py))[:3]
         hex_color = f'#{r:02x}{g:02x}{b:02x}'
 
@@ -40,12 +48,12 @@ def main():
         region = screenshot.crop((x1, y1, x2, y2)).resize(
             (MAG_SIZE, MAG_SIZE), Image.NEAREST)
 
-        mx = x + OFFSET
-        my = y + OFFSET
+        mx = px + OFFSET
+        my = py + OFFSET
         if mx + MAG_SIZE + 4 > sw:
-            mx = x - MAG_SIZE - OFFSET
+            mx = px - MAG_SIZE - OFFSET
         if my + MAG_SIZE + 26 > sh:
-            my = y - MAG_SIZE - OFFSET - 22
+            my = py - MAG_SIZE - OFFSET - 22
 
         for item in state['items']:
             canvas.delete(item)
@@ -74,23 +82,83 @@ def main():
             fill='white', font=('monospace', 12, 'bold')))
 
         CH = 10
-        items.append(canvas.create_line(x - CH, y, x - 2, y, fill='white', width=1))
-        items.append(canvas.create_line(x + 2, y, x + CH, y, fill='white', width=1))
-        items.append(canvas.create_line(x, y - CH, x, y - 2, fill='white', width=1))
-        items.append(canvas.create_line(x, y + 2, x, y + CH, fill='white', width=1))
+        items.append(canvas.create_line(px - CH, py, px - 2, py, fill='white', width=1))
+        items.append(canvas.create_line(px + 2, py, px + CH, py, fill='white', width=1))
+        items.append(canvas.create_line(px, py - CH, px, py - 2, fill='white', width=1))
+        items.append(canvas.create_line(px, py + 2, px, py + CH, fill='white', width=1))
 
         state['items'] = items
 
-    def _on_click(event):
-        px, py = max(0, min(event.x, sw - 1)), max(0, min(event.y, sh - 1))
+    def _pick(x, y):
+        px = max(0, min(int(x), sw - 1))
+        py = max(0, min(int(y), sh - 1))
         r, g, b = screenshot.getpixel((px, py))[:3]
         result[0] = f'#{r:02x}{g:02x}{b:02x}'
         root.quit()
 
-    canvas.bind('<Motion>', _update)
+    def _on_motion(event):
+        gp_pos[0] = event.x
+        gp_pos[1] = event.y
+        _redraw(event.x, event.y)
+
+    def _on_click(event):
+        _pick(event.x, event.y)
+
+    def _stick_delta(v):
+        """Exponential speed curve: zero in dead zone, smooth acceleration to SPEED_MAX."""
+        if abs(v) <= DEAD_ZONE:
+            return 0.0
+        ratio = (abs(v) - DEAD_ZONE) / (32767 - DEAD_ZONE)
+        return (ratio ** 1.5) * SPEED_MAX * (1 if v > 0 else -1)
+
+    def _gp_tick():
+        dx = _stick_delta(stick[0])
+        dy = _stick_delta(stick[1])
+        if dx or dy:
+            gp_pos[0] = max(0, min(sw - 1, gp_pos[0] + dx))
+            gp_pos[1] = max(0, min(sh - 1, gp_pos[1] + dy))
+            _redraw(gp_pos[0], gp_pos[1])
+        root.after(TICK_MS, _gp_tick)
+
+    # ── Event bindings ────────────────────────────────────────────────────
+    canvas.bind('<Motion>',   _on_motion)
     canvas.bind('<Button-1>', _on_click)
-    root.bind('<Escape>', lambda _e: root.quit())
+    canvas.bind('<Button-3>', lambda _e: root.quit())   # right-click → cancel
+    root.bind('<Escape>',     lambda _e: root.quit())
+
+    # ── Gamepad thread (evdev) ────────────────────────────────────────────
+    def _gp_thread():
+        try:
+            import evdev
+            from evdev import ecodes
+            candidates = [evdev.InputDevice(p) for p in evdev.list_devices()]
+            # Prefer the first device that has BTN_SOUTH (Xbox A button)
+            dev = next(
+                (d for d in candidates
+                 if ecodes.BTN_SOUTH in (d.capabilities().get(ecodes.EV_KEY) or [])),
+                None,
+            )
+            if not dev:
+                return
+            for event in dev.read_loop():
+                if event.type == ecodes.EV_ABS:
+                    if event.code == ecodes.ABS_X:
+                        stick[0] = event.value
+                    elif event.code == ecodes.ABS_Y:
+                        stick[1] = event.value
+                elif event.type == ecodes.EV_KEY and event.value == 1:  # key-down only
+                    if event.code == ecodes.BTN_SOUTH:    # A → pick
+                        root.after(0, lambda: _pick(gp_pos[0], gp_pos[1]))
+                    elif event.code == ecodes.BTN_EAST:   # B → cancel
+                        root.after(0, root.quit)
+        except Exception:
+            pass
+
+    threading.Thread(target=_gp_thread, daemon=True).start()
+    root.after(TICK_MS, _gp_tick)
+
     root.focus_force()
+    _redraw(gp_pos[0], gp_pos[1])  # initial crosshair at screen centre
     root.mainloop()
     root.destroy()
 
@@ -98,6 +166,7 @@ def main():
         print(result[0])
         sys.exit(0)
     sys.exit(1)
+
 
 if __name__ == '__main__':
     main()

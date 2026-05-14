@@ -799,15 +799,7 @@ def _get_builds(gog_id, os_name, session):
         return []
 
 
-def _find_gog_executable(install_path, product_id):
-    """
-    Parse goggame-{product_id}.info for the primary play task executable.
-    Returns a forward-slash relative path string, or None.
-
-    On Linux native builds the .info file may be absent or use a different
-    convention, so the fallback scans for any executable file in the install root.
-    """
-    # Look for the canonical file, then any goggame-*.info
+def _get_info_candidates(install_path, product_id):
     candidates = [os.path.join(install_path, f'goggame-{product_id}.info')]
     try:
         candidates += [
@@ -818,8 +810,101 @@ def _find_gog_executable(install_path, product_id):
         ]
     except Exception:
         pass
+    return candidates
 
-    for info_path in candidates:
+
+def _get_dosbox_launch(install_path, product_id):
+    """
+    If the game's primary play task runs DOSBox, return (dosbox_bin, args_list, cwd).
+    Returns False if this is not a DOSBox game, None if dosbox binary not found.
+
+    Conf file paths are returned as absolute paths.
+    cwd is set to the app/ subdirectory when present so that relative mount
+    paths in [autoexec] (e.g. "mount c ..") resolve to the install root.
+    """
+    import shlex, shutil
+
+    dosbox_task = None
+    for info_path in _get_info_candidates(install_path, product_id):
+        if not os.path.isfile(info_path):
+            continue
+        try:
+            with open(info_path, 'r', encoding='utf-8', errors='ignore') as f:
+                info = json.load(f)
+            tasks = sorted(info.get('playTasks', []),
+                           key=lambda t: (not t.get('isPrimary', False),))
+            for task in tasks:
+                if task.get('type') == 'FileTask':
+                    p = (task.get('path') or '').replace('\\', '/').lower()
+                    if 'dosbox' in os.path.basename(p) and p.endswith('.exe'):
+                        dosbox_task = task
+                        break
+        except Exception:
+            pass
+        if dosbox_task:
+            break
+
+    if not dosbox_task:
+        return False  # not a DOSBox game
+
+    dosbox_bin = None
+    for candidate in ('dosbox', 'dosbox-staging', 'dosbox-x', 'dosbox-svn'):
+        dosbox_bin = shutil.which(candidate)
+        if dosbox_bin:
+            break
+    if not dosbox_bin:
+        log.warning('_get_dosbox_launch: no dosbox binary found in PATH')
+        return None  # DOSBox game but binary not installed
+
+    raw_args = dosbox_task.get('arguments', '')
+    work_dir  = dosbox_task.get('workingDirectory', '').replace('\\', '/')
+    try:
+        parts = shlex.split(raw_args)
+    except Exception:
+        parts = raw_args.split()
+
+    # Search dirs for conf files: one level up from workingDir, then app/, then install root
+    search_dirs = []
+    if work_dir:
+        search_dirs.append(
+            os.path.normpath(os.path.join(install_path, work_dir, '..')))
+    search_dirs += [os.path.join(install_path, 'app'), install_path]
+
+    resolved = []
+    i = 0
+    while i < len(parts):
+        if parts[i].lower() == '-conf' and i + 1 < len(parts):
+            conf_name = os.path.basename(parts[i + 1].replace('\\', '/'))
+            found = None
+            for d in search_dirs:
+                c = os.path.join(d, conf_name)
+                if os.path.isfile(c):
+                    found = c  # absolute path
+                    break
+            if found:
+                resolved += ['-conf', found]
+            i += 2
+        else:
+            resolved.append(parts[i])
+            i += 1
+
+    # Run from app/ if it exists so "mount c .." in [autoexec] resolves to install root
+    app_dir = os.path.join(install_path, 'app')
+    cwd = app_dir if os.path.isdir(app_dir) else install_path
+
+    return dosbox_bin, resolved, cwd
+
+
+def _find_gog_executable(install_path, product_id):
+    """
+    Parse goggame-{product_id}.info for the primary play task executable.
+    Returns a forward-slash relative path string (or the system dosbox binary
+    path for DOSBox games), or None.
+
+    On Linux native builds the .info file may be absent or use a different
+    convention, so the fallback scans for any executable file in the install root.
+    """
+    for info_path in _get_info_candidates(install_path, product_id):
         if not os.path.isfile(info_path):
             continue
         try:
@@ -842,6 +927,16 @@ def _find_gog_executable(install_path, product_id):
                         combined = os.path.join(work_dir, path).replace('\\', '/').lstrip('/')
                         if os.path.isfile(os.path.join(install_path, combined)):
                             return combined
+                    # DOSBox game: the bundled dosbox.exe won't exist on Linux;
+                    # return the system binary so install code skips Proton setup.
+                    if ('dosbox' in os.path.basename(path).lower()
+                            and path.lower().endswith('.exe')):
+                        import shutil
+                        for _db in ('dosbox', 'dosbox-staging', 'dosbox-x', 'dosbox-svn'):
+                            _found = shutil.which(_db)
+                            if _found:
+                                return _found
+                        return None  # DOSBox game but no dosbox installed
         except Exception as e:
             log.warning(f'_find_gog_executable: {e}')
 
@@ -1065,7 +1160,9 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
     wine_prefix         = None
 
     import platform as _plat
-    if chosen_os == 'windows' and platform_executable and _plat.system() != 'Windows':
+    _exe_lower = (platform_executable or '').lower()
+    _is_dosbox_exe = 'dosbox' in os.path.basename(_exe_lower) and not _exe_lower.endswith('.exe')
+    if chosen_os == 'windows' and platform_executable and _plat.system() != 'Windows' and not _is_dosbox_exe:
         # Linux host running a Windows GOG game — needs Proton
         from runners.proton import get_default_proton
         proton = get_default_proton()
@@ -1074,6 +1171,8 @@ def install_game(appid, os_pref='auto', progress_cb=None, cancel_ev=None):
         wine_prefix = os.path.join(install_path, 'prefix')
         os.makedirs(wine_prefix, exist_ok=True)
         log.info(f'GOG install: Windows game on Linux — Proton={runner_path!r}')
+    elif _is_dosbox_exe:
+        log.info(f'GOG install: DOSBox game — using system dosbox={platform_executable!r}')
     elif chosen_os == 'linux' and platform_executable:
         exe_abs = os.path.join(install_path, platform_executable)
         if os.path.isfile(exe_abs):
@@ -1212,7 +1311,22 @@ def launch_gog_game(appid):
     _is_exe   = platform_executable and platform_executable.lower().endswith('.exe')
 
     try:
-        if _is_exe and _host_win:
+        # DOSBox game: check .info regardless of what's stored in platform_executable,
+        # so games installed before this fix also launch correctly.
+        # _get_dosbox_launch returns: (bin, args) = found, None = not found, False = not a dosbox game
+        _dosbox = False
+        if not _host_win:
+            _dosbox = _get_dosbox_launch(install_path, row['platform_id'] or '')
+
+        if _dosbox is None:
+            return {'status': 'error',
+                    'message': (f'{game_name!r} requires DOSBox but no dosbox binary was found. '
+                                'Install dosbox or dosbox-staging.')}
+        elif _dosbox:
+            dosbox_bin, dosbox_args, dosbox_cwd = _dosbox
+            log.info(f'GOG launch (DOSBox): {dosbox_bin} {dosbox_args} (cwd={dosbox_cwd})')
+            proc = subprocess.Popen([dosbox_bin] + dosbox_args, cwd=dosbox_cwd)
+        elif _is_exe and _host_win:
             # Windows host, Windows game — run the exe directly
             exe_abs = os.path.join(install_path, platform_executable.replace('/', os.sep))
             proc = subprocess.Popen([exe_abs], cwd=install_path)

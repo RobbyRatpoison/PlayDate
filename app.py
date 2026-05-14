@@ -867,6 +867,48 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    @app.route('/api/open-install-dir/<appid>', methods=['POST'])
+    def open_install_dir(appid):
+        from database import get_db
+        from utils import find_steam_path
+        db = get_db()
+        row = db.execute("SELECT platform, install_path FROM games WHERE appid = ?", (appid,)).fetchone()
+        if not row:
+            return jsonify({"status": "error", "message": "Game not found"}), 404
+
+        game_platform, install_path = row[0], row[1]
+        path = None
+        if game_platform == 'steam' or not game_platform:
+            steam_path = find_steam_path()
+            if steam_path:
+                acf = os.path.join(steam_path, f'appmanifest_{appid}.acf')
+                if os.path.exists(acf):
+                    with open(acf, encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                    m = re.search(r'"installdir"\s+"([^"]+)"', content)
+                    if m:
+                        candidate = os.path.join(steam_path, 'common', m.group(1))
+                        if os.path.isdir(candidate):
+                            path = candidate
+        else:
+            if install_path and os.path.isdir(install_path):
+                path = install_path
+
+        if not path:
+            return jsonify({"status": "not_found", "message": "Install directory not found"}), 404
+
+        try:
+            os_name = platform.system()
+            if os_name == 'Darwin':
+                subprocess.Popen(['open', path])
+            elif os_name == 'Linux':
+                subprocess.Popen(['xdg-open', path])
+            else:
+                subprocess.Popen(['explorer', path])
+            return jsonify({"status": "success", "path": path})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
     @app.route('/api/launch/<appid>', methods=['POST'])
     def launch_game(appid):
         try:
@@ -1270,6 +1312,26 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    @app.route('/api/set-background-from-path', methods=['POST'])
+    def set_background_from_path():
+        data = request.get_json(force=True)
+        path = (data or {}).get('path', '')
+        if not path or not os.path.isfile(path):
+            return jsonify({"status": "error", "message": "File not found."}), 400
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in ('.jpg', '.jpeg', '.png', '.webp'):
+            return jsonify({"status": "error", "message": "Unsupported format. Use JPG, PNG, or WebP."}), 400
+        try:
+            bg_dir  = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
+            os.makedirs(bg_dir, exist_ok=True)
+            bg_path = os.path.join(bg_dir, 'background.jpg')
+            from PIL import Image
+            img = Image.open(path).convert('RGB')
+            img.save(bg_path, 'JPEG', quality=92)
+            return jsonify({"status": "success"})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
     @app.route('/api/reset-background', methods=['POST'])
     def reset_background():
         try:
@@ -1622,30 +1684,18 @@ def create_app(template_folder=None, static_folder=None):
     def shuffle_shelf(shelf_id):
         try:
             from database import get_db
-            from config import load_state, BUILTIN_FILTERS
+            from config import load_state
+            from index import _build_shelf_query
             state = load_state()
             shelves = state.get('shelves', [])
             shelf = next((s for s in shelves if s['id'] == shelf_id), None)
             if not shelf:
                 return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
 
-            # Resolve WHERE clause
-            custom = (shelf.get('custom_sql') or '').strip()
-            filter_key = shelf.get('filter_key') or shelf.get('preset', 'all_games')
             saved_filters = state.get('saved_filters', {})
-
-            if custom:
-                import re
-                where = re.sub(r'\s*\bORDER\s+BY\s+.+$', '', custom, flags=re.IGNORECASE).strip()
-                where = re.sub(r'(?i)^\s*WHERE\s+', '', where).strip() or '1=1'
-            elif filter_key in BUILTIN_FILTERS and BUILTIN_FILTERS[filter_key]['where']:
-                where = BUILTIN_FILTERS[filter_key]['where']
-            elif filter_key in saved_filters:
-                from index import _filter_tree_to_sql
-                sf = saved_filters[filter_key]
-                where = _filter_tree_to_sql(sf['tree'] if isinstance(sf, dict) and 'tree' in sf else sf)
-            else:
-                where = '1=1'
+            where, _ = _build_shelf_query(shelf, saved_filters)
+            if where is None:
+                return jsonify({'status': 'error', 'message': 'Widget shelf'}), 400
 
             limit = shelf.get('limit', 10)
             db = get_db()
@@ -1870,6 +1920,18 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({'status': 'error', 'message': f'Could not read file: {e}'}), 500
 
+    @app.route('/api/read-theme-file', methods=['POST'])
+    def read_theme_file():
+        path = _validate_user_path((request.json.get('path') or '').strip())
+        if not path or not os.path.exists(path):
+            return jsonify({'status': 'error', 'message': 'File not found.'}), 400
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                text = f.read()
+            return jsonify({'status': 'success', 'text': text})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': f'Could not read file: {e}'}), 500
+
     @app.route('/api/delete-game/<int:appid>', methods=['DELETE'])
     def delete_game(appid):
         data      = request.json or {}
@@ -1965,6 +2027,12 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/import-inspect', methods=['POST'])
     def import_inspect():
         return inspect_database(request.files)
+
+    @app.route('/api/import-inspect-path', methods=['POST'])
+    def import_inspect_path():
+        from imports import inspect_database_from_path
+        path = _validate_user_path((request.json or {}).get('path', '').strip())
+        return inspect_database_from_path(path)
 
     @app.route('/api/import-execute', methods=['POST'])
     def import_execute():
@@ -2337,6 +2405,201 @@ def create_app(template_folder=None, static_folder=None):
         _lib_db.close()
         return jsonify(result)
 
+    _pagywosg_quals_cache = {}  # {event_id: (timestamp, data)}
+
+    @app.route('/api/pagywosg-quals')
+    def pagywosg_quals_data():
+        import urllib.request
+        from datetime import date, datetime
+
+        today     = date.today()
+        event_id  = 83 + (today.year - 2026) * 12 + (today.month - 4)
+
+        cached = _pagywosg_quals_cache.get(event_id)
+        if cached:
+            ts, data = cached
+            if datetime.now().timestamp() - ts < 3600:
+                return jsonify(data)
+
+        def _fetch(eid):
+            req = urllib.request.Request(
+                f'https://pagywosg.xyz/api/events/{eid}',
+                headers={'User-Agent': 'PlayDate/1.0'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return json.loads(r.read())['event']
+
+        try:
+            event = _fetch(event_id)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 502
+
+        today_str = today.isoformat()
+        started, ended = event.get('startedAt', ''), event.get('endedAt', '')
+        if started and ended and not (started <= today_str < ended):
+            adj = event_id + 1 if today_str >= ended else event_id - 1
+            try:
+                adj_ev = _fetch(adj)
+                s2, e2 = adj_ev.get('startedAt', ''), adj_ev.get('endedAt', '')
+                if s2 <= today_str < e2:
+                    event, event_id = adj_ev, adj
+            except Exception:
+                pass
+
+        try:
+            month_label = date.fromisoformat(
+                event.get('startedAt', today_str)[:10]
+            ).strftime('%B %Y')
+        except Exception:
+            month_label = today.strftime('%B %Y')
+
+        categories = event.get('gameCategories', [])
+        entries    = event.get('entries', [])
+
+        suffix_re = re.compile(r'\s*\((win|backlog)\)\s*$', re.IGNORECASE)
+        base_to_cats = {}
+        for cat in categories:
+            base = suffix_re.sub('', cat['name']).strip()
+            base_to_cats.setdefault(base, []).append(cat)
+
+        all_pool_bases = set()
+        for base, cats in base_to_cats.items():
+            names_lc = [c['name'].lower() for c in cats]
+            if any('(win)' in n for n in names_lc) and any('(backlog)' in n for n in names_lc):
+                all_pool_bases.add(base)
+
+        verified_by_cat = {}
+        for entry in entries:
+            if entry.get('verified'):
+                cid = str(entry['category']['id'])
+                verified_by_cat.setdefault(cid, {})[entry['game']['id']] = entry['game']['name']
+
+        MONTHS = {
+            'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
+            'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
+        }
+        month_pat    = re.compile(r'released?\s+in\s+(' + '|'.join(MONTHS) + r')\b', re.I)
+        year_pat     = re.compile(r'released?\s+in\s+(\d{4})\b', re.I)
+        day_pat      = re.compile(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', re.I)
+        steamid_pat1 = re.compile(r'steam\s+id\s+containing\s+(\w+)', re.I)
+        steamid_pat2 = re.compile(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', re.I)
+        title_pat    = re.compile(r'[““”]([^”“”]+)[““”]\s+in\s+(?:the|their)\s+title', re.I)
+        tag_pat      = re.compile(r'^\s*tag\s+(.+)$', re.I)
+
+        _supplement = {}
+        if _PAGYWOSG_SUPPLEMENT_PATH:
+            try:
+                with open(os.path.join(BASE_DIR, _PAGYWOSG_SUPPLEMENT_PATH), 'r', encoding='utf-8') as f:
+                    _supplement = json.load(f)
+            except Exception:
+                pass
+        _icaio_ga_dict  = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
+        _icaio_wl_dict  = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
+        _santa_gift_dict = {}
+        try:
+            with open(os.path.join(BASE_DIR, _SANTA_GIFTS_PATH), 'r', encoding='utf-8') as _sf:
+                _santa_gift_dict = {g['appid']: g['name'] for g in json.load(_sf)}
+        except Exception:
+            pass
+
+        conds    = []
+        verified = {}
+
+        def _add_v(appid_name_dict, cat_label, pool, verifiers=None, auto=False):
+            for appid, name in appid_name_dict.items():
+                key = str(appid)
+                if key not in verified:
+                    verified[key] = []
+                if not any(e['cat'] == cat_label and e['pool'] == pool for e in verified[key]):
+                    entry = {'cat': cat_label, 'pool': pool}
+                    if verifiers and str(appid) in verifiers:
+                        entry['verifier'] = verifiers[str(appid)]
+                    if auto:
+                        entry['auto'] = True
+                    verified[key].append(entry)
+
+        for base, cats in base_to_cats.items():
+            pool = 'all' if base in all_pool_bases else 'wins'
+            base_appids = {}
+            for cat in cats:
+                base_appids.update(verified_by_cat.get(str(cat['id']), {}))
+
+            m = tag_pat.match(base)
+            if m:
+                conds.append({'col': 'tags', 'op': 'LIKE', 'val': m.group(1).strip(), 'pool': pool})
+                continue
+            m = month_pat.search(base)
+            if m:
+                conds.append({'col': 'release_date', 'op': 'STRFTIME_MONTH',
+                               'val': str(MONTHS[m.group(1).lower()]), 'pool': pool})
+                continue
+            m = year_pat.search(base)
+            if m:
+                conds.append({'col': 'release_date', 'op': 'STRFTIME_YEAR',
+                               'val': m.group(1), 'pool': pool})
+                continue
+            m = day_pat.search(base)
+            if m:
+                conds.append({'col': 'release_date', 'op': 'STRFTIME_DAY',
+                               'val': m.group(1), 'pool': pool})
+                continue
+            m = steamid_pat1.search(base) or steamid_pat2.search(base)
+            if m:
+                conds.append({'col': 'appid', 'op': 'LIKE', 'val': m.group(1), 'pool': pool})
+                continue
+            m = title_pat.search(base)
+            if m:
+                conds.append({'col': 'name', 'op': 'LIKE', 'val': m.group(1).strip(), 'pool': pool})
+                continue
+            if re.search(r'gifter', base, re.I):
+                continue
+            if 'icaio has made a GA for' in base:
+                if _icaio_ga_dict:
+                    _add_v(_icaio_ga_dict, base, pool, auto=True)
+                continue
+            if 'icaio' in base and 'wishlist' in base.lower():
+                if _icaio_wl_dict:
+                    _add_v(_icaio_wl_dict, base, pool, auto=True)
+                continue
+            if re.search(r'snowball|secret.santa', base, re.I):
+                if _santa_gift_dict:
+                    _add_v(_santa_gift_dict, base, 'wins', auto=True)
+                continue
+            if base_appids:
+                _add_v(base_appids, base, pool)
+
+        if _supplement:
+            try:
+                db = get_db()
+                for _cat_id, sdata in _supplement.get(str(event_id), {}).items():
+                    s_pool    = sdata.get('pool', 'wins')
+                    cat_label = sdata.get('id_name', f'Category {_cat_id}')
+                    s_verifs  = sdata.get('verifiers', {})
+                    for dev in sdata.get('developers', []):
+                        conds.append({'col': 'developers', 'op': 'LIKE', 'val': dev, 'pool': s_pool})
+                    for pub in sdata.get('publishers', []):
+                        conds.append({'col': 'publishers', 'op': 'LIKE', 'val': pub, 'pool': s_pool})
+                    for appid in sdata.get('appids', []):
+                        row  = db.execute("SELECT name FROM games WHERE appid = ?", (appid,)).fetchone()
+                        name = row['name'] if row else f"App {appid}"
+                        _add_v({appid: name}, cat_label, s_pool, verifiers=s_verifs)
+                db.close()
+            except Exception:
+                pass
+
+        from config import load_state
+        sg_group = load_state().get('pagywosg_sg_group') or None
+
+        result = {
+            'status':   'success',
+            'event':    {'id': event_id, 'name': event.get('name', ''), 'month_label': month_label},
+            'conds':    conds,
+            'verified': verified,
+            'sg_group': sg_group,
+        }
+        _pagywosg_quals_cache[event_id] = (datetime.now().timestamp(), result)
+        return jsonify(result)
+
     @app.route('/api/pagywosg-sg-group', methods=['GET', 'POST'])
     def pagywosg_sg_group():
         from config import load_state, save_state
@@ -2358,6 +2621,19 @@ def create_app(template_folder=None, static_folder=None):
             'default_group': default_group,
             'groups': groups,
         })
+
+    @app.route('/api/pagywosg-comp-defaults', methods=['GET', 'POST'])
+    def pagywosg_comp_defaults():
+        from config import load_state, save_state
+        _valid = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
+        if request.method == 'POST':
+            data = request.json or {}
+            statuses = [s for s in (data.get('statuses') or []) if s in _valid]
+            save_state({'pagywosg_comp_defaults': statuses})
+            return jsonify({'status': 'success'})
+        state = load_state()
+        saved = state.get('pagywosg_comp_defaults')
+        return jsonify({'statuses': saved if saved is not None else ['Never Played', 'Unfinished']})
 
     @app.route('/api/santa-gifts', methods=['GET', 'POST'])
     def santa_gifts():
@@ -2750,6 +3026,79 @@ def create_app(template_folder=None, static_folder=None):
             "restored": restored,
             "skipped":  skipped,
         })
+
+    @app.route('/api/restore-from-path', methods=['POST'])
+    def restore_from_path():
+        import zipfile
+        path = _validate_user_path((request.json or {}).get('path', '').strip())
+        if not path or not os.path.isfile(path):
+            return jsonify({"status": "error", "message": "File not found."}), 400
+        if not path.endswith('.zip'):
+            return jsonify({"status": "error", "message": "File must be a .zip backup."}), 400
+        try:
+            with open(path, 'rb') as fh:
+                raw = fh.read()
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Could not read file: {e}"}), 400
+        # Reuse upload-based restore logic by injecting raw bytes
+        import io
+        try:
+            buf = io.BytesIO(raw)
+            with zipfile.ZipFile(buf, 'r') as zf:
+                names = zf.namelist()
+                restored = []
+                skipped  = []
+                _base_real = os.path.realpath(BASE_DIR)
+
+                def _safe_dest_r(rel):
+                    dest = os.path.realpath(os.path.join(BASE_DIR, rel.replace('/', os.sep)))
+                    return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
+
+                for arcname in ('config.json', 'state.json', 'santa_gifts.json'):
+                    if arcname in names:
+                        dest = _safe_dest_r(arcname)
+                        if dest:
+                            with zf.open(arcname) as src:
+                                data = src.read()
+                            with open(dest, 'wb') as dst:
+                                dst.write(data)
+                            restored.append(arcname)
+                    else:
+                        skipped.append(arcname)
+
+                for arcname in [n for n in names if n.startswith('games_') and n.endswith('.db')]:
+                    dest = _safe_dest_r(arcname)
+                    if dest:
+                        with zf.open(arcname) as src:
+                            data = src.read()
+                        with open(dest, 'wb') as dst:
+                            dst.write(data)
+                        restored.append(arcname)
+
+                for arcname in [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]:
+                    dest = _safe_dest_r(arcname)
+                    if dest:
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        with zf.open(arcname) as src, open(dest, 'wb') as dst:
+                            dst.write(src.read())
+                if any(n.startswith('static/img/library/') for n in names):
+                    count = sum(1 for n in names if n.startswith('static/img/library/') and n.endswith('.jpg'))
+                    if count:
+                        restored.append(f"{count} cover image(s)")
+
+        except zipfile.BadZipFile:
+            return jsonify({"status": "error", "message": "Invalid zip file."}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Restore failed: {e}"}), 500
+
+        try:
+            import migration as _migration
+            _migration.run()
+            init_db()
+        except Exception as e:
+            app.logger.warning(f"Restore-from-path: post-restore migration failed: {e}")
+
+        return jsonify({"status": "success", "restored": restored, "skipped": skipped})
 
     # ── Update checking endpoints ─────────────────────────────────────────────
     @app.route('/api/update-status')

@@ -268,21 +268,21 @@
         <h3 id="sem-title">Edit Shelf</h3>
 
         <label>Label</label>
-        <input type="text" id="sem-label" placeholder="Shelf label…">
+        <input type="text" id="sem-label" placeholder="Shelf label…" data-modal-row="1">
 
         <label>Filter</label>
-        <select id="sem-filter" onchange="semOnFilterChange()">
+        <select id="sem-filter" onchange="semOnFilterChange()" data-modal-row="2">
             <option value="__custom__" style="color:#F0AD4E;">✎ Custom SQL</option>
         </select>
 
         <div id="sem-sql-wrap" style="display:none; margin-top:8px;">
-            <textarea id="sem-sql" placeholder="Custom SQL WHERE clause…  e.g. tags LIKE '%RPG%'"></textarea>
+            <textarea id="sem-sql" placeholder="Custom SQL WHERE clause…  e.g. tags LIKE '%RPG%'" data-modal-row="3"></textarea>
         </div>
 
         <label>Sort by</label>
         <div style="display:flex; gap:8px;">
-            <select id="sem-sort" style="flex:1;"></select>
-            <select id="sem-sort-dir" style="width:160px;">
+            <select id="sem-sort" style="flex:1;" data-modal-row="4"></select>
+            <select id="sem-sort-dir" style="width:160px;" data-modal-row="4">
                 <option value="ASC">▲ Asc</option>
                 <option value="DESC">▼ Desc</option>
             </select>
@@ -747,7 +747,7 @@ function buildEditBarHTML(shelf, containerEl) {
     const inSplit = !!shelf.split_group;
     const groupSize = inSplit ? _shelves.filter(s => s.split_group === shelf.split_group).length : 1;
     const atMax = groupSize >= 3;
-    const addColBtn = !atMax ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="openSplitPicker('${sid}')">＋ Column</button>` : '';
+    const addColBtn = !atMax ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="addColumnToRow('${sid}')">＋ Column</button>` : '';
 
     const _platLabels = window._PLAT_LABELS;
     const platHTML = (!isClock && _availablePlatforms.length > 1) ? `
@@ -941,6 +941,7 @@ function openSplitPicker(sid) {
     } else {
         candidates.forEach(c => {
             const li = document.createElement('li');
+            li.dataset.modalRow = '1';
             const inOtherGroup = c.split_group && c.split_group !== selfGroup;
             li.innerHTML = `<span>${c.label}</span>${inOtherGroup ? '<span style="color:var(--color-warning);font-size:0.72rem;margin-left:auto;">⚠ will leave current row</span>' : ''}`;
             li.style.display = 'flex'; li.style.alignItems = 'center';
@@ -977,6 +978,7 @@ function showPositionStep(sid, newShelf) {
     // Option: before first member
     const addOption = (label, insertBefore) => {
         const li = document.createElement('li');
+        li.dataset.modalRow = '1';
         li.textContent = label;
         li.onclick = () => { closeSplitPicker(); splitShelves(sid, newShelf.id, insertBefore); };
         list.appendChild(li);
@@ -1131,6 +1133,75 @@ function applyFilterInline(id, filterKey) {
     saveAndReload();
 }
 
+// ── Add column to existing row (or start a split row) ────────────────────────
+function _makeSplitSideEl(shelf) {
+    const el = document.createElement('div');
+    el.className = 'shelf-split-side';
+    el.style.flex = shelf.col_width;
+    el.dataset.shelfId = shelf.id;
+    el.dataset.filterKey = shelf.filter_key || '';
+    el.dataset.visible = 'true';
+    el.innerHTML = `
+        <div class="shelf-edit-bar" data-for="${shelf.id}"></div>
+        <div class="shelf-sql-panel" id="sql-panel-${shelf.id}">
+            <textarea id="sql-input-${shelf.id}" placeholder="Custom SQL WHERE clause…  e.g. tags LIKE '%RPG%'"></textarea>
+            <div style="display:flex;gap:6px;margin-top:4px;">
+                <button class="shelf-edit-mini-btn" onclick="applyPreset('${shelf.id}')">✓ Apply SQL</button>
+                <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('${shelf.id}')">Cancel</button>
+            </div>
+        </div>
+        <div class="shelf-label" id="label-${shelf.id}">NEW SHELF</div>
+        <div class="shelf-grid"><span style="color:var(--text-secondary);font-size:0.8rem;margin:auto;">Set a query and save to populate</span></div>`;
+    return el;
+}
+
+function addColumnToRow(sid) {
+    const self = _shelves.find(s => s.id === sid);
+    if (!self) return;
+
+    const isNewGroup = !self.split_group;
+    const group = self.split_group || `split_${Date.now()}`;
+    if (isNewGroup) {
+        self.split_group = group;
+        self.col_width = self.col_width || 2;
+    }
+
+    const newId = `custom_${Date.now()}`;
+    const newShelf = {
+        id: newId, label: 'NEW SHELF', preset: 'all_games', filter_key: 'all_games',
+        custom_sql: null, limit: 10, row_height: self.row_height, col_width: 2,
+        split_group: group, sort_col: null, sort_dir: null,
+        dedup: true, dedup_priority: _shelves.length, visible: true
+    };
+
+    const lastMemberIdx = _shelves.findLastIndex(s => s.split_group === group);
+    _shelves.splice(lastMemberIdx + 1, 0, newShelf);
+
+    if (isNewGroup) {
+        // Wrap the existing standalone .shelf in a new .shelf-split-row
+        const existingEl = document.querySelector(`.shelf[data-shelf-id="${sid}"]`);
+        if (existingEl) {
+            const splitRow = document.createElement('div');
+            splitRow.className = 'shelf-split-row';
+            splitRow.style.height = existingEl.style.height;
+            splitRow.dataset.splitGroup = group;
+            splitRow.draggable = false;
+            existingEl.className = 'shelf-split-side';
+            existingEl.style.flex = self.col_width;
+            existingEl.style.height = '';
+            existingEl.parentElement.insertBefore(splitRow, existingEl);
+            splitRow.appendChild(existingEl);
+            splitRow.appendChild(_makeSplitSideEl(newShelf));
+        }
+    } else {
+        const splitRow = document.querySelector(`.shelf-split-row[data-split-group="${group}"]`);
+        if (splitRow) splitRow.appendChild(_makeSplitSideEl(newShelf));
+    }
+
+    buildAllEditBars();
+    initDragAndDrop();
+}
+
 // ── Add new shelf ─────────────────────────────────────────────────────────────
 function addNewShelf() {
     const id = `custom_${Date.now()}`;
@@ -1262,6 +1333,7 @@ function openDedupPanel() {
     sorted.forEach(shelf => {
         const li = document.createElement('li');
         li.dataset.shelfId = shelf.id;
+        li.dataset.modalRow = '1';
         const checked = shelf.dedup !== false ? 'checked' : '';
         li.innerHTML = `
             <div class="dedup-row-left">

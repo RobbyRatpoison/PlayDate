@@ -506,11 +506,58 @@ input[type="range"].gamepad-focus {
     outline-offset: 2px;
 }
 
-/* Any button inside a modal overlay */
-.modal-overlay button.gamepad-focus {
+/* Any button, link, select, or tagged div/span inside a modal overlay */
+.modal-overlay button.gamepad-focus,
+.modal-overlay a.gamepad-focus,
+.modal-overlay select.gamepad-focus,
+.modal-overlay div[data-modal-row].gamepad-focus,
+.modal-overlay span[data-modal-row].gamepad-focus {
     outline: 2px solid var(--accent) !important;
     outline-offset: 2px;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.4);
+}
+
+/* Labels inside overflow:hidden containers — inset ring so it isn't clipped */
+.modal-overlay label[data-modal-row].gamepad-focus {
+    box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 8px rgba(102, 192, 244, 0.2);
+}
+
+/* Text inputs inside modals — same accent ring as :focus */
+.modal-overlay input.gamepad-focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* Checkboxes: use outline since border-color doesn't show on native checkboxes */
+.modal-overlay input[type="checkbox"].gamepad-focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    box-shadow: none;
+}
+
+/* Highlight parent label text when checkbox is gamepad-focused */
+.modal-overlay label:has(input[type="checkbox"].gamepad-focus) {
+    color: var(--accent);
+}
+
+/* Platform priority list items */
+#platform-priority-list li.gamepad-focus {
+    border-color: var(--accent);
+    background: rgba(102, 192, 244, 0.08);
+}
+
+/* Held item during gamepad reorder */
+#platform-priority-list li.plat-held {
+    border-color: var(--accent);
+    background: rgba(102, 192, 244, 0.15);
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* HLTB section headers */
+.hltb-section-header.gamepad-focus {
+    color: var(--accent);
+    background: rgba(102, 192, 244, 0.06);
+    border-radius: 4px;
 }
 
 /* Home page edit mode — shelf mini-buttons and add-shelf button */
@@ -526,6 +573,50 @@ input[type="range"].gamepad-focus {
     border-color: var(--accent) !important;
     color: var(--accent) !important;
     box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* Shelf row held for gamepad reorder */
+.shelf-gp-held,
+.shelf-gp-held .shelf-split-side {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px var(--accent), 0 0 16px rgba(102, 192, 244, 0.35) !important;
+}
+
+/* Edit bar number inputs (Height / Width / Games) */
+.shelf-edit-bar input[type="number"].gamepad-focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 6px rgba(102, 192, 244, 0.3);
+}
+
+/* btn-save buttons outside .modal-overlay (e.g. shelf-edit-modal Apply) */
+button.btn-save.gamepad-focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* shelf-edit-modal inputs, selects, textarea */
+#shelf-edit-modal input.gamepad-focus,
+#shelf-edit-modal textarea.gamepad-focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+#shelf-edit-modal select.gamepad-focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+
+/* split-picker and dedup-panel list items */
+#split-picker-list li.gamepad-focus,
+#split-picker-pos-list li.gamepad-focus,
+#dedup-list li.gamepad-focus {
+    border-color: var(--accent);
+    background: rgba(102, 192, 244, 0.08);
+    color: var(--text-bright);
 }
 
 /* Blacklist remove buttons */
@@ -547,4 +638,63 @@ input[type="range"].gamepad-focus {
 .custom-select-option.gamepad-focus {
     background: #243447;
     color: var(--accent);
+}
+
+/* Theme editor color swatch divs */
+#theme-modal [id^="thpick-"].gamepad-focus {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+    box-shadow: 0 0 10px rgba(102, 192, 244, 0.5);
+}
+
+/* Theme editor live-preview tab buttons */
+.tp-tab.gamepad-focus {
+    background: var(--accent) !important;
+    color: var(--text-bright) !important;
+    box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Color picker popover — not inside .modal-overlay so needs own rules */
+#_color-picker-popover input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(
+        to right,
+        #66c0f4 var(--slider-pct, 50%),
+        #3a4a5c var(--slider-pct, 50%)
+    );
+}
+#_color-picker-popover input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #c7d5e0;
+    border: 2px solid #66c0f4;
+    margin-top: -4px;
+    cursor: pointer;
+}
+#_color-picker-popover input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+#_color-picker-popover button.gamepad-focus {
+    outline: 2px solid #66c0f4;
+    outline-offset: 2px;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.4);
+}
+#_color-picker-popover input[type="range"].gamepad-focus {
+    outline: 2px solid #66c0f4;
+    outline-offset: 3px;
+}
+#_color-picker-popover input[type="text"].gamepad-focus {
+    outline: 2px solid #66c0f4 !important;
+    box-shadow: 0 0 8px rgba(102, 192, 244, 0.3);
+}
+#_color-picker-popover div[data-modal-row].gamepad-focus {
+    outline: 2px solid #66c0f4;
+    outline-offset: 2px;
 }

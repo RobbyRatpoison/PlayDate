@@ -63,6 +63,7 @@
             <input type="range" id="card-size-slider" min="120" max="400" step="10"
                    value="{{ state.get('card_height', 200) }}"
                    oninput="onCardSizeSlider(this.value)"
+                   data-modal-row="3"
                    data-tooltip="Adjust card size (grid modes only)"
                    style="flex:1; min-width:6rem;">
         </div>

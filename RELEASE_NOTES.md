@@ -1,14 +1,29 @@
 # Release Notes
 
-## v1.5.4 — 2026-05-07
+## v1.5.5 — 2026-05-11
 
-### Installation
+### Home Page
 
-- Added `launch.sh` as a single entry point for Linux and macOS. It handles first-time setup automatically and keeps the desktop shortcut up to date if you move the folder.
-- Added a portable Windows zip to release builds — extract anywhere under your user folder and run `PlayDate.exe`.
-- Fixed Steam Deck installs failing after a SteamOS update due to PGP signature trust errors.
-- Fixed the missing-WebKit2GTK error message not appearing on Linux.
+- Fixed shuffle shelves ignoring per-shelf platform filters (e.g. a Steam-only shelf could return Epic games on reshuffle).
+- Adding a column to a shelf row now creates a new blank column directly instead of requiring an existing shelf to be combined.
 
-### Fixes
+### Library
 
-- Fixed a startup crash when upgrading from a version before non-Steam library support was added.
+- Fixed the dice button not working in list/details view.
+
+### PAGYWOSG
+
+- The completion status toggles (Never Played, Unfinished, Beaten, Completed) now remember your last selection across sessions.
+
+### Gamepad
+
+- Full gamepad controls are now enabled across the entire app — library, modals, settings, plugins, and Pick 6.
+- Added a "Pause gamepad input when launching a game" option in Tools → Gamepad (on by default).
+
+### GOG
+
+- GOG games that use DOSBox now launch correctly via the system dosbox binary instead of failing silently.
+
+### Steam Deck
+
+- Fixed the install script hanging after a SteamOS update.

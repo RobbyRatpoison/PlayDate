@@ -804,6 +804,11 @@
                         </div>
                     </div>
 
+                    <!-- PAGYWOSG quals -->
+                    <div id="list-pag-quals" style="display:none; margin-top:14px; padding:10px 14px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px;">
+                        <div id="list-pag-quals-header" style="font-size:0.75rem; font-weight:bold; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">PAGYWOSG Qualifications</div>
+                        <div id="list-pag-quals-list" style="font-size:0.82rem; display:flex; flex-direction:column; gap:4px;"></div>
+                    </div>
                     </form>
                 </div><!-- /detail-form-area -->
 
@@ -1280,6 +1285,7 @@
         } else {
             requestAnimationFrame(() => requestAnimationFrame(() => buildGrid()));
         }
+
     });
 
     // ── Live populate updates ─────────────────────────────────────────────────
@@ -1409,11 +1415,17 @@
 
     function _applyHover() {
         _hoverRafPending = false;
+        if (window._inputMgr?.active) return;
         const card = _hoverTarget;
         if (card === _hoveredCard) return;
         if (_hoveredCard) _hoveredCard.classList.remove('hovered');
         _hoveredCard = card;
         if (card) card.classList.add('hovered');
+    }
+
+    function _clearHover() {
+        if (_hoveredCard) { _hoveredCard.classList.remove('hovered'); _hoveredCard = null; }
+        _hoverTarget = null;
     }
 
     const _grid = document.getElementById('game-grid');
@@ -1431,6 +1443,8 @@
             requestAnimationFrame(_applyHover);
         }
     });
+
+    window._clearGameCardHover = _clearHover;
 
 // ── SELECT MODE ──────────────────────────────────────────────────
 let _selectMode = false;
@@ -2243,12 +2257,43 @@ async function stopBulkDateImport() {
         _hoveredAppid = null;
     }
 
-    let _gpTooltipTimer = null;
+    let _gpTooltipCard = null;
+    let _gpTrackingRaf = null;
 
     function _hideGpTooltip() {
-        clearTimeout(_gpTooltipTimer);
+        cancelAnimationFrame(_gpTrackingRaf);
+        _gpTrackingRaf = null;
+        _gpTooltipCard = null;
         gpTooltip.style.display = 'none';
         gpTooltip.innerHTML = '';
+    }
+
+    function _positionTooltipBelowCard(el, card) {
+        const rect = card.getBoundingClientRect();
+        const pad = 8;
+        const tw = el.offsetWidth;
+        const th = el.offsetHeight;
+        let x = rect.left + (rect.width - tw) / 2;
+        // Decide above vs below by card position, not tooltip size, so all cards
+        // in the same row flip together rather than based on individual tooltip height.
+        const showAbove = rect.top > window.innerHeight / 2;
+        let y = showAbove ? rect.top - th - pad : rect.bottom + pad;
+        if (x + tw > window.innerWidth - pad) x = window.innerWidth - tw - pad;
+        if (x < pad) x = pad;
+        if (y < pad) y = pad;
+        if (y + th > window.innerHeight - pad) y = window.innerHeight - th - pad;
+        return { x, y };
+    }
+
+    function _positionGpTooltip(card) {
+        const { x, y } = _positionTooltipBelowCard(gpTooltip, card);
+        gpTooltip.style.left = x + 'px';
+        gpTooltip.style.top  = y + 'px';
+    }
+
+    function _positionHoverTooltip(card) {
+        const { x, y } = _positionTooltipBelowCard(tooltip, card);
+        tooltip.style.transform = `translate(${x}px,${y}px)`;
     }
 
     function _showGpTooltip(card) {
@@ -2261,36 +2306,33 @@ async function stopBulkDateImport() {
 
         gpTooltip.innerHTML = html;
         gpTooltip.style.display = 'block';
+        _positionGpTooltip(card);
 
-        const rect = card.getBoundingClientRect();
-        const pad = 8;
-        const tw = gpTooltip.offsetWidth;
-        const th = gpTooltip.offsetHeight;
-
-        // Try to place below-right of the card; clamp to viewport
-        let x = rect.left;
-        let y = rect.bottom + pad;
-        if (x + tw > window.innerWidth - pad) x = window.innerWidth - tw - pad;
-        if (x < pad) x = pad;
-        if (y + th > window.innerHeight - pad) y = rect.top - th - pad;
-        if (y < pad) y = pad;
-
-        gpTooltip.style.left = x + 'px';
-        gpTooltip.style.top  = y + 'px';
+        // Track card position each frame so the tooltip follows the scroll animation.
+        _gpTooltipCard = card;
+        cancelAnimationFrame(_gpTrackingRaf);
+        let prevTop = null, prevLeft = null;
+        function _track() {
+            if (_gpTooltipCard !== card) return;
+            const rect = card.getBoundingClientRect();
+            if (rect.top !== prevTop || rect.left !== prevLeft) {
+                prevTop = rect.top; prevLeft = rect.left;
+                _positionGpTooltip(card);
+            }
+            _gpTrackingRaf = requestAnimationFrame(_track);
+        }
+        _gpTrackingRaf = requestAnimationFrame(_track);
     }
 
-    // MutationObserver: watch for gamepad-focus class changes on game cards.
-    // A 350ms delay lets the card scroll into view before the tooltip appears.
+    // MutationObserver: show immediately — tooltip tracks the card's scroll position via rAF.
     const _gpFocusObserver = new MutationObserver(mutations => {
         for (const m of mutations) {
             if (m.type !== 'attributes' || m.attributeName !== 'class') continue;
             const card = m.target;
             if (!card.classList.contains('game-card')) continue;
             if (card.classList.contains('gamepad-focus')) {
-                clearTimeout(_gpTooltipTimer);
-                _gpTooltipTimer = setTimeout(() => _showGpTooltip(card), 350);
+                _showGpTooltip(card);
             } else {
-                clearTimeout(_gpTooltipTimer);
                 if (!grid.querySelector('.game-card.gamepad-focus')) _hideGpTooltip();
             }
         }
@@ -2309,36 +2351,52 @@ async function stopBulkDateImport() {
         if (!game) { _hideTooltip(); return; }
         const html = _buildTooltip(game);
         if (!html) { _hideTooltip(); return; }
-        // Pre-render hidden so offsetWidth/Height are available for clamping on first mousemove.
         tooltip.style.display = 'block';
         tooltip.innerHTML = html;
-        tooltip.style.visibility = 'hidden';
-        tooltip.style.opacity = '0';
+        _positionHoverTooltip(card);
+        tooltip.style.visibility = '';
+        tooltip.style.opacity = '1';
         _hoveredAppid = appid;
     });
 
     grid.addEventListener('mouseleave', () => _hideTooltip());
     document.addEventListener('pointerleave', () => _hideTooltip());
 
+    let _lastMouseX = 0, _lastMouseY = 0, _scrollReshowTimer = null;
+
     document.addEventListener('mousemove', e => {
         if (window._inputMgr?.active) { _hideTooltip(); return; }
+        _lastMouseX = e.clientX; _lastMouseY = e.clientY;
         clearTimeout(_hideOnStopTimer);
         if (e.clientY >= window.innerHeight - 4) {
             _hideOnStopTimer = setTimeout(() => _hideTooltip(), 150);
         }
-        if (!_hoveredAppid || !tooltip.innerHTML) {
-            _hideTooltip();
-            return;
-        }
-        const pad = 14;
-        let x = e.clientX + pad, y = e.clientY + pad;
-        const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-        if (x + tw > window.innerWidth  - pad) x = e.clientX - tw - pad;
-        if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
-        tooltip.style.transform = `translate(${x}px,${y}px)`;
-        tooltip.style.visibility = '';
-        tooltip.style.opacity = '1';
     });
+
+    window._cancelTooltipReshow = () => { clearTimeout(_scrollReshowTimer); _hideTooltip(); };
+
+    window.addEventListener('scroll', () => {
+        _hideTooltip();
+        clearTimeout(_scrollReshowTimer);
+        _scrollReshowTimer = setTimeout(() => {
+            if (window._inputMgr?.active) return;
+            const el = document.elementFromPoint(_lastMouseX, _lastMouseY);
+            const card = el && el.closest('.game-card[data-appid]');
+            if (!card) return;
+            const appid = parseInt(card.dataset.appid);
+            if (!appid || !card.dataset.populated) return;
+            const game = _GAME_MAP.get(appid);
+            if (!game) return;
+            const html = _buildTooltip(game);
+            if (!html) return;
+            tooltip.style.display = 'block';
+            tooltip.innerHTML = html;
+            _positionHoverTooltip(card);
+            tooltip.style.visibility = '';
+            tooltip.style.opacity = '1';
+            _hoveredAppid = appid;
+        }, 150);
+    }, { passive: true });
 })();
 
 function _preloadCardsInArea(scrollTop) {
@@ -2761,6 +2819,40 @@ function pickRandomGame() {
         // Reset save button
         const saveBtn = document.getElementById('dp-save-btn');
         if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+
+        _renderListPagQuals(game);
+    }
+
+    function _renderListPagQuals(game) {
+        const section = document.getElementById('list-pag-quals');
+        const list    = document.getElementById('list-pag-quals-list');
+        const header  = document.getElementById('list-pag-quals-header');
+        if (!section || !list) return;
+
+        const ft = (typeof _serverFilterTree !== 'undefined' ? _serverFilterTree : null);
+        const useFilter = ft?.pagywosg;
+        const source = useFilter ? null : (window._pagCurrentQuals || null);
+
+        if (!useFilter && !source) { section.style.display = 'none'; return; }
+
+        let conds, verified, sgGroup, monthLabel;
+        if (useFilter) {
+            conds      = _pagExtractConds(ft);
+            verified   = ft.pagywosg_verified;
+            sgGroup    = _pagExtractSgGroup(ft);
+            monthLabel = _pagEventMonthLabel(ft.pagywosg_event?.id) || 'PAGYWOSG';
+        } else {
+            conds      = source.conds || [];
+            verified   = source.verified || {};
+            sgGroup    = source.sg_group || null;
+            monthLabel = source.event?.month_label || 'PAGYWOSG';
+        }
+
+        if (header) header.textContent = `PAGYWOSG - ${monthLabel} QUALIFICATIONS`;
+
+        const results = _buildPagQualResults(game, conds, verified, sgGroup);
+        list.innerHTML = _pagQualResultsHtml(results);
+        section.style.display = 'block';
     }
 
     async function _dpLoadDescription(appid) {
@@ -2915,7 +3007,7 @@ function pickRandomGame() {
 
         <!-- Scope toggle -->
         <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+            <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                 <input type="radio" name="bd-scope" id="bd-scope-filtered" value="filtered"
                        onchange="onBulkDeleteScopeChange()" style="width:auto; margin:0;">
                 <span>
@@ -2924,7 +3016,7 @@ function pickRandomGame() {
                 </span>
             </label>
             <div style="width:1px; background:#2a475e;"></div>
-            <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+            <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                 <input type="radio" name="bd-scope" id="bd-scope-selected" value="selected"
                        onchange="onBulkDeleteScopeChange()" style="width:auto; margin:0;">
                 <span>
@@ -2965,7 +3057,7 @@ function pickRandomGame() {
         <div id="bulk-pane-edit">
             <!-- Scope toggle -->
             <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                     <input type="radio" name="bulk-scope" id="scope-all" value="all"
                            onchange="onBulkScopeChange()" style="width:auto; margin:0;">
                     <span>
@@ -2974,7 +3066,7 @@ function pickRandomGame() {
                     </span>
                 </label>
                 <div style="width:1px; background:#2a475e;"></div>
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
                        id="scope-filtered-label">
                     <input type="radio" name="bulk-scope" id="scope-filtered" value="filtered"
                            onchange="onBulkScopeChange()" style="width:auto; margin:0;">
@@ -2984,7 +3076,7 @@ function pickRandomGame() {
                     </span>
                 </label>
                 <div style="width:1px; background:#2a475e;"></div>
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;"
                        id="scope-selected-label">
                     <input type="radio" name="bulk-scope" id="scope-selected" value="selected"
                            onchange="onBulkScopeChange()" style="width:auto; margin:0;">
@@ -3072,7 +3164,7 @@ function pickRandomGame() {
         <div id="bulk-pane-rescrape" style="display:none;">
             <!-- Scope toggle -->
             <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                     <input type="radio" name="brs-scope" id="brs-scope-all" value="all"
                            onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
                     <span>
@@ -3081,7 +3173,7 @@ function pickRandomGame() {
                     </span>
                 </label>
                 <div style="width:1px; background:#2a475e;"></div>
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                     <input type="radio" name="brs-scope" id="brs-scope-filtered" value="filtered"
                            onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
                     <span>
@@ -3090,7 +3182,7 @@ function pickRandomGame() {
                     </span>
                 </label>
                 <div style="width:1px; background:#2a475e;"></div>
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                     <input type="radio" name="brs-scope" id="brs-scope-selected" value="selected"
                            onchange="onBulkRescrapeScopeChange()" style="width:auto; margin:0;">
                     <span>
@@ -3201,7 +3293,7 @@ function pickRandomGame() {
             </div>
 
             <div style="display:flex; gap:0; margin-bottom:14px; border:1px solid #2a475e; border-radius:6px; overflow:hidden;">
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                     <input type="radio" name="bdi-scope" id="bdi-scope-all" value="all"
                            onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
                     <span>
@@ -3210,7 +3302,7 @@ function pickRandomGame() {
                     </span>
                 </label>
                 <div style="width:1px; background:#2a475e;"></div>
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                     <input type="radio" name="bdi-scope" id="bdi-scope-filtered" value="filtered"
                            onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
                     <span>
@@ -3219,7 +3311,7 @@ function pickRandomGame() {
                     </span>
                 </label>
                 <div style="width:1px; background:#2a475e;"></div>
-                <label style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
+                <label data-modal-row="0" style="flex:1; display:flex; align-items:center; gap:8px; padding:9px 14px; cursor:pointer; background:transparent; transition:background 0.15s;">
                     <input type="radio" name="bdi-scope" id="bdi-scope-selected" value="selected"
                            onchange="onBulkDateImportScopeChange()" style="width:auto; margin:0;">
                     <span>

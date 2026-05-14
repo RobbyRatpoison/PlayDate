@@ -13,20 +13,12 @@ from config import BASE_DIR
 TEMP_DB_PATH = os.path.join(BASE_DIR, "temp_import.db")
 
 # ── Step 1: Upload DB and return its tables + columns ──
-def inspect_database(request_files):
-    if 'external_db' not in request_files:
-        return jsonify({"status": "error", "message": "No file uploaded"})
-
-    file = request_files['external_db']
-    if os.path.exists(TEMP_DB_PATH):
-        os.remove(TEMP_DB_PATH)
-    file.save(TEMP_DB_PATH)
-
+def _inspect_temp_db():
+    """Inspect TEMP_DB_PATH (already written) and return a Flask JSON response."""
     try:
         ext_conn = sqlite3.connect(TEMP_DB_PATH)
         ext_cur = ext_conn.cursor()
 
-        # Get all tables
         tables = [row[0] for row in ext_cur.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         ).fetchall()]
@@ -36,7 +28,6 @@ def inspect_database(request_files):
             os.remove(TEMP_DB_PATH)
             return jsonify({"status": "error", "message": "No tables found in this database."})
 
-        # Get columns and types for each table
         table_columns = {}
         table_column_types = {}
         for table in tables:
@@ -46,7 +37,6 @@ def inspect_database(request_files):
 
         ext_conn.close()
 
-        # Get local DB columns and types
         local_db = get_db()
         local_pragma = local_db.execute("PRAGMA table_info(games)").fetchall()
         local_cols = [row[1] for row in local_pragma]
@@ -66,6 +56,27 @@ def inspect_database(request_files):
         if os.path.exists(TEMP_DB_PATH):
             os.remove(TEMP_DB_PATH)
         return jsonify({"status": "error", "message": f"Could not read database: {str(e)}"})
+
+
+def inspect_database(request_files):
+    if 'external_db' not in request_files:
+        return jsonify({"status": "error", "message": "No file uploaded"})
+
+    file = request_files['external_db']
+    if os.path.exists(TEMP_DB_PATH):
+        os.remove(TEMP_DB_PATH)
+    file.save(TEMP_DB_PATH)
+    return _inspect_temp_db()
+
+
+def inspect_database_from_path(path):
+    import shutil
+    if not os.path.isfile(path):
+        return jsonify({"status": "error", "message": "File not found."})
+    if os.path.exists(TEMP_DB_PATH):
+        os.remove(TEMP_DB_PATH)
+    shutil.copy2(path, TEMP_DB_PATH)
+    return _inspect_temp_db()
 
 
 def _types_compatible(src_type, tgt_type):
