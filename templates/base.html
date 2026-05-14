@@ -822,11 +822,11 @@
 <script>
 (function() {
     const banner = document.getElementById('gamepad-suppressed-banner');
-    // Show on page load if suppression was already active (e.g. resumed from sessionStorage)
-    if (safeSession.getItem('pd_game_running') === '1') banner.style.display = 'block';
-    // Track suppression state via events dispatched by input.js
-    document.addEventListener('gamepad-suppression-change', e => {
-        banner.style.display = e.detail.suppressed ? 'block' : 'none';
+    let _hideTimer = null;
+    document.addEventListener('gamepad-suppressed-input', () => {
+        banner.style.display = 'block';
+        clearTimeout(_hideTimer);
+        _hideTimer = setTimeout(() => { banner.style.display = 'none'; }, 3000);
     });
 })();
 </script>

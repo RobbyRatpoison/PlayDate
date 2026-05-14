@@ -2281,12 +2281,18 @@
         _rafId = requestAnimationFrame(_pollLoop);
         _pollCount++;
 
-        if (_gameSuppressed || !_gamepadEnabled) return;
+        if (!_gamepadEnabled) return;
 
         const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
         let gp = null;
         for (const g of gamepads) { if (g) { gp = g; break; } }
         if (!gp) return;
+
+        if (_gameSuppressed) {
+            if (gp.buttons.some(b => b.pressed || b.value > 0.5))
+                document.dispatchEvent(new CustomEvent('gamepad-suppressed-input'));
+            return;
+        }
 
         if (!_gpEverSeen) {
             _gpEverSeen = true;

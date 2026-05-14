@@ -149,9 +149,8 @@ def _fix_window_icon(window):
                 main_gtk_win = getattr(window, 'native', None)
                 pixbuf = GdkPixbuf.Pixbuf.new_from_file(ICON_PATH) if os.path.exists(ICON_PATH) else None
                 for gtk_window in Gtk.Window.list_toplevels():
-                    # Only touch the main window — applying wmclass/role/icon to other
-                    # windows (WebKit offscreen, GtkTooltipWindow, etc.) causes KDE to
-                    # render them as visible PlayDate app windows.
+                    # Only touch the main window — skip WebKit offscreen windows,
+                    # GtkTooltipWindows, etc.
                     if main_gtk_win is not None and gtk_window is not main_gtk_win:
                         continue
                     gtk_window.set_role('PlayDate')

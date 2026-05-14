@@ -988,7 +988,13 @@ def create_app(template_folder=None, static_folder=None):
             import gi
             gi.require_version('Gtk', '3.0')
             from gi.repository import Gtk, GLib
+            main_win = getattr(_webview_window, 'native', None)
             for win in Gtk.Window.list_toplevels():
+                # Only raise the main window — presenting WebKit internal windows
+                # (offscreen renderer, etc.) causes KDE to briefly show them as
+                # visible top-level windows (the grey circle bug).
+                if main_win is not None and win is not main_win:
+                    continue
                 GLib.idle_add(win.present)
         except Exception:
             pass
