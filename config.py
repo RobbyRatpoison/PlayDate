@@ -349,6 +349,8 @@ def inject_config_status():
         accounts_list=accounts_list,
         active_steam_id=active_id or '',
         initial_fullscreen=state.get('fullscreen', False),
+        gamepad_enabled=state.get('gamepad_enabled', False),
+        gamepad_suppress_on_launch=state.get('gamepad_suppress_on_launch', True),
         hltb_match_threshold=state.get('hltb_match_threshold', 99),
         hide_duplicates=state.get('hide_duplicates', True),
         ui_scale=state.get('ui_scale', 100),
@@ -823,6 +825,9 @@ def save_state(updates):
             import re as _re
             _plat_re = _re.compile(r'^[a-z][a-z0-9_]*$')
             state["hidden_platforms"] = [p for p in (updates["hidden_platforms"] or []) if _plat_re.match(p or '')]
+        if "pagywosg_comp_defaults" in updates:
+            _valid_cs = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
+            state["pagywosg_comp_defaults"] = [s for s in (updates["pagywosg_comp_defaults"] or []) if s in _valid_cs]
 
         _compact_shared_ids(state)
         _write_state_atomic(state)

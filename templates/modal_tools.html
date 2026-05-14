@@ -1,4 +1,31 @@
 <style>
+    #santa-list div.gamepad-focus {
+        background: var(--hover-bg);
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+    }
+
+    #backup-tab-btn.gamepad-focus, #restore-tab-btn.gamepad-focus {
+        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.8);
+    }
+
+    #backup-include-art-card.gamepad-focus {
+        border-color: var(--accent);
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+    }
+
+    #csv-col-picker .csv-col-div.gamepad-focus {
+        background: var(--hover-bg);
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+    }
+    #csv-col-picker a.gamepad-focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+
     .tool-status {
         font-size: 0.92rem;
         color: var(--text-secondary);
@@ -497,6 +524,7 @@
         <div id="plugin-github-row" style="display:none;margin-bottom:12px;">
             <div style="display:flex;gap:8px;">
                 <input type="text" id="plugin-github-url" placeholder="github.com/owner/repo"
+                       data-modal-row="1"
                        style="flex:1;padding:6px 10px;font-size:0.82rem;background:var(--input-bg);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);"
                        onkeydown="if(event.key==='Enter')_installPluginFromGithub()">
                 <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="0"
@@ -520,8 +548,8 @@
         </div>
         <div class="hub-section">
             <button class="settings-item" data-modal-row="0" onclick="openBgModal()">Background &amp; Opacity</button>
-            <button class="settings-item" data-modal-row="0" onclick="openThemePickerModal()">Theme</button>
-            <button class="settings-item" data-modal-row="0" onclick="openThemeModal()">Theme Editor</button>
+            <button class="settings-item" data-modal-row="1" onclick="openThemePickerModal()">Theme</button>
+            <button class="settings-item" data-modal-row="2" onclick="openThemeModal()">Theme Editor</button>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">UI Scale</div>
@@ -530,26 +558,26 @@
                 <div style="display:flex; align-items:center; gap:8px; min-width:0;">
                     <input type="range" id="ui-scale-slider" min="75" max="150" step="5" value="{{ ui_scale }}"
                         oninput="_onUiScaleSlider(this)"
-                        class="hltb-slider">
+                        class="hltb-slider" data-modal-row="3">
                     <span id="ui-scale-val" style="font-size:0.85rem; color:var(--text-primary); min-width:36px; text-align:right; flex-shrink:0;">{{ ui_scale }}%</span>
                 </div>
-                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="1" onclick="saveUiScale()">Save</button>
-                <button class="nav-btn" style="margin-top:8px; margin-left:6px; font-size:0.8rem;" data-modal-row="1" onclick="resetUiScale()">Reset</button>
+                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="4" onclick="saveUiScale()">Save</button>
+                <button class="nav-btn" style="margin-top:8px; margin-left:6px; font-size:0.8rem;" data-modal-row="4" onclick="resetUiScale()">Reset</button>
                 <div id="ui-scale-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
             </div>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">Card Outlines</div>
             <div style="padding:8px 10px;">
-                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-                    <button id="ap-outline-library" class="ap-outline-toggle" onclick="apToggleOutline('library')" data-modal-row="1">Library</button>
-                    <button id="ap-outline-home"    class="ap-outline-toggle" onclick="apToggleOutline('home')"    data-modal-row="1">Home</button>
-                    <button id="ap-outline-pick6"   class="ap-outline-toggle" onclick="apToggleOutline('pick6')"   data-modal-row="1">Pick 6</button>
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                    <button id="ap-outline-library" class="ap-outline-toggle" onclick="apToggleOutline('library')" data-modal-row="5">Library</button>
+                    <button id="ap-outline-home"    class="ap-outline-toggle" onclick="apToggleOutline('home')"    data-modal-row="5">Home</button>
+                    <button id="ap-outline-pick6"   class="ap-outline-toggle" onclick="apToggleOutline('pick6')"   data-modal-row="5">Pick 6</button>
+                    <button onclick="openCardOutlinesModal()" data-modal-row="5"
+                            style="height:2.25rem; padding:0 0.875rem; font-size:0.82rem; border-radius:0.375rem; background:#2a3f55; border:1px solid #3a5f7a; color:#c7d5e0; cursor:pointer; white-space:nowrap;">
+                        Edit Rules
+                    </button>
                 </div>
-                <button onclick="openCardOutlinesModal()" data-modal-row="1"
-                        style="height:2.25rem; padding:0 0.875rem; font-size:0.82rem; border-radius:0.375rem; background:#2a3f55; border:1px solid #3a5f7a; color:#c7d5e0; cursor:pointer; white-space:nowrap;">
-                    Edit Rules
-                </button>
             </div>
         </div>
     </div>
@@ -569,7 +597,7 @@
                     <input type="checkbox" id="hide-dupes-cb"
                            {% if hide_duplicates %}checked{% endif %}
                            onchange="sendStateUpdate({hide_duplicates: this.checked})"
-                           style="width:auto; margin:0;">
+                           style="width:auto; margin:0;" data-modal-row="0">
                     Hide duplicate entries
                 </label>
                 <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">When multiple platforms have the same game, the highest-ranked version is kept.</div>
@@ -577,8 +605,8 @@
                     <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px;">Platform priority <span style="font-weight:normal; opacity:0.6;">(drag to reorder — top = preferred)</span></div>
                     <ul id="platform-priority-list"></ul>
                     <div style="display:flex; gap:8px; align-items:center;">
-                        <button class="nav-btn" data-modal-row="0" onclick="savePlatformPriority()" style="font-size:0.8rem;">Save Order</button>
-                        <button class="nav-btn" data-modal-row="0" onclick="detectDuplicates()" style="font-size:0.8rem;">Detect Duplicates</button>
+                        <button class="nav-btn" data-modal-row="20" onclick="savePlatformPriority()" style="font-size:0.8rem;">Save Order</button>
+                        <button class="nav-btn" data-modal-row="20" onclick="detectDuplicates()" style="font-size:0.8rem;">Detect Duplicates</button>
                         <div id="plat-priority-status" style="font-size:0.78rem; color:#8f98a0; min-height:1em;"></div>
                     </div>
                 </div>
@@ -591,7 +619,7 @@
                     <input type="checkbox" id="auto-promote-unfinished-cb"
                            {% if auto_promote_unfinished %}checked{% endif %}
                            onchange="sendStateUpdate({auto_promote_unfinished: this.checked}, false)"
-                           style="width:auto; margin:0;">
+                           style="width:auto; margin:0;" data-modal-row="21">
                     Mark games as Unfinished when playtime &gt; 0
                 </label>
                 <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">On startup, promotes Never Played games to Unfinished if Steam shows any playtime. Disable if you use BLAEO to manage Never Played status.</div>
@@ -605,13 +633,13 @@
                 <div style="display:flex; align-items:center; gap:8px; min-width:0;">
                     <input type="range" id="hltb-threshold-slider" min="0" max="100" value="{{ hltb_match_threshold }}"
                         oninput="_onHltbSlider(this)"
-                        class="hltb-slider">
+                        class="hltb-slider" data-modal-row="22">
                     <span id="hltb-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
                 </div>
-                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="0" onclick="saveHltbThreshold()">Save</button>
+                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="23" onclick="saveHltbThreshold()">Save</button>
                 <div id="hltb-threshold-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
             </div>
-            <button class="settings-item" data-modal-row="1" onclick="openHltbModal()">HLTB Data</button>
+            <button class="settings-item" data-modal-row="24" onclick="openHltbModal()">HLTB Data</button>
         </div>
     </div>
 </div>
@@ -625,11 +653,11 @@
         </div>
         <div class="hub-section">
             <button class="settings-item" data-modal-row="0" onclick="openPagModal()">PAGYWOSG Filter Builder</button>
-            <button class="settings-item" data-modal-row="0" onclick="openSantaModal()">Secret Santa / Snowballs</button>
+            <button class="settings-item" data-modal-row="1" onclick="openSantaModal()">Secret Santa / Snowballs</button>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">BLAEO</div>
-            <button id="blaeo-btn" class="settings-item" data-modal-row="1" onclick="runBlaeo()">Sync BLAEO</button>
+            <button id="blaeo-btn" class="settings-item" data-modal-row="2" onclick="runBlaeo()">Sync BLAEO</button>
             <div id="blaeo-status" class="tool-status" style="margin-top:2px;padding:0 10px;"></div>
         </div>
     </div>
@@ -649,6 +677,7 @@
 
         <div style="position:relative; margin-bottom:8px;">
             <input id="santa-search" type="text" placeholder="Search your library..." autocomplete="off"
+                data-modal-row="0"
                 style="width:100%; box-sizing:border-box; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text-primary); font-size:0.9rem;">
             <div id="santa-search-results" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:100;
                 background:var(--bg-surface); border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px;
@@ -661,8 +690,8 @@
         <div id="santa-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:6px; margin-bottom:14px;"></div>
 
         <div style="display:flex; gap:8px; justify-content:flex-end;">
-            <button class="nav-btn" onclick="closeSantaModal()">Close</button>
-            <button id="santa-save-btn" class="nav-btn" onclick="saveSantaGifts()">Save</button>
+            <button class="nav-btn" data-modal-row="1" onclick="closeSantaModal()">Close</button>
+            <button id="santa-save-btn" class="nav-btn" data-modal-row="1" onclick="saveSantaGifts()">Save</button>
         </div>
         <div id="santa-status" class="tool-status" style="margin-top:8px; text-align:right;"></div>
     </div>
@@ -677,33 +706,49 @@
         </div>
         <div class="hub-section">
             <button class="settings-item" data-modal-row="0" onclick="openFilterIoModal()">Filter Import / Export</button>
-            <button class="settings-item" data-modal-row="0" onclick="openBackupModal()">Backup &amp; Restore</button>
-            <button class="settings-item" data-modal-row="0" onclick="openImportModal()">Import from Database</button>
-            <button class="settings-item" data-modal-row="0" onclick="openPlayniteModal()">Import Date Added from Playnite</button>
-            <button class="settings-item" data-modal-row="0" onclick="runCsvExport()">Export Library to CSV</button>
-            <details id="csv-col-picker" style="margin:2px 0 2px 2px;">
-                <summary style="cursor:pointer;font-size:0.82em;color:var(--accent);user-select:none;list-style:none;display:inline-flex;align-items:center;gap:4px;">
-                    <span id="csv-col-summary">Columns</span>
-                </summary>
-                <div style="display:flex;flex-wrap:wrap;gap:3px 16px;margin-top:6px;font-size:0.82em;color:var(--text-primary);">
-                    {% for col in [
-                        'Name','AppID','Completion Status','Tags','Groups',
-                        'Playtime (hrs)','Last Played','Date Added','Installed',
-                        'Review Score','Review %','Developers','Publishers',
-                        'Release Date','Achievements Unlocked','Achievements Total','Achievement %'
-                    ] %}
-                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;">
-                        <input type="checkbox" class="csv-col-cb" value="{{ col }}" checked style="width:auto;margin:0;">
-                        {{ col }}
-                    </label>
-                    {% endfor %}
+            <button class="settings-item" data-modal-row="1" onclick="openBackupModal()">Backup &amp; Restore</button>
+            <button class="settings-item" data-modal-row="2" onclick="openImportModal()">Import from Database</button>
+            <button class="settings-item" data-modal-row="3" onclick="openPlayniteModal()">Import Date Added from Playnite</button>
+            <button class="settings-item" data-modal-row="4" onclick="runCsvExport()">Export Library to CSV</button>
+            <button class="settings-item" data-modal-row="5" onclick="toggleCsvColPicker()" id="csv-col-toggle" style="font-size:0.82em;color:var(--accent);background:none;border:none;padding:2px 0 2px 2px;text-align:left;cursor:pointer;">CSV Columns</button>
+            <div id="csv-col-picker" style="display:none;margin:4px 0 4px 2px;font-size:0.82em;color:var(--text-primary);">
+                <div style="display:flex;gap:4px 12px;margin-top:4px;">
+                    <div class="csv-col-div" data-modal-row="6" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Name" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Name</div>
+                    <div class="csv-col-div" data-modal-row="6" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="AppID" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">AppID</div>
+                    <div class="csv-col-div" data-modal-row="6" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Completion Status" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Completion Status</div>
+                </div>
+                <div style="display:flex;gap:4px 12px;">
+                    <div class="csv-col-div" data-modal-row="7" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Tags" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Tags</div>
+                    <div class="csv-col-div" data-modal-row="7" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Groups" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Groups</div>
+                    <div class="csv-col-div" data-modal-row="7" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Playtime (hrs)" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Playtime (hrs)</div>
+                </div>
+                <div style="display:flex;gap:4px 12px;">
+                    <div class="csv-col-div" data-modal-row="8" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Last Played" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Last Played</div>
+                    <div class="csv-col-div" data-modal-row="8" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Date Added" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Date Added</div>
+                    <div class="csv-col-div" data-modal-row="8" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Installed" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Installed</div>
+                </div>
+                <div style="display:flex;gap:4px 12px;">
+                    <div class="csv-col-div" data-modal-row="9" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Review Score" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Review Score</div>
+                    <div class="csv-col-div" data-modal-row="9" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Review %" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Review %</div>
+                    <div class="csv-col-div" data-modal-row="9" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Developers" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Developers</div>
+                </div>
+                <div style="display:flex;gap:4px 12px;">
+                    <div class="csv-col-div" data-modal-row="10" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Publishers" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Publishers</div>
+                    <div class="csv-col-div" data-modal-row="10" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Release Date" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Release Date</div>
+                </div>
+                <div style="display:flex;gap:4px 12px;">
+                    <div class="csv-col-div" data-modal-row="11" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Achievements Unlocked" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Achievements Unlocked</div>
+                    <div class="csv-col-div" data-modal-row="11" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Achievements Total" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Achievements Total</div>
+                </div>
+                <div style="display:flex;gap:4px 12px;">
+                    <div class="csv-col-div" data-modal-row="12" onclick="var cb=this.querySelector('.csv-col-cb');cb.checked=!cb.checked;" style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;padding:2px 4px;border-radius:3px;"><input type="checkbox" class="csv-col-cb" value="Achievement %" checked style="width:auto;margin:0;" onclick="event.stopPropagation()">Achievement %</div>
                 </div>
                 <div style="margin-top:5px;font-size:0.8em;">
-                    <a href="#" onclick="csvColAll(true);return false" style="color:var(--accent)">All</a>
+                    <a href="#" data-modal-row="13" onclick="csvColAll(true);return false" style="color:var(--accent)">All</a>
                     &nbsp;/&nbsp;
-                    <a href="#" onclick="csvColAll(false);return false" style="color:var(--accent)">None</a>
+                    <a href="#" data-modal-row="13" onclick="csvColAll(false);return false" style="color:var(--accent)">None</a>
                 </div>
-            </details>
+            </div>
             <div id="csv-export-status" class="tool-status" style="margin-top:2px;"></div>
         </div>
     </div>
@@ -724,10 +769,15 @@
             <button id="autoupdate-toggle-btn" class="settings-item" data-modal-row="0" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
         </div>
         <div class="hub-section">
+            <div class="hub-section-label">Gamepad</div>
+            <button id="gamepad-enabled-btn" class="settings-item" data-modal-row="1" onclick="toggleGamepadEnabled()">Gamepad input (experimental): OFF</button>
+            <button id="gamepad-suppress-btn" class="settings-item" data-modal-row="2" onclick="toggleGamepadSuppress()">Pause gamepad on launch: ON</button>
+            <button class="settings-item" data-modal-row="3" onclick="openGamepadDiag()">Gamepad Diagnostics</button>
+        </div>
+        <div class="hub-section">
             <div class="hub-section-label">Testing</div>
             <div style="padding:8px 10px; display:flex; flex-direction:column; gap:8px;">
-                <button class="nav-btn" data-modal-row="1" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
-                <button class="nav-btn" data-modal-row="1" onclick="openGamepadDiag()" style="font-size:0.8rem;">Gamepad Diagnostics</button>
+                <button class="nav-btn" data-modal-row="4" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
             </div>
         </div>
     </div>
@@ -752,7 +802,7 @@
             <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.05em;">Input Suppression</div>
             <div style="display:flex; align-items:center; gap:10px;">
                 <div id="gpd-suppression" style="font-size:0.9rem; flex:1;">Checking...</div>
-                <button id="gpd-clear-btn" class="nav-btn" style="font-size:0.8rem; display:none;" onclick="gpdClearSuppression()">Clear</button>
+                <button id="gpd-clear-btn" class="nav-btn" style="font-size:0.8rem; display:none;" data-modal-row="0" onclick="gpdClearSuppression()">Clear</button>
             </div>
         </div>
 
@@ -785,7 +835,7 @@
 </div>
 
 <!-- ── ACCOUNT MODAL ── -->
-<div id="account-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeAccountModal();">
+<div id="account-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAccountModal();">
     <div class="modal-content" style="width:fit-content; min-width:400px; max-height:90vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
             <h2 style="margin:0; color:var(--text-primary);">Account</h2>
@@ -797,7 +847,7 @@
 
         <div style="margin-bottom:10px;">
             <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Label <span style="font-style:italic;">(nickname)</span></label>
-            <input id="cfg-label" type="text" value=""
+            <input id="cfg-label" type="text" value="" data-modal-row="1"
                 placeholder="e.g. Main, Alt, Work"
                 style="width:100%; box-sizing:border-box; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                 onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
@@ -806,11 +856,11 @@
         <div style="margin-bottom:10px;">
             <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Steam ID</label>
             <div style="display:flex; gap:6px;">
-                <input id="cfg-steam-id" type="text" value="{{ existing_steam_id }}"
+                <input id="cfg-steam-id" type="text" value="{{ existing_steam_id }}" data-modal-row="2"
                     placeholder="SteamID64 or vanity name"
                     style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                <button class="nav-btn" style="white-space:nowrap; font-size:0.8rem;" onclick="detectSteamId()">Detect</button>
+                <button class="nav-btn" data-modal-row="2" style="white-space:nowrap; font-size:0.8rem;" onclick="detectSteamId()">Detect</button>
             </div>
             <div id="cfg-account-picker" style="display:none; margin-top:8px; flex-direction:column; gap:4px;"></div>
         </div>
@@ -818,21 +868,21 @@
         <div style="margin-bottom:14px;">
             <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
                 Steam API Key <span style="font-style:italic; color:#c89a3c;" data-tooltip="Enables achievements, accurate completion status, and full library import. Without: local Steam files only, no achievements.">(recommended)</span>
-                — <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
+                — <a href="https://steamcommunity.com/dev/apikey" target="_blank" data-modal-row="3" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
             </label>
             <div style="display:flex; gap:6px;">
-                <input id="cfg-api-key" type="password" value="{{ existing_api_key }}"
+                <input id="cfg-api-key" type="password" value="{{ existing_api_key }}" data-modal-row="4"
                     placeholder="Enables achievements, full library import, and vanity name lookup"
                     style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" data-tooltip="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
+                <button class="nav-btn" data-modal-row="4" style="font-size:0.85rem; min-width:36px;" data-tooltip="Show/hide" onclick="toggleCfgKeyVisibility('cfg-api-key', this)">👁</button>
             </div>
         </div>
 
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
-            <button class="nav-btn" onclick="saveAccountSettings()">Save</button>
-            <button id="cfg-remove-btn" class="nav-btn" style="color:var(--text-secondary);" onclick="removeAccount()">Remove Account</button>
-            <button class="nav-btn" style="margin-left:auto;" onclick="showAddAccountForm()">+ Add Account</button>
+            <button class="nav-btn" data-modal-row="5" onclick="saveAccountSettings()">Save</button>
+            <button id="cfg-remove-btn" class="nav-btn" data-modal-row="5" style="color:var(--text-secondary);" onclick="removeAccount()">Remove Account</button>
+            <button class="nav-btn" data-modal-row="5" style="margin-left:auto;" onclick="showAddAccountForm()">+ Add Account</button>
         </div>
         <div id="cfg-status" class="tool-status"></div>
 
@@ -842,22 +892,22 @@
             <div style="margin-bottom:8px;">
                 <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:3px;">Steam ID</label>
                 <div style="display:flex; gap:6px;">
-                    <input id="cfg-new-steam-id" type="text" placeholder="SteamID64"
+                    <input id="cfg-new-steam-id" type="text" placeholder="SteamID64" data-modal-row="11"
                         style="flex:1; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.83rem; outline:none;"
                         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                    <button class="nav-btn" style="white-space:nowrap; font-size:0.78rem;" onclick="detectSteamIdNew()">Detect</button>
+                    <button class="nav-btn" data-modal-row="11" style="white-space:nowrap; font-size:0.78rem;" onclick="detectSteamIdNew()">Detect</button>
                 </div>
                 <div id="cfg-new-account-picker" style="display:none; margin-top:6px; flex-direction:column; gap:4px;"></div>
             </div>
             <div style="margin-bottom:8px;">
                 <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:3px;">Label <span style="font-style:italic;">(optional)</span></label>
-                <input id="cfg-new-label" type="text" placeholder="e.g. Alt, Work"
+                <input id="cfg-new-label" type="text" placeholder="e.g. Alt, Work" data-modal-row="12"
                     style="width:100%; box-sizing:border-box; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.83rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
             </div>
             <div style="display:flex; gap:8px; align-items:center;">
-                <button class="nav-btn" onclick="addAccount()">Add</button>
-                <button class="nav-btn" style="color:var(--text-secondary);" onclick="hideAddAccountForm()">Cancel</button>
+                <button class="nav-btn" data-modal-row="13" onclick="addAccount()">Add</button>
+                <button class="nav-btn" data-modal-row="13" style="color:var(--text-secondary);" onclick="hideAddAccountForm()">Cancel</button>
                 <div id="cfg-add-status" class="tool-status" style="margin:0;"></div>
             </div>
         </div>
@@ -866,17 +916,17 @@
         <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
             <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:4px;">
                 SteamGridDB Key <span style="font-style:italic;">(optional, shared across accounts)</span>
-                — <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
+                — <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" data-modal-row="6" style="color:var(--accent); font-size:0.78rem;">get a key ↗</a>
             </label>
             <div style="display:flex; gap:6px; margin-bottom:6px;">
-                <input id="cfg-sgdb-key" type="password" value="{{ existing_sgdb_key }}"
+                <input id="cfg-sgdb-key" type="password" value="{{ existing_sgdb_key }}" data-modal-row="7"
                     placeholder="Enables SteamGridDB artwork"
                     style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                <button class="nav-btn" style="font-size:0.85rem; min-width:36px;" data-tooltip="Show/hide" onclick="toggleCfgKeyVisibility('cfg-sgdb-key', this)">👁</button>
+                <button class="nav-btn" data-modal-row="7" style="font-size:0.85rem; min-width:36px;" data-tooltip="Show/hide" onclick="toggleCfgKeyVisibility('cfg-sgdb-key', this)">👁</button>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <button class="nav-btn" onclick="saveSgdbKey()">Save SGDB Key</button>
+                <button class="nav-btn" data-modal-row="8" onclick="saveSgdbKey()">Save SGDB Key</button>
                 <div id="cfg-sgdb-status" class="tool-status" style="margin:0;"></div>
             </div>
         </div>
@@ -888,13 +938,13 @@
                 — used in the PAGYWOSG qualifications panel
             </label>
             <div style="display:flex; gap:6px; margin-bottom:6px;">
-                <input id="cfg-sg-username" type="text" value="{{ existing_sg_username }}"
+                <input id="cfg-sg-username" type="text" value="{{ existing_sg_username }}" data-modal-row="9"
                     placeholder="Your SteamGifts username"
                     style="flex:1; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
-                <button class="nav-btn" onclick="saveSgUsername()">Save</button>
+                <button class="nav-btn" data-modal-row="10" onclick="saveSgUsername()">Save</button>
                 <div id="cfg-sg-status" class="tool-status" style="margin:0;"></div>
             </div>
         </div>
@@ -912,9 +962,10 @@
         </div>
         <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 16px;">Replace the app background with a custom image. JPG, PNG, and WebP are supported.</p>
 
+        <button class="nav-btn" data-modal-row="0" onclick="chooseBgFile()" style="margin-bottom:10px;">Choose File</button>
         <div id="bg-drop-zone"
              style="border:2px dashed var(--border); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
-             onclick="document.getElementById('bg-file-input').click()"
+             onclick="chooseBgFile()"
              ondragover="bgDragOver(event)"
              ondragleave="bgDragLeave(event)"
              ondrop="bgDrop(event)">
@@ -926,15 +977,14 @@
 
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
             <label for="bg-opacity-slider" style="font-size:0.85rem; color:var(--text-secondary); white-space:nowrap;">Opacity</label>
-            <input type="range" id="bg-opacity-slider" min="0" max="1" step="0.05"
+            <input type="range" id="bg-opacity-slider" data-modal-row="1" min="0" max="1" step="0.05"
                 style="flex:1;" oninput="_bgOpacityInput(this.value)">
             <span id="bg-opacity-val" style="font-size:0.85rem; color:var(--text-primary); min-width:36px; text-align:right;"></span>
         </div>
 
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-            <button class="nav-btn" id="bg-upload-btn" data-modal-row="0" onclick="runSetBackground()">Save</button>
-            <button class="nav-btn" id="bg-reset-btn" data-modal-row="0" onclick="runResetBackground()">Reset to Default</button>
-            <button class="nav-btn" data-modal-row="0" onclick="closeBgModal()">Cancel</button>
+            <button class="nav-btn" id="bg-upload-btn" data-modal-row="2" onclick="runSetBackground()">Save</button>
+            <button class="nav-btn" id="bg-reset-btn" data-modal-row="2" onclick="runResetBackground()">Reset to Default</button>
         </div>
         <div id="bg-status" class="tool-status"></div>
     </div>
@@ -971,17 +1021,19 @@
                         <span style="font-size:0.82rem; color:var(--text-primary);">🗂️ state.json</span>
                     </div>
                 </div>
-                <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:10px 14px;">
-                    <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin:0;">
-                        <input type="checkbox" id="backup-include-art" style="width:auto; margin:2px 0 0; flex-shrink:0;">
+                <div id="backup-include-art-card" data-modal-row="1"
+                     onclick="var cb=document.getElementById('backup-include-art');cb.checked=!cb.checked;"
+                     style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:10px 14px; cursor:pointer;">
+                    <div style="display:flex; align-items:flex-start; gap:10px;">
+                        <input type="checkbox" id="backup-include-art" onclick="event.stopPropagation()" style="width:auto; margin:2px 0 0; flex-shrink:0; cursor:pointer;">
                         <div>
                             <span style="font-size:0.82rem; color:var(--text-primary); font-weight:bold;">🖼️ Include cover art</span>
                             <div style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px;">Recommended if you've manually set any artwork. Can add hundreds of MB.</div>
                         </div>
-                    </label>
+                    </div>
                 </div>
             </div>
-            <button class="nav-btn" id="backup-btn" data-modal-row="1" onclick="runBackup()">Download Backup</button>
+            <button class="nav-btn" id="backup-btn" data-modal-row="2" onclick="runBackup()">Download Backup</button>
             <div id="backup-status" class="tool-status"></div>
         </div>
 
@@ -992,7 +1044,7 @@
             </div>
             <div id="restore-drop-zone"
                  style="border:2px dashed var(--border); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
-                 onclick="document.getElementById('restore-file-input').click()"
+                 onclick="chooseRestoreFile()"
                  ondragover="restoreDragOver(event)"
                  ondragleave="restoreDragLeave(event)"
                  ondrop="restoreDrop(event)">
@@ -1001,7 +1053,8 @@
                 <div id="restore-filename" style="color:var(--accent); font-size:0.82rem; margin-top:6px; display:none;"></div>
             </div>
             <input type="file" id="restore-file-input" accept=".zip" style="display:none" onchange="restoreFileSelected(this)">
-            <button class="nav-btn" id="restore-btn" data-modal-row="1" onclick="runRestore()" disabled style="opacity:0.4; cursor:not-allowed;">Restore</button>
+            <button class="nav-btn" data-modal-row="1" onclick="chooseRestoreFile()">Choose Backup File</button>
+            <button class="nav-btn" id="restore-btn" data-modal-row="2" onclick="runRestore()" style="opacity:0.4; cursor:not-allowed;">Restore</button>
             <div id="restore-status" class="tool-status"></div>
         </div>
     </div>
@@ -1024,7 +1077,7 @@
 
         <div id="import-step-1" class="import-step active">
             <p style="margin-bottom:10px;">Select the <strong>.db</strong> file you want to import data <em>from</em>. Your current library will not be affected until you confirm the import in step 2.</p>
-            <button class="nav-btn" data-modal-row="0" onclick="document.getElementById('db-file-input').click()">Choose .db File</button>
+            <button class="nav-btn" data-modal-row="0" onclick="chooseDbFile()">Choose .db File</button>
             <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" style="display:none" onchange="uploadDatabase(this)">
             <div id="upload-status" class="tool-status"></div>
         </div>
@@ -1099,8 +1152,8 @@
             <div id="pagywosg-loading" style="color:var(--text-secondary); font-size:0.88rem; margin-bottom:8px;">Loading tags…</div>
             <div id="pag-auto-controls" style="display:none;">
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
-                    <button id="pag-auto-btn" class="nav-btn" data-modal-row="0" onclick="pagAutoFill(false)">Auto-fill from Current Event</button>
-                    <button id="pag-auto-next-btn" class="nav-btn" data-modal-row="0" onclick="pagAutoFill(true)" style="opacity:0.7;">Auto-fill from Upcoming Event</button>
+                    <button id="pag-auto-btn" class="nav-btn" data-modal-row="pag-auto" onclick="pagAutoFill(false)">Auto-fill from Current Event</button>
+                    <button id="pag-auto-next-btn" class="nav-btn" data-modal-row="pag-auto" onclick="pagAutoFill(true)" style="opacity:0.7;">Auto-fill from Upcoming Event</button>
                     <span id="pag-auto-event-name" style="color:var(--text-secondary); font-size:0.82rem; font-style:italic;"></span>
                     <span id="pag-auto-status" style="color:var(--accent-positive); font-size:0.82rem;"></span>
                 </div>
@@ -1119,19 +1172,21 @@
                     <span style="color:var(--accent); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — Wins Only</span>
                     <span id="pag-wins-subtitle" style="color:var(--text-secondary); font-size:0.75rem; font-style:italic;">only applies to games won on SteamGifts</span>
                 </div>
-                <div id="pag-santa-row" style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:0.82rem; color:var(--text-secondary);">
-                    <input type="checkbox" id="pag-santa-cb" style="width:auto; margin:0;">
-                    <label for="pag-santa-cb" id="pag-santa-label" style="display:inline; margin:0; cursor:pointer;">Include Secret Santa / Snowballs gifts (<span id="pag-santa-count">0</span> games)</label>
-                    <span id="pag-santa-setup" style="display:none; font-size:0.78rem; color:var(--text-secondary); font-style:italic;">— add gifts via <a href="#" onclick="event.preventDefault();closePagModal();openSantaModal()" style="color:var(--accent);">Secret Santa / Snowballs</a></span>
+                <div id="pag-santa-row" data-modal-row="pag-santa" style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:0.82rem; color:var(--text-secondary); cursor:pointer;"
+                    onclick="var cb=document.getElementById('pag-santa-cb');if(!cb.disabled){cb.checked=!cb.checked;pagUpdateSql();}">
+                    <input type="checkbox" id="pag-santa-cb" style="width:auto; margin:0;" onclick="event.stopPropagation()">
+                    <label for="pag-santa-cb" id="pag-santa-label" style="display:inline; margin:0; cursor:pointer;" onclick="event.stopPropagation()">Include Secret Santa / Snowballs gifts (<span id="pag-santa-count">0</span> games)</label>
+                    <span id="pag-santa-setup" style="display:none; font-size:0.78rem; color:var(--text-secondary); font-style:italic;">— add gifts via <a href="#" data-modal-row="pag-santa" onclick="event.preventDefault();event.stopPropagation();closePagModal();openSantaModal()" style="color:var(--accent);">Secret Santa / Snowballs</a></span>
                 </div>
                 <input type="text" id="pag-wins-search" placeholder="Search tags…"
+                    data-modal-row="pag-wins-search"
                     style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('wins')"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
                 <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-wins-conds" style="margin-top:10px;"></div>
                 <div id="pag-wins-appids-info" style="display:none; margin-top:6px; font-size:0.78rem; color:var(--accent);"></div>
-                <button onclick="pagAddCond('wins')" style="margin-top:6px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                <button onclick="pagAddCond('wins')" data-modal-row="pag-wins-add" style="margin-top:6px; margin-left:3px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
                     onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                     onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">+ Add Condition</button>
             </div>
@@ -1144,13 +1199,14 @@
                     <span style="color:var(--text-secondary); font-size:0.75rem; font-style:italic;">applies to your whole library</span>
                 </div>
                 <input type="text" id="pag-all-search" placeholder="Search tags…"
+                    data-modal-row="pag-all-search"
                     style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('all')"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
                 <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-all-conds" style="margin-top:10px;"></div>
                 <div id="pag-all-appids-info" style="display:none; margin-top:6px; font-size:0.78rem; color:var(--accent);"></div>
-                <button onclick="pagAddCond('all')" style="margin-top:6px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
+                <button onclick="pagAddCond('all')" data-modal-row="pag-all-add" style="margin-top:6px; margin-left:3px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
                     onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'"
                     onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">+ Add Condition</button>
             </div>
@@ -1158,16 +1214,16 @@
             <div style="margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <span style="color:var(--text-secondary); font-size:0.8rem; white-space:nowrap;">Completion status</span>
                 <div id="pag-completion-btns" style="display:flex; flex-wrap:wrap; gap:5px;">
-                    <button class="pag-comp-btn active" data-val="Never Played" onclick="pagToggleComp(this)">Never Played</button>
-                    <button class="pag-comp-btn active" data-val="Unfinished" onclick="pagToggleComp(this)">Unfinished</button>
-                    <button class="pag-comp-btn" data-val="Beaten" onclick="pagToggleComp(this)">Beaten</button>
-                    <button class="pag-comp-btn" data-val="Completed" onclick="pagToggleComp(this)">Completed</button>
-                    <button class="pag-comp-btn" data-val="Won't Play" onclick="pagToggleComp(this)">Won't Play</button>
+                    <button class="pag-comp-btn active" data-val="Never Played" data-modal-row="pag-comp" onclick="pagToggleComp(this)">Never Played</button>
+                    <button class="pag-comp-btn active" data-val="Unfinished" data-modal-row="pag-comp" onclick="pagToggleComp(this)">Unfinished</button>
+                    <button class="pag-comp-btn" data-val="Beaten" data-modal-row="pag-comp" onclick="pagToggleComp(this)">Beaten</button>
+                    <button class="pag-comp-btn" data-val="Completed" data-modal-row="pag-comp" onclick="pagToggleComp(this)">Completed</button>
+                    <button class="pag-comp-btn" data-val="Won't Play" data-modal-row="pag-comp" onclick="pagToggleComp(this)">Won't Play</button>
                 </div>
             </div>
 
             <div>
-                <button onclick="pagToggleSql()" style="background:none;border:none;color:var(--text-secondary);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
+                <button onclick="pagToggleSql()" data-modal-row="pag-sql" style="background:none;border:none;color:var(--text-secondary);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
                     <span id="pag-sql-chevron">▶</span> Show SQL Preview
                 </button>
                 <div id="pag-sql-box" style="display:none; margin-top:8px;">
@@ -1181,13 +1237,14 @@
         <div id="pag-footer" style="display:none; flex-shrink:0;">
             <div style="border-top:1px solid var(--border); margin-bottom:12px;"></div>
             <input type="text" id="pag-filter-name" placeholder="Filter name…"
+                data-modal-row="pag-filter-name"
                 style="width:100%; box-sizing:border-box; margin-bottom:8px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
                 onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
                 onkeydown="if(event.key==='Enter')pagConfirmSave();">
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <button class="nav-btn" data-modal-row="0" onclick="pagConfirmSave()" style="background:var(--accent-positive); color:var(--text-bright); border-color:var(--accent-positive);">Save</button>
-                <button class="nav-btn" data-modal-row="0" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
-                <button class="nav-btn" data-modal-row="0" onclick="closePagModal()">Close</button>
+                <button class="nav-btn" data-modal-row="pag-footer" onclick="pagConfirmSave()" style="background:var(--accent-positive); color:var(--text-bright); border-color:var(--accent-positive);">Save</button>
+                <button class="nav-btn" data-modal-row="pag-footer" onclick="pagClearAll()" style="opacity:0.6;">Clear All</button>
+                <button class="nav-btn" data-modal-row="pag-footer" onclick="closePagModal()">Close</button>
             </div>
             <div id="pag-save-status" class="tool-status" style="margin-bottom:0;"></div>
         </div>
@@ -1248,17 +1305,18 @@
                 <div id="filter-import-rename-msg" style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px;"></div>
                 <div style="display:flex; gap:6px;">
                     <input id="filter-import-new-name" type="text" placeholder="New name…"
+                        data-modal-row="2"
                         style="flex:1; padding:5px 8px; background:var(--bg-surface); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem; outline:none;"
                         onkeydown="if(event.key==='Enter')confirmFilterImport();if(event.key==='Escape')cancelFilterImport();">
-                    <button class="nav-btn" style="padding:0 10px; font-size:0.8rem;" onclick="confirmFilterImport()">Save</button>
-                    <button class="nav-btn" style="padding:0 10px; font-size:0.8rem;" onclick="cancelFilterImport()">Cancel</button>
+                    <button class="nav-btn" style="padding:0 10px; font-size:0.8rem;" data-modal-row="2" onclick="confirmFilterImport()">Save</button>
+                    <button class="nav-btn" style="padding:0 10px; font-size:0.8rem;" data-modal-row="2" onclick="cancelFilterImport()">Cancel</button>
                 </div>
             </div>
             <div id="filter-import-status" class="tool-status" style="margin-top:6px;"></div>
         </div>
 
         <div style="margin-top:16px; display:flex; justify-content:flex-end;">
-            <button class="nav-btn" data-modal-row="2" onclick="closeFilterIoModal()">Close</button>
+            <button class="nav-btn" data-modal-row="3" onclick="closeFilterIoModal()">Close</button>
         </div>
     </div>
 </div>
@@ -1284,10 +1342,10 @@
 
                 <!-- Tab strip -->
                 <div class="tp-tabs">
-                    <button class="tp-tab active" onclick="tpSwitchTab(this,'tp-home')">Home</button>
-                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-library')">Library</button>
-                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-pick')">Pick 6</button>
-                    <button class="tp-tab" onclick="tpSwitchTab(this,'tp-modals')">Modals</button>
+                    <button class="tp-tab active" data-modal-row="0" onclick="tpSwitchTab(this,'tp-home')">Home</button>
+                    <button class="tp-tab" data-modal-row="0" onclick="tpSwitchTab(this,'tp-library')">Library</button>
+                    <button class="tp-tab" data-modal-row="0" onclick="tpSwitchTab(this,'tp-pick')">Pick 6</button>
+                    <button class="tp-tab" data-modal-row="0" onclick="tpSwitchTab(this,'tp-modals')">Modals</button>
                 </div>
 
                 <div class="theme-preview-frame">
@@ -1443,8 +1501,8 @@
                 <div class="theme-actions" style="flex-direction:column; align-items:stretch; gap:14px;">
 
                     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                        <button class="nav-btn" data-modal-row="0" onclick="themeExport()">Export</button>
-                        <button class="nav-btn" data-modal-row="0" onclick="document.getElementById('theme-import-input').click()">Import</button>
+                        <button class="nav-btn" data-modal-row="1000" onclick="themeExport()">Export</button>
+                        <button class="nav-btn" data-modal-row="1000" onclick="themeImportOpen()">Import</button>
                         <input type="file" id="theme-import-input" accept=".json" style="display:none" onchange="themeImport(this)">
                         <div id="theme-status" class="tool-status" style="margin:0;"></div>
                     </div>
@@ -1454,9 +1512,10 @@
                         <div style="display:flex; gap:6px; align-items:center;">
                             <input type="text" id="theme-save-name" placeholder="Name this theme…"
                                 style="flex:1; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
+                                data-modal-row="1001"
                                 onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
                                 onkeydown="if(event.key==='Enter')themeSaveNamed()">
-                            <button class="nav-btn" onclick="themeSaveNamed()">Save as…</button>
+                            <button class="nav-btn" data-modal-row="1001" onclick="themeSaveNamed()">Save as…</button>
                         </div>
                     </div>
 
@@ -1505,6 +1564,7 @@ function closeBgModal() {
     btn.textContent = 'Save';
     document.getElementById('bg-file-input').value = '';
     _bgFile = null;
+    _bgFilePath = null;
 }
 
 function openBackupModal() {
@@ -1515,6 +1575,13 @@ function closeBackupModal() {
     document.getElementById('backup-modal').style.display = 'none';
     document.getElementById('backup-status').textContent = '';
     document.getElementById('restore-status').textContent = '';
+    _restoreFile = null;
+    _restorePath = null;
+    document.getElementById('restore-filename').style.display = 'none';
+    const rbtn = document.getElementById('restore-btn');
+    rbtn.style.opacity = '0.4';
+    rbtn.style.cursor  = 'not-allowed';
+    rbtn.textContent   = 'Restore';
 }
 
 function setBackupTab(tab) {
@@ -1545,6 +1612,8 @@ function closePlayniteModal() {
     document.getElementById('playnite-modal').style.display = 'none';
 }
 async function runPlayniteImport() {
+    if (_fileDlgBusy) return;
+    _fileDlgBusy = true;
     const status = document.getElementById('playnite-status');
     status.className = 'tool-status info';
     status.textContent = 'Opening file dialog...';
@@ -1554,8 +1623,10 @@ async function runPlayniteImport() {
     } catch (e) {
         status.textContent = `Error opening file dialog: ${e.message}`;
         status.className = 'tool-status error';
+        setTimeout(() => { _fileDlgBusy = false; }, 300);
         return;
     }
+    setTimeout(() => { _fileDlgBusy = false; }, 300);
     if (!path) {
         status.textContent = '';
         return;
@@ -1670,19 +1741,23 @@ async function _pagRefreshSantaGifts() {
         const cb = document.getElementById('pag-santa-cb');
         const label = document.getElementById('pag-santa-label');
         const setup = document.getElementById('pag-santa-setup');
+        const santaRow = document.getElementById('pag-santa-row');
         if (_pagSantaGifts.length) {
             document.getElementById('pag-santa-count').textContent = _pagSantaGifts.length;
             cb.disabled = false;
             label.style.opacity = '';
             label.style.cursor = 'pointer';
             setup.style.display = 'none';
+            santaRow.dataset.modalRow = 'pag-santa';
         } else {
             cb.disabled = true;
             cb.checked = false;
             label.style.opacity = '0.45';
             label.style.cursor = 'default';
             setup.style.display = '';
+            santaRow.removeAttribute('data-modal-row');
         }
+        _pagRenumberRows();
     } catch (e) { /* silent */ }
 }
 function closePagModal() {
@@ -1713,17 +1788,21 @@ function closeSantaModal() {
 function _renderSantaList() {
     const el = document.getElementById('santa-list');
     document.getElementById('santa-count').textContent = _santaGifts.length;
-    if (!_santaGifts.length) {
+    const sorted = _santaGifts.slice().sort((a, b) => a.name.localeCompare(b.name));
+    if (!sorted.length) {
         el.innerHTML = '<div style="padding:10px 12px; color:var(--text-secondary); font-size:0.85rem;">No games added yet.</div>';
-        return;
+    } else {
+        el.innerHTML = sorted
+            .map((g, i) => `<div data-modal-row="${i + 1}" onclick="_santaRemove(${g.appid})" style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; border-bottom:1px solid var(--border); cursor:pointer;">
+                <span style="font-size:0.88rem; color:var(--text-primary);">${escHtml(g.name)}</span>
+                <span style="color:var(--text-secondary); font-size:0.85rem; padding:0 2px; line-height:1;">&#x2715;</span>
+            </div>`)
+            .join('');
     }
-    el.innerHTML = _santaGifts
-        .slice().sort((a, b) => a.name.localeCompare(b.name))
-        .map(g => `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; border-bottom:1px solid var(--border);">
-            <span style="font-size:0.88rem; color:var(--text-primary);">${escHtml(g.name)}</span>
-            <button onclick="_santaRemove(${g.appid})" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:0.85rem; padding:0 2px; line-height:1;">&#x2715;</button>
-        </div>`)
-        .join('');
+    const closeRow = sorted.length + 1;
+    document.querySelectorAll('#santa-modal .nav-btn').forEach(btn => {
+        btn.dataset.modalRow = closeRow;
+    });
 }
 
 function _santaRemove(appid) {
@@ -1801,14 +1880,22 @@ async function saveSantaGifts() {
 
 let _pagSantaGifts = [];  // [{appid, name}] loaded once on pagInit
 
+let _pagCompDefaults = ['Never Played', 'Unfinished'];
+
 async function pagInit() {
     try {
-        const [tagsRes, sgRes] = await Promise.all([
+        const [tagsRes, sgRes, compRes] = await Promise.all([
             fetch('/api/pagywosg-tags'),
             fetch('/api/pagywosg-sg-group'),
+            fetch('/api/pagywosg-comp-defaults'),
         ]);
         const tagsData = await tagsRes.json();
         const sgData   = await sgRes.json();
+        const compData = await compRes.json();
+        _pagCompDefaults = compData.statuses || ['Never Played', 'Unfinished'];
+        document.querySelectorAll('.pag-comp-btn').forEach(b => {
+            b.classList.toggle('active', _pagCompDefaults.includes(b.dataset.val));
+        });
         if (tagsData.status !== 'success') throw new Error(tagsData.message);
         _pagAllTags = tagsData.tags;
         _pagWinsTags = tagsData.tags;
@@ -1916,6 +2003,21 @@ function _pagShowSgGroupPicker() {
         </div>`;
 }
 
+function _pagRenumberRows() {
+    const modal = document.getElementById('pagywosg-modal');
+    if (!modal) return;
+    const all = [...modal.querySelectorAll('[data-modal-row]')];
+    let seq = 0;
+    const seen = new Map();
+    for (const el of all) {
+        const key = el.dataset.modalRow;
+        if (!seen.has(key)) seen.set(key, seq++);
+    }
+    for (const el of all) {
+        el.dataset.modalRow = seen.get(el.dataset.modalRow);
+    }
+}
+
 function pagRenderTags(pool) {
     const tags = pool === 'all' ? _pagAllTags : _pagWinsTags;
     const selected = pool === 'all' ? _pagSelectedAll : _pagSelectedWins;
@@ -1926,6 +2028,7 @@ function pagRenderTags(pool) {
         const chip = document.createElement('span');
         chip.className = 'pag-tag-chip' + (selected.has(tag) ? ' selected' : '') + (search && !tag.toLowerCase().includes(search) ? ' hidden' : '');
         chip.textContent = tag;
+        chip.dataset.modalRow = 'pag-' + pool + '-tags';
         chip.onclick = () => {
             if (selected.has(tag)) selected.delete(tag);
             else selected.add(tag);
@@ -1934,19 +2037,24 @@ function pagRenderTags(pool) {
         };
         container.appendChild(chip);
     });
+    _pagRenumberRows();
 }
 
 function pagFilterTags(pool) { pagRenderTags(pool); }
 
+let _pagCondIdCounter = 0;
+
 function pagAddCond(pool, opts) {
     const container = document.getElementById(`pag-${pool}-conds`);
+    const condRowKey = 'pag-' + pool + '-cond-' + (_pagCondIdCounter++);
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px;';
+    row.style.cssText = 'display:flex; gap:6px; align-items:center; margin-bottom:6px; margin-left:3px;';
 
     const sharedSelStyle = 'padding:5px 8px; background-color:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem;';
 
     const colSel = document.createElement('select');
     colSel.style.cssText = sharedSelStyle + 'width:150px;';
+    colSel.dataset.modalRow = condRowKey;
     PAG_COLUMNS.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.value; opt.textContent = c.label;
@@ -1955,6 +2063,7 @@ function pagAddCond(pool, opts) {
 
     const opSel = document.createElement('select');
     opSel.style.cssText = sharedSelStyle + 'width:150px;';
+    opSel.dataset.modalRow = condRowKey;
     PAG_OPS.forEach(o => {
         const opt = document.createElement('option');
         opt.value = o.value; opt.textContent = o.label;
@@ -1965,13 +2074,15 @@ function pagAddCond(pool, opts) {
     valInput.type = 'text';
     valInput.placeholder = 'value';
     valInput.style.cssText = 'width:150px; padding:5px 8px; background:var(--bg-input); border:1px solid var(--border); border-radius:4px; color:var(--text-primary); font-size:0.82rem; outline:none;';
+    valInput.dataset.modalRow = condRowKey;
     valInput.onfocus = () => valInput.style.borderColor = 'var(--accent)';
     valInput.onblur  = () => valInput.style.borderColor = 'var(--border)';
 
     const removeBtn = document.createElement('button');
     removeBtn.textContent = '✕';
     removeBtn.style.cssText = 'background:none; border:none; color:var(--text-danger); font-size:1rem; cursor:pointer; padding:0 2px; line-height:1;';
-    removeBtn.onclick = () => { row.remove(); pagUpdateSql(); };
+    removeBtn.dataset.modalRow = condRowKey;
+    removeBtn.onclick = () => { row.remove(); pagUpdateSql(); _pagRenumberRows(); };
 
     function pagRefreshOps() {
         const isDate = PAG_DATE_COLUMNS.has(colSel.value);
@@ -2009,6 +2120,7 @@ function pagAddCond(pool, opts) {
     }
 
     container.appendChild(row);
+    _pagRenumberRows();
 }
 
 function pagCondToSql(row) {
@@ -2125,6 +2237,12 @@ function pagBuildTree() {
 function pagToggleComp(btn) {
     btn.classList.toggle('active');
     pagUpdateSql();
+    _pagCompDefaults = [...document.querySelectorAll('.pag-comp-btn.active')].map(b => b.dataset.val);
+    fetch('/api/pagywosg-comp-defaults', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({statuses: _pagCompDefaults}),
+    });
 }
 
 function pagBuildWhere() {
@@ -2273,7 +2391,7 @@ function pagUpdateAppidsInfo(pool) {
     const listId = `pag-${pool}-appids-list`;
     el.style.display = '';
     el.innerHTML = `
-        <span style="cursor:pointer; user-select:none;" onclick="
+        <span data-modal-row="pag-${pool}-appids-toggle" style="cursor:pointer; user-select:none; margin-left:3px;" onclick="
             const l=document.getElementById('${listId}');
             const open=l.style.display==='none';
             l.style.display=open?'':'none';
@@ -2289,6 +2407,7 @@ function pagUpdateAppidsInfo(pool) {
                 ).join(', ')}</span></div>`
             ).join('')}
         </div>`;
+    _pagRenumberRows();
 }
 
 async function pagAutoFill(next = false) {
@@ -2372,7 +2491,7 @@ function pagClearAll() {
     document.getElementById('pag-all-conds').innerHTML = '';
     document.getElementById('pag-wins-conds').innerHTML = '';
     document.querySelectorAll('.pag-comp-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.val === 'Never Played' || b.dataset.val === 'Unfinished');
+        b.classList.toggle('active', _pagCompDefaults.includes(b.dataset.val));
     });
     _pagEventId   = null;
     _pagEventName = '';
@@ -2395,6 +2514,44 @@ function setImportStep(n) {
         const ind = document.getElementById(`step-ind-${i}`);
         ind.className = i < n ? 'done' : i === n ? 'active' : '';
     });
+}
+
+async function chooseDbFile() {
+    if (_fileDlgBusy) return;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+        _fileDlgBusy = true;
+        let path;
+        try {
+            path = await window.pywebview.api.pick_open_path(['Database Files (*.db)']);
+        } finally {
+            setTimeout(() => { _fileDlgBusy = false; }, 300);
+        }
+        if (!path) return;
+        const status = document.getElementById('upload-status');
+        status.className = 'tool-status info';
+        status.textContent = 'Reading database…';
+        try {
+            const res  = await fetch('/api/import-inspect-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            const data = await res.json();
+            if (data.status !== 'success') {
+                status.className = 'tool-status error';
+                status.textContent = '✘ ' + data.message;
+                return;
+            }
+            _dbMeta = data;
+            buildStep2();
+            setImportStep(2);
+        } catch (e) {
+            status.className = 'tool-status error';
+            status.textContent = '✘ Failed to read database.';
+        }
+    } else {
+        document.getElementById('db-file-input').click();
+    }
 }
 
 async function uploadDatabase(input) {
@@ -2609,6 +2766,7 @@ function resetImport() {
 
 // ── BACKUP ──────────────────────────────────────────────────────────────────
 async function runBackup() {
+    if (_fileDlgBusy) return;
     const btn        = document.getElementById('backup-btn');
     const status     = document.getElementById('backup-status');
     const includeArt = document.getElementById('backup-include-art').checked;
@@ -2622,6 +2780,7 @@ async function runBackup() {
         + String(now.getSeconds()).padStart(2,'0');
     const suggestedName = `playdate_backup_${ts}.zip`;
 
+    _fileDlgBusy = true;
     btn.disabled = true;
     btn.textContent = 'Creating backup…';
     status.className = 'tool-status info';
@@ -2690,6 +2849,7 @@ async function runBackup() {
         status.className = 'tool-status error';
         status.textContent = '✘ ' + e.message;
     } finally {
+        setTimeout(() => { _fileDlgBusy = false; }, 300);
         btn.disabled = false;
         btn.textContent = 'Download Backup';
     }
@@ -2697,6 +2857,32 @@ async function runBackup() {
 
 // ── RESTORE ─────────────────────────────────────────────────────────────────
 let _restoreFile = null;
+let _restorePath = null;
+
+async function chooseRestoreFile() {
+    if (_fileDlgBusy) return;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+        _fileDlgBusy = true;
+        let path;
+        try {
+            path = await window.pywebview.api.pick_open_path(['ZIP Files (*.zip)']);
+        } finally {
+            setTimeout(() => { _fileDlgBusy = false; }, 300);
+        }
+        if (!path) return;
+        _restorePath = path;
+        _restoreFile = null;
+        const label = document.getElementById('restore-filename');
+        label.textContent = `Selected: ${path.split(/[\\/]/).pop()}`;
+        label.style.display = 'block';
+        const btn = document.getElementById('restore-btn');
+        btn.style.opacity = '1';
+        btn.style.cursor  = 'pointer';
+        document.getElementById('restore-status').textContent = '';
+    } else {
+        document.getElementById('restore-file-input').click();
+    }
+}
 
 function restoreDragOver(e) {
     e.preventDefault();
@@ -2730,42 +2916,52 @@ function setRestoreFile(file) {
         return;
     }
     _restoreFile = file;
+    _restorePath = null;
 
     const label = document.getElementById('restore-filename');
     label.textContent = `Selected: ${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
     label.style.display = 'block';
 
     const btn = document.getElementById('restore-btn');
-    btn.disabled = false;
     btn.style.opacity = '1';
-    btn.style.cursor = 'pointer';
+    btn.style.cursor  = 'pointer';
 
     document.getElementById('restore-status').textContent = '';
 }
 
 async function runRestore() {
-    if (!_restoreFile) return;
+    if (!_restoreFile && !_restorePath) return;
 
     const status = document.getElementById('restore-status');
     const btn    = document.getElementById('restore-btn');
+    const name   = _restoreFile ? _restoreFile.name : _restorePath.split(/[\\/]/).pop();
 
     const confirmed = await confirm(
-        `Restore from "${_restoreFile.name}"?\n\n` +
+        `Restore from "${name}"?\n\n` +
         `This will overwrite your current games.db, config.json, and state.json.\n` +
         `The page will reload after restore completes.`
     );
     if (!confirmed) return;
 
-    btn.disabled     = true;
-    btn.textContent  = 'Restoring…';
-    status.className = 'tool-status info';
-    status.textContent = 'Restoring — please wait…';
-
-    const formData = new FormData();
-    formData.append('backup_file', _restoreFile);
+    btn.style.opacity   = '0.4';
+    btn.style.cursor    = 'not-allowed';
+    btn.textContent     = 'Restoring…';
+    status.className    = 'tool-status info';
+    status.textContent  = 'Restoring — please wait…';
 
     try {
-        const res  = await fetch('/api/restore', { method: 'POST', body: formData });
+        let res;
+        if (_restorePath) {
+            res = await fetch('/api/restore-from-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: _restorePath })
+            });
+        } else {
+            const formData = new FormData();
+            formData.append('backup_file', _restoreFile);
+            res = await fetch('/api/restore', { method: 'POST', body: formData });
+        }
         const data = await res.json();
 
         if (data.status !== 'success') throw new Error(data.message || 'Restore failed.');
@@ -2775,15 +2971,39 @@ async function runRestore() {
 
         setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
-        status.className = 'tool-status error';
+        status.className  = 'tool-status error';
         status.textContent = '✘ ' + e.message;
-        btn.disabled    = false;
-        btn.textContent = 'Restore';
+        btn.style.opacity = '1';
+        btn.style.cursor  = 'pointer';
+        btn.textContent   = 'Restore';
     }
 }
 
 // ── BACKGROUND CHANGER ──────────────────────────────────────────────────────
 let _bgFile = null;
+let _bgFilePath = null;
+
+async function chooseBgFile() {
+    if (_fileDlgBusy) return;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+        _fileDlgBusy = true;
+        let path;
+        try {
+            path = await window.pywebview.api.pick_open_path();
+        } finally {
+            setTimeout(() => { _fileDlgBusy = false; }, 300);
+        }
+        if (!path) return;
+        _bgFile = null;
+        _bgFilePath = path;
+        const label = document.getElementById('bg-filename');
+        label.textContent = `Selected: ${path.split(/[\\/]/).pop()}`;
+        label.style.display = 'block';
+        document.getElementById('bg-status').textContent = '';
+    } else {
+        document.getElementById('bg-file-input').click();
+    }
+}
 
 function bgDragOver(e) {
     e.preventDefault();
@@ -2818,6 +3038,7 @@ function setBgFile(file) {
         return;
     }
     _bgFile = file;
+    _bgFilePath = null;
     const label = document.getElementById('bg-filename');
     label.textContent = `Selected: ${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
     label.style.display = 'block';
@@ -2843,7 +3064,18 @@ async function runSetBackground() {
         });
 
         // Upload new image if one was selected
-        if (_bgFile) {
+        if (_bgFilePath) {
+            const res  = await fetch('/api/set-background-from-path', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: _bgFilePath })
+            });
+            const data = await res.json();
+            if (data.status !== 'success') throw new Error(data.message || 'Upload failed');
+            status.className   = 'tool-status success';
+            status.textContent = '✔ Background updated. Reloading…';
+            setTimeout(() => window.location.reload(), 800);
+        } else if (_bgFile) {
             const formData = new FormData();
             formData.append('background', _bgFile);
             const res  = await fetch('/api/set-background', { method: 'POST', body: formData });
@@ -2931,18 +3163,21 @@ async function _loadBlacklist() {
 
         empty.style.display = 'none';
         table.style.display = 'table';
-        tbody.innerHTML = entries.map(e => `
+        tbody.innerHTML = entries.map((e, i) => `
             <tr id="bl-row-${e.appid}" style="border-bottom:1px solid var(--border);">
                 <td style="padding:9px 10px; color:var(--text-primary); font-size:0.88rem;">${_escHtml(e.name || '—')}</td>
                 <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
                 <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
                 <td style="padding:9px 10px; text-align:right;">
-                    <button onclick="removeFromBlacklist(${e.appid}, this)" class="bl-remove-btn" data-modal-row="0"
+                    <button onclick="removeFromBlacklist(${e.appid}, this)" class="bl-remove-btn" data-modal-row="${i}"
                         style="background:none; border:1px solid var(--color-danger); color:var(--text-danger); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
                         onmouseover="this.style.background='rgba(163,42,42,0.2)'"
                         onmouseout="this.style.background='none'">Remove</button>
                 </td>
             </tr>`).join('');
+        // Put Close on the row after the last remove button
+        document.querySelector('#blacklist-modal .nav-btn[onclick*="closeBlacklistModal"]')
+            ?.setAttribute('data-modal-row', entries.length);
     } catch (e) {
         status.className = 'tool-status error';
         status.textContent = '✘ ' + e.message;
@@ -3068,7 +3303,8 @@ function _themeRenderPanel() {
     panel.innerHTML = '';
 
     let currentGroup = null;
-    for (const meta of THEME_VAR_META) {
+    for (let i = 0; i < THEME_VAR_META.length; i++) {
+        const meta = THEME_VAR_META[i];
         if (meta.group !== currentGroup) {
             currentGroup = meta.group;
             const header = document.createElement('div');
@@ -3089,7 +3325,7 @@ function _themeRenderPanel() {
         row.innerHTML = `
             <div id="thpick-${safeKey}"
                  style="width:32px;height:32px;border-radius:6px;border:1px solid var(--border);background:${hexVal};cursor:pointer;flex-shrink:0;"
-                 data-tooltip="Pick color"></div>
+                 data-tooltip="Pick color" data-modal-row="${i + 1}"></div>
             <div class="theme-var-label">
                 <strong>${meta.label}</strong>
                 <span>${meta.desc}</span>
@@ -3097,11 +3333,12 @@ function _themeRenderPanel() {
             <input type="text" class="theme-var-hex"
                    id="thhex-${safeKey}"
                    value="${hexVal}" maxlength="9"
+                   data-modal-row="${i + 1}"
                    oninput="themeHexChange('${meta.key}', this.value)"
                    onblur="themeHexBlur('${meta.key}', this.value)">
             <button data-tooltip="Reset to active theme" onclick="themeResetVar('${meta.key}')"
                     style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.9rem;padding:0 2px;opacity:${isDefault ? '0.25' : '1'};transition:opacity 0.15s;"
-                    id="threset-${safeKey}">↺</button>
+                    id="threset-${safeKey}" data-modal-row="${i + 1}">↺</button>
         `;
         panel.appendChild(row);
         const swatchEl = row.querySelector(`#thpick-${safeKey}`);
@@ -3190,6 +3427,8 @@ async function themeExport() {
         _themeSetStatus('✘ Open the theme editor first to load a theme.', 'error');
         return;
     }
+    if (_fileDlgBusy) return;
+    _fileDlgBusy = true;
 
     const now = new Date();
     const ts  = now.getFullYear().toString()
@@ -3199,9 +3438,14 @@ async function themeExport() {
 
     // ── Path 1: pywebview native Save-As dialog ──────────────────────────────
     if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
-        const chosenPath = await window.pywebview.api.pick_save_path(
-            suggestedName, ['JSON Files (*.json)']
-        );
+        let chosenPath;
+        try {
+            chosenPath = await window.pywebview.api.pick_save_path(
+                suggestedName, ['JSON Files (*.json)']
+            );
+        } finally {
+            setTimeout(() => { _fileDlgBusy = false; }, 300);
+        }
         if (!chosenPath) {
             _themeSetStatus('Export cancelled.', '');
             return;
@@ -3223,6 +3467,7 @@ async function themeExport() {
         }
         return;
     }
+    setTimeout(() => { _fileDlgBusy = false; }, 300);
 
     // ── Path 2: browser blob download fallback ───────────────────────────────
     const payload = JSON.stringify({ playdate_theme: _themeVars }, null, 2);
@@ -3240,6 +3485,11 @@ async function themeExport() {
 
 // ── CSV EXPORT ───────────────────────────────────────────────────────────────
 
+function toggleCsvColPicker() {
+    const picker = document.getElementById('csv-col-picker');
+    picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+}
+
 function csvColAll(state) {
     document.querySelectorAll('.csv-col-cb').forEach(cb => cb.checked = state);
 }
@@ -3250,129 +3500,146 @@ function _csvSelectedCols() {
     return checked.length === cbs.length ? null : checked; // null = all
 }
 
+let _fileDlgBusy = false;
+
 async function runCsvExport() {
-    const status  = document.getElementById('csv-export-status');
-    const columns = _csvSelectedCols();
-    if (columns && columns.length === 0) {
-        status.className   = 'tool-status error';
-        status.textContent = '✘ Select at least one column.';
-        return;
-    }
-    status.className = 'tool-status info';
-    status.textContent = 'Preparing export…';
-
-    const now = new Date();
-    const ts  = now.getFullYear().toString()
-        + String(now.getMonth()+1).padStart(2,'0')
-        + String(now.getDate()).padStart(2,'0')
-        + '_' + String(now.getHours()).padStart(2,'0')
-        + String(now.getMinutes()).padStart(2,'0');
-    const suggestedName = `playdate_library_${ts}.csv`;
-
-    // ── Path 1: pywebview native Save-As dialog ──────────────────────────────
-    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
-        const chosenPath = await window.pywebview.api.pick_save_path(
-            suggestedName, ['CSV Files (*.csv)']
-        );
-        if (!chosenPath) {
-            status.textContent = 'Export cancelled.';
-            status.className   = 'tool-status';
+    if (_fileDlgBusy) return;
+    _fileDlgBusy = true;
+    try {
+        const status  = document.getElementById('csv-export-status');
+        const columns = _csvSelectedCols();
+        if (columns && columns.length === 0) {
+            status.className   = 'tool-status error';
+            status.textContent = '✘ Select at least one column.';
             return;
         }
+        status.className = 'tool-status info';
+        status.textContent = 'Preparing export…';
+
+        const now = new Date();
+        const ts  = now.getFullYear().toString()
+            + String(now.getMonth()+1).padStart(2,'0')
+            + String(now.getDate()).padStart(2,'0')
+            + '_' + String(now.getHours()).padStart(2,'0')
+            + String(now.getMinutes()).padStart(2,'0');
+        const suggestedName = `playdate_library_${ts}.csv`;
+
+        // ── Path 1: pywebview native Save-As dialog ──────────────────────────────
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
+            const chosenPath = await window.pywebview.api.pick_save_path(
+                suggestedName, ['CSV Files (*.csv)']
+            );
+            if (!chosenPath) {
+                status.textContent = 'Export cancelled.';
+                status.className   = 'tool-status';
+                return;
+            }
+            try {
+                const res  = await fetch('/api/export-csv-to-path', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: chosenPath, filter_tree: null, columns })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const sizeKB = Math.round((data.size || 0) / 1024);
+                    status.className   = 'tool-status success';
+                    status.textContent = `✔ Exported ${data.count} games (${sizeKB} KB) → ${chosenPath}`;
+                } else {
+                    throw new Error(data.message || 'Export failed.');
+                }
+            } catch (e) {
+                status.className   = 'tool-status error';
+                status.textContent = '✘ ' + e.message;
+            }
+            return;
+        }
+
+        // ── Path 2: browser blob download fallback ───────────────────────────────
         try {
-            const res  = await fetch('/api/export-csv-to-path', {
+            const res = await fetch('/api/export-csv', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: chosenPath, filter_tree: null, columns })
+                body: JSON.stringify({ filter_tree: null, columns })
             });
-            const data = await res.json();
-            if (data.status === 'success') {
-                const sizeKB = Math.round((data.size || 0) / 1024);
-                status.className   = 'tool-status success';
-                status.textContent = `✔ Exported ${data.count} games (${sizeKB} KB) → ${chosenPath}`;
-            } else {
-                throw new Error(data.message || 'Export failed.');
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.message || `Server error ${res.status}`);
             }
+            const blob     = await res.blob();
+            const url      = URL.createObjectURL(blob);
+            const a        = document.createElement('a');
+            a.href         = url;
+            a.download     = suggestedName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            const sizeKB = Math.round(blob.size / 1024);
+            status.className   = 'tool-status success';
+            status.textContent = `✔ Export downloaded (${sizeKB} KB)`;
         } catch (e) {
             status.className   = 'tool-status error';
             status.textContent = '✘ ' + e.message;
         }
-        return;
+    } finally {
+        setTimeout(() => { _fileDlgBusy = false; }, 300);
     }
+}
 
-    // ── Path 2: browser blob download fallback ───────────────────────────────
+async function themeImportOpen() {
+    if (_fileDlgBusy) return;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+        _fileDlgBusy = true;
+        try {
+            const path = await window.pywebview.api.pick_open_path(['PlayDate Theme (*.json)']);
+            if (path) {
+                const res = await fetch('/api/read-theme-file', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+                const data = await res.json();
+                if (data.status !== 'success') { _themeSetStatus('✘ Could not read file.', 'error'); }
+                else _themeImportText(data.text);
+            }
+        } catch (e) { _themeSetStatus('✘ Could not open file.', 'error'); }
+        setTimeout(() => { _fileDlgBusy = false; }, 300);
+    } else {
+        document.getElementById('theme-import-input').click();
+    }
+}
+
+function _themeImportText(text) {
     try {
-        const res = await fetch('/api/export-csv', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filter_tree: null, columns })
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.message || `Server error ${res.status}`);
+        const parsed = JSON.parse(text);
+        if (!parsed.playdate_theme || typeof parsed.playdate_theme !== 'object') {
+            _themeSetStatus('✘ Not a valid PlayDate theme file.', 'error');
+            return;
         }
-        const blob     = await res.blob();
-        const url      = URL.createObjectURL(blob);
-        const a        = document.createElement('a');
-        a.href         = url;
-        a.download     = suggestedName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        const sizeKB = Math.round(blob.size / 1024);
-        status.className   = 'tool-status success';
-        status.textContent = `✔ Export downloaded (${sizeKB} KB)`;
-    } catch (e) {
-        status.className   = 'tool-status error';
-        status.textContent = '✘ ' + e.message;
+        const incoming = parsed.playdate_theme;
+        const knownKeys = new Set(THEME_VAR_META.map(m => m.key));
+        let loaded = 0;
+        const merged = Object.assign({}, _themeVars);
+        for (const [k, v] of Object.entries(incoming)) {
+            if (!knownKeys.has(k)) continue;
+            const hex = _cssValueToHex(String(v));
+            if (hex === '#000000' && !String(v).match(/^#?0{3,6}$|black/i)) continue;
+            merged[k] = hex;
+            loaded++;
+        }
+        if (loaded === 0) { _themeSetStatus('✘ No valid color values found in file.', 'error'); return; }
+        _themeVars = merged;
+        for (const [k, v] of Object.entries(_themeVars)) _applyVarToDocument(k, v);
+        _themeRenderPanel();
+        _themeSetStatus(`✔ Theme imported — ${loaded} color${loaded !== 1 ? 's' : ''} loaded. Name it and Save as… to keep it.`, 'success');
+    } catch (err) {
+        _themeSetStatus('✘ Could not parse file. Make sure it is a valid JSON theme.', 'error');
     }
 }
 
 function themeImport(input) {
     const file = input.files[0];
-    input.value = ''; // reset so same file can be re-imported
+    input.value = '';
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = (e) => {
-        try {
-            const parsed = JSON.parse(e.target.result);
-
-            if (!parsed.playdate_theme || typeof parsed.playdate_theme !== 'object') {
-                _themeSetStatus('✘ Not a valid PlayDate theme file.', 'error');
-                return;
-            }
-
-            const incoming = parsed.playdate_theme;
-            const knownKeys = new Set(THEME_VAR_META.map(m => m.key));
-
-            let loaded = 0;
-            const merged = Object.assign({}, _themeVars);
-            for (const [k, v] of Object.entries(incoming)) {
-                if (!knownKeys.has(k)) continue;
-                const hex = _cssValueToHex(String(v));
-                if (hex === '#000000' && !String(v).match(/^#?0{3,6}$|black/i)) continue;
-                merged[k] = hex;
-                loaded++;
-            }
-
-            if (loaded === 0) {
-                _themeSetStatus('✘ No valid color values found in file.', 'error');
-                return;
-            }
-
-            _themeVars = merged;
-            for (const [k, v] of Object.entries(_themeVars)) {
-                _applyVarToDocument(k, v);
-            }
-            _themeRenderPanel();
-            _themeSetStatus(`✔ Theme imported — ${loaded} color${loaded !== 1 ? 's' : ''} loaded. Name it and Save as… to keep it.`, 'success');
-
-        } catch (err) {
-            _themeSetStatus('✘ Could not parse file. Make sure it is a valid JSON theme.', 'error');
-        }
-    };
+    reader.onload = (e) => _themeImportText(e.target.result);
     reader.readAsText(file);
 }
 
@@ -3428,6 +3695,8 @@ function _renderSettingsThemes() {
     const btnStyle = 'display:block;width:100%;text-align:left;padding:10px 14px;background:none;border:none;border-radius:5px;color:var(--text-primary);font-size:0.9rem;cursor:pointer;';
     const labelStyle = 'font-size:0.72rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;';
 
+    let _rowIdx = 0;
+
     // Presets
     const presetsLabel = document.createElement('div');
     presetsLabel.style.cssText = labelStyle;
@@ -3437,6 +3706,7 @@ function _renderSettingsThemes() {
     for (const preset of THEME_PRESETS) {
         const btn = document.createElement('button');
         btn.style.cssText = btnStyle;
+        btn.dataset.modalRow = _rowIdx++;
         btn.textContent = preset.name;
         btn.onmouseover = () => btn.style.background = 'var(--bg-input)';
         btn.onmouseout  = () => btn.style.background = 'none';
@@ -3462,6 +3732,7 @@ function _renderSettingsThemes() {
 
             const btn = document.createElement('button');
             btn.style.cssText = btnStyle + 'flex:1;';
+            btn.dataset.modalRow = _rowIdx;
             btn.textContent = name;
             btn.onmouseover = () => btn.style.background = 'var(--bg-input)';
             btn.onmouseout  = () => btn.style.background = 'none';
@@ -3469,6 +3740,7 @@ function _renderSettingsThemes() {
 
             const del = document.createElement('button');
             del.style.cssText = 'background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.85rem;padding:4px 8px;flex-shrink:0;transition:color 0.15s;';
+            del.dataset.modalRow = _rowIdx++;
             del.title = 'Delete';
             del.textContent = '✕';
             let _delTimer = null;
@@ -3583,6 +3855,7 @@ function _renderAccountList() {
     for (const acct of _cfgAccounts) {
         const btn = document.createElement('button');
         btn.className = 'nav-btn';
+        btn.dataset.modalRow = '0';
         btn.textContent = acct.label || acct.steam_id;
         if (acct.active) btn.style.cssText = 'background:var(--accent); color:var(--on-accent);';
         btn.disabled = acct.active;
@@ -3871,7 +4144,16 @@ function closeAppearanceModal() {
 function _onUiScaleSlider(el) {
     document.getElementById('ui-scale-val').textContent = el.value + '%';
     document.getElementById('ui-scale-style').textContent = 'html { zoom: ' + el.value + '%; }';
+    const pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--slider-pct', pct + '%');
 }
+
+(function _initUiScaleSlider() {
+    const el = document.getElementById('ui-scale-slider');
+    if (!el) return;
+    const pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--slider-pct', pct + '%');
+})();
 function saveUiScale() {
     const val = parseInt(document.getElementById('ui-scale-slider').value, 10);
     const status = document.getElementById('ui-scale-status');
@@ -3951,6 +4233,7 @@ function _openManageModal(id) {
         modal = document.getElementById(`${id}-manage-modal`);
     }
     modal.style.display = 'flex';
+    window._inputMgr?.registerModal?.(`${id}-manage-modal`);
     _manageRefreshAuth(id);
     _manageLoadLauncherConfig(id);
     for (const cb of (_manageOnOpen[id] || [])) cb();
@@ -4131,6 +4414,7 @@ function _manageOpenOauth(id) {
     document.getElementById(`${id}-manage-oauth-input`).value = '';
     document.getElementById(`${id}-manage-oauth-status`).textContent = '';
     modal.style.display = 'flex';
+    window._inputMgr?.registerModal?.(`${id}-manage-oauth-modal`);
 }
 
 function _closeManageOauth(id) {
@@ -4259,7 +4543,7 @@ async function _manageOauthSubmit(id) {
     }
 }
 
-function _buildManageBlockHtml(id, block, infoIdx) {
+function _buildManageBlockHtml(id, block, infoIdx, rowCtr) {
     const eid = escHtml(id);
     switch (block.type) {
         case 'text':
@@ -4276,13 +4560,15 @@ function _buildManageBlockHtml(id, block, infoIdx) {
             else if (a.type === 'oauth_paste') onclick = `_manageOpenOauth('${eid}')`;
             else if (a.type === 'oauth_popup') onclick = `_manageOpenAuthPopup('${eid}')`;
             else if (a.type === 'post')        onclick = `_managePost('${eid}',${JSON.stringify(a.endpoint)},${JSON.stringify(a.on_success || '')})`;
-            const muted = block.variant === 'muted' ? ' style="color:var(--text-secondary);"' : '';
+            const row = rowCtr.r++;
+            const colorStyle = block.variant === 'muted' ? 'color:var(--text-secondary);' : '';
             const popupStatus = a.type === 'oauth_popup'
                 ? `<div id="${eid}-manage-popup-status" class="tool-status" style="margin-top:6px;"></div>`
                 : '';
-            return `<button class="nav-btn"${muted} onclick="${escHtml(onclick)}">${escHtml(block.label)}</button>${popupStatus}`;
+            return `<button class="nav-btn" data-modal-row="${row}" style="display:block;width:100%;margin-bottom:6px;${colorStyle}" onclick="${escHtml(onclick)}">${escHtml(block.label)}</button>${popupStatus}`;
         }
         case 'buttons': {
+            const row = rowCtr.r++;
             const btns = (block.items || []).map(btn => {
                 const a = btn.action || {};
                 let onclick = '';
@@ -4290,7 +4576,7 @@ function _buildManageBlockHtml(id, block, infoIdx) {
                 else if (a.type === 'open_url')    onclick = `_manageOpenUrl(${JSON.stringify(a.url)})`;
                 else if (a.type === 'post')         onclick = `_managePost('${eid}',${JSON.stringify(a.endpoint)},${JSON.stringify(a.on_success || '')})`;
                 const muted = btn.variant === 'muted' ? ' style="color:var(--text-secondary);"' : '';
-                return `<button class="nav-btn"${muted} onclick="${escHtml(onclick)}">${escHtml(btn.label)}</button>`;
+                return `<button class="nav-btn" data-modal-row="${row}"${muted} onclick="${escHtml(onclick)}">${escHtml(btn.label)}</button>`;
             }).join('');
             return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">${btns}</div>`;
         }
@@ -4298,20 +4584,24 @@ function _buildManageBlockHtml(id, block, infoIdx) {
             return `<div id="${eid}-manage-status-${escHtml(block.key)}" class="tool-status"></div>`;
         case 'launcher_config': {
             const inputStyle = 'width:100%;box-sizing:border-box;margin-top:3px;padding:5px 8px;font-size:0.8rem;background:var(--bg-input);border:1px solid var(--border);border-radius:3px;color:var(--text-primary);';
+            const rWine = rowCtr.r++;
+            const rPrefix = rowCtr.r++;
+            const rSave = rowCtr.r++;
+            const rInstall = rowCtr.r++;
             return `<div style="display:flex;flex-direction:column;gap:8px;">
             <label style="display:block;color:var(--text-primary);font-size:0.82rem;">Wine binary
-                <input type="text" id="${eid}-manage-launcher-wine-bin" style="${inputStyle}" placeholder="e.g. /usr/bin/wine64">
+                <input type="text" id="${eid}-manage-launcher-wine-bin" data-modal-row="${rWine}" style="${inputStyle}" placeholder="e.g. /usr/bin/wine64">
             </label>
             <label style="display:block;color:var(--text-primary);font-size:0.82rem;">Wine prefix path
-                <input type="text" id="${eid}-manage-launcher-prefix" style="${inputStyle}" placeholder="e.g. ~/.wine-${eid}">
+                <input type="text" id="${eid}-manage-launcher-prefix" data-modal-row="${rPrefix}" style="${inputStyle}" placeholder="e.g. ~/.wine-${eid}">
             </label>
             <div id="${eid}-manage-launcher-msg" style="display:none;font-size:0.78rem;"></div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="0" onclick="_manageSaveLauncher('${eid}')">Save</button>
-                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="0" onclick="_manageRecheckLauncher('${eid}')">Re-check status</button>
+                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="${rSave}" onclick="_manageSaveLauncher('${eid}')">Save</button>
+                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="${rSave}" onclick="_manageRecheckLauncher('${eid}')">Re-check status</button>
             </div>
             <div id="${eid}-manage-launcher-install-wrap" style="display:none;">
-                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="0" onclick="_manageLauncherInstall('${eid}')">Install launcher</button>
+                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="${rInstall}" onclick="_manageLauncherInstall('${eid}')">Install launcher</button>
                 <div id="${eid}-manage-launcher-install-status" class="tool-status" style="margin-top:6px;"></div>
             </div>
         </div>`;
@@ -4320,11 +4610,11 @@ function _buildManageBlockHtml(id, block, infoIdx) {
     return '';
 }
 
-function _buildManageSectionItems(id, items) {
+function _buildManageSectionItems(id, items, rowCtr) {
     let html = '';
     let infoIdx = 0;
     for (const block of (items || [])) {
-        html += _buildManageBlockHtml(id, block, infoIdx);
+        html += _buildManageBlockHtml(id, block, infoIdx, rowCtr);
         if (block.type === 'info_endpoint') infoIdx++;
     }
     return html;
@@ -4342,16 +4632,16 @@ function _buildManageOauthHtml(id, action) {
       <button onclick="_closeManageOauth('${eid}')" style="${closeStyle}">&#x2715;</button>
     </div>
     <ol style="font-size:0.85rem;color:var(--text-secondary);padding-left:1.2em;margin:0 0 14px;line-height:1.7;">${instructions}</ol>
-    <button class="nav-btn" style="margin-bottom:14px;" onclick="_manageOauthOpenUrl('${eid}')">${escHtml(action.open_label || 'Open Login')}</button>
+    <button class="nav-btn" data-modal-row="0" style="margin-bottom:14px;" onclick="_manageOauthOpenUrl('${eid}')">${escHtml(action.open_label || 'Open Login')}</button>
     <div style="margin-bottom:8px;">
       <label style="font-size:0.78rem;color:var(--text-secondary);display:block;margin-bottom:3px;">Paste the URL from the address bar</label>
-      <input id="${eid}-manage-oauth-input" type="text" placeholder="${escHtml(action.input_placeholder || '')}"
+      <input id="${eid}-manage-oauth-input" type="text" data-modal-row="1" placeholder="${escHtml(action.input_placeholder || '')}"
         style="width:100%;box-sizing:border-box;padding:7px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--text-primary);font-size:0.85rem;outline:none;"
         onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
         onkeydown="if(event.key==='Enter')_manageOauthSubmit('${eid}')">
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <button class="nav-btn" onclick="_manageOauthSubmit('${eid}')">${escHtml(action.submit_label || 'Connect')}</button>
+      <button class="nav-btn" data-modal-row="2" onclick="_manageOauthSubmit('${eid}')">${escHtml(action.submit_label || 'Connect')}</button>
       <div id="${eid}-manage-oauth-status" class="tool-status" style="margin:0;"></div>
     </div>
   </div>
@@ -4363,12 +4653,13 @@ function _buildManageModalHtml(id, name, spec) {
     const closeStyle = 'background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;';
     let sectionsHtml = '';
     let oauthHtml    = '';
+    const rowCtr = {r: 0};
 
     for (const section of (spec.sections || [])) {
         let bodyHtml = '';
         if (section.auth) {
-            const disconnHtml = _buildManageSectionItems(id, section.auth.disconnected);
-            const connHtml    = _buildManageSectionItems(id, section.auth.connected);
+            const disconnHtml = _buildManageSectionItems(id, section.auth.disconnected, rowCtr);
+            const connHtml    = _buildManageSectionItems(id, section.auth.connected, rowCtr);
             bodyHtml = `
       <div id="${eid}-manage-disconnected"><div style="padding:8px 10px;">${disconnHtml}</div></div>
       <div id="${eid}-manage-connected" style="display:none;"><div style="padding:8px 10px;">${connHtml}</div></div>`;
@@ -4380,7 +4671,7 @@ function _buildManageModalHtml(id, name, spec) {
                 }
             }
         } else {
-            bodyHtml = `<div style="padding:8px 10px;">${_buildManageSectionItems(id, section.items)}</div>`;
+            bodyHtml = `<div style="padding:8px 10px;">${_buildManageSectionItems(id, section.items, rowCtr)}</div>`;
         }
 
         const titleHtml = section.title
@@ -4433,7 +4724,8 @@ async function _renderPluginsList() {
             body.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">No plugins installed.</div>';
             return;
         }
-        body.innerHTML = plugins.map(p => {
+        body.innerHTML = plugins.map((p, pluginIdx) => {
+            const pluginRow = pluginIdx + 2;
             const needsLauncher = p.launcher && p.launcher.required;
             const lstatus = launcherStatus[p.platform];
             let launcherBadge = '';
@@ -4448,7 +4740,7 @@ async function _renderPluginsList() {
             }
             if (p.manage_ui) _manageSpecs[p.id] = {name: p.name, spec: p.manage_ui};
             const manageBtn = p.manage_ui
-                ? `<button class="nav-btn" style="font-size:0.78rem;flex-shrink:0;margin-left:8px;" data-modal-row="0" onclick="_openManageModal('${escHtml(p.id)}')">Manage</button>`
+                ? `<button class="nav-btn" style="font-size:0.78rem;flex-shrink:0;margin-left:8px;" data-modal-row="${pluginRow}" onclick="_openManageModal('${escHtml(p.id)}')">Manage</button>`
                 : '';
             return `
             <div class="hub-section" id="plugin-row-${escHtml(p.id)}">
@@ -4460,7 +4752,7 @@ async function _renderPluginsList() {
                     <div style="display:flex;flex-shrink:0;margin-left:12px;gap:6px;">
                         ${manageBtn}
                         <button class="nav-btn" style="font-size:0.78rem;"
-                                data-modal-row="0"
+                                data-modal-row="${pluginRow}"
                                 onclick="_showUninstallConfirm('${escHtml(p.id)}',${p.game_count},this)">
                             Uninstall
                         </button>
@@ -4480,9 +4772,9 @@ async function _renderPluginsList() {
                         Also delete launcher and installed games
                     </label>` : ''}
                     <div style="display:flex;gap:8px;">
-                        <button class="nav-btn" style="font-size:0.78rem;background:rgba(199,71,71,0.8);border-color:rgba(199,71,71,0.8);" data-modal-row="0"
+                        <button class="nav-btn" style="font-size:0.78rem;background:rgba(199,71,71,0.8);border-color:rgba(199,71,71,0.8);" data-modal-row="${pluginRow}"
                                 onclick="_doUninstallPlugin('${escHtml(p.id)}',${p.game_count})">Confirm</button>
-                        <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="0"
+                        <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="${pluginRow}"
                                 onclick="_hideUninstallConfirm('${escHtml(p.id)}')">Cancel</button>
                     </div>
                 </div>
@@ -4622,6 +4914,7 @@ function _renderPlatformPriorityList() {
     _platPriority.forEach((plat, i) => {
         const li = document.createElement('li');
         li.dataset.plat = plat;
+        li.dataset.modalRow = i + 1;
         li.innerHTML = `<span class="plat-rank">${i + 1}</span><span style="pointer-events:none;">⠿</span><span style="flex:1; pointer-events:none;">${escHtml(_PLAT_PRIORITY_LABELS[plat] || plat)}</span>`;
         li.addEventListener('mousedown', e => { e.preventDefault(); _platBeginDrag(li); });
         list.appendChild(li);
@@ -4914,7 +5207,14 @@ async function exportSelectedFilter() {
     const suggestedName = `playdate-filter-${name.replace(/[^a-z0-9_-]/gi, '_')}.json`;
 
     if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_save_path) {
-        const path = await window.pywebview.api.pick_save_path(suggestedName, ['JSON Files (*.json)']);
+        if (_fileDlgBusy) return;
+        _fileDlgBusy = true;
+        let path;
+        try {
+            path = await window.pywebview.api.pick_save_path(suggestedName, ['JSON Files (*.json)']);
+        } finally {
+            setTimeout(() => { _fileDlgBusy = false; }, 300);
+        }
         if (!path) return;
         status.textContent = 'Saving…';
         status.className   = 'tool-status info';
@@ -4955,14 +5255,18 @@ async function importFilter() {
     _filterImportPending = null;
 
     if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+        if (_fileDlgBusy) return;
+        _fileDlgBusy = true;
         let path;
         try {
             path = await window.pywebview.api.pick_open_path(['JSON Files (*.json)']);
         } catch (e) {
             status.textContent = `Error opening file dialog: ${e.message}`;
             status.className   = 'tool-status error';
+            setTimeout(() => { _fileDlgBusy = false; }, 300);
             return;
         }
+        setTimeout(() => { _fileDlgBusy = false; }, 300);
         if (!path) return;
         status.textContent = 'Reading…';
         status.className   = 'tool-status info';

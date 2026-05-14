@@ -150,6 +150,8 @@
     <script>
     window._PLAT_LABELS  = {{ platform_labels() | tojson }};
     window._PLUGIN_API   = {{ plugin_js_api() | tojson }};
+    window._GAMEPAD_ENABLED            = {{ gamepad_enabled | tojson }};
+    window._GAMEPAD_SUPPRESS_ON_LAUNCH = {{ gamepad_suppress_on_launch | tojson }};
     </script>
     <script>
     // Reveal the body as soon as the DOM is ready
@@ -235,8 +237,6 @@
                 return;
             }
 
-            if (window._inputMgr) window._inputMgr.suppressForGame();
-
             let data = {};
             try {
                 const resp = await fetch(`/api/launch/${appid}`, { method: 'POST' });
@@ -245,10 +245,16 @@
 
             // Non-launch outcomes — show a message, do not reload
             if (data.status === 'installing' || data.status === 'not_installed' || data.status === 'error') {
-                if (window._inputMgr) window._inputMgr.clearSuppression();
                 if (data.message) showLaunchToast(data.message);
                 if (data.install_poller && typeof window[data.install_poller] === 'function') window[data.install_poller](appid);
                 return;
+            }
+
+            // Suppress gamepad only after confirming the game actually launched (is installed)
+            if (window._inputMgr) {
+                if (!window._inputMgr.active || window._GAMEPAD_SUPPRESS_ON_LAUNCH !== false) {
+                    window._inputMgr.suppressForGame();
+                }
             }
 
             // Successful launch — patch the card (library) and reorder last-played shelves (home)
@@ -598,6 +604,36 @@
             savePreference({ check_for_updates: _autoCheckUpdates });
         }
 
+        function _updateGamepadEnabledLabel() {
+            const btn = document.getElementById('gamepad-enabled-btn');
+            if (btn) btn.textContent = 'Gamepad input (experimental): ' + (window._GAMEPAD_ENABLED ? 'ON' : 'OFF');
+            _updateGamepadSuppressLabel();
+        }
+        function toggleGamepadEnabled() {
+            window._GAMEPAD_ENABLED = !window._GAMEPAD_ENABLED;
+            if (window._inputMgr) window._inputMgr.setGamepadEnabled(window._GAMEPAD_ENABLED);
+            _updateGamepadEnabledLabel();
+            savePreference({ gamepad_enabled: window._GAMEPAD_ENABLED });
+        }
+
+        function _updateGamepadSuppressLabel() {
+            const btn = document.getElementById('gamepad-suppress-btn');
+            if (!btn) return;
+            btn.textContent = 'Pause gamepad on launch: ' + (window._GAMEPAD_SUPPRESS_ON_LAUNCH ? 'ON' : 'OFF');
+            btn.style.opacity = window._GAMEPAD_ENABLED ? '' : '0.4';
+            btn.style.cursor  = window._GAMEPAD_ENABLED ? '' : 'default';
+        }
+        function toggleGamepadSuppress() {
+            if (!window._GAMEPAD_ENABLED) return;
+            window._GAMEPAD_SUPPRESS_ON_LAUNCH = !window._GAMEPAD_SUPPRESS_ON_LAUNCH;
+            _updateGamepadSuppressLabel();
+            savePreference({ gamepad_suppress_on_launch: window._GAMEPAD_SUPPRESS_ON_LAUNCH });
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            _updateGamepadEnabledLabel();
+            _updateGamepadSuppressLabel();
+        });
+
         (async function initUpdateUI() {
             try {
                 const resp = await fetch('/api/update-status');
@@ -765,5 +801,34 @@
             </button>
         </div>
     </div>
+<div id="gamepad-suppressed-banner" style="
+    display: none;
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-card, #1e1e2e);
+    border: 1px solid var(--accent, #7b68ee);
+    border-radius: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    color: var(--text-secondary, #aaa);
+    font-size: 0.82rem;
+    text-align: center;
+    z-index: 99999;
+    pointer-events: none;
+    white-space: nowrap;
+">🎮 Gamepad paused while game is running — click anywhere to re-enable</div>
+
+<script>
+(function() {
+    const banner = document.getElementById('gamepad-suppressed-banner');
+    // Show on page load if suppression was already active (e.g. resumed from sessionStorage)
+    if (safeSession.getItem('pd_game_running') === '1') banner.style.display = 'block';
+    // Track suppression state via events dispatched by input.js
+    document.addEventListener('gamepad-suppression-change', e => {
+        banner.style.display = e.detail.suppressed ? 'block' : 'none';
+    });
+})();
+</script>
 </body>
 </html>

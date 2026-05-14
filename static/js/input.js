@@ -72,39 +72,65 @@
         prevZone:         'content',
         prevRow:          null,
         prevCol:          null,
-        prevModalRow:     null,
-        prevModalCol:     null,
-        prevModalRowKey:  null,  // data-modal-row VALUE saved on dropdown push (stable across DOM changes)
+        prevModalFocused: null,  // DOM element saved when pushing sub-zone from modal
         row:              0,
         col:              0,
         savedCol:         0,
         subItem:          -1,
-        modalRow:         0,
-        modalCol:         0,
+        modalFocused:     null,
         focusedAppid:     null,
+        activeInput:      null,
+        reorderEl:        null,  // <li> currently held for platform-priority reordering
     };
+
+    // Shelf row currently held for gamepad drag-reorder (separate from _state.reorderEl
+    // which is only for modal platform-priority <li> reordering).
+    let _shelfGpDragEl = null;
 
     // Expose focusedAppid so library.html's observeCards can re-apply the class
     window._inputMgr = {
         get focusedAppid() { return _state.focusedAppid; },
+        get active() { return _state.active; },
         suppressForGame() {
             _gameSuppressed = true;
+            _pgrepsDetected = false;
             safeSession.setItem('pd_game_running', '1');
             _clearGamepadState();
             _watchForGameClose();
+            document.dispatchEvent(new CustomEvent('gamepad-suppression-change', { detail: { suppressed: true } }));
         },
         clearSuppression() {
             _gameSuppressed = false;
             safeSession.removeItem('pd_game_running');
             _clearGamepadState();
+            document.dispatchEvent(new CustomEvent('gamepad-suppression-change', { detail: { suppressed: false } }));
+        },
+        // Called by main.py's GTK/Win32 focus handler. Only unsuppresses when
+        // pgrep-based detection was never available (non-Steam games on Linux),
+        // so Steam games aren't accidentally unsuppressed by launcher gaps.
+        focusInUnsuppress() {
+            if (!_pgrepsDetected) _unsuppressGamepad('focus-in (no pgrep detection)');
         },
         unsuppressGamepad() {
-            _unsuppressGamepad();
+            _unsuppressGamepad('external call');
+        },
+        setGamepadEnabled(val) {
+            _gamepadEnabled = val;
+            if (!val && _state.active) _deactivate();
+            _clearGamepadState();
+        },
+        // Dynamically register a lazily-created modal (e.g. plugin manage modals)
+        registerModal(id) {
+            if (_MODAL_IDS.includes(id)) return;
+            // Insert before plugins-modal so manage modals close innermost-first
+            const pluginsIdx = _MODAL_IDS.indexOf('plugins-modal');
+            if (pluginsIdx >= 0) _MODAL_IDS.splice(pluginsIdx, 0, id);
+            else _MODAL_IDS.push(id);
+            _watchModal(id);
         },
     };
 
-    // Set to true to enable gamepad navigation. Currently disabled — many issues remain.
-    const GAMEPAD_ENABLED = false;
+    let _gamepadEnabled = window._GAMEPAD_ENABLED !== false;
 
     // Track whether a gamepad has ever been seen this session (persisted across page loads)
     let _gpEverSeen = safeSession.getItem('pd_gp_seen') === '1';
@@ -114,7 +140,8 @@
     // Cleared only when the user explicitly interacts with PlayDate (click/key).
     // This is the only reliable way to stop gamepad input while a game is running:
     // the gamepad is shared hardware and focus events don't fire in pywebview.
-    let _gameSuppressed = safeSession.getItem('pd_game_running') === '1';
+    let _gameSuppressed  = safeSession.getItem('pd_game_running') === '1';
+    let _pgrepsDetected  = false; // true once pgrep returns a non-null result this session
 
     function _clearGamepadState() {
         _gp.prev        = {};
@@ -125,10 +152,11 @@
         _gp.stickRepeat = 0;
     }
 
-    function _unsuppressGamepad() {
+    function _unsuppressGamepad(reason) {
         if (!_gameSuppressed) return;
         _gameSuppressed = false;
         safeSession.removeItem('pd_game_running');
+        document.dispatchEvent(new CustomEvent('gamepad-suppression-change', { detail: { suppressed: false } }));
     }
 
     // Two-phase watcher: polls /api/game-running (checks Steam's reaper process on
@@ -137,33 +165,40 @@
     // sent focus after the game exited.
     function _watchForGameClose() {
         let gameStarted = false;
+        let notRunningStreak = 0;
         let attempts = 0;
-        const MAX_ATTEMPTS = 90; // 3 minutes at 2s intervals
+        const MAX_ATTEMPTS  = 90;   // 3 minutes at 2s intervals
+        const CLOSE_CONFIRM = 1;    // consecutive not-running polls to confirm game closed
 
         function poll() {
-            if (!_gameSuppressed) return; // already cleared by click/key/focus
+            if (!_gameSuppressed) return; // already cleared by click
             if (++attempts > MAX_ATTEMPTS) {
-                // Safety timeout — something went wrong, unsuppress anyway
-                _unsuppressGamepad();
+                _unsuppressGamepad('watcher safety timeout');
                 return;
             }
             fetch('/api/game-running')
                 .then(r => r.json())
                 .then(d => {
-                    if (d.running === null) return; // unsupported platform, rely on focus events
+                    if (d.running === null) return; // unsupported platform — focusInUnsuppress() handles it
+                    _pgrepsDetected = true;
                     if (d.running) {
                         gameStarted = true;
+                        notRunningStreak = 0;
                         setTimeout(poll, 2000);
                     } else if (gameStarted) {
-                        // Game was running, now it's not — it closed
-                        fetch('/api/raise-window', { method: 'POST' }).catch(() => {});
-                        _unsuppressGamepad();
+                        notRunningStreak++;
+                        if (notRunningStreak >= CLOSE_CONFIRM) {
+                            fetch('/api/raise-window', { method: 'POST' }).catch(() => {});
+                            _unsuppressGamepad('watcher confirmed close');
+                        } else {
+                            setTimeout(poll, 2000);
+                        }
                     } else {
                         // Game hasn't started yet (Steam loading), keep waiting
                         setTimeout(poll, 2000);
                     }
                 })
-                .catch(() => setTimeout(poll, 3000));
+                .catch(() => { notRunningStreak = 0; setTimeout(poll, 3000); });
         }
 
         setTimeout(poll, 1000);
@@ -172,8 +207,7 @@
     // Also start watching if we're resuming suppressed state from a page reload
     if (_gameSuppressed) _watchForGameClose();
 
-    document.addEventListener('mousedown', _unsuppressGamepad);
-    document.addEventListener('keydown',   _unsuppressGamepad);
+    document.addEventListener('mousedown', () => _unsuppressGamepad('mousedown'));
 
     // ── Gamepad polling state ─────────────────────────────────────────────────
     const _gp = {
@@ -193,6 +227,19 @@
     const BTN_IDX = { a:0, b:1, x:2, y:3, lb:4, rb:5, back:8, start:9, up:12, down:13, left:14, right:15 };
     const AXIS_IDX = { lx:0, ly:1, rx:2, ry:3 };
 
+    // ── Platform-specific button overrides ────────────────────────────────────
+    // Each entry maps raw button indices to BTN_IDX action names.
+    // Steam Deck back paddles (L4=17, R4=18) are not standard-mapping buttons
+    // but the Deck exposes them at those indices in desktop mode.
+    const PLATFORM_MAPPINGS = [
+        {
+            detect: id => /valve|steam deck/i.test(id),
+            btns: { 17: 'back', 18: 'x' },
+        },
+    ];
+    let _activeMapping = null;
+    let _lastGpId = null;
+
     // ── Focus indicator helpers ───────────────────────────────────────────────
     function _clearFocus() {
         document.querySelectorAll('.gamepad-focus').forEach(el => {
@@ -204,31 +251,43 @@
         if (!el) return;
         _clearFocus();
         el.classList.add('gamepad-focus');
-        // Home capsules are always fully visible (shelf overflow:hidden clips them anyway)
-        // so skip scrollIntoView there — it causes a reflow that flickers the focus ring off.
-        if (PAGE !== 'home') {
-            const scroller = document.querySelector('.container');
-            // First content row → scroll to very top
-            const isFirst = _state.zone === 'content' &&
-                (_state.row === 0 || (PAGE === 'library' && _state.row === -1));
-            if (isFirst && scroller?.firstElementChild) {
-                scroller.firstElementChild.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                return;
-            }
-            // Last content row → scroll to very bottom
-            const isLast = _state.zone === 'content' && (() => {
-                switch (PAGE) {
-                    case 'library': return _state.row === _libraryCards().length - 1;
-                    case 'pick':    return _state.row === _pickRows().length - 1;
-                    default: return false;
+        // Home edit mode: scroll focused edit-bar buttons into view, accounting for the
+        // fixed toolbar that blocks the top of the viewport.
+        if (PAGE === 'home') {
+            if (document.body.classList.contains('edit-mode')) {
+                const toolbar = document.querySelector('.edit-toolbar');
+                const navH = toolbar ? toolbar.getBoundingClientRect().bottom : 0;
+                const r = el.getBoundingClientRect();
+                if (r.top < navH) {
+                    window.scrollBy({ top: r.top - navH - 8, behavior: 'smooth' });
+                } else if (r.bottom > window.innerHeight) {
+                    window.scrollBy({ top: r.bottom - window.innerHeight + 8, behavior: 'smooth' });
                 }
-            })();
-            if (isLast) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                return;
             }
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            // In normal mode, capsules are always clipped by shelf overflow so no scroll needed.
+            return;
         }
+        const scroller = document.querySelector('.container');
+        // First content row → scroll to very top
+        const isFirst = _state.zone === 'content' &&
+            (_state.row === 0 || (PAGE === 'library' && _state.row === -1));
+        if (isFirst && scroller?.firstElementChild) {
+            scroller.firstElementChild.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+        // Last content row → scroll to very bottom
+        const isLast = _state.zone === 'content' && (() => {
+            switch (PAGE) {
+                case 'library': return _state.row === _libraryNavItems().length - 1;
+                case 'pick':    return _state.row === _pickRows().length - 1;
+                default: return false;
+            }
+        })();
+        if (isLast) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            return;
+        }
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     }
 
     // ── Focusable item queries ────────────────────────────────────────────────
@@ -333,8 +392,18 @@
     function _editBarButtons(shelfEl) {
         const bar = shelfEl.querySelector('.shelf-edit-bar');
         if (!bar) return [];
-        return [...bar.querySelectorAll('button.shelf-edit-mini-btn')]
-            .filter(el => el.offsetParent !== null && !el.disabled);
+        return [...bar.querySelectorAll('span.drag-handle, button.shelf-edit-mini-btn, input[type="number"]')]
+            .filter(el => !el.disabled);
+    }
+
+    // Returns the _homeRows() index of the row whose el is inside containerEl (a direct
+    // child of #shelf-container). Used to re-sync _state.row after a gamepad shelf move.
+    function _shelfRowIdxAfterMove(containerEl) {
+        const rows = _homeRows();
+        for (let i = 0; i < rows.length; i++) {
+            if (containerEl === rows[i].el || containerEl.contains(rows[i].el)) return i;
+        }
+        return _state.row;
     }
 
     function _visibleCapsules(el) {
@@ -351,23 +420,90 @@
         return [...document.querySelectorAll('.game-card')];
     }
 
-    // Library toolbar: buttons and select only — the text input is not directly
-    // navigated; pressing A on the SEARCH button focuses it for typing instead.
+    // In grouped mode, returns headers and visible cards interleaved in DOM order.
+    // In list/ungrouped mode, delegates to _libraryCards().
+    function _libraryNavItems() {
+        if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') {
+            return _libraryCards();
+        }
+        if (typeof _groupBy !== 'undefined' && _groupBy) {
+            return [...document.querySelectorAll('#game-grid .group-label, #game-grid .game-card')]
+                .filter(el => {
+                    if (el.classList.contains('game-card')) {
+                        const inner = el.closest('.group-inner-grid');
+                        return !inner || inner.style.display !== 'none';
+                    }
+                    return true;
+                });
+        }
+        return _libraryCards();
+    }
+
+    function _isGroupHeader(el) {
+        return el?.classList.contains('group-label') ?? false;
+    }
+
+    // Returns the index of the first non-header item, or 0 if none.
+    function _libraryFirstCardRow() {
+        const items = _libraryNavItems();
+        const idx = items.findIndex(el => !_isGroupHeader(el));
+        return idx >= 0 ? idx : 0;
+    }
+
+    // Returns the column count for the group that contains `card`.
+    // In grouped mode, counts only the cards inside the same .group-inner-grid so
+    // groups with fewer cards than the grid width don't corrupt the count for other groups.
+    function _libraryGroupColCount(card) {
+        const innerGrid = card.closest?.('.group-inner-grid');
+        return _libraryColCount(innerGrid
+            ? [...innerGrid.querySelectorAll('.game-card')]
+            : _libraryCards());
+    }
+
+    // Step up in _libraryNavItems(): from a header always moves up 1; from a card
+    // moves up by cols but lands on any header it crosses instead of skipping it.
+    function _libraryStepUp(items, idx) {
+        if (_isGroupHeader(items[idx])) return idx - 1; // may be -1 (toolbar)
+        const cols = _libraryGroupColCount(items[idx]);
+        const target = idx - cols;
+        for (let i = idx - 1; i > target && i >= 0; i--) {
+            if (_isGroupHeader(items[i])) return i;
+        }
+        return target; // negative means toolbar
+    }
+
+    // Step down in _libraryNavItems(): from a header always moves down 1; from a
+    // card moves down by cols but lands on any header it crosses instead of skipping.
+    function _libraryStepDown(items, idx) {
+        if (_isGroupHeader(items[idx])) return Math.min(idx + 1, items.length - 1);
+        const cols = _libraryGroupColCount(items[idx]);
+        const target = Math.min(idx + cols, items.length - 1);
+        for (let i = idx + 1; i <= target; i++) {
+            if (_isGroupHeader(items[i])) return i;
+        }
+        return target;
+    }
+
+    // Library toolbar: search input first, then buttons/selects.
     function _libraryToolbarItems() {
-        return [...document.querySelectorAll(
+        const search = document.getElementById('library-search');
+        const btns = [...document.querySelectorAll(
             '.search-nav-bar button, .search-nav-bar .custom-select'
         )].filter(el => el.offsetParent !== null && !el.disabled);
+        return search ? [search, ...btns] : btns;
     }
 
     function _libraryColCount(cards) {
         // List mode is always single-column
         if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') return 1;
-        if (!cards.length) return 1;
+        // Skip group headers — they span full width and don't represent grid columns
+        const gameCards = cards.filter(c => !_isGroupHeader(c));
+        if (!gameCards.length) return 1;
         // Use offsetTop which is stable at page load unlike getBoundingClientRect.
         // 10px tolerance handles subpixel rounding differences between cards.
-        const firstTop = cards[0].offsetTop;
+        const firstTop = gameCards[0].offsetTop;
         let cols = 0;
-        for (const c of cards) {
+        for (const c of gameCards) {
             if (Math.abs(c.offsetTop - firstTop) < 10) cols++;
             else break;
         }
@@ -385,20 +521,34 @@
             .filter(el => el.offsetParent !== null);
         if (modeBtns.length) rows.push({ type: 'mode', items: modeBtns });
 
-        // Rows 1..4: individual sliders (only when weighted panel is open)
+        // Rows 1..N: sliders and their bound inputs (only when weighted panel is open and not collapsed)
         const panel = document.getElementById('weighted-panel');
-        if (panel && panel.classList.contains('open')) {
-            const sliders = [...panel.querySelectorAll('input[type="range"]')];
-            sliders.forEach(s => rows.push({ type: 'slider', items: [s] }));
+        if (panel && panel.classList.contains('open') && !panel.classList.contains('collapsed')) {
+            const panelBody = panel.querySelector('.weighted-panel-body');
+            [...(panelBody?.children ?? [])].forEach(child => {
+                if (child.classList.contains('slider-bound-group')) {
+                    const slider = child.querySelector('input[type="range"]');
+                    if (slider) rows.push({ type: 'slider', items: [slider] });
+                    const boundRow = child.querySelector('.bound-row');
+                    const boundInp = boundRow?.querySelector('.bound-input');
+                    if (boundInp && boundRow.offsetParent !== null) {
+                        rows.push({ type: 'bound', items: [boundInp] });
+                    }
+                } else if (child.classList.contains('slider-row')) {
+                    const slider = child.querySelector('input[type="range"]');
+                    if (slider) rows.push({ type: 'slider', items: [slider] });
+                }
+            });
         }
 
         // Pick button row (always present)
         const pickBtn = document.querySelector('.pick-btn');
 
-        // Pool toggle row (always present, between sliders/mode and pick button)
-        // The checkbox itself is hidden; use the .toggle-switch label as the focusable element
-        const poolLabel = document.querySelector('.toggle-switch');
-        if (poolLabel) rows.push({ type: 'toggle', items: [poolLabel] });
+        // Pool toggle row: toggle switch + filter link (always present)
+        const poolLabel   = document.querySelector('.toggle-switch');
+        const filterLink  = document.getElementById('pick-filter-link');
+        const toggleItems = [poolLabel, filterLink].filter(Boolean);
+        if (toggleItems.length) rows.push({ type: 'toggle', items: toggleItems });
 
         // Status filter buttons row
         const statusBtns = [...document.querySelectorAll('.status-btn')];
@@ -443,14 +593,33 @@
         return [];
     }
 
-    // Modal items: IDs of all modal overlays, checked in priority order
+    // Modal items: IDs of all modal overlays, checked in priority order.
+    // Sub-modals must appear BEFORE their parent so _modalCandidates() hits the innermost first.
     const _MODAL_IDS = [
+        '_color-picker-popover', // playdate.js inline color picker — dynamically inserted
         'pd-dialog-overlay',   // base.html confirm/alert — shown via .visible class
-        'editModal', 'filterModal',
+        'editModal', 'filterModal', 'viewModal',
+        // Data modal sub-modals
         'backup-modal', 'bg-modal', 'import-modal',
+        // Library bulk modals
         'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
         // Tools page expanding modals
         'pagywosg-modal', 'blacklist-modal', 'theme-modal',
+        // Sub-modals of hamburger items (before their parents)
+        'hltb-modal',          // from library-modal
+        'theme-picker-modal',  // from appearance-modal
+        'santa-modal',         // from community-modal
+        'playnite-modal',      // from data-modal
+        'filter-io-modal',     // from data-modal
+        'gamepad-diag-modal',  // from system-modal
+        // Top-level hamburger modals
+        'account-modal',
+        'appearance-modal',
+        'library-modal',
+        'plugins-modal',
+        'community-modal',
+        'data-modal',
+        'system-modal',
         // Home page edit mode panels (use style.display)
         'shelf-edit-modal', 'dedup-panel', 'split-picker',
         // List mode detail pane (lowest priority — only active when in list view)
@@ -464,51 +633,103 @@
         return el.style.display !== 'none' && el.style.display !== '';
     }
 
-    // Returns buttons grouped into rows. If any element has data-modal-row, groups
-    // by that attribute (sorted by row number). Otherwise returns all as a single row.
-    // Includes buttons, nav/save links, and tagged selects. Groups by data-modal-row if present.
-    function _modalGrid() {
-        // Custom select picker takes priority
+    // Returns a flat array of navigable elements in the current modal,
+    // sorted top-to-bottom then left-to-right by screen position.
+    function _modalCandidates() {
         const picker = document.getElementById('_gp-select-picker');
         if (picker) {
-            return [...picker.querySelectorAll('button[data-modal-row]')].map(b => [b]);
+            return [...picker.querySelectorAll('button[data-modal-row]')];
         }
-
         for (const id of _MODAL_IDS) {
             const el = document.getElementById(id);
             if (el && _isModalVisible(el)) {
-                const candidates = [...el.querySelectorAll(
-                    'button:not(:disabled), a.nav-btn, a.btn-save, select[data-modal-row], .custom-select[data-modal-row]'
-                )].filter(e => e.offsetParent !== null && !e.disabled
-                         // Exclude ✕/× buttons that have no data-modal-row (those are handled by row -1)
-                         && !((e.textContent.trim() === '✕' || e.textContent.trim() === '×') && e.dataset.modalRow === undefined)
-                         // Never include pill remove buttons (× inside .pill spans)
-                         && !e.closest('.pill'));
-                const tagged = candidates.filter(e => e.dataset.modalRow !== undefined);
-                if (!tagged.length) return candidates.length ? [candidates] : [];
-                const map = new Map();
-                for (const e of tagged) {
-                    const r = parseInt(e.dataset.modalRow);
-                    if (!map.has(r)) map.set(r, []);
-                    map.get(r).push(e);
-                }
-                return [...map.keys()].sort((a, b) => a - b).map(r => map.get(r));
+                return [...el.querySelectorAll(
+                    'button:not(:disabled), a.nav-btn, a.btn-save, a[data-modal-row], input[data-modal-row], textarea[data-modal-row], select[data-modal-row], .custom-select[data-modal-row], div[data-modal-row], li[data-modal-row], span[data-modal-row], label[data-modal-row]'
+                )].filter(e => e.offsetParent !== null && !e.disabled && !e.closest('.pill'))
+                  .sort((a, b) => {
+                      const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
+                      const ay = ar.top + ar.height / 2, by = br.top + br.height / 2;
+                      if (Math.abs(ay - by) > 4) return ay - by;
+                      return (ar.left + ar.width / 2) - (br.left + br.width / 2);
+                  });
             }
         }
         return [];
     }
 
-    // Returns the ✕ close button of the currently visible modal, or null.
-    function _modalCloseBtn() {
-        for (const id of _MODAL_IDS) {
-            const el = document.getElementById(id);
-            if (el && _isModalVisible(el)) {
-                const btn = [...el.querySelectorAll('button')].find(b => {
-                    const t = b.textContent.trim();
-                    return (t === '✕' || t === '×') && b.offsetParent !== null && b.dataset.modalRow === undefined && !b.closest('.pill');
-                });
-                if (btn) return btn;
+    // Returns the nearest scrollable overflow ancestor of el, or null.
+    function _scrollableAncestor(el) {
+        let p = el.parentElement;
+        while (p && p !== document.body) {
+            const { overflowY, overflowX } = getComputedStyle(p);
+            if (/(auto|scroll)/.test(overflowY + overflowX) &&
+                (p.scrollHeight > p.clientHeight || p.scrollWidth > p.clientWidth)) {
+                return p;
             }
+            p = p.parentElement;
+        }
+        return null;
+    }
+
+    // Returns the nearest candidate strictly in dir from cur, or null.
+    //
+    // Primary: approaching edge of target (right edge for LEFT, left edge for RIGHT,
+    //          bottom edge for UP, top edge for DOWN) — prevents skipping close elements.
+    // Secondary: gap on the perpendicular axis (0 when ranges overlap, else the gap size)
+    //            — prefers elements that are directly inline over diagonal ones.
+    //
+    // Passes (tried in order, first non-empty result wins):
+    //   If cur is inside a scrollable container: first two passes are container-scoped,
+    //   so focus stays within the scroll area before escaping to elements outside it.
+    //   Within each container scope: pass A requires perpendicular overlap, pass B does not.
+    function _nearestInDir(dir, cur, candidates) {
+        const cr = cur.getBoundingClientRect();
+        const cx = cr.left + cr.width / 2, cy = cr.top + cr.height / 2;
+
+        const sc = _scrollableAncestor(cur);
+        // [containerFilter, requireOverlap]
+        const passes = sc
+            ? [[el => sc.contains(el), true],
+               [el => sc.contains(el), false],
+               [() => true, true],
+               [() => true, false]]
+            : [[() => true, true],
+               [() => true, false]];
+
+        for (const [inContainer, requireOverlap] of passes) {
+            let best = null, bestScore = Infinity;
+            for (const el of candidates) {
+                if (el === cur || !inContainer(el)) continue;
+                const er = el.getBoundingClientRect();
+                const ex = er.left + er.width / 2, ey = er.top + er.height / 2;
+                let primary, secondary;
+
+                if (dir === 'up') {
+                    if (er.bottom > cy - 4) continue;
+                    const xGap = Math.max(0, Math.max(cr.left, er.left) - Math.min(cr.right, er.right));
+                    if (requireOverlap && xGap > 0) continue;
+                    primary = cy - er.bottom; secondary = xGap;
+                } else if (dir === 'down') {
+                    if (er.top < cy + 4) continue;
+                    const xGap = Math.max(0, Math.max(cr.left, er.left) - Math.min(cr.right, er.right));
+                    if (requireOverlap && xGap > 0) continue;
+                    primary = er.top - cy; secondary = xGap;
+                } else if (dir === 'left') {
+                    if (er.right > cx - 4) continue;
+                    const yGap = Math.max(0, Math.max(cr.top, er.top) - Math.min(cr.bottom, er.bottom));
+                    if (requireOverlap && yGap > 0) continue;
+                    primary = cx - er.right; secondary = yGap;
+                } else if (dir === 'right') {
+                    if (er.left < cx + 4) continue;
+                    const yGap = Math.max(0, Math.max(cr.top, er.top) - Math.min(cr.bottom, er.bottom));
+                    if (requireOverlap && yGap > 0) continue;
+                    primary = er.left - cx; secondary = yGap;
+                } else continue;
+
+                const score = primary + secondary * 2;
+                if (score < bestScore) { bestScore = score; best = el; }
+            }
+            if (best) return best;
         }
         return null;
     }
@@ -562,16 +783,17 @@
                             _state.col = Math.min(Math.max(_state.col, 0), items.length - 1);
                             _applyFocus(items[_state.col]);
                         } else {
-                            const cards = _libraryCards();
-                            if (!cards.length) break;
-                            const idx = Math.min(_state.row, cards.length - 1);
-                            const card = cards[idx];
-                            _state.focusedAppid = parseInt(card.dataset.appid) || null;
-                            _applyFocus(card);
+                            const items = _libraryNavItems();
+                            if (!items.length) break;
+                            const idx = Math.min(_state.row, items.length - 1);
+                            _state.row = idx;
+                            const item = items[idx];
+                            _state.focusedAppid = parseInt(item.dataset.appid) || null;
+                            _applyFocus(item);
                             const scrollOpts = (typeof _artOrientation !== 'undefined' && _artOrientation === 'list')
                                 ? { behavior: 'smooth', block: 'nearest' }
                                 : { behavior: 'smooth', block: 'center' };
-                            card.scrollIntoView(scrollOpts);
+                            item.scrollIntoView(scrollOpts);
                         }
                         break;
                     }
@@ -591,19 +813,13 @@
             }
 
             case 'modal': {
-                if (_state.modalRow === -1) {
-                    const closeBtn = _modalCloseBtn();
-                    if (closeBtn) { _applyFocus(closeBtn); break; }
-                    _state.modalRow = 0; // no close btn, fall through
-                }
-                const mgrid = _modalGrid();
-                if (mgrid.length) {
-                    _state.modalRow = Math.min(_state.modalRow, mgrid.length - 1);
-                    const row = mgrid[_state.modalRow];
-                    _state.modalCol = Math.min(_state.modalCol, row.length - 1);
-                    _applyFocus(row[_state.modalCol]);
+                const candidates = _modalCandidates();
+                if (_state.modalFocused && _state.modalFocused.offsetParent !== null && candidates.includes(_state.modalFocused)) {
+                    _applyFocus(_state.modalFocused);
                 } else {
-                    _clearFocus();
+                    _state.modalFocused = candidates[0] ?? null;
+                    if (_state.modalFocused) _applyFocus(_state.modalFocused);
+                    else _clearFocus();
                 }
                 break;
             }
@@ -617,6 +833,13 @@
                 break;
             }
 
+            case 'text-input':
+            case 'number-input': {
+                // Native focus is on the input; just keep the gamepad-focus ring on it.
+                if (_state.activeInput) _applyFocus(_state.activeInput);
+                break;
+            }
+
             default:
                 _state.zone = 'nav'; _state.col = 0;
                 _syncFocus();
@@ -624,12 +847,46 @@
         }
     }
 
+    // ── Cursor hiding ─────────────────────────────────────────────────────────
+    let _cursorHideStyle = null;
+    function _hideCursor() {
+        if (_cursorHideStyle) return;
+        _cursorHideStyle = document.createElement('style');
+        _cursorHideStyle.textContent = [
+            '* { cursor: none !important; }',
+            '.list-row:hover { background: var(--bg-surface) !important; }',
+            '.list-group-header:hover { background: var(--bg-raised) !important; }',
+        ].join('\n');
+        document.head.appendChild(_cursorHideStyle);
+    }
+    function _showCursor() {
+        if (!_cursorHideStyle) return;
+        _cursorHideStyle.remove();
+        _cursorHideStyle = null;
+    }
+
     // ── Activation ────────────────────────────────────────────────────────────
     function _activate() {
         if (_state.active) return;
         _state.active = true;
-        _state.zone     = 'content';
-        _state.row      = 0;
+        _hideCursor();
+        if (window._clearGameCardHover) window._clearGameCardHover();
+        if (window._cancelTooltipReshow) window._cancelTooltipReshow();
+        // If a modal is open, enter modal zone at row 0 regardless of previous state
+        if (_anyWatchedOpen()) {
+            _state.zone         = 'modal';
+            _state.modalFocused = null;
+            _syncFocus();
+            return;
+        }
+        _state.zone = 'content';
+        if (PAGE === 'library' && _lastMouseCard) {
+            const items = _libraryNavItems();
+            const idx = items.indexOf(_lastMouseCard);
+            _state.row = idx >= 0 ? idx : _libraryFirstCardRow();
+        } else {
+            _state.row = (PAGE === 'library') ? _libraryFirstCardRow() : 0;
+        }
         _state.col      = 0;
         _state.savedCol = 0;
         _syncFocus();
@@ -639,6 +896,7 @@
         _state.active = false;
         _clearFocus();
         _state.focusedAppid = null;
+        _showCursor();
     }
 
     // Deactivate on mouse click so mouse users don't see a lingering focus ring
@@ -646,30 +904,41 @@
         if (_state.active) _deactivate();
     });
 
+    // Show cursor and deactivate on meaningful mouse movement (threshold avoids
+    // spurious events from controller vibration or system jitter)
+    let _lastMousePos = null;
+    document.addEventListener('mousemove', e => {
+        if (!_state.active) {
+            _lastMousePos = { x: e.clientX, y: e.clientY };
+            return;
+        }
+        if (_lastMousePos) {
+            const dx = e.clientX - _lastMousePos.x;
+            const dy = e.clientY - _lastMousePos.y;
+            if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        }
+        _lastMousePos = { x: e.clientX, y: e.clientY };
+        _deactivate();
+    }, { passive: true });
+
+    // Track last hovered card so gamepad activation can resume from it
+    let _lastMouseCard = null;
+    document.addEventListener('mouseover', e => {
+        const card = e.target.closest('.game-card[data-appid], #game-list .list-row[data-appid]');
+        if (card) _lastMouseCard = card;
+    }, { passive: true });
+
     // ── Zone helpers ──────────────────────────────────────────────────────────
     function _pushZone(zone) {
         _state.prevZone         = _state.zone;
         _state.prevRow          = _state.row;
         _state.prevCol          = _state.col;
-        _state.prevModalRow     = _state.modalRow;
-        _state.prevModalCol     = _state.modalCol;
-        // When entering dropdown from modal, save the data-modal-row VALUE of the focused
-        // element so we can restore the correct row even if the DOM changes (e.g. filter
-        // modal switching between simple/advanced hides rows and shifts array indices).
-        if (zone === 'dropdown' && _state.zone === 'modal') {
-            const mgrid = _modalGrid();
-            const el = mgrid[_state.modalRow]?.[_state.modalCol];
-            _state.prevModalRowKey = el?.dataset?.modalRow ?? null;
-        } else {
-            _state.prevModalRowKey = null;
-        }
+        _state.prevModalFocused = _state.modalFocused;
         _state.zone          = zone;
         _state.col           = 0;
         _state.subItem       = -1;
-        // Don't reset modalRow/Col when entering dropdown — we'll restore them on pop
         if (zone !== 'dropdown') {
-            _state.modalRow  = 0;
-            _state.modalCol  = 0;
+            _state.modalFocused = null;
         }
     }
 
@@ -679,24 +948,13 @@
         _state.row     = _state.prevRow  ?? _state.row;
         _state.col     = _state.prevCol  ?? _state.col;
         if (returningToModal) {
-            if (_state.prevModalRowKey != null) {
-                // Translate the saved data-modal-row VALUE back to an array index.
-                // This survives DOM changes (e.g. filter modal switching modes hides rows).
-                const mgrid = _modalGrid();
-                const idx = mgrid.findIndex(row => row[0]?.dataset?.modalRow === _state.prevModalRowKey);
-                _state.modalRow = idx >= 0 ? idx : (_state.prevModalRow ?? 0);
-            } else {
-                _state.modalRow = _state.prevModalRow ?? _state.modalRow;
-            }
-            _state.modalCol = _state.prevModalCol ?? _state.modalCol;
+            _state.modalFocused = _state.prevModalFocused ?? _state.modalFocused;
         }
-        _state.prevZone        = 'content';
-        _state.prevRow         = null;
-        _state.prevCol         = null;
-        _state.prevModalRow    = null;
-        _state.prevModalCol    = null;
-        _state.prevModalRowKey = null;
-        _state.subItem         = -1;
+        _state.prevZone         = 'content';
+        _state.prevRow          = null;
+        _state.prevCol          = null;
+        _state.prevModalFocused = null;
+        _state.subItem          = -1;
     }
 
     // ── Direction handlers ────────────────────────────────────────────────────
@@ -704,19 +962,32 @@
     function _handleUp() {
         switch (_state.zone) {
 
+            case 'number-input': {
+                const inp = _state.activeInput;
+                if (!inp) break;
+                const step = parseFloat(inp.step) || 1;
+                const max  = inp.max !== '' ? parseFloat(inp.max) : Infinity;
+                inp.value  = Math.min(max, parseFloat(inp.value || 0) + step);
+                inp.dispatchEvent(new Event('input'));
+                inp.dispatchEvent(new Event('change'));
+                break;
+            }
+
             case 'modal': {
-                if (_state.modalRow === -1) break; // already at top
-                const mgrid = _modalGrid();
-                if (_state.modalRow === 0) {
-                    if (_modalCloseBtn()) { _state.modalRow = -1; _syncFocus(); }
-                    // else: already at top row, true no-op — do not call _syncFocus() to avoid side effects
+                if (_state.reorderEl) {
+                    const prev = _state.reorderEl.previousElementSibling;
+                    if (prev) {
+                        _state.reorderEl.parentElement.insertBefore(_state.reorderEl, prev);
+                        Array.from(_state.reorderEl.parentElement.children).forEach((el, i) => { el.dataset.modalRow = i + 1; });
+                        if (typeof _updatePlatRanks === 'function') _updatePlatRanks();
+                        _syncFocus();
+                    }
                     break;
                 }
-                if (mgrid.length && _state.modalRow > 0) {
-                    _state.modalRow--;
-                    _state.modalCol = Math.min(_state.modalCol, mgrid[_state.modalRow].length - 1);
-                    _syncFocus();
-                }
+                const cur = _state.modalFocused;
+                if (!cur) break;
+                const next = _nearestInDir('up', cur, _modalCandidates());
+                if (next) { _state.modalFocused = next; _syncFocus(); }
                 break;
             }
 
@@ -747,28 +1018,75 @@
                 switch (PAGE) {
 
                     case 'home': {
+                        // Shelf reorder: move held shelf row up one position
+                        if (_shelfGpDragEl) {
+                            const sc = document.getElementById('shelf-container');
+                            const children = Array.from(sc.children).filter(c => !c.classList.contains('add-shelf-btn'));
+                            const idx = children.indexOf(_shelfGpDragEl);
+                            if (idx > 0) {
+                                sc.insertBefore(_shelfGpDragEl, children[idx - 1]);
+                                _state.row = _shelfRowIdxAfterMove(_shelfGpDragEl);
+                                _syncFocus();
+                            }
+                            break;
+                        }
                         const rows = _homeRows();
                         const editMode = document.body.classList.contains('edit-mode');
                         let prev = _state.row - 1;
-                        // In normal mode, skip the sibling side of the same split row
-                        // (both sides are the same visual row). In edit mode each side
-                        // has its own edit bar so we navigate them individually.
-                        if (!editMode && prev >= 0) {
-                            const curEl    = rows[_state.row]?.el;
-                            const prevEl   = rows[prev]?.el;
-                            const curSplit  = curEl?.closest?.('.shelf-split-row');
-                            const prevSplit = prevEl?.closest?.('.shelf-split-row');
-                            if (curSplit && prevSplit && curSplit === prevSplit) prev--;
+                        if (editMode) {
+                            // Skip all sibling sides of the same split row
+                            const curSplit = rows[_state.row]?.el?.closest?.('.shelf-split-row');
+                            if (curSplit) {
+                                while (prev >= 0 && rows[prev]?.el?.closest?.('.shelf-split-row') === curSplit) prev--;
+                            }
+                            // Skip empty rows (don't go below 0)
+                            while (prev > 0 && rows[prev]?.items.length === 0) prev--;
+                            // If landing in a split row, pick the column closest in X to current item
+                            if (prev >= 0) {
+                                const prevSplit = rows[prev]?.el?.closest?.('.shelf-split-row');
+                                if (prevSplit) {
+                                    // Collect all sides of this split row
+                                    const srcCx = (() => {
+                                        const r = rows[_state.row]?.items[_state.col]?.getBoundingClientRect();
+                                        return r ? r.left + r.width / 2 : 0;
+                                    })();
+                                    let bestRow = prev, bestDist = Infinity;
+                                    for (let ri = 0; ri < rows.length; ri++) {
+                                        if (rows[ri].el?.closest?.('.shelf-split-row') !== prevSplit) continue;
+                                        const item = rows[ri].items[0];
+                                        if (!item) continue;
+                                        const r = item.getBoundingClientRect();
+                                        const cx = r.left + r.width / 2;
+                                        const dist = Math.abs(cx - srcCx);
+                                        if (dist < bestDist) { bestDist = dist; bestRow = ri; }
+                                    }
+                                    prev = bestRow;
+                                }
+                            }
+                        } else {
+                            // In normal mode, skip the sibling side of the same split row.
+                            if (prev >= 0) {
+                                const curEl    = rows[_state.row]?.el;
+                                const prevEl   = rows[prev]?.el;
+                                const curSplit  = curEl?.closest?.('.shelf-split-row');
+                                const prevSplit = prevEl?.closest?.('.shelf-split-row');
+                                if (curSplit && prevSplit && curSplit === prevSplit) prev--;
+                            }
                         }
                         // Skip empty rows (don't go below 0)
-                        while (prev > 0 && rows[prev]?.items.length === 0) prev--;
+                        if (!editMode) while (prev > 0 && rows[prev]?.items.length === 0) prev--;
                         if (prev >= 0 && rows[prev]?.items.length > 0) {
-                            const srcItem  = rows[_state.row]?.items[_state.col];
-                            const srcCol   = _state.col;
-                            const srcTotal = rows[_state.row]?.items.length ?? 1;
-                            const target   = _findNavTarget(rows, prev, srcItem, srcCol, srcTotal);
-                            _state.row = target.rowIdx;
-                            _state.col = target.colIdx;
+                            if (editMode) {
+                                _state.row = prev;
+                                _state.col = 0;
+                            } else {
+                                const srcItem  = rows[_state.row]?.items[_state.col];
+                                const srcCol   = _state.col;
+                                const srcTotal = rows[_state.row]?.items.length ?? 1;
+                                const target   = _findNavTarget(rows, prev, srcItem, srcCol, srcTotal);
+                                _state.row = target.rowIdx;
+                                _state.col = target.colIdx;
+                            }
                         } else {
                             // At top row → go to nav (edit toolbar in edit mode)
                             _state.zone = 'nav';
@@ -788,16 +1106,13 @@
                             const activeLink = document.querySelector('.nav-links a.active');
                             _state.col = activeLink ? navItems.indexOf(activeLink) : 0;
                         } else {
-                            const cards = _libraryCards();
-                            const cols  = _libraryColCount(cards);
-                            const newIdx = _state.row - cols;
+                            const items = _libraryNavItems();
+                            const newIdx = _libraryStepUp(items, _state.row);
                             if (newIdx < 0) {
-                                // First grid row → toolbar
                                 _state.row = -1;
                                 _state.col = 0;
                             } else {
                                 _state.row = newIdx;
-                                _state.col = _state.row % cols;
                             }
                         }
                         _syncFocus();
@@ -829,16 +1144,32 @@
     function _handleDown() {
         switch (_state.zone) {
 
+            case 'number-input': {
+                const inp = _state.activeInput;
+                if (!inp) break;
+                const step = parseFloat(inp.step) || 1;
+                const min  = inp.min !== '' ? parseFloat(inp.min) : -Infinity;
+                inp.value  = Math.max(min, parseFloat(inp.value || 0) - step);
+                inp.dispatchEvent(new Event('input'));
+                inp.dispatchEvent(new Event('change'));
+                break;
+            }
+
             case 'modal': {
-                if (_state.modalRow === -1) {
-                    _state.modalRow = 0; _state.modalCol = 0; _syncFocus(); break;
+                if (_state.reorderEl) {
+                    const next = _state.reorderEl.nextElementSibling;
+                    if (next) {
+                        _state.reorderEl.parentElement.insertBefore(next, _state.reorderEl);
+                        Array.from(_state.reorderEl.parentElement.children).forEach((el, i) => { el.dataset.modalRow = i + 1; });
+                        if (typeof _updatePlatRanks === 'function') _updatePlatRanks();
+                        _syncFocus();
+                    }
+                    break;
                 }
-                const mgrid = _modalGrid();
-                if (mgrid.length && _state.modalRow < mgrid.length - 1) {
-                    _state.modalRow++;
-                    _state.modalCol = Math.min(_state.modalCol, mgrid[_state.modalRow].length - 1);
-                    _syncFocus();
-                }
+                const cur = _state.modalFocused;
+                if (!cur) break;
+                const next = _nearestInDir('down', cur, _modalCandidates());
+                if (next) { _state.modalFocused = next; _syncFocus(); }
                 break;
             }
 
@@ -877,27 +1208,71 @@
                 switch (PAGE) {
 
                     case 'home': {
+                        // Shelf reorder: move held shelf row down one position
+                        if (_shelfGpDragEl) {
+                            const sc = document.getElementById('shelf-container');
+                            const children = Array.from(sc.children).filter(c => !c.classList.contains('add-shelf-btn'));
+                            const idx = children.indexOf(_shelfGpDragEl);
+                            if (idx < children.length - 1) {
+                                sc.insertBefore(children[idx + 1], _shelfGpDragEl);
+                                _state.row = _shelfRowIdxAfterMove(_shelfGpDragEl);
+                                _syncFocus();
+                            }
+                            break;
+                        }
                         const rows = _homeRows();
                         const editMode = document.body.classList.contains('edit-mode');
                         let next = _state.row + 1;
-                        // In normal mode, skip the sibling side of the same split row.
-                        // In edit mode each side has its own edit bar.
-                        if (!editMode && next < rows.length) {
-                            const curEl  = rows[_state.row]?.el;
-                            const nxtEl  = rows[next]?.el;
-                            const curSplit = curEl?.closest?.('.shelf-split-row');
-                            const nxtSplit = nxtEl?.closest?.('.shelf-split-row');
-                            if (curSplit && nxtSplit && curSplit === nxtSplit) next++;
+                        if (editMode) {
+                            // Skip all sibling sides of the same split row
+                            const curSplit = rows[_state.row]?.el?.closest?.('.shelf-split-row');
+                            if (curSplit) {
+                                while (next < rows.length && rows[next]?.el?.closest?.('.shelf-split-row') === curSplit) next++;
+                            }
+                        } else {
+                            // In normal mode, skip just one sibling side of the same split row.
+                            if (next < rows.length) {
+                                const curEl  = rows[_state.row]?.el;
+                                const nxtEl  = rows[next]?.el;
+                                const curSplit = curEl?.closest?.('.shelf-split-row');
+                                const nxtSplit = nxtEl?.closest?.('.shelf-split-row');
+                                if (curSplit && nxtSplit && curSplit === nxtSplit) next++;
+                            }
                         }
                         // Skip empty rows
                         while (next < rows.length && rows[next]?.items.length === 0) next++;
                         if (next < rows.length) {
-                            const srcItem  = rows[_state.row]?.items[_state.col];
-                            const srcCol   = _state.col;
-                            const srcTotal = rows[_state.row]?.items.length ?? 1;
-                            const target   = _findNavTarget(rows, next, srcItem, srcCol, srcTotal);
-                            _state.row = target.rowIdx;
-                            _state.col = target.colIdx;
+                            if (editMode) {
+                                // If landing in a split row, pick the closest column by X
+                                const nxtSplit = rows[next]?.el?.closest?.('.shelf-split-row');
+                                if (nxtSplit) {
+                                    const srcCx = (() => {
+                                        const r = rows[_state.row]?.items[_state.col]?.getBoundingClientRect();
+                                        return r ? r.left + r.width / 2 : 0;
+                                    })();
+                                    let bestRow = next, bestDist = Infinity;
+                                    for (let ri = 0; ri < rows.length; ri++) {
+                                        if (rows[ri].el?.closest?.('.shelf-split-row') !== nxtSplit) continue;
+                                        const item = rows[ri].items[0];
+                                        if (!item) continue;
+                                        const r = item.getBoundingClientRect();
+                                        const cx = r.left + r.width / 2;
+                                        const dist = Math.abs(cx - srcCx);
+                                        if (dist < bestDist) { bestDist = dist; bestRow = ri; }
+                                    }
+                                    _state.row = bestRow;
+                                } else {
+                                    _state.row = next;
+                                }
+                                _state.col = 0;
+                            } else {
+                                const srcItem  = rows[_state.row]?.items[_state.col];
+                                const srcCol   = _state.col;
+                                const srcTotal = rows[_state.row]?.items.length ?? 1;
+                                const target   = _findNavTarget(rows, next, srcItem, srcCol, srcTotal);
+                                _state.row = target.rowIdx;
+                                _state.col = target.colIdx;
+                            }
                         }
                         _syncFocus();
                         break;
@@ -906,14 +1281,11 @@
                     case 'library': {
                         if (_state.row === -1) {
                             // Toolbar → first grid row
-                            _state.row = 0;
+                            _state.row = _libraryFirstCardRow();
                             _state.col = 0;
                         } else {
-                            const cards = _libraryCards();
-                            const cols  = _libraryColCount(cards);
-                            const newIdx = Math.min(_state.row + cols, cards.length - 1);
-                            _state.row = newIdx;
-                            _state.col = _state.row % cols;
+                            const items = _libraryNavItems();
+                            _state.row = _libraryStepDown(items, _state.row);
                         }
                         _syncFocus();
                         break;
@@ -940,11 +1312,17 @@
         switch (_state.zone) {
 
             case 'modal': {
-                const mgrid = _modalGrid();
-                if (mgrid.length && _state.modalCol > 0) {
-                    _state.modalCol--;
-                    _syncFocus();
+                const cur = _state.modalFocused;
+                if (!cur) break;
+                if (cur.tagName === 'INPUT' && cur.type === 'range') {
+                    const step = parseFloat(cur.step || 1);
+                    const min  = parseFloat(cur.min  ?? 0);
+                    cur.value = Math.max(min, parseFloat(cur.value) - step);
+                    cur.dispatchEvent(new Event('input'));
+                    break;
                 }
+                const next = _nearestInDir('left', cur, _modalCandidates());
+                if (next) { _state.modalFocused = next; _syncFocus(); }
                 break;
             }
 
@@ -990,13 +1368,12 @@
                             // Toolbar: move left between toolbar items
                             if (_state.col > 0) _state.col--;
                         } else {
-                            // Grid: no cross-row wrap
-                            if (_state.row > 0) _state.row--;
-                            const cards2 = _libraryCards();
-                            const cols2  = _libraryColCount(cards2);
-                            _state.col = _state.row % cols2;
+                            const items = _libraryNavItems();
+                            // Group headers are full-width; left/right do nothing on them
+                            if (!_isGroupHeader(items[_state.row]) && _state.row > 0) {
+                                _state.row--;
+                            }
                         }
-                        _state.savedCol = _state.col;
                         _syncFocus();
                         break;
                     }
@@ -1005,10 +1382,17 @@
                         const rows = _pickRows();
                         const row  = rows[_state.row];
                         if (row?.type === 'slider') {
-                            // Left decrements slider value by 5
                             const slider = row.items[0];
-                            slider.value = Math.max(parseInt(slider.min || 0), parseInt(slider.value) - 5);
+                            // Step by 10 to clear the 5-point snap zone around 0
+                            slider.value = Math.max(parseInt(slider.min || -100), parseInt(slider.value) - 10);
                             slider.dispatchEvent(new Event('input'));
+                        } else if (row?.type === 'bound') {
+                            const inp = row.items[0];
+                            if (inp) {
+                                inp.value = Math.max(parseInt(inp.min ?? 0), parseInt(inp.value || 0) - 1);
+                                inp.dispatchEvent(new Event('input'));
+                                inp.dispatchEvent(new Event('change'));
+                            }
                         } else {
                             if (_state.col > 0) _state.col--;
                             _state.savedCol = _state.col;
@@ -1027,14 +1411,17 @@
         switch (_state.zone) {
 
             case 'modal': {
-                const mgrid = _modalGrid();
-                if (mgrid.length) {
-                    const row = mgrid[_state.modalRow];
-                    if (_state.modalCol < row.length - 1) {
-                        _state.modalCol++;
-                        _syncFocus();
-                    }
+                const cur = _state.modalFocused;
+                if (!cur) break;
+                if (cur.tagName === 'INPUT' && cur.type === 'range') {
+                    const step = parseFloat(cur.step || 1);
+                    const max  = parseFloat(cur.max  ?? 100);
+                    cur.value = Math.min(max, parseFloat(cur.value) + step);
+                    cur.dispatchEvent(new Event('input'));
+                    break;
                 }
+                const next = _nearestInDir('right', cur, _modalCandidates());
+                if (next) { _state.modalFocused = next; _syncFocus(); }
                 break;
             }
 
@@ -1092,16 +1479,14 @@
                             if (card) {
                                 card.click();
                                 _pushZone('modal');
-                                _state.modalRow = 0;
-                                _state.modalCol = 0;
                             }
                         } else {
-                            const cards = _libraryCards();
-                            if (_state.row < cards.length - 1) _state.row++;
-                            const cols3 = _libraryColCount(cards);
-                            _state.col = _state.row % cols3;
+                            const items = _libraryNavItems();
+                            // Group headers are full-width; left/right do nothing on them
+                            if (!_isGroupHeader(items[_state.row]) && _state.row < items.length - 1) {
+                                _state.row++;
+                            }
                         }
-                        _state.savedCol = _state.col;
                         _syncFocus();
                         break;
                     }
@@ -1110,10 +1495,17 @@
                         const rows = _pickRows();
                         const row  = rows[_state.row];
                         if (row?.type === 'slider') {
-                            // Right increments slider value by 5
                             const slider = row.items[0];
-                            slider.value = Math.min(parseInt(slider.max || 100), parseInt(slider.value) + 5);
+                            // Step by 10 to clear the 5-point snap zone around 0
+                            slider.value = Math.min(parseInt(slider.max || 100), parseInt(slider.value) + 10);
                             slider.dispatchEvent(new Event('input'));
+                        } else if (row?.type === 'bound') {
+                            const inp = row.items[0];
+                            if (inp) {
+                                inp.value = Math.min(parseInt(inp.max ?? 9999), parseInt(inp.value || 0) + 1);
+                                inp.dispatchEvent(new Event('input'));
+                                inp.dispatchEvent(new Event('change'));
+                            }
                         } else {
                             if (_state.col < row.items.length - 1) _state.col++;
                             _state.savedCol = _state.col;
@@ -1181,8 +1573,8 @@
         _selectPickerSource = selectEl;
 
         _pushZone('modal');
-        _state.modalRow = Math.max(0, selectEl.selectedIndex);
-        _state.modalCol = 0;
+        const pickerBtns = [...overlay.querySelectorAll('button[data-modal-row]')];
+        _state.modalFocused = pickerBtns[Math.max(0, selectEl.selectedIndex)] ?? pickerBtns[0] ?? null;
         _syncFocus();
     }
 
@@ -1200,17 +1592,76 @@
         switch (_state.zone) {
 
             case 'modal': {
-                if (_state.modalRow === -1) {
-                    _modalCloseBtn()?.click();
-                    break;
-                }
-                const mgrid = _modalGrid();
-                if (mgrid.length) {
-                    const el = mgrid[_state.modalRow]?.[_state.modalCol];
-                    if (el) {
-                        if (el.tagName === 'SELECT') _openSelectPicker(el);
-                        else el.click();
+                const el = _state.modalFocused;
+                if (!el) break;
+                if (el.tagName === 'INPUT') {
+                    if (el.type === 'checkbox') {
+                        el.click();
+                    } else if (el.type === 'range') {
+                        el.focus();
+                    } else if (el.type === 'number') {
+                        _state.activeInput = el;
+                        _pushZone('number-input');
+                        el.focus();
+                        el.select();
+                        _syncFocus();
+                    } else {
+                        _state.activeInput = el;
+                        _pushZone('text-input');
+                        el.focus();
+                        _syncFocus();
                     }
+                } else if (el.tagName === 'SELECT') {
+                    _openSelectPicker(el);
+                } else if (el.tagName === 'TEXTAREA') {
+                    _state.activeInput = el;
+                    _pushZone('text-input');
+                    el.focus();
+                    _syncFocus();
+                } else if (el.classList?.contains('pill-input-box')) {
+                    const inp = el.querySelector('.pill-text-input');
+                    if (inp) {
+                        _state.activeInput = inp;
+                        _pushZone('text-input');
+                        inp.focus();
+                        _syncFocus();
+                    }
+                } else if (el.tagName === 'LI') {
+                    const cb = el.querySelector('input[type="checkbox"]');
+                    if (cb) {
+                        // Dedup toggle and similar checkbox-in-li patterns
+                        cb.click();
+                    } else if (el.dataset.plat) {
+                        // Platform priority reorder: A grabs/drops the item
+                        if (_state.reorderEl === el) {
+                            el.classList.remove('plat-held');
+                            _state.reorderEl = null;
+                        } else {
+                            if (_state.reorderEl) _state.reorderEl.classList.remove('plat-held');
+                            _state.reorderEl = el;
+                            el.classList.add('plat-held');
+                        }
+                    } else {
+                        // Generic clickable li (e.g. split-picker list items)
+                        el.click();
+                        requestAnimationFrame(() => {
+                            const candidates = _modalCandidates();
+                            if (!_state.modalFocused || _state.modalFocused.offsetParent === null || !candidates.includes(_state.modalFocused)) {
+                                _state.modalFocused = candidates[0] ?? null;
+                            }
+                            _syncFocus();
+                        });
+                    }
+                } else {
+                    el.click();
+                    // Re-sync in rAF so if the click opened a sub-modal focus lands on its first element.
+                    requestAnimationFrame(() => {
+                        const candidates = _modalCandidates();
+                        if (!_state.modalFocused || _state.modalFocused.offsetParent === null || !candidates.includes(_state.modalFocused)) {
+                            _state.modalFocused = candidates[0] ?? null;
+                        }
+                        _syncFocus();
+                    });
                 }
                 break;
             }
@@ -1266,8 +1717,36 @@
                         if (!row) break;
                         const cap = row.items[_state.col];
                         if (!cap) break;
-                        const appid = parseInt(cap.dataset.appid);
-                        if (appid) launchGame(appid);
+                        if (document.body.classList.contains('edit-mode')) {
+                            if (cap.classList.contains('drag-handle')) {
+                                // Find direct child of #shelf-container to use as the drag unit
+                                const sc = document.getElementById('shelf-container');
+                                let shelfRow = cap;
+                                while (shelfRow && shelfRow.parentElement !== sc) shelfRow = shelfRow.parentElement;
+                                if (shelfRow && !shelfRow.classList.contains('add-shelf-btn')) {
+                                    if (_shelfGpDragEl === shelfRow) {
+                                        shelfRow.classList.remove('shelf-gp-held');
+                                        _shelfGpDragEl = null;
+                                        if (typeof syncShelvesOrderFromDOM === 'function') syncShelvesOrderFromDOM();
+                                    } else {
+                                        if (_shelfGpDragEl) _shelfGpDragEl.classList.remove('shelf-gp-held');
+                                        _shelfGpDragEl = shelfRow;
+                                        shelfRow.classList.add('shelf-gp-held');
+                                    }
+                                }
+                            } else if (cap.tagName === 'INPUT' && cap.type === 'number') {
+                                _state.activeInput = cap;
+                                _pushZone('number-input');
+                                cap.focus();
+                                cap.select();
+                                _syncFocus();
+                            } else if (cap.tagName === 'BUTTON') {
+                                cap.click();
+                            }
+                        } else {
+                            const appid = parseInt(cap.dataset.appid);
+                            if (appid) launchGame(appid);
+                        }
                         break;
                     }
 
@@ -1276,26 +1755,43 @@
                             const items = _libraryToolbarItems();
                             const el = items[_state.col];
                             if (el) {
-                                if (el.tagName === 'SELECT') _openSelectPicker(el);
-                                else el.click();
+                                if (el.tagName === 'INPUT') {
+                                    _state.activeInput = el;
+                                    _pushZone('text-input');
+                                    el.focus();
+                                    _syncFocus();
+                                } else if (el.tagName === 'SELECT') {
+                                    _openSelectPicker(el);
+                                } else {
+                                    el.click();
+                                }
                             }
                         } else {
-                            const cards = _libraryCards();
-                            const card  = cards[_state.row];
-                            if (!card) break;
+                            const items = _libraryNavItems();
+                            const item  = items[_state.row];
+                            if (!item) break;
+                            if (_isGroupHeader(item)) {
+                                item.click(); // toggles group collapse
+                                requestAnimationFrame(() => {
+                                    const newItems = _libraryNavItems();
+                                    if (_state.row >= newItems.length) {
+                                        _state.row = Math.max(0, newItems.length - 1);
+                                    }
+                                    _syncFocus();
+                                });
+                                break;
+                            }
                             // In list mode: A opens the detail pane
                             if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') {
-                                card.click();
+                                item.click();
                                 _pushZone('modal');
-                                _state.modalRow = 0;
-                                _state.modalCol = 0;
                                 _syncFocus();
                                 break;
                             }
                             if (document.body.classList.contains('select-mode')) {
-                                card.click(); // toggles selection via onCardClick
+                                item.click(); // toggles selection via onCardClick
                             } else {
-                                const appid = parseInt(card.dataset.appid);
+                                const appid = parseInt(item.dataset.appid);
                                 if (appid) launchGame(appid);
                             }
                         }
@@ -1308,10 +1804,24 @@
                         if (!row) break;
                         if (row.type === 'slider') {
                             row.items[0]?.focus();
+                        } else if (row.type === 'bound') {
+                            const inp = row.items[0];
+                            if (inp) {
+                                _state.activeInput = inp;
+                                _pushZone(inp.type === 'number' ? 'number-input' : 'text-input');
+                                inp.focus();
+                                inp.select();
+                                _syncFocus();
+                            }
                         } else if (row.type === 'toggle') {
-                            // The .toggle-switch label wraps a hidden checkbox
-                            const cb = row.items[0]?.querySelector('input[type="checkbox"]');
-                            if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+                            const item = row.items[_state.col];
+                            if (!item) break;
+                            if (item.classList.contains('toggle-switch')) {
+                                const cb = item.querySelector('input[type="checkbox"]');
+                                if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+                            } else {
+                                item.click(); // filter link
+                            }
                         } else if (row.type === 'results') {
                             const card  = row.items[_state.col];
                             if (!card) break;
@@ -1383,24 +1893,56 @@
             return true;
         }
 
+        // Dynamic plugin manage sub-modals (lazily created; scan by ID suffix, innermost first)
+        for (const el of document.querySelectorAll('[id$="-manage-oauth-modal"]')) {
+            if (_isModalVisible(el)) {
+                const id = el.id.replace(/-manage-oauth-modal$/, '');
+                if (typeof _closeManageOauth === 'function') _closeManageOauth(id);
+                return true;
+            }
+        }
+        for (const el of document.querySelectorAll('[id$="-manage-modal"]')) {
+            if (_isModalVisible(el)) {
+                const id = el.id.replace(/-manage-modal$/, '');
+                if (typeof _closeManageModal === 'function') _closeManageModal(id);
+                return true;
+            }
+        }
+
         // Try every known close function in priority order.
-        // Also handles page-specific modals (bulk edit, tools modals).
+        // Sub-modals are listed before their parent so B closes innermost first.
         const checks = [
+            // color picker popover (dynamically created)
+            ['_color-picker-popover', 'closeColorPicker'],
             // library page bulk modals
-            ['bulk-edit-modal',     'closeBulkEditModal'],
-            ['bulk-rescrape-modal', 'closeBulkRescrapeModal'],
-            ['bulk-delete-modal',   'closeBulkDeleteModal'],
-            // tools page modals
-            ['backup-modal',     'closeBackupModal'],
-            ['bg-modal',         'closeBgModal'],
-            ['import-modal',     'closeImportModal'],
-            ['pagywosg-modal',   'closePagModal'],
-            ['blacklist-modal',  'closeBlacklistModal'],
-            ['theme-modal',      'closeThemeModal'],
+            ['bulk-edit-modal',       'closeBulkEditModal'],
+            ['bulk-rescrape-modal',   'closeBulkRescrapeModal'],
+            ['bulk-delete-modal',     'closeBulkDeleteModal'],
+            // sub-modals (before their parents)
+            ['hltb-modal',            'closeHltbModal'],
+            ['theme-picker-modal',    'closeThemePickerModal'],
+            ['santa-modal',           'closeSantaModal'],
+            ['playnite-modal',        'closePlayniteModal'],
+            ['filter-io-modal',       'closeFilterIoModal'],
+            ['backup-modal',          'closeBackupModal'],
+            ['bg-modal',              'closeBgModal'],
+            ['import-modal',          'closeImportModal'],
+            ['pagywosg-modal',        'closePagModal'],
+            ['theme-modal',           'closeThemeModal'],
+            ['gamepad-diag-modal',    'closeGamepadDiag'],
+            // top-level hamburger modals
+            ['account-modal',         'closeAccountModal'],
+            ['appearance-modal',      'closeAppearanceModal'],
+            ['library-modal',         'closeLibraryModal'],
+            ['plugins-modal',         'closePluginsModal'],
+            ['community-modal',       'closeCommunityModal'],
+            ['data-modal',            'closeDataModal'],
+            ['system-modal',          'closeSystemModal'],
+            ['blacklist-modal',       'closeBlacklistModal'],
             // home page edit mode panels
-            ['shelf-edit-modal', 'semClose'],
-            ['dedup-panel',      'closeDedupPanel'],
-            ['split-picker',     'closeSplitPicker'],
+            ['shelf-edit-modal',      'semClose'],
+            ['dedup-panel',           'closeDedupPanel'],
+            ['split-picker',          'closeSplitPicker'],
         ];
         for (const [id, fn] of checks) {
             const el = document.getElementById(id);
@@ -1417,6 +1959,34 @@
     }
 
     function _handleB() {
+        // Suppress B while the eyedropper subprocess owns the screen, and for a short
+        // cooldown after it exits (the B press that dismissed the subprocess is still
+        // in the gamepad state when the next RAF fires).
+        if (window._cpEyedropperBusy || window._cpEyedropperCooldown) return;
+
+        // Drop held shelf row
+        if (_shelfGpDragEl) {
+            _shelfGpDragEl.classList.remove('shelf-gp-held');
+            if (typeof syncShelvesOrderFromDOM === 'function') syncShelvesOrderFromDOM();
+            _shelfGpDragEl = null;
+            return;
+        }
+
+        // Drop held platform-priority item
+        if (_state.reorderEl) {
+            _state.reorderEl.classList.remove('plat-held');
+            _state.reorderEl = null;
+            return;
+        }
+
+        // Exit text-input / number-input zone — blur the input and return to previous zone
+        if (_state.zone === 'text-input' || _state.zone === 'number-input') {
+            if (_state.activeInput) { _state.activeInput.blur(); _state.activeInput = null; }
+            _popZone();
+            _syncFocus();
+            return;
+        }
+
         // If in dropdown zone, close just the dropdown and return to previous zone
         if (_state.zone === 'dropdown') {
             _closeAnyOpenModal();
@@ -1492,7 +2062,8 @@
                 }
                 case 'library': {
                     if (_state.row >= 0) {
-                        gameEl = _libraryCards()[_state.row] || null;
+                        const item = _libraryNavItems()[_state.row] || null;
+                        gameEl = (_isGroupHeader(item)) ? null : item;
                     }
                     break;
                 }
@@ -1564,8 +2135,8 @@
                 }
                 case 'library': {
                     if (_state.row >= 0) {
-                        const card = _libraryCards()[_state.row];
-                        appid = card ? parseInt(card.dataset.appid) : null;
+                        const item = _libraryNavItems()[_state.row];
+                        appid = (item && !_isGroupHeader(item)) ? parseInt(item.dataset.appid) : null;
                     }
                     break;
                 }
@@ -1626,8 +2197,8 @@
                 }
                 case 'library': {
                     if (_state.row >= 0) {
-                        const card = _libraryCards()[_state.row];
-                        const appid = card ? parseInt(card.dataset.appid) : null;
+                        const item = _libraryNavItems()[_state.row];
+                        const appid = (item && !_isGroupHeader(item)) ? parseInt(item.dataset.appid) : null;
                         if (appid) launchGame(appid);
                     }
                     break;
@@ -1647,13 +2218,13 @@
     }
 
     function _handleLB() {
-        if (document.getElementById('gamepad-diag-modal')?.style.display !== 'none') return;
+        if (_state.zone === 'modal') return;
         const idx = _currentPageIdx();
         if (idx > 0) window.location.href = PAGE_URLS[idx - 1];
     }
 
     function _handleRB() {
-        if (document.getElementById('gamepad-diag-modal')?.style.display !== 'none') return;
+        if (_state.zone === 'modal') return;
         const idx = _currentPageIdx();
         if (idx < PAGE_URLS.length - 1) window.location.href = PAGE_URLS[idx + 1];
     }
@@ -1682,11 +2253,16 @@
     // Buttons that fire immediately without needing activation first
     const _IMMEDIATE_BTNS = new Set([BTN_IDX.lb, BTN_IDX.rb, BTN_IDX.back]);
 
-    function _onButton(i, isRepeat) {
-        const handler = _BTN_HANDLERS[i];
+    function _onButton(rawIdx, isRepeat) {
+        const mappedAction = _activeMapping?.btns[rawIdx];
+        const effectiveIdx = mappedAction ? BTN_IDX[mappedAction] : rawIdx;
+        // While a text input has focus, only B is handled (to exit); everything else is typed.
+        if (_state.zone === 'text-input' && effectiveIdx !== BTN_IDX.b) return;
+        // While a number input has focus, only B/up/down are handled.
+        if (_state.zone === 'number-input' && effectiveIdx !== BTN_IDX.b && effectiveIdx !== BTN_IDX.up && effectiveIdx !== BTN_IDX.down) return;
+        const handler = _BTN_HANDLERS[effectiveIdx];
         if (!handler) return;
-        // LB/RB fire immediately — no activation step needed
-        if (_IMMEDIATE_BTNS.has(i)) {
+        if (_IMMEDIATE_BTNS.has(effectiveIdx)) {
             handler();
             return;
         }
@@ -1705,7 +2281,7 @@
         _rafId = requestAnimationFrame(_pollLoop);
         _pollCount++;
 
-        if (_gameSuppressed) return;
+        if (_gameSuppressed || !_gamepadEnabled) return;
 
         const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
         let gp = null;
@@ -1715,6 +2291,11 @@
         if (!_gpEverSeen) {
             _gpEverSeen = true;
             safeSession.setItem('pd_gp_seen', '1');
+        }
+
+        if (gp.id !== _lastGpId) {
+            _lastGpId = gp.id;
+            _activeMapping = PLATFORM_MAPPINGS.find(m => m.detect(gp.id)) || null;
         }
 
         const now = performance.now();
@@ -1782,24 +2363,22 @@
         }
     }
 
-    if (GAMEPAD_ENABLED) {
-        window.addEventListener('gamepadconnected', () => {
-            if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
-        });
-        _rafId = requestAnimationFrame(_pollLoop);
+    window.addEventListener('gamepadconnected', () => {
+        if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
+    });
+    _rafId = requestAnimationFrame(_pollLoop);
 
-        // ── Pause polling when window loses focus (e.g. a game launched) ─────
-        window.addEventListener('blur', () => {
-            if (_rafId) {
-                cancelAnimationFrame(_rafId);
-                _rafId = null;
-            }
-            _clearGamepadState();
-        });
-        window.addEventListener('focus', () => {
-            if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
-        });
-    }
+    // ── Pause polling when window loses focus (e.g. a game launched) ─────────
+    window.addEventListener('blur', () => {
+        if (_rafId) {
+            cancelAnimationFrame(_rafId);
+            _rafId = null;
+        }
+        _clearGamepadState();
+    });
+    window.addEventListener('focus', () => {
+        if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
+    });
 
     // ── Library re-focus hook ─────────────────────────────────────────────────
     // Called by library.html's observeCards after populating a card.
@@ -1810,52 +2389,88 @@
         }
     };
 
+    // Move gamepad focus to a specific library card without calling scrollIntoView
+    // (used by the dice picker, which handles its own scroll animation).
+    window._inputMgr.focusLibraryCard = function (appid) {
+        if (!_state.active || PAGE !== 'library') return;
+        const items = _libraryNavItems();
+        const idx = items.findIndex(el => !_isGroupHeader(el) && parseInt(el.dataset.appid) === appid);
+        if (idx < 0) return;
+        _state.zone         = 'content';
+        _state.row          = idx;
+        _state.focusedAppid = appid;
+        _clearFocus();
+        items[idx].classList.add('gamepad-focus');
+    };
+
     // ── Modal zone cleanup ────────────────────────────────────────────────────
+    // Registry of all watched modals — used to decide whether to pop the modal zone
+    // when one closes. If any sibling is still open, the zone stays at 'modal'.
+    const _watchedEls = [];
+    function _anyWatchedOpen() {
+        return _watchedEls.some(w => w());
+    }
+
+    function _onModalOpen() {
+        if (!_state.active) return;
+        if (_state.zone !== 'modal') {
+            if (_state.zone === 'ctx-menu') {
+                document.querySelectorAll('.ctx-sub-open').forEach(el => el.classList.remove('ctx-sub-open'));
+                _popZone();
+            }
+            // Also pop dropdown zone so prevZone is content, not the now-closed hamburger
+            if (_state.zone === 'dropdown') _popZone();
+            _pushZone('modal');
+            requestAnimationFrame(() => { if (_state.zone === 'modal') _syncFocus(); });
+        }
+    }
+
+    function _onModalClose() {
+        if (!_state.active) return;
+        if (_state.zone === 'modal') {
+            if (!_anyWatchedOpen()) {
+                _popZone();
+            }
+            // Always resync — the just-closed element may have held focus,
+            // and a parent modal (if still open) needs its own element focused.
+            _syncFocus();
+        }
+    }
+
+    // Exposed so playdate.js can forcibly re-enter modal zone after eyedropper completes.
+    window._gpRefocusModal = function () {
+        if (!_state.active) return;
+        if (_state.zone !== 'modal') _pushZone('modal');
+        _state.modalFocused = null;
+        requestAnimationFrame(() => _syncFocus());
+    };
+
     function _watchModal(id) {
         const el = document.getElementById(id);
         if (!el) return;
-        let _wasVisible = el.style.display !== 'none' && el.style.display !== '';
+        const isVisible = () => el.style.display !== 'none' && el.style.display !== '';
+        _watchedEls.push(isVisible);
+        let _wasVisible = isVisible();
         new MutationObserver(() => {
-            const nowVisible = el.style.display !== 'none' && el.style.display !== '';
+            const nowVisible = isVisible();
             if (nowVisible === _wasVisible) return;
             _wasVisible = nowVisible;
-            if (!_state.active) return;
-            if (nowVisible && _state.zone !== 'modal') {
-                // If opening from ctx-menu, pop it first so prevZone is content not ctx-menu
-                if (_state.zone === 'ctx-menu') {
-                    document.querySelectorAll('.ctx-sub-open').forEach(el => el.classList.remove('ctx-sub-open'));
-                    _popZone();
-                }
-                _pushZone('modal');
-                requestAnimationFrame(() => { if (_state.zone === 'modal') _syncFocus(); });
-            } else if (!nowVisible) {
-                if (_state.zone === 'modal') _popZone();
-                _syncFocus();
-            }
+            if (nowVisible) _onModalOpen(); else _onModalClose();
         }).observe(el, { attributes: true, attributeFilter: ['style'] });
     }
 
-    // Variant of _watchModal for elements shown via CSS class (e.g. pd-dialog-overlay uses .visible)
+    // Variant for elements shown via CSS class (e.g. pd-dialog-overlay uses .visible)
     function _watchModalByClass(id) {
         const el = document.getElementById(id);
         if (!el) return;
-        let _wasVisible = el.classList.contains('visible');
+        const isVisible = () => el.classList.contains('visible');
+        _watchedEls.push(isVisible);
+        let _wasVisible = isVisible();
         new MutationObserver(() => {
-            const nowVisible = el.classList.contains('visible');
+            const nowVisible = isVisible();
             if (nowVisible === _wasVisible) return;
             _wasVisible = nowVisible;
-            if (!_state.active) return;
-            if (nowVisible && _state.zone !== 'modal') {
-                if (_state.zone === 'ctx-menu') {
-                    document.querySelectorAll('.ctx-sub-open').forEach(el => el.classList.remove('ctx-sub-open'));
-                    _popZone();
-                }
-                _pushZone('modal');
-                requestAnimationFrame(() => { if (_state.zone === 'modal') _syncFocus(); });
-            } else if (!nowVisible) {
-                if (_state.zone === 'modal') _popZone();
-                _syncFocus();
-            }
+            if (nowVisible) _onModalOpen(); else _onModalClose();
         }).observe(el, { attributes: true, attributeFilter: ['class'] });
     }
 
@@ -1890,14 +2505,40 @@
         _watchModal('bulk-rescrape-modal');
         _watchModal('bulk-delete-modal');
 
-        // Tools modals — full zone push/pop so focus enters and returns correctly
+        // Top-level hamburger modals
+        _watchModal('account-modal');
+        _watchModal('appearance-modal');
+        _watchModal('library-modal');
+        _watchModal('plugins-modal');
+        _watchModal('community-modal');
+        _watchModal('data-modal');
+        _watchModal('system-modal');
+        _watchModal('blacklist-modal');
+
+        // Sub-modals (also registered so _anyWatchedOpen works correctly for nesting)
         _watchModal('gamepad-diag-modal');
+        _watchModal('hltb-modal');
+        _watchModal('theme-picker-modal');
+        _watchModal('santa-modal');
+        _watchModal('playnite-modal');
+        _watchModal('filter-io-modal');
         _watchModal('backup-modal');
         _watchModal('bg-modal');
         _watchModal('import-modal');
         _watchModal('pagywosg-modal');
-        _watchModal('blacklist-modal');
         _watchModal('theme-modal');
+
+        // Color picker popover — dynamically inserted/removed from document.body
+        const _cpPopVisible = () => !!document.getElementById('_color-picker-popover');
+        _watchedEls.push(_cpPopVisible);
+        let _cpPopWasVisible = false;
+        new MutationObserver(() => {
+            const nowVisible = _cpPopVisible();
+            if (nowVisible !== _cpPopWasVisible) {
+                _cpPopWasVisible = nowVisible;
+                if (nowVisible) _onModalOpen(); else _onModalClose();
+            }
+        }).observe(document.body, { childList: true });
 
         // Home page edit mode panels
         _watchModal('shelf-edit-modal');
