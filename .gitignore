@@ -56,3 +56,6 @@ git-push.sh
 make-zip.sh
 CLAUDE.md
 *.zip
+
+# --- Local Notes ---
+TODO.md

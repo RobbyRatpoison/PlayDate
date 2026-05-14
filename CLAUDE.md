@@ -212,8 +212,4 @@ The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the mo
 
 ## Release Workflow
 
-Completed work goes in the **Unreleased** section of `TODO.md`. At release, distill it into user-facing notes for `RELEASE_NOTES.md`, then delete the section.
-
-## To-Do
-
-See [TODO.md](TODO.md).
+At release, distill completed work into user-facing notes for `RELEASE_NOTES.md`.
