@@ -224,6 +224,89 @@ def _install_plugin_zip(raw_bytes):
 # Module-level cancel event so main.py can signal it on window close.
 populate_cancel = threading.Event()
 
+# ── Monthly in a Month — module-level so the startup snapshot can reach it ───
+_MIAM_SHEET_URL = ('https://docs.google.com/spreadsheets/d/'
+                   '1xBd5rltp8WxQSnG2BVKPzr7quTLJCvCt2MaGCxzs-d8/export?format=csv')
+_miam_sheet_cache = [None]  # [(timestamp, data)] — shared with route handler
+
+
+def _first_tuesday(year, month):
+    from datetime import date, timedelta
+    d = date(year, month, 1)
+    return d + timedelta(days=(1 - d.weekday()) % 7)
+
+
+def take_miam_snapshot():
+    """Snapshot achievement data for MiaM-eligible library games; keep at most 3 entries."""
+    import csv, io, urllib.request
+    from datetime import date, timedelta
+    from config import load_state, save_state
+    from database import get_db
+    try:
+        req = urllib.request.urlopen(_MIAM_SHEET_URL, timeout=15)
+        content = req.read().decode('utf-8')
+        reader = csv.DictReader(io.StringIO(content))
+        eligible = []
+        for row in reader:
+            app_id_raw = (row.get('App ID') or '').strip()
+            can_do = (row.get('Can do? (Y/N)') or '').strip()
+            if not app_id_raw or not app_id_raw.startswith('app/'):
+                continue
+            try:
+                appid = int(app_id_raw[4:])
+            except ValueError:
+                continue
+            if can_do in ('N', 'N?'):
+                continue
+            eligible.append(appid)
+    except Exception:
+        return
+
+    if not eligible:
+        return
+
+    db = get_db()
+    rows = db.execute(
+        f"SELECT appid, unlocked_achievements FROM games "
+        f"WHERE appid IN ({','.join('?'*len(eligible))}) "
+        f"AND platform = 'steam' "
+        f"AND completion_status NOT IN ('Beaten', 'Completed')",
+        eligible
+    ).fetchall()
+    db.close()
+
+    today = date.today().isoformat()
+    games = {str(r['appid']): (r['unlocked_achievements'] or 0) for r in rows}
+    new_snap = {'taken_at': today, 'games': games}
+
+    state = load_state()
+    # Migrate old dict format silently
+    existing = state.get('miam_snapshots') or []
+    if isinstance(existing, dict):
+        existing = []
+    snaps = [s for s in existing if s.get('taken_at') != today]
+    snaps.append(new_snap)
+    snaps.sort(key=lambda s: s.get('taken_at', ''), reverse=True)
+
+    # Determine the 3 slots to keep
+    today_date = date.today()
+    cur_ft  = _first_tuesday(today_date.year, today_date.month).isoformat()
+    prev_month = today_date.replace(day=1) - timedelta(days=1)
+    prev_ft = _first_tuesday(prev_month.year, prev_month.month).isoformat()
+
+    keep = set()
+    keep.add(snaps[0]['taken_at'])  # most recent always
+    for s in snaps:
+        if s['taken_at'] < cur_ft:
+            keep.add(s['taken_at'])
+            break
+    for s in snaps:
+        if s['taken_at'] < prev_ft:
+            keep.add(s['taken_at'])
+            break
+
+    save_state({'miam_snapshots': [s for s in snaps if s['taken_at'] in keep]})
+
 
 def create_app(template_folder=None, static_folder=None):
     """
@@ -2703,6 +2786,69 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": "No games matched the selected criteria."})
         picks = random.sample(games, min(6, len(games)))
         return jsonify({"status": "success", "picks": picks, "pool_size": len(games)})
+
+    # ── Monthly in a Month ────────────────────────────────────────────────────
+
+    @app.route('/api/miam-sheet')
+    def miam_sheet_data():
+        import csv, io, urllib.request
+        from datetime import datetime
+        cache = _miam_sheet_cache[0]
+        now = datetime.now().timestamp()
+        if cache and now - cache[0] < 3600:
+            return jsonify(cache[1])
+        try:
+            req = urllib.request.urlopen(_MIAM_SHEET_URL, timeout=15)
+            content = req.read().decode('utf-8')
+            reader = csv.DictReader(io.StringIO(content))
+            eligible = []
+            total = 0
+            for row in reader:
+                app_id_raw = (row.get('App ID') or '').strip()
+                can_do = (row.get('Can do? (Y/N)') or '').strip()
+                if not app_id_raw or not app_id_raw.startswith('app/'):
+                    continue
+                try:
+                    appid = int(app_id_raw[4:])
+                except ValueError:
+                    continue
+                total += 1
+                if can_do in ('N', 'N?'):
+                    continue
+                eligible.append(appid)
+            db = get_db()
+            in_library = {}
+            if eligible:
+                rows = db.execute(
+                    f"SELECT appid, unlocked_achievements FROM games "
+                    f"WHERE appid IN ({','.join('?'*len(eligible))}) AND platform = 'steam' "
+                    f"AND completion_status NOT IN ('Beaten', 'Completed')",
+                    eligible
+                ).fetchall()
+                in_library = {r['appid']: (r['unlocked_achievements'] or 0) for r in rows}
+            db.close()
+            data = {
+                'status': 'success',
+                'total': total,
+                'eligible': len(eligible),
+                'in_library': len(in_library),
+                'appids': eligible,
+                'library_achievements': {str(k): v for k, v in in_library.items()},
+            }
+            _miam_sheet_cache[0] = (now, data)
+            return jsonify(data)
+        except Exception as e:
+            app.logger.exception('MiaM sheet fetch failed')
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/miam-snapshot')
+    def miam_snapshot():
+        from config import load_state
+        state = load_state()
+        raw = state.get('miam_snapshots') or []
+        if isinstance(raw, dict):
+            raw = []  # discard old format
+        return jsonify({'status': 'success', 'snapshots': raw})
 
     @app.route('/api/shelves', methods=['POST'])
     def save_shelves():

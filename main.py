@@ -762,6 +762,17 @@ if __name__ == '__main__':
     threading.Thread(target=_run_playtime_sync, daemon=True).start()
     log.info("Playtime sync started in background.")
 
+    # 2d. Snapshot MiaM achievement data for filter builder.
+    def _run_miam_snapshot():
+        try:
+            from app import take_miam_snapshot
+            take_miam_snapshot()
+            log.info("MiaM achievement snapshot taken.")
+        except Exception as e:
+            log.warning(f"MiaM snapshot failed: {e}")
+
+    threading.Thread(target=_run_miam_snapshot, daemon=True).start()
+
     # 3. Start Flask in a background thread
     flask_thread = threading.Thread(target=_run_flask, args=(flask_app,), daemon=True)
     flask_thread.start()
