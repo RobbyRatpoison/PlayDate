@@ -425,6 +425,7 @@
                             <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('vertical')" data-modal-row="21">Custom URL</button>
                             {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('vertical')" data-modal-row="21">Browse SGDB</button>{% endif %}
                             {% if not existing_sgdb_key %}<a id="sgdb-link-vertical" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);" data-modal-row="21">Browse SGDB ↗</a>{% endif %}
+                            <button type="button" class="nav-btn art-action-btn" onclick="clearArt('vertical')" data-modal-row="21" style="color:var(--text-danger, #c74b4b);">Clear</button>
                         </div>
                         <div id="art-url-row-vertical" style="display:none; flex-direction:column; gap:6px;">
                             <input type="text" id="art-url-vertical" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
@@ -447,6 +448,7 @@
                             <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('horizontal')" data-modal-row="21">Custom URL</button>
                             {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('horizontal')" data-modal-row="21">Browse SGDB</button>{% endif %}
                             {% if not existing_sgdb_key %}<a id="sgdb-link-horizontal" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);" data-modal-row="21">Browse SGDB ↗</a>{% endif %}
+                            <button type="button" class="nav-btn art-action-btn" onclick="clearArt('horizontal')" data-modal-row="21" style="color:var(--text-danger, #c74b4b);">Clear</button>
                         </div>
                         <div id="art-url-row-horizontal" style="display:none; flex-direction:column; gap:6px;">
                             <input type="text" id="art-url-horizontal" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
@@ -469,6 +471,7 @@
                             <button type="button" class="nav-btn art-action-btn" onclick="toggleArtCustomUrl('icon')" data-modal-row="21">Custom URL</button>
                             {% if existing_sgdb_key %}<button type="button" class="nav-btn art-action-btn" onclick="openSgdbBrowser('icon')" data-modal-row="21">Browse SGDB</button>{% endif %}
                             {% if not existing_sgdb_key %}<a id="sgdb-link-icon" href="#" target="_blank" rel="noopener" style="font-size:0.75rem; color:var(--accent);" data-modal-row="21">Browse SGDB ↗</a>{% endif %}
+                            <button type="button" class="nav-btn art-action-btn" onclick="clearArt('icon')" data-modal-row="21" style="color:var(--text-danger, #c74b4b);">Clear</button>
                         </div>
                         <div id="art-url-row-icon" style="display:none; flex-direction:column; gap:6px;">
                             <input type="text" id="art-url-icon" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
@@ -1083,6 +1086,33 @@ const achLink = document.getElementById('achievements-link');
                 _loadArtPanel(type, src, data.source);
                 _bustPageArtCache(appid, type);
                 status.style.color = '#5c7e10'; status.textContent = '✔ Done!';
+            } else {
+                status.style.color = '#ff8080'; status.textContent = '✘ ' + data.message;
+            }
+        } catch {
+            status.style.color = '#ff8080'; status.textContent = '✘ Network error.';
+        }
+    }
+
+    async function clearArt(type) {
+        const appid  = document.getElementById('edit-appid').value;
+        const status = document.getElementById(`art-status-${type}`);
+        status.style.color = '#aaa'; status.textContent = 'Clearing...';
+        try {
+            const res  = await fetch('/api/artwork/clear', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ appid, orientation: type })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const _img = document.getElementById(`art-img-${type}`);
+                const _ph  = document.getElementById(`art-ph-${type}`);
+                const _lbl = document.getElementById(`art-source-${type}`);
+                if (_img) { _img.removeAttribute('src'); _img.style.display = 'none'; }
+                if (_ph)  _ph.style.display = 'flex';
+                if (_lbl) _lbl.textContent  = '—';
+                _bustPageArtCache(appid, type);
+                status.style.color = '#aaa'; status.textContent = 'Cleared.';
             } else {
                 status.style.color = '#ff8080'; status.textContent = '✘ ' + data.message;
             }

@@ -356,13 +356,51 @@ def create_app(template_folder=None, static_folder=None):
     # correct location so they're visible on Windows builds.
     _SAFE_FILENAME_RE = re.compile(r'^[\w\-./]+$')
 
+    # Cache of appid (int) → duplicate_of appid string; None means "not a duplicate".
+    # Avoids a DB round-trip on every image request for games without local art files.
+    _dup_cache: dict = {}
+    _dup_cache_loaded = False
+
+    def _get_dup_cache():
+        nonlocal _dup_cache_loaded
+        if not _dup_cache_loaded:
+            try:
+                db = get_db()
+                rows = db.execute("SELECT appid, duplicate_of FROM games WHERE duplicate_of IS NOT NULL AND duplicate_of != ''").fetchall()
+                db.close()
+                _dup_cache.update({row['appid']: row['duplicate_of'] for row in rows})
+            except Exception:
+                pass
+            _dup_cache_loaded = True
+        return _dup_cache
+
+    def _invalidate_dup_cache():
+        nonlocal _dup_cache_loaded
+        _dup_cache.clear()
+        _dup_cache_loaded = False
+
     @app.route('/static/img/library/<path:filename>')
     def serve_library_image(filename):
         if not _SAFE_FILENAME_RE.match(filename):
             return '', 400
-        return send_from_directory(
-            os.path.join(BASE_DIR, 'static', 'img', 'library'), filename
-        )
+        lib_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
+        if os.path.exists(os.path.join(lib_dir, filename)):
+            return send_from_directory(lib_dir, filename)
+        # If the file is missing, check whether this game is a duplicate and
+        # serve the canonical game's image instead.
+        parts = filename.split('/')  # e.g. ['vertical', '-12345.jpg']
+        if len(parts) == 2:
+            stem = parts[1].rsplit('.', 1)[0]
+            try:
+                req_appid = int(stem)
+                dup_of = _get_dup_cache().get(req_appid)
+                if dup_of:
+                    canon_file = f"{parts[0]}/{dup_of}.{parts[1].rsplit('.', 1)[1]}"
+                    if os.path.exists(os.path.join(lib_dir, canon_file)):
+                        return send_from_directory(lib_dir, canon_file)
+            except (ValueError, Exception):
+                pass
+        return send_from_directory(lib_dir, filename)  # let Flask return 404
 
     @app.route('/static/img/backgrounds/<path:filename>')
     def serve_background_image(filename):
@@ -1222,6 +1260,25 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "success"})
         return jsonify({"status": "error", "message": "Failed to download image."}), 500
 
+    @app.route('/api/artwork/clear', methods=['POST'])
+    def clear_artwork():
+        data        = request.json or {}
+        appid       = data.get('appid')
+        orientation = data.get('orientation')
+        if not appid or orientation not in ('vertical', 'horizontal', 'icon'):
+            return jsonify({'status': 'error', 'message': 'Missing or invalid parameters'}), 400
+        appid   = int(appid)
+        dir_map = {'vertical': 'vertical', 'horizontal': 'horizontal', 'icon': 'icons'}
+        path    = os.path.join(BASE_DIR, 'static', 'img', 'library', dir_map[orientation], f'{appid}.jpg')
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+        src_col = {'vertical': 'vertical_art_source', 'horizontal': 'horizontal_art_source', 'icon': 'icon_source'}
+        update_game_data(appid, **{src_col[orientation]: None})
+        return jsonify({'status': 'success'})
+
     @app.route('/api/artwork/rescrape', methods=['POST'])
     def rescrape_artwork():
         from images import download_vertical, download_horizontal, download_icon
@@ -1347,6 +1404,15 @@ def create_app(template_folder=None, static_folder=None):
                              hltb_completionist=None, hltb_match_score=None)
         return jsonify({'status': 'success', 'data': info})
 
+    def _propagate_hltb(canonical_appid, hltb_data, db):
+        """Copy confirmed HLTB data to all games in the same duplicate group."""
+        duplicates = db.execute(
+            "SELECT appid FROM games WHERE duplicate_of = ? AND appid != ?",
+            (str(canonical_appid), canonical_appid)
+        ).fetchall()
+        for row in duplicates:
+            update_game_data(row['appid'], **hltb_data)
+
     @app.route('/api/hltb/<int:appid>/confirm', methods=['POST'])
     def confirm_hltb(appid):
         from scrapers import fetch_hltb_by_id
@@ -1362,8 +1428,15 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'status': 'error', 'message': 'No HLTB ID stored'}), 400
         times_available = result.pop('times_available', True)
         if times_available:
-            update_game_data(appid, hltb_fetched=today, **result)
-            return jsonify({'status': 'success', 'data': {**result, 'hltb_fetched': today}})
+            hltb_data = {**result, 'hltb_fetched': today}
+            update_game_data(appid, **hltb_data)
+            db2 = get_db()
+            canonical_appid = db2.execute(
+                "SELECT COALESCE(duplicate_of, appid) FROM games WHERE appid=?", (appid,)
+            ).fetchone()[0]
+            _propagate_hltb(canonical_appid, hltb_data, db2)
+            db2.close()
+            return jsonify({'status': 'success', 'data': hltb_data})
         else:
             # ID lookup failed — clear to no_match so the game surfaces in the review tab
             cleared = {'hltb_fetched': 'no_match', 'hltb_id': None,
@@ -1624,7 +1697,19 @@ def create_app(template_folder=None, static_folder=None):
                 (str(duplicate_of) if duplicate_of else None, appid)
             )
             db.commit()
+            if duplicate_of:
+                canonical = db.execute(
+                    "SELECT hltb_fetched, hltb_id, hltb_matched_name, hltb_match_score, "
+                    "hltb_main, hltb_extras, hltb_completionist FROM games WHERE appid=?",
+                    (str(duplicate_of),)
+                ).fetchone()
+                if canonical and canonical['hltb_fetched'] not in (None, '0', 'unconfirmed', 'no_match'):
+                    hltb_data = {k: canonical[k] for k in
+                                 ('hltb_fetched', 'hltb_id', 'hltb_matched_name', 'hltb_match_score',
+                                  'hltb_main', 'hltb_extras', 'hltb_completionist')}
+                    update_game_data(appid, **hltb_data)
             db.close()
+            _invalidate_dup_cache()
             return jsonify({'status': 'ok'})
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -3573,8 +3658,12 @@ def create_app(template_folder=None, static_folder=None):
         try:
             from database import auto_detect_duplicates
             from config import load_state
-            priority = load_state().get('platform_priority')
+            from plugins import get_platform_priority
+            saved    = load_state().get('platform_priority') or []
+            dynamic  = get_platform_priority()
+            priority = saved + [p for p in dynamic if p not in saved]
             count = auto_detect_duplicates(platform_priority=priority)
+            _invalidate_dup_cache()
             return jsonify({'status': 'ok', 'detected': count})
         except Exception as e:
             log.error(f"detect-duplicates failed: {e}", exc_info=True)
