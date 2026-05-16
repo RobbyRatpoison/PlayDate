@@ -286,7 +286,10 @@ def library():
     if sort_ord not in ('ASC', 'DESC'):
         sort_ord = 'ASC'
     # Virtual sort columns expand to expressions; NULLs always sort last
-    if sort_col in VIRTUAL_SORT_COLS:
+    if sort_col == 'random':
+        sort_col = 'RANDOM()'
+        sort_ord = ''
+    elif sort_col in VIRTUAL_SORT_COLS:
         _vcol = VIRTUAL_SORT_COLS[sort_col]
         if isinstance(_vcol, dict):
             _expr = _vcol['desc'] if sort_ord == 'DESC' else _vcol['asc']
@@ -336,7 +339,7 @@ def library():
         plat_cond = ' AND '.join(plat_conds)
         where = plat_cond if where == '1=1' else f"({where}) AND ({plat_cond})"
 
-    query = f"SELECT * FROM games WHERE {where} ORDER BY {sort_col} {sort_ord}"
+    query = f"SELECT * FROM games WHERE {where} ORDER BY {sort_col} {sort_ord}".rstrip()
 
     sql_error = None
     try:
@@ -345,7 +348,7 @@ def library():
     except Exception as e:
         sql_error = str(e)
         try:
-            rows = db.execute(f"SELECT * FROM games ORDER BY {sort_col} {sort_ord}").fetchall()
+            rows = db.execute(f"SELECT * FROM games ORDER BY {sort_col} {sort_ord}".rstrip()).fetchall()
             games = [dict(row) for row in rows]
         except Exception:
             games = []

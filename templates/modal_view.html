@@ -29,10 +29,12 @@
                 <option value="weighted_percentage" {{ 'selected' if state.sort == 'weighted_percentage' }}>Weighted Score</option>
                 <option value="hltb_min" {{ 'selected' if state.sort == 'hltb_min' }}>HLTB Time</option>
                 <option value="total_reviews" {{ 'selected' if state.sort == 'total_reviews' }}>Total Reviews</option>
+                <option value="random" {{ 'selected' if state.sort == 'random' }}>Random</option>
             </select>
             <button class="order-btn" onclick="vmToggleOrder()" data-modal-row="1"
                     data-tooltip="Toggle ascending/descending" data-tooltip-right
-                    style="font-size:1.2rem; min-width:3rem; height:2.5rem; padding:0 0.75rem; flex-shrink:0;">
+                    style="font-size:1.2rem; min-width:3rem; height:2.5rem; padding:0 0.75rem; flex-shrink:0;
+                           {{ 'visibility:hidden;' if state.sort == 'random' }}">
                 {{ '▲' if state.order == 'ASC' else '▼' }}
             </button>
         </div>
@@ -210,7 +212,10 @@ function vmSetSort(col) {
         _vmPendOrder = _sortDefaultOrder[col] ?? 'ASC';
     }
     const btn = document.querySelector('.order-btn');
-    if (btn) btn.textContent = (_vmPendOrder ?? _vmServerOrder) === 'ASC' ? '▲' : '▼';
+    if (btn) {
+        btn.style.visibility = col === 'random' ? 'hidden' : '';
+        btn.textContent = (_vmPendOrder ?? _vmServerOrder) === 'ASC' ? '▲' : '▼';
+    }
 }
 
 function vmToggleOrder() {

@@ -59,15 +59,9 @@
             background: var(--bg-raised, #1e2a35);
         }
 
-        /* Shimmer animation on unpopulated placeholder cards */
+        /* Placeholder style for unpopulated cards */
         .game-card:not([data-populated]) {
-            background: linear-gradient(90deg, var(--bg-raised, #1e2a35) 25%, var(--bg-input, #2a3a47) 50%, var(--bg-raised, #1e2a35) 75%);
-            background-size: 200% 100%;
-            animation: card-shimmer 1.4s infinite linear;
-        }
-        @keyframes card-shimmer {
-            0%   { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
+            background: var(--bg-raised, #1e2a35);
         }
 
         .game-grid.horizontal .game-card {
@@ -602,7 +596,7 @@
     </style>
     {% set _non_default_sort = state.sort not in ('name', '') or state.order != 'ASC' %}
     {% set _has_plat_filter = hidden_platforms | length > 0 %}
-    {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_min': 'HLTB Time', 'total_reviews': 'Total Reviews'} -%}
+    {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_min': 'HLTB Time', 'total_reviews': 'Total Reviews', 'random': 'Random'} -%}
     {%- set _group_labels = {'installed': 'Installed', 'completion_status': 'Completion', 'release_date': 'Release Year', 'date_added': 'Year Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'platform': 'Platform'} -%}
     {%- set _plat_labels = platform_labels() -%}
     {%- set ns = namespace(filter_label=none, has_real_filter=false) -%}
@@ -678,7 +672,7 @@
             games
             {%- if ns.filter_label is not none %} &middot; {{ ns.filter_label }}{% endif %}
             {%- if _has_plat_filter %} &middot; {% for p in available_platforms if p not in hidden_platforms %}{{ _plat_labels.get(p, p) }}{% if not loop.last %}, {% endif %}{% endfor %} only{% endif %}
-            {%- if _non_default_sort %} &middot; {{ _sort_labels.get(state.sort, state.sort) }} {{ '↑' if state.order == 'ASC' else '↓' }}{% endif %}
+            {%- if _non_default_sort %} &middot; {{ _sort_labels.get(state.sort, state.sort) }}{% if state.sort != 'random' %} {{ '↑' if state.order == 'ASC' else '↓' }}{% endif %}{% endif %}
             {%- if group_by %}<span id="group-by-label"> &middot; Grouped by {{ _group_labels.get(group_by, group_by) }}</span>{% else %}<span id="group-by-label" style="display:none;"></span>{% endif %}
         </p>
     </div>
@@ -1228,48 +1222,34 @@
                     const appid = parseInt(card.dataset.appid);
 
                     if (entry.isIntersecting) {
-                        // ── Load ──────────────────────────────────────────────
                         if (!card.dataset.populated) {
+                            // First entry: build the card HTML once and keep it forever.
                             const game = _GAME_MAP.get(appid);
                             if (game) {
                                 card.innerHTML = cardInnerHTML(game);
                                 card.dataset.populated = '1';
-                                scheduleImgLoad(card);
                                 if (_selectMode) card.addEventListener('click', onCardClick);
                                 if (_selectedIds.has(appid)) card.classList.add('selected');
-                                // Gamepad: re-apply focus class after virtual scroll repopulates card
                                 if (window._inputMgr?.onCardPopulated) {
                                     window._inputMgr.onCardPopulated(card, appid);
                                 }
                             }
                         }
+                        // Reload image — handles first entry and re-entry after img was cleared.
+                        scheduleImgLoad(card);
                     } else {
-                        // ── Unload ────────────────────────────────────────────
                         if (card.dataset.populated) {
-                            // Cancel any pending image load for this card.
+                            // Keep the HTML; only clear img.src so the browser can release
+                            // the decoded image buffer without destroying the DOM structure.
                             clearTimeout(card._imgTimer);
-                            // Null the img src before clearing so Chromium can
-                            // release the decoded image buffer sooner rather than
-                            // holding it in the image cache indefinitely.
                             const img = card.querySelector('img');
                             if (img) img.src = '';
-                            // Remove select-mode listener to prevent accumulation:
-                            // without this, each populate/unload cycle adds another
-                            // copy of the listener to the same card div.
-                            card.removeEventListener('click', onCardClick);
-                            if (card === _hoveredCard) {
-                                _hoveredCard = null;
-                            }
-                            card.innerHTML = '';
-                            delete card.dataset.populated;
-                            // Do NOT touch _selectedIds — selection state is preserved
-                            // in memory and re-applied when the card re-enters view.
                         }
                     }
                 });
             });
         }, {
-            rootMargin: '1200px',  // load 1200px ahead, unload 1200px behind
+            rootMargin: '1200px',
             threshold: 0
         });
         document.querySelectorAll('.game-card').forEach(c => _observer.observe(c));
@@ -2569,24 +2549,7 @@ function pickRandomGame() {
         const appid = parseInt(row.dataset.appid, 10);
         const game  = _GAME_MAP.get(appid);
         if (!game) return;
-
-        const icon = document.createElement('img');
-        icon.className = 'list-icon';
-        icon.alt = '';
-        icon.src = `/static/img/library/icons/${game.appid}.jpg?v=${_imgV}`;
-        icon.onerror = () => { icon.style.display = 'none'; };
-
-        const name = document.createElement('span');
-        name.className = 'list-name';
-        name.textContent = game.name || '';
-
-        const status = document.createElement('span');
-        status.className = 'list-status-badge';
-        status.textContent = game.completion_status || '';
-
-        row.appendChild(icon);
-        row.appendChild(name);
-        row.appendChild(status);
+        row.innerHTML = `<img class="list-icon" alt="" src="/static/img/library/icons/${game.appid}.jpg?v=${_imgV}" onerror="this.style.display='none'"><span class="list-name">${escHtml(game.name || '')}</span><span class="list-status-badge">${escHtml(game.completion_status || '')}</span>`;
         row.dataset.populated = '1';
         if (_selectedIds.has(appid)) row.classList.add('selected');
     }
@@ -2599,14 +2562,9 @@ function pickRandomGame() {
         _listObserver = new IntersectionObserver((entries) => {
             requestAnimationFrame(() => {
                 entries.forEach(entry => {
-                    const row = entry.target;
-                    if (entry.isIntersecting) {
-                        if (!row.dataset.populated) _populateListRow(row);
-                    } else {
-                        if (row.dataset.populated) {
-                            row.innerHTML = '';
-                            delete row.dataset.populated;
-                        }
+                    if (entry.isIntersecting && !entry.target.dataset.populated) {
+                        _populateListRow(entry.target);
+                        _listObserver.unobserve(entry.target);
                     }
                 });
             });
