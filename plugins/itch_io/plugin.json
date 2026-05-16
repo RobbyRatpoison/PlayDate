@@ -1,0 +1,10 @@
+{
+    "id": "itch_io",
+    "name": "itch.io",
+    "version": "1.0.0",
+    "platform": "itch_io",
+    "author": "RobbyRatpoison",
+    "launcher": {
+        "required": false
+    }
+}

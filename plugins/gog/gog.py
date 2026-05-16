@@ -379,7 +379,8 @@ def _do_sync_library():
         db.close()
 
     from database import auto_detect_duplicates
-    dupes = auto_detect_duplicates()
+    from plugins import get_platform_priority
+    dupes = auto_detect_duplicates(platform_priority=get_platform_priority())
 
     with _sync_lock:
         _sync_state.update({

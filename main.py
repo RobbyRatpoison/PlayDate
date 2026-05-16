@@ -512,7 +512,7 @@ class PyWebviewAPI:
                             val = wkview.evaluate_javascript_finish(async_result)
                             raw = (val.to_string() if val else '') or ''
                             raw = raw.strip()
-                            log.info(f'open_auth_popup: isolated JS body ({len(raw)} chars): {raw[:120]!r}')
+                            log.info(f'open_auth_popup: code_js raw result ({len(raw)} chars): {raw[:200]!r}')
                             if raw.startswith('{'):
                                 import json as _json
                                 data = _json.loads(raw)
@@ -522,8 +522,18 @@ class PyWebviewAPI:
                                 extracted = raw
                         except Exception as e:
                             log.warning(f'open_auth_popup: isolated JS cb: {e}')
-                        threading.Thread(target=_exchange_and_close, args=(extracted,),
-                                         daemon=True).start()
+                        if extracted:
+                            log.info(f'open_auth_popup: code_js extracted {len(extracted)}-char code')
+                            threading.Thread(target=_exchange_and_close, args=(extracted,),
+                                             daemon=True).start()
+                        elif code_js:
+                            # code_js was provided but returned empty — keep popup open so
+                            # the user can interact with the page (e.g. generate a key) and
+                            # the next navigation will trigger another extraction attempt.
+                            log.info('open_auth_popup: code_js returned empty — keeping popup open for retry')
+                        else:
+                            threading.Thread(target=_exchange_and_close, args=('',),
+                                             daemon=True).start()
 
                     try:
                         wk.evaluate_javascript(body_js, -1, 'PlayDateAuth',

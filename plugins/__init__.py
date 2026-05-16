@@ -82,3 +82,25 @@ def platform_labels() -> dict:
     for p in _plugins.values():
         labels[p.platform] = getattr(p, 'label', p.name)
     return labels
+
+
+def get_platform_priority() -> list:
+    """Return the full duplicate-detection priority list.
+
+    Merges the user's saved order with the hardcoded default, then appends
+    any registered plugin platforms not already present. This ensures:
+    - User's custom ordering is respected
+    - Newly installed plugins are included at lowest priority automatically
+    """
+    from database import PLATFORM_PRIORITY_DEFAULT
+    try:
+        from config import load_state
+        saved = load_state().get('platform_priority') or []
+    except Exception:
+        saved = []
+    base   = saved + [p for p in PLATFORM_PRIORITY_DEFAULT if p not in saved]
+    result = list(base)
+    for p in _plugins.values():
+        if p.platform not in result:
+            result.append(p.platform)
+    return result

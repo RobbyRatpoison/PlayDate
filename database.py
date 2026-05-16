@@ -276,7 +276,7 @@ def get_blacklisted_appids():
 import logging as _logging
 _log = _logging.getLogger(__name__)
 
-PLATFORM_PRIORITY_DEFAULT = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft']
+PLATFORM_PRIORITY_DEFAULT = ['steam', 'gog', 'epic_games', 'ea_app', 'ubisoft', 'itch_io']
 
 
 def next_negative_appid(db):

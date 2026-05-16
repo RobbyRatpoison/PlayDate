@@ -410,7 +410,8 @@ def _do_sync_library():
         log.warning(f'Epic sync: install status refresh failed: {e}')
 
     from database import auto_detect_duplicates
-    dupes = auto_detect_duplicates()
+    from plugins import get_platform_priority
+    dupes = auto_detect_duplicates(platform_priority=get_platform_priority())
 
     if new_games_count > 0:
         try:

@@ -309,18 +309,30 @@ def resolve_vanity_url(api_key, steam_id):
     return steam_id
 
 def _active_platform_priority(state):
-    """Return platform_priority filtered to platforms that actually exist in the DB."""
-    from database import PLATFORM_PRIORITY_DEFAULT
-    priority = state.get('platform_priority', PLATFORM_PRIORITY_DEFAULT)
+    """Return platform_priority for platforms that exist in the DB.
+
+    Starts from the user-saved order (falling back to the dynamic default),
+    then appends any DB-present platforms not yet in the list so newly
+    installed plugins show up without requiring a manual save.
+    """
+    try:
+        from plugins import get_platform_priority
+        default = get_platform_priority()
+    except Exception:
+        from database import PLATFORM_PRIORITY_DEFAULT
+        default = PLATFORM_PRIORITY_DEFAULT
+    priority = state.get('platform_priority') or default
     try:
         from database import get_db
         db = get_db()
-        rows = db.execute(
-            "SELECT DISTINCT platform AS p FROM games"
-        ).fetchall()
+        rows = db.execute("SELECT DISTINCT platform AS p FROM games").fetchall()
         db.close()
         present = {r['p'] for r in rows}
-        return [p for p in priority if p in present]
+        ordered = [p for p in priority if p in present]
+        for p in default:
+            if p in present and p not in ordered:
+                ordered.append(p)
+        return ordered
     except Exception:
         return priority
 
