@@ -2,6 +2,13 @@
 
 ## v1.5.6 — Pending
 
+### New Plugins
+
+- **Humble Bundle** — connect with your `_simpleauth_sess` session cookie to import your Humble library. Games open in your browser on the Humble library page.
+- **IndieGala** — connect with your `sessionid` cookie to import your IndieGala showcase. Games open in your browser on the IndieGala store page.
+- **Rockstar Games** — connect with your `sc-auth-token` cookie to import your Rockstar Games library. Games open in your browser on the Rockstar store page.
+- **Amazon Games** — if you use Heroic Games Launcher with Nile, your Amazon library is detected automatically with no login needed. Alternatively, connect with your `at-main` cookie from amazon.com. Games launch via Nile if available, or fall back to the browser.
+
 ### itch.io Plugin
 
 - Added an itch.io plugin. Connect with an API key (Menu → Plugins → itch.io) to import your purchased library.
