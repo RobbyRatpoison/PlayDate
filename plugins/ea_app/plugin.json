@@ -1,0 +1,18 @@
+{
+    "id": "ea_app",
+    "name": "EA App",
+    "version": "1.0.0",
+    "platform": "ea_app",
+    "author": "RobbyRatpoison",
+    "source": "github:RobbyRatpoison/playdate-plugin-ea-app",
+    "launcher": {
+        "required": true,
+        "name": "EA App",
+        "exe_name": "EADesktop.exe",
+        "installer": {
+            "url": "https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe",
+            "type": "exe",
+            "winearch": "win64"
+        }
+    }
+}
