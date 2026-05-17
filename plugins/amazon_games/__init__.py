@@ -68,25 +68,24 @@ class AmazonGamesPlugin:
             'auth': {
                 'endpoint': '/api/amazon_games/status',
                 'disconnected': [
-                    {
-                        'type': 'text',
-                        'content': (
-                            'Connect your Amazon account by pasting your session cookie. '
-                            'Sign in at <strong>amazon.com</strong>, then open '
-                            'DevTools (F12) → Application → Cookies → amazon.com '
-                            'and copy the value of <code>at-main</code>.'
-                        ),
-                    },
+                    {'type': 'text', 'content': 'Connect your Amazon account to import your library.'},
                     {'type': 'button', 'label': 'Connect Amazon Account', 'action': {
-                        'type': 'oauth_paste',
+                        'type': 'oauth_popup',
                         'title': 'Connect Amazon Games',
                         'url_endpoint': '/api/amazon_games/auth-url',
                         'callback_endpoint': '/api/amazon_games/connect',
+                        'redirect_pattern': 'gaming.amazon.com',
+                        'code_js': (
+                            "document.cookie.split(';')"
+                            ".map(function(c){return c.trim();})"
+                            ".filter(function(c){return c.indexOf('at-main=')===0;})"
+                            ".map(function(c){return c.slice('at-main='.length);})"
+                            "[0] || ''"
+                        ),
                         'instructions': [
-                            'Click <strong>Open Amazon Sign In</strong> — your browser opens the login page.',
-                            'Sign in to your Amazon account.',
-                            'Open DevTools (F12) → Application → Cookies → amazon.com.',
-                            'Find <code>at-main</code> and copy its <strong>Value</strong>, then paste it below.',
+                            'Sign in to your Amazon account in the popup.',
+                            'PlayDate will connect automatically once you are logged in.',
+                            'If it does not connect automatically, open DevTools (F12) in the popup → Application → Cookies → amazon.com, copy the value of <code>at-main</code>, and paste it below.',
                         ],
                         'input_placeholder': 'Paste your at-main cookie value here…',
                         'open_label': 'Open Amazon Sign In',

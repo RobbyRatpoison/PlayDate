@@ -6,7 +6,9 @@ bp = Blueprint('amazon_games', __name__, url_prefix='/api/amazon_games',
 
 @bp.route('/auth-url')
 def auth_url():
-    return jsonify({'url': 'https://www.amazon.com/ap/signin'})
+    # Start at the gaming portal — Amazon redirects to signin if not logged in,
+    # then back to gaming.amazon.com after a successful login.
+    return jsonify({'url': 'https://gaming.amazon.com/home'})
 
 
 @bp.route('/connect', methods=['POST'])

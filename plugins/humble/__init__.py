@@ -47,25 +47,24 @@ class HumblePlugin:
                     'auth': {
                         'endpoint': '/api/humble/status',
                         'disconnected': [
-                            {
-                                'type': 'text',
-                                'content': (
-                                    'Connect your Humble Bundle account by pasting your session cookie. '
-                                    'Open <strong>humblebundle.com</strong> in your browser, then open '
-                                    'DevTools (F12) → Application → Cookies → humblebundle.com '
-                                    'and copy the value of <code>_simpleauth_sess</code>.'
-                                ),
-                            },
+                            {'type': 'text', 'content': 'Connect your Humble Bundle account to import your library.'},
                             {'type': 'button', 'label': 'Connect Humble Account', 'action': {
-                                'type': 'oauth_paste',
+                                'type': 'oauth_popup',
                                 'title': 'Connect Humble Bundle',
                                 'url_endpoint': '/api/humble/auth-url',
                                 'callback_endpoint': '/api/humble/connect',
+                                'redirect_pattern': 'humblebundle.com',
+                                'code_js': (
+                                    "document.cookie.split(';')"
+                                    ".map(function(c){return c.trim();})"
+                                    ".filter(function(c){return c.indexOf('_simpleauth_sess=')===0;})"
+                                    ".map(function(c){return c.slice('_simpleauth_sess='.length);})"
+                                    "[0] || ''"
+                                ),
                                 'instructions': [
-                                    'Click <strong>Open Humble Bundle</strong> — your browser opens the library page.',
-                                    'Open DevTools (F12) → Application → Cookies → humblebundle.com.',
-                                    'Find <code>_simpleauth_sess</code> and copy its <strong>Value</strong>.',
-                                    'Paste it in the box below and click Connect.',
+                                    'Sign in to your Humble Bundle account in the popup.',
+                                    'PlayDate will connect automatically once you are logged in.',
+                                    'If it does not connect automatically, open DevTools (F12) in the popup → Application → Cookies → humblebundle.com, copy the value of <code>_simpleauth_sess</code>, and paste it below.',
                                 ],
                                 'input_placeholder': 'Paste your _simpleauth_sess cookie value here…',
                                 'open_label': 'Open Humble Bundle',

@@ -47,25 +47,24 @@ class RockstarPlugin:
                     'auth': {
                         'endpoint': '/api/rockstar/status',
                         'disconnected': [
-                            {
-                                'type': 'text',
-                                'content': (
-                                    'Connect your Rockstar Social Club account by pasting your auth token. '
-                                    'Sign in at <strong>rockstargames.com</strong>, then open '
-                                    'DevTools (F12) → Application → Cookies → rockstargames.com '
-                                    'and copy the value of <code>sc-auth-token</code>.'
-                                ),
-                            },
+                            {'type': 'text', 'content': 'Connect your Rockstar Games account to import your library.'},
                             {'type': 'button', 'label': 'Connect Rockstar Account', 'action': {
-                                'type': 'oauth_paste',
+                                'type': 'oauth_popup',
                                 'title': 'Connect Rockstar Social Club',
                                 'url_endpoint': '/api/rockstar/auth-url',
                                 'callback_endpoint': '/api/rockstar/connect',
+                                'redirect_pattern': 'rockstargames.com',
+                                'code_js': (
+                                    "document.cookie.split(';')"
+                                    ".map(function(c){return c.trim();})"
+                                    ".filter(function(c){return c.indexOf('sc-auth-token=')===0;})"
+                                    ".map(function(c){return c.slice('sc-auth-token='.length);})"
+                                    "[0] || ''"
+                                ),
                                 'instructions': [
-                                    'Click <strong>Open Rockstar Sign In</strong> — your browser opens the login page.',
-                                    'Sign in to your Rockstar Social Club account.',
-                                    'Open DevTools (F12) → Application → Cookies → rockstargames.com.',
-                                    'Find <code>sc-auth-token</code> and copy its <strong>Value</strong>, then paste it below.',
+                                    'Sign in to your Rockstar Games account in the popup.',
+                                    'PlayDate will connect automatically once you are logged in.',
+                                    'If it does not connect automatically, open DevTools (F12) in the popup → Application → Cookies → rockstargames.com, copy the value of <code>sc-auth-token</code>, and paste it below.',
                                 ],
                                 'input_placeholder': 'Paste your sc-auth-token cookie value here…',
                                 'open_label': 'Open Rockstar Sign In',

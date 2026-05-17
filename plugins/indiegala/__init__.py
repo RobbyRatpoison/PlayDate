@@ -47,25 +47,24 @@ class IndieGalaPlugin:
                     'auth': {
                         'endpoint': '/api/indiegala/status',
                         'disconnected': [
-                            {
-                                'type': 'text',
-                                'content': (
-                                    'Connect your IndieGala account by pasting your session cookie. '
-                                    'Open <strong>indiegala.com</strong> in your browser, then open '
-                                    'DevTools (F12) → Application → Cookies → indiegala.com '
-                                    'and copy the value of <code>sessionid</code>.'
-                                ),
-                            },
+                            {'type': 'text', 'content': 'Connect your IndieGala account to import your library.'},
                             {'type': 'button', 'label': 'Connect IndieGala Account', 'action': {
-                                'type': 'oauth_paste',
+                                'type': 'oauth_popup',
                                 'title': 'Connect IndieGala',
                                 'url_endpoint': '/api/indiegala/auth-url',
                                 'callback_endpoint': '/api/indiegala/connect',
+                                'redirect_pattern': 'indiegala.com',
+                                'code_js': (
+                                    "document.cookie.split(';')"
+                                    ".map(function(c){return c.trim();})"
+                                    ".filter(function(c){return c.indexOf('sessionid=')===0;})"
+                                    ".map(function(c){return c.slice('sessionid='.length);})"
+                                    "[0] || ''"
+                                ),
                                 'instructions': [
-                                    'Click <strong>Open IndieGala</strong> — your browser opens the library page.',
-                                    'Open DevTools (F12) → Application → Cookies → indiegala.com.',
-                                    'Find <code>sessionid</code> and copy its <strong>Value</strong>.',
-                                    'Paste it in the box below and click Connect.',
+                                    'Sign in to your IndieGala account in the popup.',
+                                    'PlayDate will connect automatically once you are logged in.',
+                                    'If it does not connect automatically, open DevTools (F12) in the popup → Application → Cookies → indiegala.com, copy the value of <code>sessionid</code>, and paste it below.',
                                 ],
                                 'input_placeholder': 'Paste your sessionid cookie value here…',
                                 'open_label': 'Open IndieGala',
