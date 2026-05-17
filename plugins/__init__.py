@@ -2,11 +2,13 @@ import importlib
 import json
 import logging
 import os
+import re
 
 log = logging.getLogger(__name__)
 
 _plugins: dict = {}
 _fragment_map: dict = {}
+_fragment_abs: dict = {}   # slot -> list of absolute file paths (for JS slots)
 _plugin_paths: dict = {}
 _plugin_manifests: dict = {}
 
@@ -31,8 +33,11 @@ def load_all(app):
             _plugin_paths[p.id]     = plugin_path
             _plugin_manifests[p.id] = manifest
             if hasattr(p, 'fragments'):
+                tpl_dir = os.path.join(plugin_path, 'templates')
                 for slot, tpl in p.fragments().items():
                     _fragment_map.setdefault(slot, []).append(tpl)
+                    abs_path = os.path.join(tpl_dir, tpl)
+                    _fragment_abs.setdefault(slot, []).append(abs_path)
             log.info(f"Loaded plugin: {manifest.get('name', entry)} v{manifest.get('version', '?')}")
         except Exception as e:
             log.error(f"Plugin load failed: {entry} — {e}", exc_info=True)
@@ -52,6 +57,31 @@ def has(plugin_id: str) -> bool:
 
 def fragments(slot: str) -> list:
     return _fragment_map.get(slot, [])
+
+
+def fragment_js(slot: str) -> str:
+    """Return combined JS content for a slot, stripping any <script> wrappers.
+
+    Plugins that mistakenly wrap their tools_scripts content in <script> tags
+    still work; a warning is logged so the author can fix it.
+    """
+    parts = []
+    for path in _fragment_abs.get(slot, []):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            if re.search(r'<script[\s>]', content, re.IGNORECASE):
+                plugin_name = os.path.basename(os.path.dirname(os.path.dirname(path)))
+                log.warning(
+                    f"Plugin '{plugin_name}': {os.path.basename(path)} contains <script> tags "
+                    f"but is included inside an existing script block — tags stripped automatically. "
+                    f"Remove <script>/<\/script> from the template to silence this warning."
+                )
+                content = re.sub(r'</?script[^>]*>', '', content, flags=re.IGNORECASE)
+            parts.append(content)
+        except Exception as e:
+            log.error(f"fragment_js: could not read {path}: {e}")
+    return '\n'.join(parts)
 
 
 # Platforms without a plugin yet; overridden if a plugin claims the same key.

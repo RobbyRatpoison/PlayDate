@@ -21,6 +21,14 @@
     {% endif %}
     <script src="{{ url_for('static', filename='js/playdate.js') }}?v={{ app_version }}"></script>
     <script>
+    window.onerror = function(msg, src, line, col, err) {
+        fetch('/api/log-js-error', {method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({context:'window.onerror', error: msg + ' (' + src + ':' + line + ':' + col + ')', stack: err && err.stack ? err.stack : ''})
+        }).catch(function(){});
+        return false;
+    };
+    </script>
+    <script>
     window._GAMEPAD_ENABLED            = {{ gamepad_enabled | tojson }};
     window._GAMEPAD_SUPPRESS_ON_LAUNCH = {{ gamepad_suppress_on_launch | tojson }};
     window._BUTTON_REMAPS              = {{ button_remaps | tojson }};

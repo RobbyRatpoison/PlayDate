@@ -1121,6 +1121,17 @@ def create_app(template_folder=None, static_folder=None):
             pass
         return jsonify({'ok': True})
 
+    @app.route('/api/log-js-error', methods=['POST'])
+    def log_js_error():
+        data = request.get_json(silent=True) or {}
+        ctx   = data.get('context', 'unknown')
+        msg   = data.get('error', '')
+        stack = data.get('stack', '')
+        log.error(f'JS error [{ctx}]: {msg}')
+        if stack:
+            log.error(f'JS stack [{ctx}]: {stack}')
+        return jsonify({'ok': True})
+
     @app.route('/api/scrape_single/<int:appid>', methods=['GET', 'POST'])
     def scrape_single(appid):
         from scrapers import fetch_store_data, fetch_tag_data, fetch_player_data, fetch_review_data, fetch_cheevo_data
@@ -3706,6 +3717,7 @@ def create_app(template_folder=None, static_folder=None):
     threading.Thread(target=_startup_launcher_status_check, daemon=True).start()
     app.jinja_env.globals['has_plugin']        = _plugins.has
     app.jinja_env.globals['plugin_fragments']  = _plugins.fragments
+    app.jinja_env.globals['plugin_fragment_js'] = _plugins.fragment_js
     app.jinja_env.globals['platform_labels']   = _plugins.platform_labels
     app.jinja_env.globals['plugin_js_api']     = _plugins.plugin_js_api
 

@@ -5088,7 +5088,11 @@ async function _renderPluginsList() {
             </div>`;
         }).join('');
     } catch(e) {
-        body.innerHTML = '<div style="color:#c74747;font-size:0.85rem;">Failed to load plugins.</div>';
+        const msg = (e && e.message) ? e.message : String(e);
+        body.innerHTML = `<div style="color:#c74747;font-size:0.85rem;">Failed to load plugins: ${escHtml(msg)}</div>`;
+        fetch('/api/log-js-error', {method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({context:'_renderPluginsList', error: msg, stack: e && e.stack ? e.stack : ''})
+        }).catch(function(){});
     }
 }
 
@@ -5636,7 +5640,7 @@ function _grmStopPoll() {
     if (_grmRafId) { cancelAnimationFrame(_grmRafId); _grmRafId = null; }
 }
 
-{% for _t in plugin_fragments('tools_scripts') %}{% include _t %}{% endfor %}
+{{ plugin_fragment_js('tools_scripts') | safe }}
 function openFilterIoModal() {
     document.getElementById('filter-io-modal').style.display = 'flex';
     document.getElementById('filter-export-status').textContent = '';
