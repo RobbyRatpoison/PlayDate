@@ -1,0 +1,10 @@
+{
+    "id": "amazon_games",
+    "name": "Amazon Games",
+    "version": "1.0.0",
+    "platform": "amazon_games",
+    "author": "RobbyRatpoison",
+    "launcher": {
+        "required": false
+    }
+}

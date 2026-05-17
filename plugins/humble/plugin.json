@@ -1,0 +1,10 @@
+{
+    "id": "humble",
+    "name": "Humble Bundle",
+    "version": "1.0.0",
+    "platform": "humble",
+    "author": "RobbyRatpoison",
+    "launcher": {
+        "required": false
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "id": "rockstar",
+    "name": "Rockstar Games",
+    "version": "1.0.0",
+    "platform": "rockstar",
+    "author": "RobbyRatpoison",
+    "launcher": {
+        "required": false
+    }
+}
