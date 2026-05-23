@@ -352,6 +352,19 @@ class PyWebviewAPI:
             log.warning(f"Open dialog failed: {e}")
         return None
 
+    def pick_folder(self):
+        """Open a native folder-picker dialog and return the chosen path, or None."""
+        if _webview_window is None:
+            return None
+        try:
+            paths = _webview_window.create_file_dialog(webview.FileDialog.FOLDER)
+            if paths:
+                path = paths[0] if isinstance(paths, (list, tuple)) else paths
+                return str(path)
+        except Exception as e:
+            log.warning(f'Folder dialog failed: {e}')
+        return None
+
     def pick_save_path(self, suggested_name, file_types=None):
         """
         Open a native Save-As dialog and return the chosen path string,
@@ -375,7 +388,7 @@ class PyWebviewAPI:
             log.warning(f"Save dialog failed: {e}")
         return None
 
-    def open_auth_popup(self, url, redirect_pattern, code_js, callback_endpoint):
+    def open_auth_popup(self, url, redirect_pattern, code_js, callback_endpoint, cookie_name=None):
         """
         Open a popup window for OAuth login.
         Monitors navigation; when redirect_pattern appears in the URL, extracts the
@@ -431,7 +444,7 @@ class PyWebviewAPI:
                         timeout=15,
                     )
                     data = resp.json()
-                    if data.get('status') == 'success':
+                    if data.get('status') in ('success', 'connected'):
                         result.update({'status': 'success',
                                        'username': data.get('username', '')})
                     else:
@@ -458,6 +471,7 @@ class PyWebviewAPI:
                     current = w.get_current_url() or ''
                 except Exception:
                     return
+                log.info(f'open_auth_popup: page loaded — {current!r}')
                 # Match against scheme+host+path only, not query string.
                 # Prevents false positives when redirect_pattern appears as an
                 # encoded query parameter in the initial login URL.
@@ -465,24 +479,73 @@ class PyWebviewAPI:
                 _p = _urlparse(current)
                 base_url = _p.scheme + '://' + _p.netloc + _p.path
                 if redirect_pattern not in base_url:
+                    log.info(f'open_auth_popup: no match for pattern {redirect_pattern!r}, skipping')
                     return
-                log.info(f'open_auth_popup: _on_loaded matched {current!r}')
+                log.info(f'open_auth_popup: redirect_pattern matched, running code_js')
                 # Strategy 1: code in URL query params (GOG and standard OAuth)
                 code = _code_from_url(current)
                 if code:
                     threading.Thread(target=_exchange_and_close, args=(code,),
                                      daemon=True).start()
                     return
-                # Strategy 2: isolated-world evaluate_javascript (bypasses CSP).
-                # pywebview's evaluate_js wraps in eval() which CSP blocks;
-                # WebKit's isolated world runs directly in the engine.
-                body_js = code_js or 'document.body.innerText'
                 try:
                     from gi.repository import GLib, Gtk
                 except ImportError:
                     log.warning('open_auth_popup: gi not available, cannot read body')
                     _exchange_and_close('')
                     return
+
+                if cookie_name:
+                    # Strategy 2a: native cookie manager — reads HttpOnly cookies
+                    # that document.cookie cannot access.
+                    def _gtk_read_cookie():
+                        from urllib.parse import urlparse as _up
+                        wk = None
+                        for win in Gtk.Window.list_toplevels():
+                            candidate = _find_webkit_in_widget(win)
+                            if candidate is None:
+                                continue
+                            try:
+                                uri = candidate.get_uri() or ''
+                                pp = _up(uri)
+                                base = pp.scheme + '://' + pp.netloc + pp.path
+                                if redirect_pattern in base:
+                                    wk = candidate
+                                    break
+                            except Exception:
+                                pass
+                        if wk is None:
+                            log.warning('open_auth_popup: no WebKit view for cookie lookup')
+                            return False
+                        try:
+                            cm2 = wk.get_website_data_manager().get_cookie_manager()
+                            def _cookie_cb(mgr, result, *_):
+                                try:
+                                    cookies = mgr.get_cookies_finish(result)
+                                    val = ''
+                                    for c in (cookies or []):
+                                        if c.get_name() == cookie_name:
+                                            val = c.get_value()
+                                            break
+                                    log.info(f'open_auth_popup: native cookie {cookie_name!r} = {len(val)} chars')
+                                    if val:
+                                        threading.Thread(target=_exchange_and_close,
+                                                         args=(val,), daemon=True).start()
+                                    else:
+                                        log.info('open_auth_popup: native cookie empty — keeping popup open')
+                                except Exception as _e:
+                                    log.warning(f'open_auth_popup: native cookie cb: {_e}')
+                            cm2.get_cookies(current, None, _cookie_cb)
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: native cookie lookup failed: {_e}')
+                        return False
+                    GLib.idle_add(_gtk_read_cookie)
+                    return
+
+                # Strategy 2b: isolated-world evaluate_javascript (bypasses CSP).
+                # pywebview's evaluate_js wraps in eval() which CSP blocks;
+                # WebKit's isolated world runs directly in the engine.
+                body_js = code_js or 'document.body.innerText'
 
                 def _gtk_run_js():
                     from urllib.parse import urlparse as _up
@@ -512,12 +575,18 @@ class PyWebviewAPI:
                             val = wkview.evaluate_javascript_finish(async_result)
                             raw = (val.to_string() if val else '') or ''
                             raw = raw.strip()
-                            log.info(f'open_auth_popup: code_js raw result ({len(raw)} chars): {raw[:200]!r}')
+                            log.info(f'open_auth_popup: code_js raw result ({len(raw)} chars): {raw[:2000]!r}')
                             if raw.startswith('{'):
                                 import json as _json
                                 data = _json.loads(raw)
-                                extracted = (data.get('authorizationCode')
-                                             or data.get('code') or '')
+                                # If the JSON has our localStorage envelope {d,r}, pass
+                                # it through as-is so the callback can parse it.
+                                # Otherwise try to extract a bare OAuth code.
+                                if 'd' in data or 'r' in data:
+                                    extracted = raw
+                                else:
+                                    extracted = (data.get('authorizationCode')
+                                                 or data.get('code') or '')
                             if not extracted:
                                 extracted = raw
                         except Exception as e:
@@ -535,8 +604,14 @@ class PyWebviewAPI:
                             threading.Thread(target=_exchange_and_close, args=('',),
                                              daemon=True).start()
 
+                    # Custom code_js runs in the main world so it has access to
+                    # localStorage, sessionStorage, and other page APIs.
+                    # The isolated world ('PlayDateAuth') is only used for the
+                    # default document.body.innerText fallback, which needs to
+                    # bypass CSP on pages like Epic's /id/api/redirect.
+                    world = None if code_js else 'PlayDateAuth'
                     try:
-                        wk.evaluate_javascript(body_js, -1, 'PlayDateAuth',
+                        wk.evaluate_javascript(body_js, -1, world,
                                                None, None, _cb)
                     except Exception as e:
                         log.warning(f'open_auth_popup: evaluate_javascript: {e}')
@@ -544,16 +619,22 @@ class PyWebviewAPI:
                                          daemon=True).start()
                     return False
 
-                GLib.idle_add(_gtk_run_js)
+                # Delay code_js by 1.5s so async XHR calls (e.g. Ubisoft
+                # sessions API on change_domain) complete before we read.
+                GLib.timeout_add(1500, _gtk_run_js)
 
             def _on_closed():
                 _notify_main()
 
             popup_ref = [None]
             try:
+                # Open with about:blank so we can configure WebKit before the real
+                # page loads. Sites like Ubisoft run a cookie/storage capability
+                # check on first load and immediately redirect on failure -- faster
+                # than our GTK setup timers would fire.
                 popup = webview.create_window(
                     'Login',
-                    url,
+                    'about:blank',
                     width=900,
                     height=680,
                     resizable=True,
@@ -565,6 +646,137 @@ class PyWebviewAPI:
                 result.update({'status': 'error', 'message': f'Could not open login window: {e}'})
                 _notify_main()
                 return
+
+            # Configure the popup WebKit view (UA, cookie policy, anti-bot script)
+            # before navigating to the real login URL.  All setup happens in one
+            # GLib idle callback so everything is in place for the first page load.
+            try:
+                from gi.repository import GLib as _GLib, Gtk as _Gtk, WebKit2 as _WK2
+                _ANTI_BOT_JS = """
+(function() {
+    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+    Object.defineProperty(navigator, 'vendor', {get: () => 'Google Inc.'});
+    Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+    Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+    Object.defineProperty(navigator, 'cookieEnabled', {get: () => true});
+    if (!window.chrome) {
+        window.chrome = {runtime: {}, loadTimes: function(){}, csi: function(){}, app: {}};
+    }
+    // Remove WebKit2GTK-specific globals that fingerprint the embedded browser.
+    try { Object.defineProperty(window, 'webkit', {get: () => undefined, configurable: true}); } catch(e) {}
+    try { Object.defineProperty(window, 'WebKitPoint', {get: () => undefined, configurable: true}); } catch(e) {}
+    try { Object.defineProperty(window, 'WebKitCSSMatrix', {get: () => undefined, configurable: true}); } catch(e) {}
+    // Polyfill localStorage in case the WebKit context returns a broken implementation.
+    (function() {
+        var _ok = false;
+        try { localStorage.setItem('__t__','1'); localStorage.removeItem('__t__'); _ok = true; } catch(e) {}
+        if (_ok) return;
+        var _s = {};
+        var _ls = {
+            setItem: function(k,v) { _s[k] = String(v); },
+            getItem: function(k) { return Object.prototype.hasOwnProperty.call(_s,k) ? _s[k] : null; },
+            removeItem: function(k) { delete _s[k]; },
+            clear: function() { _s = {}; },
+            get length() { return Object.keys(_s).length; },
+            key: function(i) { return Object.keys(_s)[i] || null; }
+        };
+        try { Object.defineProperty(window, 'localStorage',   {get: () => _ls, configurable: true}); } catch(e) {}
+        try { Object.defineProperty(window, 'sessionStorage', {get: () => _ls, configurable: true}); } catch(e) {}
+    })();
+    // Intercept XHR and fetch calls to Ubisoft's sessions API so we can capture
+    // the ticket that the login page itself fetches, then store it in localStorage
+    // for code_js to read after navigation to change_domain.
+    (function() {
+        var _NEEDLE = 'profiles/sessions';
+        var _KEY    = '_pd_ubi_sess';
+        function _store(text) {
+            try { if (text) localStorage.setItem(_KEY, text); } catch(e) {}
+        }
+        var _oOpen = XMLHttpRequest.prototype.open;
+        var _oSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(m, u) {
+            this._pdu = (u || '').indexOf(_NEEDLE) !== -1;
+            return _oOpen.apply(this, arguments);
+        };
+        XMLHttpRequest.prototype.send = function() {
+            if (this._pdu) {
+                var x = this;
+                x.addEventListener('load', function() {
+                    if (x.status >= 200 && x.status < 300) _store(x.responseText);
+                });
+            }
+            return _oSend.apply(this, arguments);
+        };
+        var _oFetch = window.fetch;
+        if (typeof _oFetch === 'function') {
+            window.fetch = function(input, init) {
+                var u = typeof input === 'string' ? input : (input && input.url) || '';
+                var p = _oFetch.apply(this, arguments);
+                if (u.indexOf(_NEEDLE) !== -1) {
+                    p.then(function(r) {
+                        if (r && r.ok) r.clone().text().then(_store).catch(function(){});
+                    }).catch(function(){});
+                }
+                return p;
+            };
+        }
+    })();
+})();
+"""
+                _main_wk = _find_webkit_in_widget(
+                    getattr(_webview_window, 'native', None)
+                ) if _webview_window else None
+
+                def _setup_and_navigate():
+                    for _win in _Gtk.Window.list_toplevels():
+                        _wk = _find_webkit_in_widget(_win)
+                        if _wk is None or _wk is _main_wk:
+                            continue
+                        try:
+                            _s = _wk.get_settings()
+                            _s.set_user_agent(
+                                'Mozilla/5.0 (X11; Linux x86_64) '
+                                'AppleWebKit/537.36 (KHTML, like Gecko) '
+                                'Chrome/124.0.0.0 Safari/537.36'
+                            )
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: set UA failed: {_e}')
+                        try:
+                            mgr = _wk.get_user_content_manager()
+                            script = _WK2.UserScript(
+                                _ANTI_BOT_JS,
+                                _WK2.UserContentInjectedFrames.ALL_FRAMES,
+                                _WK2.UserScriptInjectionTime.START,
+                                None, None,
+                            )
+                            mgr.add_script(script)
+                            log.info('open_auth_popup: anti-bot script injected')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: anti-bot inject failed: {_e}')
+                        try:
+                            cm = _wk.get_website_data_manager().get_cookie_manager()
+                            cm.set_accept_policy(_WK2.CookieAcceptPolicy.ALWAYS)
+                            log.info('open_auth_popup: cookie policy set to ALWAYS')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: cookie policy failed: {_e}')
+                        try:
+                            def _on_load_changed(wkview, event, *_):
+                                uri = wkview.get_uri() or ''
+                                log.info(f'open_auth_popup: load-changed {event.value_name!r} — {uri!r}')
+                            _wk.connect('load-changed', _on_load_changed)
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: load-changed hook failed: {_e}')
+                        try:
+                            _wk.load_uri(url)
+                            log.info(f'open_auth_popup: navigating to {url!r}')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: load_uri failed: {_e}')
+                    return False
+
+                _GLib.timeout_add(150, _setup_and_navigate)
+            except ImportError:
+                pass
 
             # Strategy 3 (Linux/GTK only): hook WebKit's decide-policy signal to
             # intercept navigation to unreachable hosts before the connection fails.
@@ -893,7 +1105,7 @@ if __name__ == '__main__':
 
     # 7. Start webview event loop
     log.info("Launching PlayDate window")
-    webview.start(debug=False)
+    webview.start(debug=False, storage_path=os.path.join(BASE_DIR, 'webview_storage'))
 
     # 8. Clean exit
     log.info("Window closed. PlayDate exiting.")
