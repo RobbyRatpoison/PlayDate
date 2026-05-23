@@ -107,8 +107,10 @@ def plugin_js_api() -> dict:
 
 
 def platform_labels() -> dict:
-    """Return display labels for all known platforms (core + plugins)."""
+    """Return display labels for all known platforms (core + plugins + emulation)."""
+    from known_emulators import PLATFORM_NAMES
     labels = dict(_CORE_PLATFORM_LABELS)
+    labels.update(PLATFORM_NAMES)
     for p in _plugins.values():
         labels[p.platform] = getattr(p, 'label', p.name)
     return labels

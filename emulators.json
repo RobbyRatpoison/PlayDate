@@ -1,0 +1,114 @@
+[
+  {
+    "id": "dolphin",
+    "binary": "/home/rob/.local/share/flatpak/exports/bin/org.DolphinEmu.dolphin-emu",
+    "platforms": {
+      "gamecube": "/home/rob/Documents/Roms/Gamecube",
+      "wii": ""
+    },
+    "args": [
+      "{rom}"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "pcsx2",
+    "binary": "/home/rob/.local/share/flatpak/exports/bin/net.pcsx2.PCSX2",
+    "platforms": {
+      "ps2": "/home/rob/Documents/Roms/PS2"
+    },
+    "args": [
+      "{rom}"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "duckstation",
+    "binary": "/home/rob/Downloads/DuckStation-x64.appimage",
+    "platforms": {
+      "ps1": "/home/rob/Documents/Roms/PS1"
+    },
+    "args": [
+      "{rom}"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "gopher64",
+    "binary": "/home/rob/.local/share/flatpak/exports/bin/io.github.gopher64.gopher64",
+    "platforms": {
+      "n64": "/home/rob/Documents/Roms/N64"
+    },
+    "args": [
+      "{rom}"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "retroarch",
+    "binary": "/home/rob/.local/share/flatpak/exports/bin/org.libretro.RetroArch",
+    "platforms": {
+      "nes": "",
+      "snes": "",
+      "n64": "",
+      "gb": "",
+      "gbc": "",
+      "gba": "",
+      "nds": "",
+      "ps1": "",
+      "ps2": "",
+      "psp": "",
+      "genesis": "",
+      "sms": "",
+      "gg": "",
+      "segacd": "",
+      "32x": "",
+      "saturn": "",
+      "dreamcast": "",
+      "pce": "",
+      "arcade": "/home/rob/Documents/Roms/Arcade",
+      "gamecube": "",
+      "wii": "",
+      "virtualboy": "",
+      "lynx": "",
+      "atari2600": "",
+      "dos": "",
+      "c64": ""
+    },
+    "args": [
+      "-L",
+      "{core}",
+      "{rom}"
+    ],
+    "enabled": true,
+    "cores": {
+      "arcade": "/home/rob/.var/app/org.libretro.RetroArch/config/retroarch/cores/fbneo_libretro.so"
+    }
+  },
+  {
+    "id": "vita3k",
+    "binary": "/home/rob/Downloads/Vita3K-x86_64.appimage",
+    "platforms": {
+      "psvita": "/home/rob/.local/share/Vita3K/Vita3K/ux0"
+    },
+    "args": [
+      "-r",
+      "{rom}"
+    ],
+    "enabled": true
+  },
+  {
+    "id": "rpcs3",
+    "binary": "/home/rob/.local/share/flatpak/exports/bin/net.rpcs3.RPCS3",
+    "platforms": {
+      "ps3": [
+        "/home/rob/.var/app/net.rpcs3.RPCS3/config/rpcs3/dev_hdd0/game"
+      ]
+    },
+    "args": [
+      "--no-gui",
+      "{rom}"
+    ],
+    "enabled": true
+  }
+]
