@@ -1,69 +1,22 @@
 # PlayDate
 
-A local Steam library manager for people who take their backlog seriously.
+A local game library manager for people who take their backlog seriously.
 
-![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
-
----
-
-## What it does
-
-PlayDate pulls your Steam and GOG libraries, enriches them with metadata (tags, reviews, achievements, cover art, HowLongToBeat times), and gives you a clean interface for browsing, filtering, tracking completion, and deciding what to play next. Runs entirely locally as a standalone desktop app — no browser, no cloud, no account required beyond your Steam credentials.
+Pulls your Steam library and any connected platforms, enriches games with metadata, cover art, and HowLongToBeat times, and gives you a clean interface for browsing, filtering, tracking completion, and deciding what to play next. Runs entirely locally as a standalone desktop app.
 
 ---
 
 ## Features
 
-### Library
-- **Virtual grid renderer** — handles 2000+ games without performance issues
-- **Vertical and horizontal card views** — toggle between portrait capsule art and landscape header art; adjustable card size slider
-- **List view** — split-pane layout with a scrollable game list on the left and a detail/edit panel on the right; resizable divider
-- **Sort and search** — sort by any column, live search by name
-- **Filter system** — simple mode (pick a field, operator, value) and advanced mode (nested AND/OR groups with unlimited conditions); date fields support month/day/year part matching; custom SQL expression mode for power users; filters can be saved and reloaded by name
-- **Bulk edit** — apply changes to any field across a filtered or manually selected set of games at once
-- **In-place editing** — edit any game's metadata, artwork, completion status, tags, groups, and more without leaving the library
-
-### Home Page
-- **Configurable shelves** — horizontal rows of game capsules driven by any saved filter or built-in preset (recently played, installed, shuffle, etc.)
-- **Layout editor** — add, remove, and reorder shelves; set limits, column widths, and sort order; shelves can be paired side-by-side
-- **Widgets** — add a clock or a completion pie chart to your home page alongside your shelves
-- **Deduplication** — games already shown on a higher-priority shelf are automatically excluded from lower-priority ones
-
-### Pick 6
-- **Random mode** — pick from your full unbeaten library
-- **Smart mode** — builds a taste profile from your beaten games using tag cosine similarity, then scores candidates by review quality, staleness, playtime, and release recency
-- **Weighted mode** — tune six scoring signals with sliders; toggle individual games in or out of the pool
-
-### Non-Steam Libraries
-- **GOG integration** — connect your GOG account via OAuth2 to sync your library, metadata, achievements, and cover art; install and launch GOG games directly from PlayDate (Windows games via Proton on Linux); purchase date import via Tampermonkey on the GOG orders page
-- **Duplicate detection** — GOG games are automatically matched to their Steam counterparts by normalized name and hidden by default; manual linking available in the edit modal; "DUPES: OFF/ON" toggle in the library header
-
-### Metadata & Artwork
-- **Steam scraper** — imports playtime, tags, review scores, achievement counts, release dates, developers, publishers, and genres from Steam's API and store pages; runs concurrent worker pools for art, metadata, and achievements so cards populate live as each phase completes
-- **HowLongToBeat** — scrapes main story, completionist, and all-styles times for every game; sortable from the library; HLTB Review tool in the Library menu for managing unmatched and unconfirmed entries
-- **Startup sync** — on every launch, PlayDate reads your local Steam files to update playtime and last-played dates; if playtime changed, it fetches fresh achievement data and promotes completion status (`Never Played` → `Unfinished`, 100% achievements → `Completed`); also sweeps the library for any games already at 100% that weren't marked Completed
-- **Cover art pipeline** — downloads vertical capsule art, horizontal header art, and game icons separately; prefers 2x resolution; falls back through multiple Steam CDN paths then SteamGridDB; non-Steam games go straight to SteamGridDB name search
-- **SteamGridDB browser** — search and apply custom artwork for any game from directly within PlayDate
-- **BLAEO sync** — imports completion statuses, list tags, and achievement counts from your BLAEO backlog profile
-
-### Import Tools
-- **Date importer** — a Tampermonkey userscript (`steam_date_import.user.js`) that scrapes activation dates from Steam help pages and GOG orders page and sends them to PlayDate. Works in single-game mode (via the ↗ link in the edit modal) or bulk mode (fetches each game's date in the background without tab switching, with a live per-game log)
-- **Playnite import** — import `date added` values from a Playnite backup ZIP
-- **Database import** — migrate columns from an older PlayDate database into your current one, with column mapping and type-mismatch warnings
-
-### Tools
-- **PAGYWOSG filter builder** — construct an eligible game pool from the monthly community post criteria and save it as a reusable library filter
-- **HLTB Review** — manage HowLongToBeat matches: confirm or reassign unconfirmed entries, review no-match games, and handle confirmed-below-threshold cases
-- **Theme editor** — customize PlayDate's color scheme with a live preview; save and restore named themes
-- **Backup & restore** — export a timestamped zip of your library data and settings (optionally including cover art); restore from any previous backup
-- **Account manager** — add, switch between, and remove Steam accounts; each account has its own Steam ID, API key, and label; also manages GOG connection
-- **Bulk re-scrape** — refresh metadata for any selection of games (Steam or GOG)
-
-### Other
-- **Gamepad & keyboard navigation** — full controller support across all pages with 2D spatial grid navigation, modal zone handling, and a HUD that appears on first input
-- **Completion tracking** — five statuses: Never Played, Unfinished, Beaten, Completed, Won't Play; right-click any card for a quick-set context menu
-- **Update checker** — PlayDate checks for new releases in the background and notifies you when one is available
+- **Library** — grid and list views with live search, sorting, and a powerful filter system (simple dropdowns or nested AND/OR groups with custom SQL). Bulk edit any field across a selection of games.
+- **Home page** — configurable shelves driven by any saved filter or built-in preset. Add widgets, pair shelves side-by-side, and set per-shelf limits and sort order.
+- **Pick 6** — find something to play. Random mode picks from your full unbeaten library. Smart mode builds a taste profile from your beaten games and scores candidates by tags, reviews, playtime, staleness, and release date.
+- **Non-Steam libraries** — connect GOG, itch.io, Humble Bundle, and more via the Plugins menu. Games from all sources appear alongside your Steam library.
+- **Emulators** — point PlayDate at your ROM folders and it scans them into your library with automatic cover art.
+- **Metadata** — Steam tags, reviews, achievements, release info, and HowLongToBeat times. Playtime and last-played stay in sync with your local Steam files on every launch.
+- **Artwork** — vertical capsule art, horizontal headers, and icons; falls back through Steam CDN paths to SteamGridDB. Browse and apply custom art from within PlayDate.
+- **Completion tracking** — Never Played, Unfinished, Beaten, Completed, Won't Play. Right-click any card for a quick-set menu.
+- **Gamepad support** — full controller navigation across all pages.
 
 ---
 
@@ -73,9 +26,9 @@ PlayDate pulls your Steam and GOG libraries, enriches them with metadata (tags, 
 
 Download **PlayDate-Setup.exe** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest) and run it. No Python required.
 
-Prefer a portable install? Download **PlayDate-Windows-Portable.zip**, extract it anywhere, and run `PlayDate.exe` directly.
+Prefer portable? Download **PlayDate-Windows-Portable.zip**, extract anywhere, and run `PlayDate.exe`.
 
-**Requirements:** Windows 10 or 11 (64-bit). Microsoft Edge WebView2 Runtime is required — it comes pre-installed on Windows 10/11.
+**Requirements:** Windows 10 or 11 (64-bit). Microsoft Edge WebView2 Runtime is required — it ships pre-installed on Windows 10/11.
 
 ### Linux
 
@@ -101,7 +54,7 @@ Then run:
 chmod +x launch.sh && ./launch.sh
 ```
 
-`launch.sh` sets up the virtual environment and installs Python dependencies automatically on first run, then launches PlayDate. It also registers a desktop entry so PlayDate appears in your app launcher. Re-running it after moving the folder keeps the entry up to date.
+On first run, `launch.sh` sets up a virtual environment, installs Python dependencies, and registers a desktop entry so PlayDate appears in your app launcher. After that it just launches. Re-running it after moving the folder keeps the desktop entry up to date.
 
 ### Steam Deck
 
@@ -117,7 +70,7 @@ Then run:
 chmod +x install_steamdeck.sh && ./install_steamdeck.sh
 ```
 
-This installs the required system packages and runs `launch.sh` to complete setup. If PlayDate stops launching after a SteamOS system update, re-run `install_steamdeck.sh` — it's safe to run multiple times.
+This installs the required system packages and runs the setup. If PlayDate stops launching after a SteamOS system update, re-run `install_steamdeck.sh` — it's safe to run multiple times.
 
 ### macOS
 
@@ -125,103 +78,16 @@ This installs the required system packages and runs `launch.sh` to complete setu
 chmod +x launch.sh && ./launch.sh
 ```
 
-`launch.sh` sets up the virtual environment on first run and creates a `PlayDate.app` bundle in `~/Applications`. Re-running it after moving the folder keeps the bundle up to date.
-
-> macOS support is present but not yet fully tested. pywebview should work out of the box on recent macOS versions.
+On first run, `launch.sh` sets up the virtual environment and creates a `PlayDate.app` bundle in `~/Applications`. Re-running it after moving the folder keeps the bundle up to date.
 
 ---
 
 ## Uninstallation
 
 ### Windows
-Use **Add or Remove Programs** — PlayDate registers a standard uninstaller. You'll be asked whether to delete your library data.
+Use **Add or Remove Programs** — PlayDate registers a standard uninstaller.
 
 ### Linux / macOS
 ```bash
 ./uninstall.sh
 ```
-
-Removes the launcher, virtual environment, app launcher entry, and by default the entire PlayDate folder. Individual data files (`config.json`, `state.json`, `theme.json`, `games.db`, `playdate.log`) can be unchecked if you want to keep them, and the full folder deletion can be unchecked to do a partial uninstall.
-
----
-
-## First-time setup
-
-On first launch you'll be prompted for:
-
-- **Steam ID** — your SteamID64 or vanity URL name (find it at [steamid.io](https://steamid.io))
-- **Steam Web API Key** — from [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) *(optional — without it PlayDate reads your library from local Steam files instead; achievements will not be fetched)*
-- **SteamGridDB API Key** — from [steamgriddb.com/profile/preferences/api](https://www.steamgriddb.com/profile/preferences/api) *(optional — enables custom artwork)*
-
-Then hit **Populate PlayDate** in the navbar to import your library and fetch metadata. Game cards appear immediately as placeholders and fill in live as art, metadata, and achievements are fetched in parallel. First-run time depends on library size and Steam's API rate limits.
-
-Additional Steam accounts can be added at any time via **Accounts → Steam Account**. To connect your GOG library, go to **Accounts → GOG** and click **Connect GOG Account**.
-
----
-
-## Controls
-
-PlayDate supports gamepads and keyboard navigation — useful for couch / TV setups.
-
-| Input | Action |
-|---|---|
-| D-pad / Left stick / Arrow keys / WASD | Navigate |
-| A / Enter | Confirm / open focused game |
-| B / Escape | Back / close modal |
-| X / Square | Context menu for focused game |
-| Y / Triangle | Edit focused game |
-| LB / RB | Previous / next page |
-| Start | Launch focused game in Steam |
-| Back / Select | Toggle shelf edit mode (Home) |
-
-The controller HUD appears in the bottom-right corner on first gamepad or keyboard input.
-
----
-
-## Data files
-
-All user data lives next to the executable (or in the project folder when running from source):
-
-| File / Folder | Contents |
-|---|---|
-| `games.db` | SQLite database — your game library and blacklist |
-| `config.json` | Steam accounts (`active_account`, per-account Steam ID and API key), SteamGridDB key, GOG OAuth2 tokens |
-| `state.json` | Active filters, sort order, shelf layout, saved filters, artwork orientation, card size |
-| `theme.json` | CSS variable overrides for custom theming |
-| `playdate.log` | Application log (1MB cap, auto-rotated) |
-| `static/img/library/vertical/` | Cached vertical capsule art |
-| `static/img/library/horizontal/` | Cached horizontal header art |
-| `static/img/library/icons/` | Cached game icons |
-
-Data files survive upgrades — they are never overwritten by the installer.
-
----
-
-## Stack
-
-| | |
-|---|---|
-| Python / Flask | Backend server and API routes |
-| Waitress | Production WSGI server (8 threads) |
-| pywebview | Native desktop window — no browser required |
-| SQLite | Local game database |
-| Jinja2 | Server-side HTML templating |
-| Vanilla JS / CSS3 | All frontend logic — no frameworks, no build step |
-| requests + BeautifulSoup | Steam/GOG metadata, tag scraping, and BLAEO sync |
-| Selenium + Chrome | BLAEO sync (headless scroll-load) |
-| howlongtobeatpy | HowLongToBeat scraping |
-
----
-
-## Building from source (Windows)
-
-Requires Python 3.11, [PyInstaller](https://pyinstaller.org), and [Inno Setup 6](https://jrsoftware.org/isinfo.php).
-
-```bash
-pip install -r requirements.txt pyinstaller
-pyinstaller playdate.spec
-```
-
-Then open `playdate.iss` in Inno Setup to produce `installer/PlayDate-Setup.exe`.
-
-Releases are built automatically via GitHub Actions on version tag push.

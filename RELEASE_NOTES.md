@@ -4,18 +4,13 @@
 
 ### New Plugins
 
-- **Humble Bundle** — connect with your `_simpleauth_sess` session cookie to import your Humble library. Games open in your browser on the Humble library page.
-- **IndieGala** — connect with your `sessionid` cookie to import your IndieGala showcase. Games open in your browser on the IndieGala store page.
-- **Rockstar Games** — connect with your `sc-auth-token` cookie to import your Rockstar Games library. Games open in your browser on the Rockstar store page.
-- **Amazon Games** — if you use Heroic Games Launcher with Nile, your Amazon library is detected automatically with no login needed. Alternatively, connect with your `at-main` cookie from amazon.com. Games launch via Nile if available, or fall back to the browser.
+- **itch.io** — sign in to your itch.io account to import your purchased library. Games are downloaded and launched directly. Download progress is shown in the nav bar with a cancel button. Installed games can be uninstalled from the right-click menu.
+- **Humble Bundle** — connect with your `_simpleauth_sess` cookie to import your library. Games are downloaded and launched directly. Non-game items (soundtracks, art books, etc.) are filtered out automatically. Installed games can be uninstalled from the right-click menu.
 
-### itch.io Plugin
+### Emulators
 
-- Added an itch.io plugin. Connect with an API key (Menu → Plugins → itch.io) to import your purchased library.
-- Games are downloaded and launched directly — no itch.io app required. Windows games are launched via Proton if available, with Wine as a fallback.
-- Download progress is shown in the nav bar with a cancel button.
-- Cover art is fetched from SteamGridDB, with the itch.io game cover used as a fallback for any slots not found.
-- Installed itch.io games can be uninstalled from the right-click context menu.
+- Added emulator support (Menu → Emulators). Point PlayDate at your ROM folders and it scans them into your library — cover art is fetched from SteamGridDB automatically.
+- A wide range of systems and emulators are supported and detected automatically. RetroArch is supported, with per-system core selection. Custom emulators can be added manually.
 
 ### Duplicates
 
@@ -23,9 +18,15 @@
 - HLTB data is now propagated across duplicate groups: confirming a match for any game in the group applies it to all others. Linking a game as a duplicate of another also copies confirmed HLTB data immediately.
 - Duplicate detection now includes all installed plugins automatically, so non-Steam games can be matched against each other without Steam being involved.
 
+### GOG
+
+- On Linux, Windows GOG games now launch via Proton when available, with Wine as a fallback.
+
 ### Artwork
 
-- Added a Clear button to each artwork slot in the edit modal (cover, header, icon). Clearing removes the cached image so the next rescrape or manual upload starts fresh.
+- Added a Clear button to each artwork slot in the edit modal (cover, header, icon).
+- Fixed an issue where bulk art scraping did not fetch art for non-Steam games.
+- Game covers that don't match their container's aspect ratio now show a blurred background fill instead of cropping or stretching.
 
 ### Library
 
@@ -34,4 +35,4 @@
 
 ### Monthly in a Month
 
-- Added a Monthly in a Month filter builder (Menu → Community → Monthly in a Month Filter Builder). It fetches the community game list, cross-references your Steam library, and saves a filter for eligible games you haven't started. Games already marked Beaten or Completed are excluded automatically, with an option to also exclude Won't Play games.
+- Added a Monthly in a Month filter builder (Menu → Community). It cross-references your library against the community list and saves a filter for eligible unplayed games.
