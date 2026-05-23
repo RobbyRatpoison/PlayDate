@@ -1,3 +1,30 @@
+function humbleDownloadPoller(appid) {
+    var iv = setInterval(function() {
+        fetch('/api/humble/download-status/' + appid)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d.status) { clearInterval(iv); return; }
+                if (d.status === 'downloading') {
+                    var msg = 'Downloading ' + escHtml(d.filename || '') + '…';
+                    if (d.total > 0) {
+                        var pct = Math.round(d.received / d.total * 100);
+                        msg += ' ' + pct + '%';
+                    }
+                    showLaunchToast(msg);
+                } else if (d.status === 'extracting') {
+                    showLaunchToast('Extracting ' + escHtml(d.filename || '') + '…');
+                } else if (d.status === 'done') {
+                    clearInterval(iv);
+                    showLaunchToast('Downloaded to ~/Games/Humble — ready to install.');
+                } else if (d.status === 'error') {
+                    clearInterval(iv);
+                    showLaunchToast('Download failed: ' + escHtml(d.error || 'unknown error'));
+                }
+            })
+            .catch(function() { clearInterval(iv); });
+    }, 1000);
+}
+
 function humbleSync() {
     var statusEl = document.getElementById('humble-manage-status-main');
     if (statusEl) statusEl.textContent = 'Starting sync…';

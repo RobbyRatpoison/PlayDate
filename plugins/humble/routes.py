@@ -54,3 +54,32 @@ def sync():
 def sync_status():
     from .humble import get_sync_state
     return jsonify(get_sync_state())
+
+
+@bp.route('/download-status/<int:appid>')
+def download_status(appid):
+    from .humble import get_download_state
+    return jsonify(get_download_state(appid))
+
+
+@bp.route('/uninstall/<int:appid>', methods=['POST'])
+def uninstall(appid):
+    from .humble import uninstall_game
+    ok, msg = uninstall_game(appid)
+    if ok:
+        return jsonify({'status': 'success', 'message': msg})
+    return jsonify({'status': 'error', 'message': msg}), 500
+
+
+@bp.route('/set-test-limit', methods=['POST'])
+def set_test_limit():
+    from .humble import _load_cache, _save_cache
+    data  = request.get_json(silent=True) or {}
+    limit = data.get('limit')
+    cache = _load_cache()
+    if limit:
+        cache['test_limit'] = int(limit)
+    else:
+        cache.pop('test_limit', None)
+    _save_cache(cache)
+    return jsonify({'status': 'ok', 'test_limit': cache.get('test_limit')})

@@ -15,10 +15,14 @@ class HumblePlugin:
         log.info('Humble Bundle plugin registered')
 
     def on_startup(self):
-        pass
+        from .humble import HUMBLE_DOWNLOAD_DIR
+        from .watcher import start_humble_watcher, sync_humble_install_status
+        sync_humble_install_status()
+        start_humble_watcher(HUMBLE_DOWNLOAD_DIR)
 
     def on_shutdown(self):
-        pass
+        from .watcher import stop_humble_watcher
+        stop_humble_watcher()
 
     def on_uninstall(self):
         from .humble import disconnect
@@ -30,7 +34,7 @@ class HumblePlugin:
 
     def js_api(self):
         return {
-            'uninstall_url':  None,
+            'uninstall_url':  '/api/humble/uninstall/{appid}',
             'scrape_url':     None,
             'scrape_method':  'POST',
             'store_url':      'https://www.humblebundle.com/home/library/{slug}',
@@ -53,14 +57,8 @@ class HumblePlugin:
                                 'title': 'Connect Humble Bundle',
                                 'url_endpoint': '/api/humble/auth-url',
                                 'callback_endpoint': '/api/humble/connect',
-                                'redirect_pattern': 'humblebundle.com',
-                                'code_js': (
-                                    "document.cookie.split(';')"
-                                    ".map(function(c){return c.trim();})"
-                                    ".filter(function(c){return c.indexOf('_simpleauth_sess=')===0;})"
-                                    ".map(function(c){return c.slice('_simpleauth_sess='.length);})"
-                                    "[0] || ''"
-                                ),
+                                'redirect_pattern': 'humblebundle.com/home',
+                                'cookie_name': '_simpleauth_sess',
                                 'instructions': [
                                     'Sign in to your Humble Bundle account in the popup.',
                                     'PlayDate will connect automatically once you are logged in.',
