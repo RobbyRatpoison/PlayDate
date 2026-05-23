@@ -45,6 +45,34 @@ def find_wine_binary():
     return None
 
 
+def find_proton_wine():
+    """
+    Return the wine64 (or wine) binary from the best available Proton install, or None.
+    Prefers GE-Proton over official Proton (same priority order as runners/proton.py).
+    """
+    try:
+        from runners.proton import find_proton_versions
+    except ImportError:
+        return None
+    for version in find_proton_versions():
+        proton_dir = os.path.dirname(os.path.abspath(version['path']))
+        bin_dir = os.path.join(proton_dir, 'files', 'bin')
+        for candidate in ('wine64', 'wine'):
+            wb = os.path.join(bin_dir, candidate)
+            if os.path.isfile(wb) and os.access(wb, os.X_OK):
+                return wb
+    return None
+
+
+def is_proton_wine(wine_bin):
+    """Return True if wine_bin is the wine binary from inside a Proton install."""
+    return wine_bin is not None and (
+        'GE-Proton' in wine_bin
+        or 'Proton' in wine_bin
+        or '/files/bin/wine' in wine_bin
+    )
+
+
 def list_prefixes(search_dirs):
     """
     Return a list of Wine prefix paths found under the given directories.
