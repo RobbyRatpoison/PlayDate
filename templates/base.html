@@ -46,6 +46,22 @@
         transition: opacity .2s ease;
     }
     #launch-toast.visible { opacity: 1; pointer-events: auto; }
+    #flatpak-error-popup {
+        display: none; position: fixed; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        background: var(--bg-raised); color: var(--text-primary);
+        border: 1px solid var(--border); border-radius: 8px;
+        padding: 1.2rem 1.4rem; z-index: 10000;
+        max-width: 520px; width: 90%; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+    }
+    #flatpak-error-popup h4 { margin: 0 0 .5rem; font-size: .95rem; }
+    #flatpak-error-popup p { margin: 0 0 .8rem; font-size: .85rem; color: var(--text-secondary); }
+    #flatpak-error-popup code {
+        display: block; background: var(--bg-primary); border: 1px solid var(--border);
+        border-radius: 4px; padding: .4rem .7rem; font-size: .8rem;
+        word-break: break-all; margin-bottom: .8rem; cursor: text; user-select: all;
+    }
+    #flatpak-error-popup .fp-actions { display: flex; gap: .5rem; justify-content: flex-end; }
     /* ── SQL syntax highlighter overlay ─────────────────────────────── */
     .sql-hl-wrap { position: relative; display: block; }
     .sql-hl-pre {
@@ -191,6 +207,7 @@
                     <button class="hamburger-item" onclick="closeHamburger();openAccountModal()">Steam Account</button>
                     <button class="hamburger-item" onclick="closeHamburger();openAppearanceModal()">Appearance</button>
                     <button class="hamburger-item" onclick="closeHamburger();openLibraryModal()">Library</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openEmulatorsModal()">Emulators</button>
                     <button class="hamburger-item" style="display:flex;align-items:center;" onclick="closeHamburger();openPluginsModal()">Plugins<span id="plugin-update-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#e67e22;visibility:hidden;margin-left:8px;vertical-align:middle;pointer-events:none;"></span></button>
                     <button class="hamburger-item" onclick="closeHamburger();openCommunityModal()">PAGYWOSG &amp; BLAEO</button>
                     <button class="hamburger-item" onclick="closeHamburger();openDataModal()">Data</button>
@@ -225,6 +242,16 @@
 
     {% include '_ctx_menu.html' %}
     <div id="launch-toast"></div>
+    <div id="flatpak-error-popup">
+        <h4>Flatpak permission required</h4>
+        <p id="flatpak-error-msg"></p>
+        <p style="margin:0 0 .4rem;font-size:.8rem;color:var(--text-secondary);">Run this command to grant access, then try again:</p>
+        <code id="flatpak-error-fix"></code>
+        <div class="fp-actions">
+            <button class="nav-btn" onclick="navigator.clipboard.writeText(document.getElementById('flatpak-error-fix').textContent).then(function(){this.textContent='Copied!';var b=this;setTimeout(function(){b.textContent='Copy';},1500);}.bind(this))">Copy</button>
+            <button class="nav-btn" onclick="document.getElementById('flatpak-error-popup').style.display='none'">Dismiss</button>
+        </div>
+    </div>
 
     <script>
         // Filter modal functions (openFilterModal, applyFilters, closeFilterModal, clearAllFilters)
@@ -255,7 +282,14 @@
             } catch (e) {}
 
             // Non-launch outcomes — show a message, do not reload
-            if (data.status === 'installing' || data.status === 'not_installed' || data.status === 'error') {
+            if (data.status === 'flatpak_error') {
+                var popup = document.getElementById('flatpak-error-popup');
+                document.getElementById('flatpak-error-msg').textContent = data.message || '';
+                document.getElementById('flatpak-error-fix').textContent = data.fix || '';
+                popup.style.display = 'block';
+                return;
+            }
+            if (data.status === 'installing' || data.status === 'not_installed' || data.status === 'error' || data.status === 'not_supported') {
                 if (data.message) showLaunchToast(data.message);
                 if (data.install_poller && typeof window[data.install_poller] === 'function') window[data.install_poller](appid);
                 return;

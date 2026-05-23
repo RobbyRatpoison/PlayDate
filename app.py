@@ -34,7 +34,8 @@ logging.basicConfig(level=logging.WARNING, handlers=[_handler_file, _handler_str
 
 # PlayDate modules at INFO
 for _name in ('__main__', 'app', 'config', 'database', 'library', 'index',
-              'scrapers', 'utils', 'images', 'imports', 'runners.proton', 'plugins'):
+              'scrapers', 'utils', 'images', 'imports',
+              'runners.proton', 'runners.launcher_installer', 'plugins'):
     logging.getLogger(_name).setLevel(logging.INFO)
 
 log = logging.getLogger(__name__)
@@ -1014,6 +1015,8 @@ def create_app(template_folder=None, static_folder=None):
         else:
             if install_path and os.path.isdir(install_path):
                 path = install_path
+            elif install_path and os.path.isfile(install_path):
+                path = os.path.dirname(install_path)
 
         if not path:
             return jsonify({"status": "not_found", "message": "Install directory not found"}), 404
@@ -1064,6 +1067,15 @@ def create_app(template_folder=None, static_folder=None):
             except Exception as e:
                 log.error(f"Failed to launch Steam appid {appid_int}: {e}")
         else:
+            import emulators as _emu
+            if _emu.is_emulation_platform(game_platform):
+                result = _emu.launch_game(appid_int)
+                if result.get('status') == 'success':
+                    new_ts = record_launch(appid_int)
+                    if new_ts:
+                        from database import ts_to_date
+                        return jsonify({'status': 'success', 'last_played': ts_to_date(new_ts)})
+                return jsonify(result)
             import plugins as _plugin_registry
             plugin_obj = next(
                 (p for p in _plugin_registry.loaded().values() if p.platform == game_platform),
@@ -1101,6 +1113,158 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'running': result.returncode == 0})
         except Exception:
             return jsonify({'running': None})
+
+    # ── Emulators ────────────────────────────────────────────────────────────
+
+    @app.route('/api/emulators')
+    def emulators_list():
+        import emulators as _emu
+        from known_emulators import KNOWN_EMULATORS, PLATFORM_NAMES
+        entries  = _emu.load_emulators()
+        known_map = {e['id']: e for e in KNOWN_EMULATORS}
+        result = []
+        for entry in entries:
+            known     = known_map.get(entry['id'], {})
+            has_cores = bool(known.get('cores_search'))
+            stored_cores = entry.get('cores', {})
+            result.append({
+                'id':       entry['id'],
+                'name':     known.get('name') or entry.get('name') or entry['id'],
+                'binary':   entry.get('binary', ''),
+                'enabled':  entry.get('enabled', True),
+                'args':     entry.get('args', ['{rom}']),
+                'has_cores': has_cores,
+                'custom':   entry.get('custom', False),
+                'platforms': {
+                    p: {
+                        'dirs':  _emu._platform_dirs(entry, p),
+                        'label': PLATFORM_NAMES.get(p, p),
+                        'core':  stored_cores.get(p, '') if has_cores else None,
+                    }
+                    for p in known.get('platforms', list(entry.get('platforms', {}).keys()))
+                },
+                'flatpak_warnings': _emu.check_flatpak_warnings(entry),
+            })
+        return jsonify(result)
+
+    @app.route('/api/emulators/known')
+    def emulators_known():
+        from known_emulators import KNOWN_EMULATORS, PLATFORM_NAMES
+        import emulators as _emu
+        configured_ids = {e.get('id') for e in _emu.load_emulators()}
+        return jsonify([
+            {
+                'id':       e['id'],
+                'name':     e['name'],
+                'platforms': [PLATFORM_NAMES.get(p, p) for p in e['platforms']],
+                'added':    e['id'] in configured_ids,
+            }
+            for e in KNOWN_EMULATORS
+        ])
+
+    @app.route('/api/emulators/add', methods=['POST'])
+    def emulators_add():
+        import emulators as _emu
+        emu_id = (request.get_json(silent=True) or {}).get('id', '')
+        entry  = _emu.add_emulator(emu_id)
+        if entry is None:
+            return jsonify({'error': 'Unknown emulator or already added'}), 400
+        return jsonify({'status': 'ok', 'entry': entry})
+
+    @app.route('/api/emulators/remove', methods=['POST'])
+    def emulators_remove():
+        import emulators as _emu
+        emu_id = (request.get_json(silent=True) or {}).get('id', '')
+        _emu.remove_emulator(emu_id)
+        return jsonify({'status': 'ok'})
+
+    @app.route('/api/emulators/update', methods=['POST'])
+    def emulators_update():
+        import emulators as _emu
+        data         = request.get_json(silent=True) or {}
+        emu_id       = data.get('id', '')
+        binary       = data.get('binary')
+        platform_dirs = data.get('platform_dirs')
+        args         = data.get('args')
+        enabled      = data.get('enabled')
+        cores = data.get('cores')
+        _emu.update_emulator(emu_id, binary=binary, platform_dirs=platform_dirs,
+                             args=args, enabled=enabled, cores=cores)
+        entry = _emu._get_entry(emu_id)
+        warnings = _emu.check_flatpak_warnings(entry) if entry else []
+        return jsonify({'status': 'ok', 'flatpak_warnings': warnings})
+
+    @app.route('/api/emulators/platforms')
+    def emulators_platforms():
+        from known_emulators import PLATFORM_NAMES
+        return jsonify([{'id': k, 'label': v} for k, v in PLATFORM_NAMES.items()])
+
+    @app.route('/api/emulators/by-platform')
+    def emulators_by_platform():
+        from known_emulators import KNOWN_EMULATORS, PLATFORM_NAMES
+        import emulators as _emu
+        configured = {e.get('id') for e in _emu.load_emulators()}
+        plat_map = {pid: {'id': pid, 'label': label, 'emulators': []}
+                    for pid, label in PLATFORM_NAMES.items()}
+        for emu in KNOWN_EMULATORS:
+            for pid in emu.get('platforms', []):
+                if pid in plat_map:
+                    plat_map[pid]['emulators'].append({
+                        'id':    emu['id'],
+                        'name':  emu['name'],
+                        'added': emu['id'] in configured,
+                    })
+        result = sorted(plat_map.values(), key=lambda p: p['label'])
+        return jsonify(result)
+
+    @app.route('/api/emulators/add-custom', methods=['POST'])
+    def emulators_add_custom():
+        import emulators as _emu
+        data     = request.get_json(silent=True) or {}
+        name     = (data.get('name') or '').strip()
+        platform = (data.get('platform') or '').strip()
+        binary   = (data.get('binary') or '').strip()
+        args     = data.get('args') or ['{rom}']
+        if not name:
+            return jsonify({'error': 'Name is required'}), 400
+        if not platform:
+            return jsonify({'error': 'Platform is required'}), 400
+        entry = _emu.add_custom_emulator(name, platform, binary=binary, args=args)
+        return jsonify({'status': 'ok', 'entry': entry})
+
+    @app.route('/api/emulators/detect', methods=['POST'])
+    def emulators_detect():
+        import emulators as _emu
+        emu_id = (request.get_json(silent=True) or {}).get('id', '')
+        path   = _emu.auto_detect_binary(emu_id)
+        if path:
+            _emu.update_emulator(emu_id, binary=path)
+        return jsonify({'path': path})
+
+    @app.route('/api/emulators/retroarch-cores', methods=['POST'])
+    def emulators_retroarch_cores():
+        import emulators as _emu
+        platform_id = (request.get_json(silent=True) or {}).get('platform', '')
+        return jsonify(_emu.list_cores_for_platform(platform_id))
+
+    @app.route('/api/emulators/scan', methods=['POST'])
+    def emulators_scan():
+        import emulators as _emu
+        data        = request.get_json(silent=True) or {}
+        emu_id      = data.get('id', '')
+        platform_id = data.get('platform', '')
+        result      = _emu.start_scan(emu_id, platform_id)
+        return jsonify(result)
+
+    @app.route('/api/emulators/scan-all', methods=['POST'])
+    def emulators_scan_all():
+        import emulators as _emu
+        return jsonify(_emu.start_scan_all())
+
+    @app.route('/api/emulators/scan-status')
+    def emulators_scan_status():
+        import emulators as _emu
+        return jsonify(_emu.get_scan_state())
 
     @app.route('/api/raise-window', methods=['POST'])
     def raise_window_route():

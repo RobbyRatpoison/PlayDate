@@ -30,13 +30,34 @@
     .shelf-capsule-wrap {
         flex-shrink: 0; height: 100%; aspect-ratio: 2/3;
         border-radius: 8px; cursor: pointer;
+        position: relative; overflow: hidden;
+    }
+    .shelf-capsule-inner {
+        position: absolute; inset: 0; border-radius: 8px; overflow: hidden;
+        transform: scale(0.95); transition: transform 0.15s ease;
+        background-size: cover; background-position: center;
+    }
+    .shelf-capsule-wrap:hover .shelf-capsule-inner { transform: scale(1.0); }
+    .shelf-capsule-inner.needs-blur::before {
+        content: ''; position: absolute; inset: -10px;
+        background-image: inherit; background-size: cover; background-position: center;
+        filter: blur(10px) brightness(0.7); z-index: 0;
     }
     .shelf-capsule {
-        width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block;
-        transform: scale(0.95); transition: transform 0.15s ease, box-shadow 0.15s ease;
+        position: absolute; inset: 0;
+        width: 100%; height: 100%; object-fit: contain; border-radius: 8px; display: block;
+        z-index: 1; transition: box-shadow 0.15s ease;
     }
-    .shelf-capsule:hover { transform: scale(1.0); }
+    .shelf-capsule-inner.needs-blur .shelf-capsule { transform: scale(0.95); }
     .shelf-capsule-wrap[style*="--outline-color"] .shelf-capsule { box-shadow: 0 0 0 3px var(--outline-color); }
+    .shelf-capsule-wrap.no-art .shelf-capsule { visibility: hidden; }
+    .shelf-capsule-wrap .no-art-name {
+        display: none; position: absolute; inset: 0; z-index: 2;
+        align-items: center; justify-content: center; text-align: center;
+        padding: 10px; font-size: 0.8rem; color: var(--text-secondary);
+        word-break: break-word; hyphens: auto; pointer-events: none;
+    }
+    .shelf-capsule-wrap.no-art .no-art-name { display: flex; }
     .shuffle-link { text-decoration: none; flex-shrink: 0; cursor: pointer; }
     .shuffle-link .shelf-label { cursor: pointer; }
     .shuffle-link .shelf-label:hover { color: var(--text-bright); }
@@ -338,7 +359,8 @@
                 {% for game in shelf.games %}
                 <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" onclick="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                     <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
-                         onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                         onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                    <div class="no-art-name">{{ game.name | e }}</div>
                 </div>
                 {% endfor %}
             </div>
@@ -377,8 +399,12 @@
         <div class="shelf-grid">
             {% for game in shelf.games %}
             <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" onclick="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
-                <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
-                     onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                <div class="shelf-capsule-inner">
+                    <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
+                         onload="_shelfImgLoad(this)"
+                         onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                    <div class="no-art-name">{{ game.name | e }}</div>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -387,8 +413,12 @@
         <div class="shelf-grid">
             {% for game in shelf.games %}
             <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" onclick="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
-                <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
-                     onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                <div class="shelf-capsule-inner">
+                    <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
+                         onload="_shelfImgLoad(this)"
+                         onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                    <div class="no-art-name">{{ game.name | e }}</div>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -454,10 +484,14 @@ async function _reloadLastPlayedShelves() {
                      data-status="${(g.completion_status||'').replace(/"/g,'&quot;')}"
                      data-platform="${(g.platform||'steam')}"
                      onclick="launchGame(${g.appid})"${oc ? ` style="--outline-color:${oc}"` : ''}>
-                    <img src="/static/img/library/vertical/${g.appid}.jpg"
-                         alt="${g.name.replace(/"/g,'&quot;')}"
-                         class="shelf-capsule" draggable="false"
-                         onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
+                    <div class="shelf-capsule-inner">
+                        <img src="/static/img/library/vertical/${g.appid}.jpg"
+                             alt="${g.name.replace(/"/g,'&quot;')}"
+                             class="shelf-capsule" draggable="false"
+                             onload="_shelfImgLoad(this)"
+                             onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
+                        <div class="no-art-name">${escHtml(g.name)}</div>
+                    </div>
                 </div>`;
             }).join('');
             requestAnimationFrame(() => trimGrid(grid));
@@ -499,10 +533,14 @@ async function shuffleShelf(shelfId, labelEl) {
                  data-status="${(g.completion_status||'').replace(/"/g,'&quot;')}"
                  data-platform="${g.platform || 'steam'}"
                  onclick="launchGame(${g.appid})"${oc ? ` style="--outline-color:${oc}"` : ''}>
-                <img src="/static/img/library/vertical/${g.appid}.jpg"
-                     alt="${g.name.replace(/"/g,'&quot;')}"
-                     class="shelf-capsule" draggable="false"
-                     onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
+                <div class="shelf-capsule-inner">
+                    <img src="/static/img/library/vertical/${g.appid}.jpg"
+                         alt="${g.name.replace(/"/g,'&quot;')}"
+                         class="shelf-capsule" draggable="false"
+                         onload="_shelfImgLoad(this)"
+                         onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
+                    <div class="no-art-name">${escHtml(g.name)}</div>
+                </div>
             </div>`;
         }).join('');
         // Trim to fit visible width — same as initial render
@@ -619,6 +657,16 @@ function drawCompletionPies() {
     });
 }
 window.addEventListener('load', () => requestAnimationFrame(drawCompletionPies));
+function _shelfImgLoad(img) {
+    applyBlurArt(img, img.closest('.shelf-capsule-inner'));
+}
+
+function _shelfNoArt(img) {
+    img.onerror = null;
+    const wrap = img.closest('.shelf-capsule-wrap');
+    if (wrap) wrap.classList.add('no-art');
+}
+
 function trimGrid(grid) {
     const caps = Array.from(grid.querySelectorAll('.shelf-capsule-wrap'));
     if (!caps.length) return;
@@ -1500,10 +1548,15 @@ setInterval(async () => {
                         wrap.dataset.status = g.completion_status || '';
                         wrap.dataset.platform = g.platform || 'steam';
                         wrap.setAttribute('onclick', `launchGame(${g.appid})`);
-                        wrap.innerHTML = `<img src="/static/img/library/vertical/${g.appid}.jpg"
-                            alt="${g.name.replace(/"/g, '&quot;')}"
-                            class="shelf-capsule" draggable="false"
-                            onerror="this.onerror=null;this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">`;
+                        const imgSrc = `/static/img/library/vertical/${g.appid}.jpg`;
+                        wrap.innerHTML = `<div class="shelf-capsule-inner">
+                            <img src="${imgSrc}"
+                                alt="${g.name.replace(/"/g, '&quot;')}"
+                                class="shelf-capsule" draggable="false"
+                                onload="_shelfImgLoad(this)"
+                                onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
+                            <div class="no-art-name">${escHtml(g.name)}</div>
+                        </div>`;
                         grid.appendChild(wrap);
                     });
                     requestAnimationFrame(() => trimGrid(grid));

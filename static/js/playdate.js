@@ -64,6 +64,16 @@ function _makeStorage(getter, mem) {
 }());
 
 /** Escape a string for safe insertion into innerHTML. */
+function applyBlurArt(img, container) {
+    if (!container) return;
+    container.style.backgroundImage = `url('${img.src}')`;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const cw = container.clientWidth, ch = container.clientHeight;
+    const ratioMatch = iw && ih && cw && ch &&
+        Math.abs((iw / ih) - (cw / ch)) / (cw / ch) < 0.05;
+    container.classList.toggle('needs-blur', !ratioMatch);
+}
+
 function escHtml(s) {
     return String(s)
         .replace(/&/g, '&amp;')

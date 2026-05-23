@@ -1344,9 +1344,28 @@ const achLink = document.getElementById('achievements-link');
         // Bust the artwork cache so the updated image shows immediately
         const img = card.querySelector('.game-capsule');
         if (img) {
-            const orient = (typeof _artOrientation !== 'undefined' && _artOrientation === 'horizontal') ? 'horizontal' : 'vertical';
+            const isHoriz = (typeof _artOrientation !== 'undefined' && _artOrientation === 'horizontal');
+            const orient = isHoriz ? 'horizontal' : 'vertical';
             const v = Date.now();
-            img.src = `/static/img/library/${orient}/${parseInt(appid)}.jpg?v=` + v;
+            const container = card.querySelector('.capsule-container');
+            const applyCls = () => {
+                if (typeof _applyArtClasses === 'function') _applyArtClasses(img, container);
+                else if (container) { container.classList.remove('no-art'); container.classList.add('has-art'); }
+            };
+            const newSrc = `/static/img/library/${orient}/${parseInt(appid)}.jpg?v=` + v;
+            const fallback = isHoriz ? `/static/img/library/vertical/${parseInt(appid)}.jpg?v=` + v : null;
+            img.onload = () => { img.onload = null; applyCls(); };
+            if (fallback) {
+                img.onerror = () => {
+                    img.onerror = () => { img.onerror = null; };
+                    img.src = fallback;
+                    if (container) container.style.backgroundImage = `url('${fallback}')`;
+                };
+            } else {
+                img.onerror = null;
+            }
+            img.src = newSrc;
+            if (container) container.style.backgroundImage = `url('${newSrc}')`;
             // Store per-game version so cardInnerHTML rebuilds with the right URL after scroll eviction
             if (typeof _imgVersions !== 'undefined') _imgVersions.set(parseInt(appid), v);
         }
