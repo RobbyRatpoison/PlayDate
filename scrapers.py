@@ -156,10 +156,20 @@ def _art_worker(normal_q, priority_q, cancel_event, icon_hash_map, today, progre
                 progress_cb('art', appid, None)
             continue
         try:
-            assets  = _get_steam_assets(appid)
-            v_src   = download_vertical(appid, assets=assets)
-            h_src   = download_horizontal(appid, assets=assets)
-            i_src   = download_icon(appid, icon_hash_map.get(appid, ''))
+            if appid < 0:
+                db2 = get_db()
+                game_row = db2.execute("SELECT name FROM games WHERE appid=?", (appid,)).fetchone()
+                db2.close()
+                name    = game_row['name'] if game_row else ''
+                sgdb_id = _sgdb_search_game_id(name) if name else None
+                v_src   = download_vertical(appid, sgdb_id=sgdb_id)
+                h_src   = download_horizontal(appid, sgdb_id=sgdb_id)
+                i_src   = download_icon(appid, '', sgdb_id=sgdb_id)
+            else:
+                assets  = _get_steam_assets(appid)
+                v_src   = download_vertical(appid, assets=assets)
+                h_src   = download_horizontal(appid, assets=assets)
+                i_src   = download_icon(appid, icon_hash_map.get(appid, ''))
             update_game_data(appid,
                 vertical_art_source=v_src,
                 horizontal_art_source=h_src,
@@ -1494,13 +1504,15 @@ def bulk_art_scrape_games(appids, types, source, cancel_event, progress_cb):
     if appids:
         db   = get_db()
         rows = db.execute(
-            f"SELECT appid, icon_hash FROM games WHERE appid IN ({','.join('?' * len(appids))})",
+            f"SELECT appid, name, icon_hash FROM games WHERE appid IN ({','.join('?' * len(appids))})",
             appids
         ).fetchall()
         db.close()
         icon_hash_map = {r['appid']: r['icon_hash'] or '' for r in rows}
+        name_map      = {r['appid']: r['name'] or '' for r in rows if r['appid'] < 0}
     else:
         icon_hash_map = {}
+        name_map      = {}
 
     q = queue.Queue()
     for appid in appids:
@@ -1520,13 +1532,23 @@ def bulk_art_scrape_games(appids, types, source, cancel_event, progress_cb):
                 return
             try:
                 updates = {}
-                assets  = _get_steam_assets(appid) if source != 'sgdb' else {}
-                if 'vertical' in types:
-                    updates['vertical_art_source']   = download_vertical(appid, assets=assets, source=source)
-                if 'horizontal' in types:
-                    updates['horizontal_art_source'] = download_horizontal(appid, assets=assets, source=source)
-                if 'icon' in types:
-                    updates['icon_source']            = download_icon(appid, icon_hash_map.get(appid, ''), source=source)
+                if appid < 0:
+                    name    = name_map.get(appid, '')
+                    sgdb_id = _sgdb_search_game_id(name) if name else None
+                    if 'vertical' in types:
+                        updates['vertical_art_source']   = download_vertical(appid, sgdb_id=sgdb_id)
+                    if 'horizontal' in types:
+                        updates['horizontal_art_source'] = download_horizontal(appid, sgdb_id=sgdb_id)
+                    if 'icon' in types:
+                        updates['icon_source']           = download_icon(appid, '', sgdb_id=sgdb_id)
+                else:
+                    assets = _get_steam_assets(appid) if source != 'sgdb' else {}
+                    if 'vertical' in types:
+                        updates['vertical_art_source']   = download_vertical(appid, assets=assets, source=source)
+                    if 'horizontal' in types:
+                        updates['horizontal_art_source'] = download_horizontal(appid, assets=assets, source=source)
+                    if 'icon' in types:
+                        updates['icon_source']           = download_icon(appid, icon_hash_map.get(appid, ''), source=source)
                 updates['art_fetched'] = today
                 update_game_data(appid, **updates)
 
