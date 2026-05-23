@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import threading
 import time
 import requests
@@ -510,8 +511,14 @@ def _pick_executable(verdict):
     if not base or not candidates:
         return None, None
 
-    # Prefer Linux native, then appimage/script, skip html and windows
-    for flavor in ('linux', 'appimage', 'script'):
+    if sys.platform == 'darwin':
+        flavor_pref = ('osx', 'appimage', 'script', 'linux')
+    elif sys.platform == 'win32':
+        flavor_pref = ('windows',)
+    else:
+        flavor_pref = ('linux', 'appimage', 'script')
+
+    for flavor in flavor_pref:
         for c in candidates:
             if c.get('flavor') == flavor:
                 path = os.path.join(base, c['path'])
@@ -533,7 +540,12 @@ import re as _re
 import zipfile
 import tarfile
 
-ITCH_INSTALL_BASE = os.path.expanduser('~/.local/share/playdate-itch')
+if sys.platform == 'win32':
+    ITCH_INSTALL_BASE = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'PlayDate', 'itch')
+elif sys.platform == 'darwin':
+    ITCH_INSTALL_BASE = os.path.expanduser('~/Library/Application Support/PlayDate/itch')
+else:
+    ITCH_INSTALL_BASE = os.path.expanduser('~/.local/share/playdate-itch')
 
 _install_states  = {}
 _install_lock    = threading.Lock()
@@ -606,10 +618,35 @@ def _pick_upload(uploads):
     return candidates[0] if candidates else None
 
 
+def _is_elf(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read(4) == b'\x7fELF'
+    except Exception:
+        return False
+
+
+def _is_macho(path):
+    try:
+        with open(path, 'rb') as f:
+            magic = f.read(4)
+            return magic in (b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf',
+                             b'\xce\xfa\xed\xfe', b'\xcf\xfa\xed\xfe',
+                             b'\xca\xfe\xba\xbe')
+    except Exception:
+        return False
+
+
 def _find_itch_executable(install_path):
     """Walk install_path and return a relative path to the best executable."""
-    import platform as _plat
-    is_linux = _plat.system() != 'Windows'
+    is_windows = sys.platform == 'win32'
+    is_mac     = sys.platform == 'darwin'
+
+    # macOS: look for .app bundles at top level first
+    if is_mac:
+        for entry in os.listdir(install_path):
+            if entry.endswith('.app') and os.path.isdir(os.path.join(install_path, entry)):
+                return entry
 
     SKIP_EXT = {'.txt', '.md', '.cfg', '.ini', '.conf', '.json', '.log',
                 '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.xml',
@@ -633,17 +670,29 @@ def _find_itch_executable(install_path):
                 appimages.append(rel)
             elif ext in ('.x86_64', '.x86', '.amd64', '.arm64', '.linux'):
                 native.append(rel)
-            elif ext == '.sh' and is_linux:
+            elif ext == '.sh' and not is_windows:
                 scripts.append(rel)
-            elif not ext and is_linux and os.access(fpath, os.X_OK):
+            elif not ext and not is_windows and (_is_elf(fpath) or (is_mac and _is_macho(fpath))):
                 native.append(rel)
             elif ext == '.exe':
                 winexes.append(rel)
 
+    _HELPER_EXE_NAMES = {
+        'unitycrashhandler64', 'unitycrashhandler32', 'unitycrashhandler',
+        'unityplayer',
+        'dxsetup', 'dxwebsetup',
+        'vcredist_x64', 'vcredist_x86', 'vc_redist.x64', 'vc_redist.x86',
+        'dotnetfx', 'dotnet',
+    }
+
+    def _exe_sort_key(p):
+        stem = os.path.splitext(os.path.basename(p))[0].lower()
+        return (p.count(os.sep), stem in _HELPER_EXE_NAMES, p)
+
     for group in (appimages, native, scripts, winexes):
         if group:
-            # Prefer shallower paths (closer to install root)
-            return sorted(group, key=lambda p: (p.count(os.sep), p))[0]
+            # Prefer shallower paths; within same depth, deprioritize known helper exes
+            return sorted(group, key=_exe_sort_key)[0]
 
     return None
 
@@ -669,7 +718,7 @@ def install_game(appid, progress_cb=None, cancel_ev=None):
 
     upload = _pick_upload(uploads)
     if not upload:
-        return {'status': 'error', 'message': 'No compatible download found for this platform'}
+        return {'status': 'error', 'message': 'No downloads available.'}
 
     try:
         download_url = _get_download_url(upload['id'], download_key_id=download_key_id)
@@ -811,44 +860,67 @@ def cancel_install(appid):
 
 # ── Launch ─────────────────────────────────────────────────────────────────────
 
-ITCH_PREFIX_BASE = os.path.expanduser('~/.local/share/playdate-itch/prefixes')
+if sys.platform == 'win32':
+    ITCH_PREFIX_BASE = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'PlayDate', 'itch-prefixes')
+elif sys.platform == 'darwin':
+    ITCH_PREFIX_BASE = os.path.expanduser('~/Library/Application Support/PlayDate/itch-prefixes')
+else:
+    ITCH_PREFIX_BASE = os.path.expanduser('~/.local/share/playdate-itch/prefixes')
 
 
 def _launch_exe(appid, exe_path, cwd):
-    """Launch exe_path, using Proton or Wine for .exe files on non-Windows."""
-    import platform as _plat
-    is_windows = _plat.system() == 'Windows'
+    """Launch exe_path, using Proton for .exe files on non-Windows."""
+    from runners.launch import check_launch, popen_checked
+    is_windows = sys.platform == 'win32'
+
+    # macOS .app bundle
+    if exe_path.endswith('.app') and os.path.isdir(exe_path):
+        try:
+            subprocess.Popen(['open', exe_path])
+        except Exception as e:
+            return str(e)
+        return None
 
     if exe_path.lower().endswith('.exe') and not is_windows:
         prefix = os.path.join(ITCH_PREFIX_BASE, str(appid))
         os.makedirs(prefix, exist_ok=True)
-        try:
-            from runners.proton import launch_game as proton_launch, get_default_proton
-            p = get_default_proton()
-            if p:
+        from runners.proton import launch_game as proton_launch, get_default_proton
+        p = get_default_proton()
+        proc = None
+        if p:
+            try:
                 log.info(f'itch.io: launching via Proton ({p["name"]}): {exe_path}')
-                proton_launch(
+                proc = proton_launch(
                     install_path=cwd,
                     executable=os.path.relpath(exe_path, cwd),
                     wine_prefix=prefix,
                     proton_path=p['path'],
                 )
-                return None  # success, caller records last_played
-        except Exception as e:
-            log.warning(f'itch.io: Proton launch failed ({e}), trying Wine')
-        try:
-            from runners.wine import run_in_prefix
-            log.info(f'itch.io: launching via Wine: {exe_path}')
-            run_in_prefix(prefix_path=prefix, exe=exe_path, args=None)
-            return None
-        except Exception as e:
-            return str(e)
+            except Exception as e:
+                log.warning(f'itch.io: Proton launch failed ({e}), falling back to Wine')
+        if proc is None:
+            try:
+                from runners.wine import run_in_prefix
+                log.info(f'itch.io: launching via Wine: {exe_path}')
+                proc = run_in_prefix(prefix_path=prefix, exe=exe_path)
+            except Exception as e:
+                return str(e)
+        if proc:
+            err = check_launch(proc)
+            if err:
+                return err['message']
+        return None
     else:
         try:
             os.chmod(exe_path, os.stat(exe_path).st_mode | 0o111)
         except Exception:
             pass
-        subprocess.Popen([exe_path], cwd=cwd)
+        try:
+            _, err = popen_checked([exe_path], cwd=cwd)
+            if err:
+                return err['message']
+        except Exception as e:
+            return str(e)
         return None
 
 
@@ -889,7 +961,7 @@ def launch_game(appid):
         exe_rel = row['platform_executable'] or _find_itch_executable(row['install_path'])
         if exe_rel:
             exe_abs = os.path.join(row['install_path'], exe_rel)
-            if os.path.isfile(exe_abs):
+            if os.path.isfile(exe_abs) or (exe_abs.endswith('.app') and os.path.isdir(exe_abs)):
                 return _do_launch(exe_abs, row['install_path'])
 
     # Try butler.db (itch app installed games)
@@ -899,7 +971,14 @@ def launch_game(appid):
         if exe_path:
             return _do_launch(exe_path, os.path.dirname(exe_path))
 
-    # Installed flag set but nothing found -- reset and re-download
+    # Files present but no launchable executable found -- unsupported format
+    if row['install_path'] and os.path.isdir(row['install_path']):
+        return {
+            'status':  'error',
+            'message': f'No supported executable found in {game_name}.',
+        }
+
+    # Nothing on disk -- reset and re-download
     update_game_data(appid, installed=0, install_path=None, platform_executable=None)
     start_install(appid)
     return {
