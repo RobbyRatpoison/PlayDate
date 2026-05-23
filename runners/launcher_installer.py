@@ -84,9 +84,10 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     import shutil
     from runners.wine import find_wine_binary
 
-    wb = wine_bin or find_wine_binary()
+    from runners.wine import find_proton_wine, is_proton_wine
+    wb = wine_bin or find_proton_wine() or find_wine_binary()
     if not wb:
-        _fail(platform_id, 'No Wine binary found. Install Wine first.')
+        _fail(platform_id, 'No Wine binary found. Install Wine or GE-Proton via Steam.')
         return
 
     prefix = os.path.expanduser(prefix)
@@ -94,6 +95,14 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     installer_type = installer_cfg.get('type', 'msi')
     url            = installer_cfg.get('url', '')
     exe_name       = installer_cfg.get('exe_name', '')
+    win_version    = installer_cfg.get('win_version', '')
+    extra_env      = installer_cfg.get('env', {})
+
+    if is_proton_wine(wb):
+        extra_env = {'WINEFSYNC': '1', 'WINEESYNC': '1', **extra_env}
+        log.info('Launcher install [%s]: Proton wine detected, adding WINEFSYNC/WINEESYNC', platform_id)
+    log.info('Launcher install [%s]: wine=%s prefix=%s arch=%s win_version=%r extra_env=%s',
+             platform_id, wb, prefix, winearch, win_version, list(extra_env.keys()))
 
     if not url:
         _fail(platform_id, 'No installer URL configured for this plugin.')
@@ -104,11 +113,19 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     try:
         os.makedirs(prefix, exist_ok=True)
         env = {**os.environ, 'WINEPREFIX': prefix, 'WINEARCH': winearch, 'WINEDEBUG': '-all'}
-        subprocess.run(
+        r = subprocess.run(
             [wb, 'wineboot', '--init'],
             env=env, check=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
+        log.info('Launcher install [%s]: wineboot exit=%d', platform_id, r.returncode)
+        if win_version:
+            r2 = subprocess.run(
+                [wb, 'reg', 'add', r'HKCU\Software\Wine', '/v', 'Version',
+                 '/d', win_version, '/f'],
+                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            log.info('Launcher install [%s]: set win_version=%s exit=%d', platform_id, win_version, r2.returncode)
     except Exception as e:
         _fail(platform_id, f'Failed to create Wine prefix: {e}')
         return
@@ -121,9 +138,12 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     try:
         resp = requests.get(url, stream=True, timeout=120)
         resp.raise_for_status()
+        size = 0
         with open(installer_path, 'wb') as f:
             for chunk in resp.iter_content(chunk_size=65536):
                 f.write(chunk)
+                size += len(chunk)
+        log.info('Launcher install [%s]: downloaded %d bytes to %s', platform_id, size, installer_path)
     except Exception as e:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         _fail(platform_id, f'Download failed: {e}')
@@ -132,10 +152,12 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     # Step 3: Run installer (user interacts with the Wine window)
     _set(platform_id, 'installing', 'Running installer — complete the setup window...')
     try:
-        env = {**os.environ, 'WINEPREFIX': prefix, 'WINEDEBUG': '-all'}
+        env = {**os.environ, 'WINEPREFIX': prefix, 'WINEDEBUG': '-all', **extra_env}
         cmd = [wb, 'msiexec', '/i', installer_path] if installer_type == 'msi' else [wb, installer_path]
+        log.info('Launcher install [%s]: running %s', platform_id, cmd)
         proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         proc.wait()
+        log.info('Launcher install [%s]: installer exit code %d', platform_id, proc.returncode)
     except Exception as e:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         _fail(platform_id, f'Installer error: {e}')
@@ -149,8 +171,20 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
 
     # Step 4: Verify exe_name appears somewhere in the prefix
     _set(platform_id, 'verifying', 'Verifying installation...')
-    found = any(exe_name in files for _, _, files in os.walk(prefix))
+    found_exes = []
+    for dirpath, _dirs, files in os.walk(prefix):
+        for f in files:
+            if f.endswith('.exe'):
+                found_exes.append(os.path.join(dirpath, f))
+    log.info('Launcher install [%s]: found %d .exe files in prefix', platform_id, len(found_exes))
+    for p in found_exes:
+        if exe_name in p:
+            log.info('Launcher install [%s]: found target exe at %s', platform_id, p)
+    found = any(exe_name in fp for fp in found_exes)
     if not found:
+        non_wine = [p for p in found_exes if 'windows' not in p.lower() and 'system32' not in p.lower()]
+        log.warning('Launcher install [%s]: %s not found; non-system exes: %s',
+                    platform_id, exe_name, non_wine[:20])
         _fail(platform_id, f'{exe_name} not found after installation. Did the setup complete?')
         return
 

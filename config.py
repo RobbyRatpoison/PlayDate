@@ -993,15 +993,16 @@ def save_launcher_config(platform_id, cfg):
 @config_bp.route('/api/launcher-config/<platform_id>', methods=['GET'])
 def get_launcher_config_route(platform_id):
     import plugins
-    from runners.wine import find_wine_binary
+    from runners.wine import find_wine_binary, find_proton_wine
     from runners.launcher_installer import default_prefix
     cfg = get_launcher_config(platform_id)
     manifest = plugins.plugin_manifest(platform_id)
     installer_cfg = manifest.get('launcher', {}).get('installer')
+    detected = find_proton_wine() or find_wine_binary()
     return jsonify({
         'status':              'success',
         'config':              cfg,
-        'wine_bin_detected':   find_wine_binary(),
+        'wine_bin_detected':   detected,
         'installer_available': installer_cfg is not None,
         'default_prefix':      default_prefix(platform_id),
     })
