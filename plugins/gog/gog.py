@@ -951,6 +951,14 @@ def _find_gog_executable(install_path, product_id):
     SKIP_EXTENSIONS = {'.txt', '.md', '.cfg', '.ini', '.conf', '.json', '.log',
                        '.sh.bak', '.bak', '.orig', '.py', '.xml', '.html', '.htm',
                        '.css', '.js', '.desktop', '.png', '.jpg', '.svg', '.ico'}
+
+    def _is_elf(path):
+        try:
+            with open(path, 'rb') as _f:
+                return _f.read(4) == b'\x7fELF'
+        except Exception:
+            return False
+
     try:
         executables = []
         for entry in os.scandir(install_path):
@@ -958,7 +966,7 @@ def _find_gog_executable(install_path, product_id):
                 _, ext = os.path.splitext(entry.name)
                 if ext.lower() in SKIP_EXTENSIONS:
                     continue
-                if os.access(entry.path, os.X_OK):
+                if os.access(entry.path, os.X_OK) or _is_elf(entry.path):
                     executables.append(entry.name)
         if executables:
             # Prefer known script-like extensions, then alphabetically first.
@@ -1312,6 +1320,7 @@ def launch_gog_game(appid):
     _is_exe   = platform_executable and platform_executable.lower().endswith('.exe')
 
     try:
+        from runners.launch import check_launch, popen_checked
         # DOSBox game: check .info regardless of what's stored in platform_executable,
         # so games installed before this fix also launch correctly.
         # _get_dosbox_launch returns: (bin, args) = found, None = not found, False = not a dosbox game
@@ -1326,18 +1335,37 @@ def launch_gog_game(appid):
         elif _dosbox:
             dosbox_bin, dosbox_args, dosbox_cwd = _dosbox
             log.info(f'GOG launch (DOSBox): {dosbox_bin} {dosbox_args} (cwd={dosbox_cwd})')
-            proc = subprocess.Popen([dosbox_bin] + dosbox_args, cwd=dosbox_cwd)
+            _, err = popen_checked([dosbox_bin] + dosbox_args, cwd=dosbox_cwd)
+            if err:
+                log.error(f'GOG: {err["message"]}')
+                return err
+            proc = None
         elif _is_exe and _host_win:
             # Windows host, Windows game — run the exe directly
             exe_abs = os.path.join(install_path, platform_executable.replace('/', os.sep))
-            proc = subprocess.Popen([exe_abs], cwd=install_path)
+            _, err = popen_checked([exe_abs], cwd=install_path)
+            if err:
+                log.error(f'GOG: {err["message"]}')
+                return err
+            proc = None
         elif _is_exe and not _host_win:
-            # Linux host, Windows game — use Proton
+            # Linux host, Windows game — Proton preferred, Wine fallback
             prefix = wine_prefix or os.path.join(install_path, 'prefix')
             os.makedirs(prefix, exist_ok=True)
-            from runners.proton import launch_game as _proton_launch
-            proc = _proton_launch(install_path, platform_executable, prefix,
-                                  proton_path=runner_path or None)
+            exe_abs = os.path.join(install_path, platform_executable.replace('/', os.sep))
+            from runners.proton import launch_game as _proton_launch, get_default_proton
+            _proton = get_default_proton()
+            if _proton:
+                proc = _proton_launch(install_path, platform_executable, prefix,
+                                      proton_path=runner_path or _proton['path'])
+            else:
+                log.info(f'GOG: no Proton found, falling back to Wine for {game_name!r}')
+                from runners.wine import run_in_prefix
+                proc = run_in_prefix(prefix_path=prefix, exe=exe_abs)
+            err = check_launch(proc)
+            if err:
+                log.error(f'GOG: {err["message"]}')
+                return err
         else:
             # Linux native (or macOS)
             exe_abs = os.path.join(install_path, platform_executable)
@@ -1345,9 +1373,14 @@ def launch_gog_game(appid):
                 return {'status': 'error', 'message': f'Executable not found: {exe_abs}'}
             if not _host_win:
                 os.chmod(exe_abs, 0o755)
-            proc = subprocess.Popen([exe_abs], cwd=install_path)
+            _, err = popen_checked([exe_abs], cwd=install_path)
+            if err:
+                log.error(f'GOG: {err["message"]}')
+                return err
+            proc = None
 
-        log.info(f'GOG launch: {game_name!r} (pid {proc.pid})')
+        if proc:
+            log.info(f'GOG launch: {game_name!r} (pid {proc.pid})')
 
         # Update last_played + completion_status
         now_ts = int(datetime.now(timezone.utc).timestamp())
