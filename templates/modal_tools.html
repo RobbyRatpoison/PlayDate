@@ -1043,6 +1043,9 @@
                         <span style="font-size:0.82rem; color:var(--text-primary);">📦 games.db</span>
                         <span style="font-size:0.82rem; color:var(--text-primary);">⚙️ config.json</span>
                         <span style="font-size:0.82rem; color:var(--text-primary);">🗂️ state.json</span>
+                        <span style="font-size:0.82rem; color:var(--text-primary);">🎨 theme.json</span>
+                        <span style="font-size:0.82rem; color:var(--text-primary);">🕹️ emulators.json</span>
+                        <span style="font-size:0.82rem; color:var(--text-primary);">🎁 santa_gifts.json</span>
                     </div>
                 </div>
                 <div id="backup-include-art-card" data-modal-row="1"
@@ -1278,83 +1281,61 @@
 
 <!-- ── MONTHLY IN A MONTH MODAL ── -->
 <div id="miam-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeMiamModal();">
-    <div class="modal-content" style="width:min(500px,95vw); max-height:90vh; display:flex; flex-direction:column; overflow:hidden;">
-
-        <div style="flex-shrink:0;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h2 style="margin:0; color:var(--text-primary);">Monthly in a Month</h2>
-                <button onclick="closeMiamModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
-            </div>
-            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">
-                Beat 6 games from the community list. <a id="miam-sheet-link" href="#" onclick="event.preventDefault();var a=document.createElement('a');a.href='https://docs.google.com/spreadsheets/d/1xBd5rltp8WxQSnG2BVKPzr7quTLJCvCt2MaGCxzs-d8/edit';a.target='_blank';document.body.appendChild(a);a.click();document.body.removeChild(a);" style="color:var(--accent);">View spreadsheet ↗</a>
-            </div>
-
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
-                <span style="font-size:0.82rem; color:var(--text-secondary); white-space:nowrap;">Event start date</span>
-                <input type="date" id="miam-event-start"
-                    data-modal-row="miam-date"
-                    style="padding:5px 8px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
-                    onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
-                    oninput="miamOnDateChange()">
-                <span style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">first Tuesday of the event month</span>
-            </div>
-
-            <div id="miam-skip-row" data-modal-row="miam-skip"
-                style="display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:0.82rem; color:var(--text-secondary); cursor:pointer;"
-                onclick="var cb=document.getElementById('miam-skip-cb');cb.checked=!cb.checked;miamOnSkipChange();">
-                <input type="checkbox" id="miam-skip-cb" style="width:auto; margin:0;" onclick="event.stopPropagation()" onchange="miamOnSkipChange()">
-                <span>Skip achievement check <span style="font-style:italic; font-size:0.78rem;">(recommended if the event has already started)</span></span>
-            </div>
-
-            <div id="miam-wontp-row" data-modal-row="miam-wontp"
-                style="display:flex; align-items:center; gap:6px; margin-bottom:14px; font-size:0.82rem; color:var(--text-secondary); cursor:pointer;"
-                onclick="var cb=document.getElementById('miam-wontp-cb');cb.checked=!cb.checked;miamUpdateStats();">
-                <input type="checkbox" id="miam-wontp-cb" style="width:auto; margin:0;" onclick="event.stopPropagation()" onchange="miamUpdateStats()">
-                <span>Include games marked as "Won't Play"</span>
-            </div>
-
-            <div style="border-bottom:1px solid var(--border); margin-bottom:12px;"></div>
+    <div class="modal-content" style="width:min(500px,95vw);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h2 style="margin:0; color:var(--text-primary);">Monthly in a Month</h2>
+            <button onclick="closeMiamModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:14px;">
+            Beat 6 games from the community list. <a href="#" onclick="event.preventDefault();var a=document.createElement('a');a.href='https://docs.google.com/spreadsheets/d/1xBd5rltp8WxQSnG2BVKPzr7quTLJCvCt2MaGCxzs-d8/edit';a.target='_blank';document.body.appendChild(a);a.click();document.body.removeChild(a);" style="color:var(--accent);">View spreadsheet ↗</a>
         </div>
 
-        <div style="flex:1; overflow-y:auto; min-height:0; padding-bottom:4px;">
-            <div id="miam-loading" style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:12px;">Fetching game list…</div>
-
-            <div id="miam-stats" style="display:none; margin-bottom:14px;">
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 16px; font-size:0.82rem; margin-bottom:8px;">
-                    <span style="color:var(--text-secondary);">Games on list</span><span id="miam-stat-total" style="color:var(--text-primary); font-weight:600;"></span>
-                    <span style="color:var(--text-secondary);">Excluded (N/N?)</span><span id="miam-stat-excluded" style="color:var(--text-primary); font-weight:600;"></span>
-                    <span style="color:var(--text-secondary);">Eligible from list</span><span id="miam-stat-eligible" style="color:var(--text-primary); font-weight:600;"></span>
-                    <span style="color:var(--text-secondary);">In your library</span><span id="miam-stat-library" style="color:var(--text-primary); font-weight:600;"></span>
-                    <span id="miam-stat-cheevo-label" style="color:var(--text-secondary);">No prior achievements</span><span id="miam-stat-cheevo" style="color:var(--accent-positive); font-weight:600;"></span>
-                </div>
-                <div id="miam-snapshot-notice" style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;"></div>
-            </div>
-
-            <div id="miam-error" style="display:none; color:var(--accent-negative); font-size:0.82rem; margin-bottom:12px;"></div>
-
-            <div style="margin-bottom:14px;">
-                <button onclick="miamToggleSql()" data-modal-row="miam-sql" style="background:none;border:none;color:var(--text-secondary);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
-                    <span id="miam-sql-chevron">▶</span> Show SQL Preview
-                </button>
-                <div id="miam-sql-box" style="display:none; margin-top:8px;">
-                    <pre id="miam-sql-text" style="margin:0;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--accent);font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
-                </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+            <span style="color:var(--text-secondary); font-size:0.8rem; white-space:nowrap;">Completion status</span>
+            <div id="miam-completion-btns" style="display:flex; flex-wrap:wrap; gap:5px;">
+                <button class="pag-comp-btn active" data-val="Never Played" data-modal-row="miam-comp" onclick="miamToggleComp(this)">Never Played</button>
+                <button class="pag-comp-btn active" data-val="Unfinished"   data-modal-row="miam-comp" onclick="miamToggleComp(this)">Unfinished</button>
+                <button class="pag-comp-btn"        data-val="Beaten"       data-modal-row="miam-comp" onclick="miamToggleComp(this)">Beaten</button>
+                <button class="pag-comp-btn"        data-val="Completed"    data-modal-row="miam-comp" onclick="miamToggleComp(this)">Completed</button>
+                <button class="pag-comp-btn"        data-val="Won't Play"   data-modal-row="miam-comp" onclick="miamToggleComp(this)">Won't Play</button>
             </div>
         </div>
 
-        <div style="flex-shrink:0;">
-            <div style="border-top:1px solid var(--border); margin-bottom:12px;"></div>
-            <input type="text" id="miam-filter-name" placeholder="Filter name…"
-                data-modal-row="miam-filter-name"
-                style="width:100%; box-sizing:border-box; margin-bottom:8px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
-                onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
-                onkeydown="if(event.key==='Enter')miamSave();">
-            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                <button class="nav-btn" data-modal-row="miam-footer" onclick="miamSave()" style="background:var(--accent-positive); color:var(--text-bright); border-color:var(--accent-positive);">Save Filter</button>
-                <button class="nav-btn" data-modal-row="miam-footer" onclick="closeMiamModal()">Close</button>
+        <div style="border-bottom:1px solid var(--border); margin-bottom:12px;"></div>
+
+        <div id="miam-loading" style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:12px;">Fetching game list…</div>
+
+        <div id="miam-stats" style="display:none; margin-bottom:14px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 16px; font-size:0.82rem;">
+                <span style="color:var(--text-secondary);">Games on list</span><span id="miam-stat-total" style="color:var(--text-primary); font-weight:600;"></span>
+                <span style="color:var(--text-secondary);">Excluded (N/N?)</span><span id="miam-stat-excluded" style="color:var(--text-primary); font-weight:600;"></span>
+                <span style="color:var(--text-secondary);">Eligible from list</span><span id="miam-stat-eligible" style="color:var(--text-primary); font-weight:600;"></span>
+                <span style="color:var(--text-secondary);">In your library</span><span id="miam-stat-library" style="color:var(--text-primary); font-weight:600;"></span>
             </div>
-            <div id="miam-save-status" class="tool-status" style="margin-bottom:0;"></div>
         </div>
+
+        <div id="miam-error" style="display:none; color:var(--accent-negative); font-size:0.82rem; margin-bottom:12px;"></div>
+
+        <div style="margin-bottom:14px;">
+            <button onclick="miamToggleSql()" data-modal-row="miam-sql" style="background:none;border:none;color:var(--text-secondary);padding:0;cursor:pointer;font-size:0.78rem;display:flex;align-items:center;gap:5px;">
+                <span id="miam-sql-chevron">▶</span> Show SQL Preview
+            </button>
+            <div id="miam-sql-box" style="display:none; margin-top:8px;">
+                <pre id="miam-sql-text" style="margin:0;padding:10px 14px;background:var(--bg-input);border:1px solid var(--border);border-radius:5px;color:var(--accent);font-size:0.78rem;font-family:monospace;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;"></pre>
+            </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border); margin-bottom:12px;"></div>
+        <input type="text" id="miam-filter-name" placeholder="Filter name…"
+            data-modal-row="miam-filter-name"
+            style="width:100%; box-sizing:border-box; margin-bottom:8px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.85rem; outline:none;"
+            onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+            onkeydown="if(event.key==='Enter')miamSave();">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="nav-btn" data-modal-row="miam-footer" onclick="miamSave()" style="background:var(--accent-positive); color:var(--text-bright); border-color:var(--accent-positive);">Save Filter</button>
+            <button class="nav-btn" data-modal-row="miam-footer" onclick="closeMiamModal()">Close</button>
+        </div>
+        <div id="miam-save-status" class="tool-status" style="margin-bottom:0;"></div>
     </div>
 </div>
 
@@ -1871,40 +1852,15 @@ function closePagModal() {
 }
 
 // ── Monthly in a Month ──
-let _miamSheetData = null;   // cached sheet response
-let _miamSnapshots = [];     // [{taken_at, games}] sorted newest-first
-let _miamEligible = [];      // final eligible appids after achievement filter
-
-function _miamFirstTuesdayOfMonth(year, month) {
-    const d = new Date(year, month, 1);
-    const offset = (2 - d.getDay() + 7) % 7;
-    return new Date(year, month, 1 + offset);
-}
-
-function _miamDefaultDate() {
-    const now = new Date();
-    const d = _miamFirstTuesdayOfMonth(now.getFullYear(), now.getMonth());
-    return d.toISOString().slice(0, 10);
-}
+let _miamSheetData = null;
 
 function _miamDefaultName() {
-    const val = document.getElementById('miam-event-start').value;
-    if (!val) return 'MiaM';
-    const d = new Date(val + 'T12:00:00');
-    return 'MiaM ' + d.toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
-}
-
-function _miamBestSnapshot(eventStart) {
-    // Most recent snapshot taken strictly before the event start date
-    for (const snap of _miamSnapshots) {
-        if (snap.taken_at < eventStart) return snap;
-    }
-    return null;
+    const now = new Date();
+    return 'MiaM ' + now.toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
 }
 
 async function openMiamModal() {
     document.getElementById('miam-modal').style.display = 'flex';
-    document.getElementById('miam-event-start').value = _miamDefaultDate();
     document.getElementById('miam-filter-name').value = _miamDefaultName();
     document.getElementById('miam-loading').style.display = 'block';
     document.getElementById('miam-loading').textContent = 'Fetching game list…';
@@ -1913,13 +1869,10 @@ async function openMiamModal() {
     document.getElementById('miam-save-status').textContent = '';
     document.getElementById('miam-save-status').className = 'tool-status';
     try {
-        const [sheetRes, snapRes] = await Promise.all([
-            fetch('/api/miam-sheet').then(r => r.json()),
-            fetch('/api/miam-snapshot').then(r => r.json()),
-        ]);
-        if (sheetRes.status !== 'success') throw new Error(sheetRes.message || 'Failed to fetch sheet');
-        _miamSheetData = sheetRes;
-        _miamSnapshots = (snapRes.snapshots || []).slice().sort((a, b) => b.taken_at.localeCompare(a.taken_at));
+        const res = await fetch('/api/miam-sheet');
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message || 'Failed to fetch sheet');
+        _miamSheetData = data;
         document.getElementById('miam-loading').style.display = 'none';
         miamUpdateStats();
     } catch (e) {
@@ -1933,66 +1886,36 @@ function closeMiamModal() {
     document.getElementById('miam-modal').style.display = 'none';
 }
 
-function miamOnDateChange() {
-    document.getElementById('miam-filter-name').value = _miamDefaultName();
-    miamUpdateStats();
-}
-
-function miamOnSkipChange() {
-    miamUpdateStats();
-}
-
 function miamUpdateStats() {
     if (!_miamSheetData) return;
-    const skip = document.getElementById('miam-skip-cb').checked;
-    const eventStart = document.getElementById('miam-event-start').value;
-    const libAch = _miamSheetData.library_achievements || {};
-    const inLibAppids = (_miamSheetData.appids || []).filter(a => libAch.hasOwnProperty(String(a)));
-
-    const noticeEl = document.getElementById('miam-snapshot-notice');
-    const cheevoLabel = document.getElementById('miam-stat-cheevo-label');
-    const cheevoEl = document.getElementById('miam-stat-cheevo');
-
-    if (skip) {
-        _miamEligible = inLibAppids;
-        cheevoLabel.style.display = 'none';
-        cheevoEl.style.display = 'none';
-        noticeEl.textContent = '';
-    } else {
-        const snap = _miamBestSnapshot(eventStart);
-        let achievements;
-        if (snap) {
-            achievements = snap.games;
-            noticeEl.textContent = 'Using achievement snapshot from ' + snap.taken_at + '.';
-        } else {
-            achievements = libAch;
-            noticeEl.textContent = 'No snapshot before this date — using current achievement data.';
-        }
-        _miamEligible = inLibAppids.filter(a => !(achievements[String(a)] > 0));
-        cheevoLabel.style.display = '';
-        cheevoEl.style.display = '';
-        cheevoEl.textContent = _miamEligible.length.toLocaleString();
-    }
-
     document.getElementById('miam-stat-total').textContent = (_miamSheetData.total || 0).toLocaleString();
     document.getElementById('miam-stat-excluded').textContent = ((_miamSheetData.total || 0) - (_miamSheetData.eligible || 0)).toLocaleString();
     document.getElementById('miam-stat-eligible').textContent = (_miamSheetData.eligible || 0).toLocaleString();
-    document.getElementById('miam-stat-library').textContent = inLibAppids.length.toLocaleString();
+    document.getElementById('miam-stat-library').textContent = (_miamSheetData.in_library || 0).toLocaleString();
     document.getElementById('miam-stats').style.display = 'block';
-
     const sqlBox = document.getElementById('miam-sql-box');
     if (sqlBox.style.display !== 'none') miamRenderSql();
 }
 
+function miamToggleComp(btn) {
+    btn.classList.toggle('active');
+    miamUpdateStats();
+}
+
+function _miamActiveStatuses() {
+    return [...document.querySelectorAll('#miam-completion-btns .pag-comp-btn.active')].map(b => b.dataset.val);
+}
+
 function miamBuildSql() {
-    if (!_miamEligible.length) return "1=0 /* no eligible games */";
-    const preview = _miamEligible.length <= 6
-        ? _miamEligible.join(', ')
-        : _miamEligible.slice(0, 3).join(', ') + ', … [' + _miamEligible.length + ' total]';
-    const wontPlay = document.getElementById('miam-wontp-cb').checked;
-    const compClause = wontPlay
-        ? "completion_status NOT IN ('Beaten', 'Completed')"
-        : "completion_status NOT IN ('Beaten', 'Completed', 'Won''t Play')";
+    const appids = (_miamSheetData && _miamSheetData.appids) || [];
+    if (!appids.length) return "1=0 /* no eligible games */";
+    const preview = appids.length <= 6
+        ? appids.join(', ')
+        : appids.slice(0, 3).join(', ') + ', … [' + appids.length + ' total]';
+    const statuses = _miamActiveStatuses();
+    const compClause = statuses.length
+        ? '(' + statuses.map(v => `completion_status = '${v.replace(/'/g, "''")}'`).join(' OR ') + ')'
+        : '1=0';
     return `platform = 'steam'\nAND ${compClause}\nAND appid IN (${preview})`;
 }
 
@@ -2012,29 +1935,29 @@ async function miamSave() {
     const statusEl = document.getElementById('miam-save-status');
     const name = document.getElementById('miam-filter-name').value.trim();
     if (!name) { document.getElementById('miam-filter-name').focus(); return; }
-    if (!_miamEligible.length) {
+    const appids = (_miamSheetData && _miamSheetData.appids) || [];
+    if (!appids.length) {
         statusEl.className = 'tool-status error';
         statusEl.textContent = 'No eligible games found — nothing to save.';
         return;
     }
-    const skip = document.getElementById('miam-skip-cb').checked;
-    const wontPlay = document.getElementById('miam-wontp-cb').checked;
-    const eventStart = document.getElementById('miam-event-start').value;
-
-    const excludedStatuses = ['Beaten', 'Completed'];
-    if (!wontPlay) excludedStatuses.push("Won't Play");
-    const compItems = excludedStatuses.map(v => ({type: 'condition', column: 'completion_status', operator: '!=', value: v}));
+    const statuses = _miamActiveStatuses();
+    if (!statuses.length) {
+        statusEl.className = 'tool-status error';
+        statusEl.textContent = 'Select at least one completion status.';
+        return;
+    }
+    const compItems = statuses.map(v => ({type: 'condition', column: 'completion_status', operator: '=', value: v}));
+    const compNode = compItems.length === 1 ? compItems[0] : {type: 'group', logic: 'OR', items: compItems};
 
     const tree = {
         type: 'group',
         logic: 'AND',
         miam: true,
-        miam_event_start: eventStart,
-        miam_skip_achievements: skip,
         items: [
             {type: 'condition', column: 'platform', operator: '=', value: 'steam'},
-            ...compItems,
-            {type: 'appid_list', appids: _miamEligible.map(Number)},
+            compNode,
+            {type: 'appid_list', appids: appids.map(Number)},
         ],
     };
 
@@ -4633,6 +4556,52 @@ async function _manageSaveLauncher(id) {
     }
 }
 
+async function _manageLauncherReinstall(id) {
+    confirm('Delete the Wine prefix and reinstall the launcher?').then(async ok => {
+        if (!ok) return;
+        const stEl = document.getElementById(`${id}-manage-launcher-install-status`);
+        if (stEl) { stEl.style.color = 'var(--text-secondary)'; stEl.textContent = 'Removing existing prefix...'; }
+        try {
+            const r = await fetch(`/api/launcher-uninstall/${encodeURIComponent(id)}`, {method: 'POST'});
+            const d = await r.json();
+            if (d.status !== 'success') {
+                if (stEl) { stEl.style.color = 'var(--text-danger)'; stEl.textContent = d.message || 'Uninstall failed.'; }
+                return;
+            }
+        } catch(e) {
+            if (stEl) { stEl.style.color = 'var(--text-danger)'; stEl.textContent = `Error: ${e.message}`; }
+            return;
+        }
+        _manageLauncherInstall(id);
+    });
+}
+
+async function _manageLauncherRemove(id) {
+    confirm('Delete the Wine prefix and remove the launcher configuration?').then(async ok => {
+        if (!ok) return;
+        const msgEl = document.getElementById(`${id}-manage-launcher-msg`);
+        if (msgEl) { msgEl.style.display = ''; msgEl.style.color = 'var(--text-secondary)'; msgEl.textContent = 'Removing...'; }
+        try {
+            const r = await fetch(`/api/launcher-uninstall/${encodeURIComponent(id)}`, {method: 'POST'});
+            const d = await r.json();
+            if (msgEl) {
+                msgEl.style.display = '';
+                msgEl.style.color   = d.status === 'success' ? '#6dc46d' : '#c74747';
+                msgEl.textContent   = d.status === 'success' ? 'Launcher removed.' : (d.message || 'Remove failed.');
+            }
+            if (d.status === 'success') {
+                const wineBinEl = document.getElementById(`${id}-manage-launcher-wine-bin`);
+                const prefixEl  = document.getElementById(`${id}-manage-launcher-prefix`);
+                if (wineBinEl) wineBinEl.value = '';
+                if (prefixEl)  prefixEl.value  = '';
+                fetch(`/api/plugins/launcher-status/${encodeURIComponent(id)}`, {method: 'POST'}).catch(() => {});
+            }
+        } catch(e) {
+            if (msgEl) { msgEl.style.display = ''; msgEl.style.color = '#c74747'; msgEl.textContent = `Error: ${e.message}`; }
+        }
+    });
+}
+
 async function _manageRecheckLauncher(id) {
     const msgEl = document.getElementById(`${id}-manage-launcher-msg`);
     if (msgEl) { msgEl.style.display = ''; msgEl.style.color = 'var(--text-secondary)'; msgEl.textContent = 'Checking...'; }
@@ -4918,8 +4887,12 @@ function _buildManageBlockHtml(id, block, infoIdx, rowCtr) {
                 <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="${rSave}" onclick="_manageRecheckLauncher('${eid}')">Re-check status</button>
             </div>
             <div id="${eid}-manage-launcher-install-wrap" style="display:none;">
-                <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="${rInstall}" onclick="_manageLauncherInstall('${eid}')">Install launcher</button>
-                <div id="${eid}-manage-launcher-install-status" class="tool-status" style="margin-top:6px;"></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                    <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="${rInstall}" onclick="_manageLauncherInstall('${eid}')">Install launcher</button>
+                    <button class="nav-btn" style="font-size:0.75rem;" data-modal-row="${rInstall}" onclick="_manageLauncherReinstall('${eid}')">Reinstall launcher</button>
+                    <button class="nav-btn" style="font-size:0.75rem;color:var(--text-danger,#c74747);" data-modal-row="${rInstall}" onclick="_manageLauncherRemove('${eid}')">Remove launcher</button>
+                </div>
+                <div id="${eid}-manage-launcher-install-status" class="tool-status"></div>
             </div>
         </div>`;
         }

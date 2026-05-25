@@ -70,15 +70,64 @@ _pending_dates = {}  # appid (int) → 'YYYY-MM-DD'
 
 # ── Bulk date import state ────────────────────────────────────────────────────
 _bulk_date_state = {
-    'queue':            [],    # [{appid, name}, …] remaining
-    'current':          None,  # {appid, name} being processed
-    'done':             0,
-    'failed':           0,
-    'total':            0,
-    'active':           False,
-    'script_connected': False, # True once userscript pings back
-    'results':          [],    # [{name, appid, date}, …] newest first; date=None means not found
+    'queue':               [],    # [{appid, name}, …] remaining
+    'current':             None,  # {appid, name} being processed
+    'done':                0,
+    'failed':              0,
+    'total':               0,
+    'active':              False,
+    'script_connected':    False, # True once userscript pings back
+    'results':             [],    # [{name, appid, date}, …] newest first; date=None means not found
+    'api_threads_running': 0,     # background API date-fetch threads still in progress
+    'api_errors':          [],    # error messages from failed API fetch threads
 }
+_bulk_date_lock = threading.Lock()
+
+
+def _run_api_date_fetch(plugin, appids, appid_names):
+    """Background thread: call plugin.fetch_purchase_dates(appids, on_result) and update state."""
+    from database import update_game_data, ts_to_date
+
+    reported = [0]  # track how many appids were reported via callback
+
+    def on_result(appid, ts):
+        reported[0] += 1
+        name = appid_names.get(appid, '')
+        if ts:
+            update_game_data(appid, date_added=ts)
+            with _bulk_date_lock:
+                _bulk_date_state['done'] += 1
+                _bulk_date_state['results'].insert(0, {
+                    'appid': appid, 'name': name, 'date': ts_to_date(ts) or '',
+                })
+        else:
+            with _bulk_date_lock:
+                _bulk_date_state['failed'] += 1
+                _bulk_date_state['results'].insert(0, {
+                    'appid': appid, 'name': name, 'date': None,
+                })
+
+    try:
+        plugin.fetch_purchase_dates(appids, on_result)
+    except Exception as e:
+        log.error(f'API date fetch failed for plugin {plugin.id}: {e}', exc_info=True)
+        remaining = len(appids) - reported[0]
+        if remaining > 0:
+            with _bulk_date_lock:
+                _bulk_date_state['failed'] += remaining
+                _bulk_date_state['api_errors'].append(str(e))
+    finally:
+        with _bulk_date_lock:
+            if _bulk_date_state['api_threads_running'] > 0:
+                _bulk_date_state['api_threads_running'] -= 1
+            if (_bulk_date_state['api_threads_running'] == 0
+                    and not _bulk_date_state['queue']
+                    and not _bulk_date_state['current']
+                    and _bulk_date_state['active']):
+                _bulk_date_state['active'] = False
+                log.info(f"Bulk date import finished: "
+                         f"{_bulk_date_state['done']} updated, "
+                         f"{_bulk_date_state['failed']} not found")
 
 # ── Update checking ───────────────────────────────────────────────────────────
 _update_cache = {}  # available, latest_version, installer_url, zipball_url, checked_at, error
@@ -224,90 +273,6 @@ def _install_plugin_zip(raw_bytes):
 
 # Module-level cancel event so main.py can signal it on window close.
 populate_cancel = threading.Event()
-
-# ── Monthly in a Month — module-level so the startup snapshot can reach it ───
-_MIAM_SHEET_URL = ('https://docs.google.com/spreadsheets/d/'
-                   '1xBd5rltp8WxQSnG2BVKPzr7quTLJCvCt2MaGCxzs-d8/export?format=csv')
-_miam_sheet_cache = [None]  # [(timestamp, data)] — shared with route handler
-
-
-def _first_tuesday(year, month):
-    from datetime import date, timedelta
-    d = date(year, month, 1)
-    return d + timedelta(days=(1 - d.weekday()) % 7)
-
-
-def take_miam_snapshot():
-    """Snapshot achievement data for MiaM-eligible library games; keep at most 3 entries."""
-    import csv, io, urllib.request
-    from datetime import date, timedelta
-    from config import load_state, save_state
-    from database import get_db
-    try:
-        req = urllib.request.urlopen(_MIAM_SHEET_URL, timeout=15)
-        content = req.read().decode('utf-8')
-        reader = csv.DictReader(io.StringIO(content))
-        eligible = []
-        for row in reader:
-            app_id_raw = (row.get('App ID') or '').strip()
-            can_do = (row.get('Can do? (Y/N)') or '').strip()
-            if not app_id_raw or not app_id_raw.startswith('app/'):
-                continue
-            try:
-                appid = int(app_id_raw[4:])
-            except ValueError:
-                continue
-            if can_do in ('N', 'N?'):
-                continue
-            eligible.append(appid)
-    except Exception:
-        return
-
-    if not eligible:
-        return
-
-    db = get_db()
-    rows = db.execute(
-        f"SELECT appid, unlocked_achievements FROM games "
-        f"WHERE appid IN ({','.join('?'*len(eligible))}) "
-        f"AND platform = 'steam' "
-        f"AND completion_status NOT IN ('Beaten', 'Completed')",
-        eligible
-    ).fetchall()
-    db.close()
-
-    today = date.today().isoformat()
-    games = {str(r['appid']): (r['unlocked_achievements'] or 0) for r in rows}
-    new_snap = {'taken_at': today, 'games': games}
-
-    state = load_state()
-    # Migrate old dict format silently
-    existing = state.get('miam_snapshots') or []
-    if isinstance(existing, dict):
-        existing = []
-    snaps = [s for s in existing if s.get('taken_at') != today]
-    snaps.append(new_snap)
-    snaps.sort(key=lambda s: s.get('taken_at', ''), reverse=True)
-
-    # Determine the 3 slots to keep
-    today_date = date.today()
-    cur_ft  = _first_tuesday(today_date.year, today_date.month).isoformat()
-    prev_month = today_date.replace(day=1) - timedelta(days=1)
-    prev_ft = _first_tuesday(prev_month.year, prev_month.month).isoformat()
-
-    keep = set()
-    keep.add(snaps[0]['taken_at'])  # most recent always
-    for s in snaps:
-        if s['taken_at'] < cur_ft:
-            keep.add(s['taken_at'])
-            break
-    for s in snaps:
-        if s['taken_at'] < prev_ft:
-            keep.add(s['taken_at'])
-            break
-
-    save_state({'miam_snapshots': [s for s in snaps if s['taken_at'] in keep]})
-
 
 def create_app(template_folder=None, static_folder=None):
     """
@@ -994,11 +959,15 @@ def create_app(template_folder=None, static_folder=None):
         from database import get_db
         from utils import find_steam_path
         db = get_db()
-        row = db.execute("SELECT platform, install_path FROM games WHERE appid = ?", (appid,)).fetchone()
-        if not row:
-            return jsonify({"status": "error", "message": "Game not found"}), 404
+        try:
+            row = db.execute("SELECT platform, install_path FROM games WHERE appid = ?", (appid,)).fetchone()
+            if not row:
+                return jsonify({"status": "error", "message": "Game not found"}), 404
 
-        game_platform, install_path = row[0], row[1]
+            game_platform, install_path = row[0], row[1]
+        finally:
+            db.close()
+
         path = None
         if game_platform == 'steam' or not game_platform:
             steam_path = find_steam_path()
@@ -1082,8 +1051,11 @@ def create_app(template_folder=None, static_folder=None):
                 None,
             )
             if plugin_obj and hasattr(plugin_obj, 'launch_game'):
+                log.info(f"Dispatching launch for appid {appid_int} ({game_name!r}) to {game_platform} plugin")
                 result = plugin_obj.launch_game(appid_int)
+                log.info(f"Launch result for appid {appid_int}: {result}")
                 return jsonify(result)
+            log.warning(f"No launch handler for platform {game_platform!r} (appid {appid_int})")
             return jsonify({"status": "not_supported",
                             "message": "Launch not yet supported for this platform"}), 501
 
@@ -1746,32 +1718,59 @@ def create_app(template_folder=None, static_folder=None):
         import plugins as _plugins
         # Steam games go through the per-page Help flow; plugins with date_import_url
         # (e.g. GOG) are handled via their external orders page + Tampermonkey script.
+        # Plugins with fetch_purchase_dates are handled via direct API calls.
         steam_rows = [r for r in rows if (r['platform'] or 'steam') == 'steam']
 
-        seen_urls      = set()
+        seen_urls        = set()
         date_import_urls = []
+        api_by_platform  = {}  # plat -> [row, …] for plugins with fetch_purchase_dates
         for r in rows:
             plat   = r['platform'] or 'steam'
             plugin = _plugins.get(plat)
-            if plugin and hasattr(plugin, 'date_import_url'):
+            if not plugin:
+                continue
+            if hasattr(plugin, 'date_import_url'):
                 url = plugin.date_import_url
                 if url not in seen_urls:
                     seen_urls.add(url)
                     date_import_urls.append({'url': url, 'label': getattr(plugin, 'label', plugin.name)})
+            elif hasattr(plugin, 'fetch_purchase_dates'):
+                api_by_platform.setdefault(plat, []).append(r)
 
-        queue = [{'appid': r['appid'], 'name': r['name']} for r in steam_rows]
-        if queue:
-            _bulk_date_state.update({'queue': queue[1:], 'current': queue[0],
-                                     'done': 0, 'failed': 0, 'total': len(queue),
-                                     'active': True, 'script_connected': False,
-                                     'results': []})
-            log.info(f"Bulk date import started: {len(queue)} Steam games queued")
+        appid_names = {r['appid']: r['name'] for r in rows}
+        queue       = [{'appid': r['appid'], 'name': r['name']} for r in steam_rows]
+        api_total   = sum(len(v) for v in api_by_platform.values())
+
+        if queue or api_by_platform:
+            _bulk_date_state.update({
+                'queue':               queue[1:] if queue else [],
+                'current':             queue[0]  if queue else None,
+                'done':                0,
+                'failed':              0,
+                'total':               len(queue) + api_total,
+                'active':              True,
+                'script_connected':    False,
+                'results':             [],
+                'api_threads_running': len(api_by_platform),
+                'api_errors':          [],
+            })
+            if queue:
+                log.info(f"Bulk date import started: {len(queue)} Steam games queued")
+            for plat, plat_rows in api_by_platform.items():
+                plugin  = _plugins.get(plat)
+                appids  = [r['appid'] for r in plat_rows]
+                log.info(f"Bulk date import: queuing {len(appids)} {plat} games for API fetch")
+                threading.Thread(
+                    target=_run_api_date_fetch,
+                    args=(plugin, appids, appid_names),
+                    daemon=True,
+                ).start()
 
         return jsonify({
             'status':           'ok',
             'first_appid':      queue[0]['appid'] if queue else None,
             'first_name':       queue[0]['name']  if queue else None,
-            'total':            len(queue),
+            'total':            len(queue) + api_total,
             'date_import_urls': date_import_urls,
         })
 
@@ -1780,8 +1779,11 @@ def create_app(template_folder=None, static_folder=None):
             nxt = _bulk_date_state['queue'].pop(0)
             _bulk_date_state['current'] = nxt
             return jsonify({'status': 'ok', 'next_appid': nxt['appid'], 'next_name': nxt['name']})
-        _bulk_date_state.update({'active': False, 'current': None})
-        log.info(f"Bulk date import finished: {_bulk_date_state['done']} updated, {_bulk_date_state['failed']} not found")
+        _bulk_date_state['current'] = None
+        # Stay active if API threads are still running
+        if not _bulk_date_state['api_threads_running']:
+            _bulk_date_state['active'] = False
+            log.info(f"Bulk date import finished: {_bulk_date_state['done']} updated, {_bulk_date_state['failed']} not found")
         return jsonify({'status': 'ok', 'next_appid': None})
 
     @app.route('/api/bulk-date-import/submit', methods=['POST', 'OPTIONS'])
@@ -1828,11 +1830,15 @@ def create_app(template_folder=None, static_folder=None):
             'total': s['total'], 'current': s['current'],
             'script_connected': s['script_connected'],
             'results': s['results'][:50],
+            'api_errors': s.get('api_errors', []),
         })
 
     @app.route('/api/bulk-date-import/cancel', methods=['POST'])
     def bulk_date_import_cancel():
-        _bulk_date_state.update({'queue': [], 'active': False, 'current': None, 'script_connected': False})
+        with _bulk_date_lock:
+            _bulk_date_state.update({'queue': [], 'active': False, 'current': None,
+                                     'script_connected': False, 'api_threads_running': 0,
+                                     'api_errors': []})
         log.info("Bulk date import cancelled")
         return jsonify({'status': 'ok'})
 
@@ -3049,11 +3055,15 @@ def create_app(template_folder=None, static_folder=None):
 
     # ── Monthly in a Month ────────────────────────────────────────────────────
 
+    _MIAM_SHEET_URL = ('https://docs.google.com/spreadsheets/d/'
+                       '1xBd5rltp8WxQSnG2BVKPzr7quTLJCvCt2MaGCxzs-d8/export?format=csv')
+    _miam_cache = [None]  # [(timestamp, data)]
+
     @app.route('/api/miam-sheet')
     def miam_sheet_data():
         import csv, io, urllib.request
         from datetime import datetime
-        cache = _miam_sheet_cache[0]
+        cache = _miam_cache[0]
         now = datetime.now().timestamp()
         if cache and now - cache[0] < 3600:
             return jsonify(cache[1])
@@ -3077,38 +3087,27 @@ def create_app(template_folder=None, static_folder=None):
                     continue
                 eligible.append(appid)
             db = get_db()
-            in_library = {}
+            in_library = set()
             if eligible:
                 rows = db.execute(
-                    f"SELECT appid, unlocked_achievements FROM games "
-                    f"WHERE appid IN ({','.join('?'*len(eligible))}) AND platform = 'steam' "
-                    f"AND completion_status NOT IN ('Beaten', 'Completed')",
+                    f"SELECT appid FROM games "
+                    f"WHERE appid IN ({','.join('?'*len(eligible))}) AND platform = 'steam'",
                     eligible
                 ).fetchall()
-                in_library = {r['appid']: (r['unlocked_achievements'] or 0) for r in rows}
+                in_library = {r['appid'] for r in rows}
             db.close()
             data = {
                 'status': 'success',
                 'total': total,
                 'eligible': len(eligible),
                 'in_library': len(in_library),
-                'appids': eligible,
-                'library_achievements': {str(k): v for k, v in in_library.items()},
+                'appids': [a for a in eligible if a in in_library],
             }
-            _miam_sheet_cache[0] = (now, data)
+            _miam_cache[0] = (now, data)
             return jsonify(data)
         except Exception as e:
             app.logger.exception('MiaM sheet fetch failed')
             return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    @app.route('/api/miam-snapshot')
-    def miam_snapshot():
-        from config import load_state
-        state = load_state()
-        raw = state.get('miam_snapshots') or []
-        if isinstance(raw, dict):
-            raw = []  # discard old format
-        return jsonify({'status': 'success', 'snapshots': raw})
 
     @app.route('/api/shelves', methods=['POST'])
     def save_shelves():
@@ -3136,8 +3135,10 @@ def create_app(template_folder=None, static_folder=None):
     # ── BACKUP ────────────────────────────────────────────────────────────────
     def _fill_backup_zip(zf, include_art):
         import glob as _glob
-        for arcname, filepath in {'config.json':    os.path.join(BASE_DIR, 'config.json'),
-                                   'state.json':     os.path.join(BASE_DIR, 'state.json'),
+        for arcname, filepath in {'config.json':      os.path.join(BASE_DIR, 'config.json'),
+                                   'state.json':       os.path.join(BASE_DIR, 'state.json'),
+                                   'theme.json':       os.path.join(BASE_DIR, 'theme.json'),
+                                   'emulators.json':   os.path.join(BASE_DIR, 'emulators.json'),
                                    'santa_gifts.json': os.path.join(BASE_DIR, 'santa_gifts.json')}.items():
             if os.path.exists(filepath):
                 zf.write(filepath, arcname)
@@ -3374,7 +3375,8 @@ def create_app(template_folder=None, static_folder=None):
                     return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
 
                 # Core files: restore to BASE_DIR
-                for arcname in ('config.json', 'state.json', 'santa_gifts.json'):
+                for arcname in ('config.json', 'state.json', 'theme.json',
+                                'emulators.json', 'santa_gifts.json'):
                     if arcname in names:
                         dest = _safe_dest(arcname)
                         if not dest:
