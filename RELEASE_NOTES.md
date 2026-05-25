@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.5.7 — Pending
+## v1.5.7
 
 ### Home Page
 
