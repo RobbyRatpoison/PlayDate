@@ -3468,7 +3468,8 @@ def create_app(template_folder=None, static_folder=None):
                     dest = os.path.realpath(os.path.join(BASE_DIR, rel.replace('/', os.sep)))
                     return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
 
-                for arcname in ('config.json', 'state.json', 'santa_gifts.json'):
+                for arcname in ('config.json', 'state.json', 'theme.json',
+                                'emulators.json', 'santa_gifts.json'):
                     if arcname in names:
                         dest = _safe_dest_r(arcname)
                         if dest:
