@@ -33,6 +33,7 @@ datas += collect_data_files('flask')
 datas += collect_data_files('jinja2')
 datas += collect_data_files('waitress')
 datas += collect_data_files('webview')
+datas += collect_data_files('clr_loader')
 
 # ── Hidden imports ─────────────────────────────────────────────────────────────
 # Modules that PyInstaller's static analysis misses because they're
@@ -63,21 +64,27 @@ hiddenimports = [
     'app',
     'config',
     'database',
+    'emulators',
     'images',
     'imports',
     'index',
     'library',
     'main',
+    'migration',
     'scrapers',
     'utils',
 
     # runners package
     'runners',
+    'runners.launch',
     'runners.launcher_installer',
     'runners.oauth2',
     'runners.proton',
     'runners.watcher',
     'runners.wine',
+
+    # HLTB — lazy-imported inside scrapers.py
+    'howlongtobeatpy',
 
     # watchdog — lazy-imported in watcher.py and utils.py; needed for filesystem watching
     'watchdog',

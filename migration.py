@@ -237,7 +237,8 @@ def _m5_backfill_fetched_columns():
         try:
             cursor = conn.cursor()
             # Ensure columns exist before backfilling — init_db() runs after migrations
-            for col in ('protondb_fetched', 'protondb_tier', 'protondb_confidence',
+            for col in ('meta_fetched', 'art_fetched', 'cheevos_fetched',
+                        'protondb_fetched', 'protondb_tier', 'protondb_confidence',
                         'hltb_fetched', 'hltb_id', 'hltb_matched_name', 'hltb_match_score',
                         'hltb_main', 'hltb_extras', 'hltb_completionist'):
                 try:
