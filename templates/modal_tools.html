@@ -673,16 +673,28 @@
         </div>
         <p style="font-size:0.82rem; color:var(--text-secondary); margin:0 0 14px; line-height:1.5;">
             Games received as PAGYWOSG/PoP Discord Secret Santa or Snowballs gifts.
-            When the filter builder detects this category in the month's criteria, these games are included in the wins pool.
+            Check the box in the PAGYWOSG filter builder to include these in the wins pool.
         </p>
 
         <div style="position:relative; margin-bottom:8px;">
-            <input id="santa-search" type="text" placeholder="Search your library..." autocomplete="off"
+            <input id="santa-search" type="text" placeholder="Find a single game..." autocomplete="off"
                 data-modal-row="0"
                 style="width:100%; box-sizing:border-box; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text-primary); font-size:0.9rem;">
             <div id="santa-search-results" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:100;
                 background:var(--bg-surface); border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px;
                 max-height:160px; overflow-y:auto; box-shadow:0 6px 16px rgba(0,0,0,0.4);"></div>
+        </div>
+
+        <div style="position:relative; margin-bottom:12px;">
+            <button id="santa-group-btn" data-modal-row="0"
+                onclick="toggleSantaGroupPicker()"
+                style="width:100%; text-align:left; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text-secondary); font-size:0.9rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+                <span id="santa-group-label">Add all games from a group...</span>
+                <span style="font-size:0.75rem;">&#9660;</span>
+            </button>
+            <div id="santa-group-picker" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:99;
+                background:var(--bg-surface); border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px;
+                max-height:180px; overflow-y:auto; box-shadow:0 6px 16px rgba(0,0,0,0.4);"></div>
         </div>
 
         <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">
@@ -1996,8 +2008,11 @@ async function miamSave() {
 
 // ── Secret Santa / Snowballs ──
 let _santaGifts = [];        // [{appid, name}]
+let _santaSaved = [];        // snapshot of last-saved state for dirty check
+let _santaSaving = false;
 let _santaSearchTimer = null;
 let _santaSearchCache = [];  // last search results
+let _santaGroupPickerOpen = false;
 
 async function openSantaModal() {
     document.getElementById('santa-modal').style.display = 'flex';
@@ -2005,13 +2020,88 @@ async function openSantaModal() {
     const res = await fetch('/api/santa-gifts');
     const data = await res.json();
     _santaGifts = data.gifts || [];
+    _santaSaved = _santaGifts.map(g => g.appid).sort().join(',');
     _renderSantaList();
     const inp = document.getElementById('santa-search');
     inp.value = '';
     document.getElementById('santa-search-results').style.display = 'none';
+    _closeSantaGroupPicker();
+    document.getElementById('santa-group-label').textContent = 'Add all games from a group...';
     inp.focus();
+    _loadSantaGroups();
+}
+async function _loadSantaGroups() {
+    const picker = document.getElementById('santa-group-picker');
+    picker.innerHTML = '<div style="padding:8px 10px; color:var(--text-secondary); font-size:0.85rem;">Loading...</div>';
+    try {
+        const res = await fetch('/api/games/groups');
+        const groups = await res.json();
+        if (!groups.length) {
+            picker.innerHTML = '<div style="padding:8px 10px; color:var(--text-secondary); font-size:0.85rem;">No groups found.</div>';
+            return;
+        }
+        picker.innerHTML = groups.map(g =>
+            `<div style="padding:7px 10px; cursor:pointer; font-size:0.88rem; color:var(--text-primary);"
+                onmouseenter="this.style.background='var(--hover-bg)'" onmouseleave="this.style.background=''"
+                onclick="_santaAddGroup(${escHtml(JSON.stringify(g))})">
+                ${escHtml(g)}
+            </div>`
+        ).join('');
+    } catch (e) {
+        picker.innerHTML = '<div style="padding:8px 10px; color:var(--text-secondary); font-size:0.85rem;">Failed to load groups.</div>';
+    }
+}
+
+function toggleSantaGroupPicker() {
+    const picker = document.getElementById('santa-group-picker');
+    _santaGroupPickerOpen = picker.style.display === 'none';
+    picker.style.display = _santaGroupPickerOpen ? 'block' : 'none';
+}
+
+function _closeSantaGroupPicker() {
+    document.getElementById('santa-group-picker').style.display = 'none';
+    _santaGroupPickerOpen = false;
+}
+
+async function _santaAddGroup(group) {
+    _closeSantaGroupPicker();
+    const status = document.getElementById('santa-status');
+    status.style.color = 'var(--text-secondary)';
+    status.textContent = 'Fetching group...';
+    try {
+        const res = await fetch(`/api/games/by-group?group=${encodeURIComponent(group)}`);
+        const games = await res.json();
+        if (!Array.isArray(games) || !games.length) {
+            status.textContent = `No Steam games found in "${group}".`;
+            return;
+        }
+        let added = 0;
+        games.forEach(g => {
+            if (!_santaGifts.find(x => x.appid === g.appid)) {
+                _santaGifts.push({appid: g.appid, name: g.name});
+                added++;
+            }
+        });
+        _renderSantaList();
+        document.getElementById('santa-group-label').textContent = 'Add all games from a group...';
+        status.textContent = added
+            ? `Added ${added} game${added === 1 ? '' : 's'} from "${group}".`
+            : `All games from "${group}" are already in the list.`;
+    } catch (e) {
+        status.textContent = 'Failed to fetch group.';
+    }
+}
+
+function _santaIsDirty() {
+    return _santaGifts.map(g => g.appid).sort().join(',') !== _santaSaved;
 }
 function closeSantaModal() {
+    if (_santaIsDirty()) {
+        confirm('You have unsaved changes. Close without saving?').then(ok => {
+            if (ok) document.getElementById('santa-modal').style.display = 'none';
+        });
+        return;
+    }
     document.getElementById('santa-modal').style.display = 'none';
 }
 
@@ -2065,8 +2155,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.addEventListener('click', e => {
+        const groupBtn    = document.getElementById('santa-group-btn');
+        const groupPicker = document.getElementById('santa-group-picker');
         if (!results.contains(e.target) && e.target !== inp) {
             results.style.display = 'none';
+        }
+        if (!groupPicker.contains(e.target) && e.target !== groupBtn && !groupBtn.contains(e.target)) {
+            _closeSantaGroupPicker();
+        }
+    });
+
+    inp.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && results.style.display !== 'none') {
+            e.stopPropagation();
+            results.style.display = 'none';
+            inp.value = '';
         }
     });
 });
@@ -2083,9 +2186,11 @@ function _santaAddIdx(idx) {
 }
 
 async function saveSantaGifts() {
+    if (_santaSaving) return;
+    _santaSaving = true;
     const btn = document.getElementById('santa-save-btn');
     const status = document.getElementById('santa-status');
-    btn.disabled = true;
+    btn.style.opacity = '0.5';
     status.textContent = '';
     try {
         const res = await fetch('/api/santa-gifts', {
@@ -2095,6 +2200,7 @@ async function saveSantaGifts() {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            _santaSaved = _santaGifts.map(g => g.appid).sort().join(',');
             status.style.color = 'var(--text-secondary)';
             status.textContent = 'Saved.';
         } else {
@@ -2105,7 +2211,8 @@ async function saveSantaGifts() {
         status.style.color = 'var(--accent)';
         status.textContent = 'Network error.';
     }
-    btn.disabled = false;
+    btn.style.opacity = '';
+    _santaSaving = false;
 }
 
 let _pagSantaGifts = [];  // [{appid, name}] loaded once on pagInit

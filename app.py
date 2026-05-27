@@ -3017,6 +3017,32 @@ def create_app(template_folder=None, static_folder=None):
             gifts = []
         return jsonify({'status': 'success', 'gifts': gifts})
 
+    @app.route('/api/games/by-group')
+    def games_by_group():
+        group = request.args.get('group', '').strip()
+        if not group:
+            return jsonify([])
+        try:
+            db = get_db()
+            rows = db.execute(
+                "SELECT appid, name FROM games "
+                "WHERE platform = 'steam' AND duplicate_of IS NULL "
+                "AND ',' || groups || ',' LIKE ? ORDER BY name",
+                (f'%,{group},%',)
+            ).fetchall()
+            db.close()
+            return jsonify([dict(r) for r in rows])
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/games/groups')
+    def games_groups():
+        try:
+            from utils import get_all_unique_groups
+            return jsonify(get_all_unique_groups())
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
     @app.route('/api/pagywosg-tags')
     def pagywosg_tags():
         try:
