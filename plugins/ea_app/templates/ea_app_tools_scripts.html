@@ -1,0 +1,164 @@
+// ── EA App ────────────────────────────────────────────────────────────────────
+
+let _eaBrowserLoginPoll = null;
+
+async function eaOpenBrowserLogin() {
+    const st = document.getElementById('ea_app-manage-status-disconnected');
+    if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = 'Opening browser...'; }
+
+    try {
+        const r = await fetch('/api/ea_app/open-browser-login', { method: 'POST' });
+        const d = await r.json();
+        if (d.status === 'already_running') {
+            // already polling, just let it continue
+        } else if (d.status !== 'started') {
+            if (st) { st.style.color = 'var(--text-danger)'; st.textContent = d.message || 'Failed to open browser'; }
+            return;
+        }
+    } catch (e) {
+        if (st) { st.style.color = 'var(--text-danger)'; st.textContent = 'Network error'; }
+        return;
+    }
+
+    if (_eaBrowserLoginPoll) clearInterval(_eaBrowserLoginPoll);
+    _eaBrowserLoginPoll = setInterval(async () => {
+        try {
+            const r = await fetch('/api/ea_app/browser-login-status');
+            const d = await r.json();
+            if (st) {
+                if (d.status === 'error' || d.status === 'cancelled') {
+                    st.style.color = 'var(--text-danger)';
+                } else if (d.status === 'success') {
+                    st.style.color = 'var(--accent-positive, #5c7e10)';
+                } else {
+                    st.style.color = 'var(--text-secondary)';
+                }
+                st.textContent = d.message || '';
+            }
+            if (d.status === 'success' || d.status === 'error' || d.status === 'cancelled' || d.status === 'idle') {
+                clearInterval(_eaBrowserLoginPoll);
+                _eaBrowserLoginPoll = null;
+                if (d.status === 'success') {
+                    setTimeout(() => _manageRefreshAuth('ea_app'), 800);
+                }
+            }
+        } catch (_) {}
+    }, 750);
+}
+
+
+
+let _eaSyncPollInterval = null;
+
+function _eaSyncStatusText(d) {
+    if (d.phase === 'fetching_library') return 'Fetching library list...';
+    if (d.phase === 'processing') {
+        const game = d.current_game ? `: ${d.current_game}` : '';
+        const pct  = d.total > 0 ? ` (${d.done}/${d.total})` : '';
+        return `Adding games${pct}${game}`;
+    }
+    if (d.phase === 'stopped') return 'Sync stopped';
+    if (d.phase === 'error')   return d.error || 'Sync failed';
+    return 'Syncing...';
+}
+
+function _eaSetSyncRunning(running) {
+    const btn = document.querySelector('button[onclick="eaSync()"]')
+             || document.querySelector('button[onclick="eaStopSync()"]');
+    if (!btn) return;
+    if (running) {
+        btn.textContent = 'Stop Sync';
+        btn.setAttribute('onclick', 'eaStopSync()');
+    } else {
+        btn.textContent = 'Sync Library';
+        btn.setAttribute('onclick', 'eaSync()');
+    }
+}
+
+async function eaStopSync() {
+    const st = document.getElementById('ea_app-manage-status-main');
+    if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = 'Stopping...'; }
+    await fetch('/api/ea_app/sync/cancel', { method: 'POST' });
+}
+
+async function eaSync() {
+    const st = document.getElementById('ea_app-manage-status-main');
+    if (!st) return;
+    st.style.color = 'var(--text-secondary)';
+    st.textContent = 'Starting sync...';
+    try {
+        const r = await fetch('/api/ea_app/sync', { method: 'POST' });
+        const d = await r.json();
+        if (d.status === 'error') {
+            st.style.color = 'var(--text-danger)';
+            st.textContent = d.message || 'Sync failed';
+            return;
+        }
+    } catch (e) {
+        st.style.color = 'var(--text-danger)';
+        st.textContent = 'Network error';
+        return;
+    }
+    _eaSetSyncRunning(true);
+    _eaStartSyncPoll(st);
+}
+
+function _eaStartSyncPoll(st) {
+    if (_eaSyncPollInterval) return;
+    _eaSyncPollInterval = setInterval(async () => {
+        try {
+            const r = await fetch('/api/ea_app/sync/status');
+            const d = await r.json();
+            if (st) {
+                st.style.color = d.phase === 'error' ? 'var(--text-danger)' : 'var(--text-secondary)';
+                st.textContent = _eaSyncStatusText(d);
+            }
+            if (d.phase === 'done' || d.phase === 'stopped' || d.phase === 'error') {
+                clearInterval(_eaSyncPollInterval);
+                _eaSyncPollInterval = null;
+                _eaSetSyncRunning(false);
+                if (d.phase === 'error') return;
+                const newGames = d.new_games || 0, total = d.total_games || 0;
+                const stopped  = d.phase === 'stopped';
+                const parts    = [`${newGames} new game${newGames !== 1 ? 's' : ''} (${total} total)`];
+                const prefix = stopped ? 'Stopped' : 'Done';
+                if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `${prefix} — ${parts.join(', ')}`; }
+                if (newGames > 0) setTimeout(() => location.reload(), 2000);
+            }
+        } catch (_) {}
+    }, 1000);
+}
+
+function _eaResumePolling() {
+    const st = document.getElementById('ea_app-manage-status-main');
+    fetch('/api/ea_app/sync/status')
+        .then(r => r.json())
+        .then(d => {
+            if (d.running) {
+                if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = _eaSyncStatusText(d); }
+                _eaSetSyncRunning(true);
+                _eaStartSyncPoll(st);
+            }
+        }).catch(() => {});
+}
+
+if (typeof _manageOnOpen !== 'undefined') {
+    (_manageOnOpen['ea_app'] = _manageOnOpen['ea_app'] || []).push(_eaResumePolling);
+}
+
+async function eaFixSlugs() {
+    const btn = document.querySelector('button[onclick="eaFixSlugs()"]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Fixing...'; }
+    try {
+        const r = await fetch('/api/ea_app/fix-slugs', { method: 'POST' });
+        const d = await r.json();
+        if (btn) {
+            btn.textContent = d.status === 'success'
+                ? `Done — ${d.updated} updated`
+                : 'Failed';
+            setTimeout(() => { btn.disabled = false; btn.textContent = 'Fix Store Links'; }, 3000);
+        }
+    } catch (e) {
+        if (btn) { btn.textContent = 'Error'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Fix Store Links'; }, 3000); }
+    }
+}
