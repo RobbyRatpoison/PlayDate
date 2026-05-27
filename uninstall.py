@@ -20,13 +20,15 @@ LAUNCHER_SH  = os.path.join(INSTALL_DIR, "playdate-launch.sh")
 LAUNCHER_BAT = os.path.join(INSTALL_DIR, "playdate-launch.bat")
 SYSTEM       = platform.system()
 
-# User data files
+# User data files — keep in sync with backup/restore file set in app.py
 import glob as _glob
 USER_DATA = {
-    "config.json":  ("Steam API credentials and settings",  os.path.join(INSTALL_DIR, "config.json")),
-    "state.json":   ("Library filters, sort order, shelves", os.path.join(INSTALL_DIR, "state.json")),
-    "theme.json":   ("Custom theme colours",                 os.path.join(INSTALL_DIR, "theme.json")),
-    "playdate.log": ("Application log file",                 os.path.join(INSTALL_DIR, "playdate.log")),
+    "config.json":       ("Steam API credentials and settings",   os.path.join(INSTALL_DIR, "config.json")),
+    "state.json":        ("Library filters, sort order, shelves",  os.path.join(INSTALL_DIR, "state.json")),
+    "theme.json":        ("Custom theme colours",                  os.path.join(INSTALL_DIR, "theme.json")),
+    "emulators.json":    ("Emulator configuration",                os.path.join(INSTALL_DIR, "emulators.json")),
+    "santa_gifts.json":  ("Secret Santa gift list",                os.path.join(INSTALL_DIR, "santa_gifts.json")),
+    "playdate.log":      ("Application log file",                  os.path.join(INSTALL_DIR, "playdate.log")),
 }
 # Add per-account databases (games_<steamid>.db) plus legacy games.db
 _db_files = _glob.glob(os.path.join(INSTALL_DIR, "games_*.db")) + \
@@ -34,6 +36,9 @@ _db_files = _glob.glob(os.path.join(INSTALL_DIR, "games_*.db")) + \
 for _db in _db_files:
     _name = os.path.basename(_db)
     USER_DATA[_name] = ("Game library database", _db)
+# Art cache directory (optional in backup)
+_ART_DIR = os.path.join(INSTALL_DIR, "static", "img", "library")
+USER_DATA["static/img/library/"] = ("Cached cover art (vertical, horizontal, icons)", _ART_DIR)
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 BG      = "#1b2838"
@@ -394,7 +399,10 @@ class UninstallerApp(tk.Tk):
                     self._log_line(f"⚠  {filename} not found — skipping", "warn")
                     continue
                 self._log_line(f"→  Deleting {filename}…", "info")
-                os.remove(filepath)
+                if os.path.isdir(filepath):
+                    shutil.rmtree(filepath)
+                else:
+                    os.remove(filepath)
                 self._log_line(f"✔  {filename} deleted", "ok")
                 advance(f"Removed {filename}")
 
