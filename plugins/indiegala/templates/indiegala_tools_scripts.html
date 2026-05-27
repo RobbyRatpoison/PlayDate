@@ -1,0 +1,104 @@
+function indiegalaSync() {
+    var statusEl = document.getElementById('indiegala-manage-status-main');
+    if (statusEl) statusEl.textContent = 'Starting sync…';
+    fetch('/api/indiegala/sync', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                if (statusEl) statusEl.textContent = 'Error: ' + data.error;
+                return;
+            }
+            _indiegalaPoll(statusEl);
+        })
+        .catch(function(e) {
+            if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+        });
+}
+
+function _indiegalaPoll(statusEl) {
+    var iv = setInterval(function() {
+        fetch('/api/indiegala/sync-status')
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (statusEl) statusEl.textContent = d.status || '';
+                if (!d.running) {
+                    clearInterval(iv);
+                    if (d.error && statusEl) statusEl.textContent = 'Error: ' + d.error;
+                }
+            })
+            .catch(function() { clearInterval(iv); });
+    }, 1500);
+}
+
+var _igFolderBusy = false;
+
+function indiegalaPickFolder() {
+    if (_igFolderBusy) return;
+    _igFolderBusy = true;
+    setTimeout(function() { _igFolderBusy = false; }, 300);
+    var statusEl = document.getElementById('indiegala-manage-status-folder');
+
+    function _pick() {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_folder) {
+            return window.pywebview.api.pick_folder();
+        }
+        return Promise.resolve(null);
+    }
+
+    _pick().then(function(path) {
+        if (!path) return;
+        if (statusEl) statusEl.textContent = 'Saving…';
+        fetch('/api/indiegala/games-dir', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: path}),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.error) {
+                if (statusEl) statusEl.textContent = 'Error: ' + d.error;
+                return;
+            }
+            if (statusEl) statusEl.textContent = '';
+            _indiegalaRefreshFolderInfo();
+            indiegalaScan();
+        })
+        .catch(function(e) {
+            if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+        });
+    });
+}
+
+function indiegalaOpenFolder() {
+    fetch('/api/indiegala/open-folder', { method: 'POST' }).catch(function() {});
+}
+
+function indiegalaScan() {
+    var statusEl = document.getElementById('indiegala-manage-status-folder');
+    if (statusEl) statusEl.textContent = 'Scanning…';
+    fetch('/api/indiegala/scan', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.error) {
+                if (statusEl) statusEl.textContent = 'Error: ' + d.error;
+                return;
+            }
+            if (statusEl) statusEl.textContent = 'Scan complete.';
+        })
+        .catch(function(e) {
+            if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+        });
+}
+
+function _indiegalaRefreshFolderInfo() {
+    fetch('/api/indiegala/games-dir-info')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            var el = document.getElementById('indiegala-manage-info-0');
+            if (el) el.textContent = d.text || '';
+        })
+        .catch(function() {});
+}
+
+if (!_manageOnOpen['indiegala']) _manageOnOpen['indiegala'] = [];
+_manageOnOpen['indiegala'].push(_indiegalaRefreshFolderInfo);

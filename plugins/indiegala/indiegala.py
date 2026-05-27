@@ -1,0 +1,671 @@
+import difflib
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime, timezone
+
+import requests
+from bs4 import BeautifulSoup
+
+from config import BASE_DIR, load_config, _save_config_data
+from database import get_db, next_negative_appid, update_game_data
+from images import save_as_jpg
+
+log = logging.getLogger(__name__)
+
+LIBRARY_URL    = 'https://www.indiegala.com/library'
+VERTICAL_DIR   = os.path.join(BASE_DIR, 'static', 'img', 'library', 'vertical')
+HORIZONTAL_DIR = os.path.join(BASE_DIR, 'static', 'img', 'library', 'horizontal')
+
+_sync_state = {'running': False, 'status': '', 'added': 0, 'updated': 0, 'error': None}
+_sync_lock  = threading.Lock()
+
+
+# ── Config ──────────────────────────────────────────────────────────────────────
+
+def _cfg():
+    return (load_config() or {}).get('indiegala', {})
+
+def _save_cfg(data):
+    cfg = load_config() or {}
+    cfg['indiegala'] = data
+    _save_config_data(cfg)
+
+def is_connected():
+    return bool(_cfg().get('session_cookie'))
+
+def get_username():
+    return _cfg().get('username', 'Connected')
+
+
+# ── Auth ────────────────────────────────────────────────────────────────────────
+
+def _headers(cookie=None):
+    c = cookie or _cfg().get('session_cookie', '')
+    return {
+        'Cookie': f'sessionid={c}',
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/124.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+    }
+
+
+def connect(cookie):
+    cookie = cookie.strip().strip('"')
+    try:
+        resp = requests.get(LIBRARY_URL, headers=_headers(cookie), timeout=15,
+                            allow_redirects=True)
+        log.info(f'IndieGala connect: HTTP {resp.status_code}, final_url={resp.url!r}')
+        if resp.status_code != 200:
+            return False, f'Could not load IndieGala library (HTTP {resp.status_code}).'
+        if '/login' in resp.url or 'profile-private-page-library' not in resp.text:
+            return False, 'Session cookie appears invalid — log in to IndieGala and try again.'
+    except Exception as e:
+        log.warning(f'IndieGala connect exception: {e}')
+        return False, f'Connection failed: {e}'
+    _save_cfg({'session_cookie': cookie, 'username': 'Connected'})
+    log.info('IndieGala connected')
+    return True, 'Connected'
+
+
+def disconnect():
+    cfg = load_config() or {}
+    cfg.pop('indiegala', None)
+    _save_config_data(cfg)
+
+
+# ── Games directory ──────────────────────────────────────────────────────────────
+
+if sys.platform == 'win32':
+    _DEFAULT_GAMES_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'PlayDate', 'IndieGala')
+elif sys.platform == 'darwin':
+    _DEFAULT_GAMES_DIR = os.path.expanduser('~/Library/Application Support/PlayDate/IndieGala')
+else:
+    _DEFAULT_GAMES_DIR = os.path.expanduser('~/Games/IndieGala')
+
+
+def get_games_dir():
+    return _cfg().get('games_dir') or _DEFAULT_GAMES_DIR
+
+
+def set_games_dir(path):
+    cfg = _cfg()
+    cfg['games_dir'] = path
+    _save_cfg(cfg)
+
+
+# ── Install detection ────────────────────────────────────────────────────────────
+
+_FUZZY_THRESHOLD = 0.65
+
+
+def _normalize_name(name):
+    name = name.lower()
+    name = re.sub(r'[^\w\s]', ' ', name)
+    return re.sub(r'\s+', ' ', name).strip()
+
+
+def _fuzzy_score(a, b):
+    return difflib.SequenceMatcher(None, _normalize_name(a), _normalize_name(b)).ratio()
+
+
+def _find_best_match(folder_name, candidates):
+    """candidates: list of (appid, name). Returns (appid, name) or None."""
+    best_score = 0.0
+    best = None
+    folder_norm = _normalize_name(folder_name)
+    for appid, name in candidates:
+        score = difflib.SequenceMatcher(None, folder_norm, _normalize_name(name)).ratio()
+        if score > best_score:
+            best_score = score
+            best = (appid, name)
+    return best if best_score >= _FUZZY_THRESHOLD else None
+
+
+def sync_indiegala_install_status():
+    games_dir = get_games_dir()
+    db = get_db()
+    rows = db.execute(
+        "SELECT appid, name, install_path FROM games WHERE platform='indiegala'"
+    ).fetchall()
+
+    # Check games that already have install_path set
+    already_linked = set()
+    for row in rows:
+        path = row['install_path'] or ''
+        if path and os.path.isdir(path):
+            db.execute("UPDATE games SET installed=1 WHERE appid=?", (row['appid'],))
+            already_linked.add(path)
+        elif path and not os.path.isdir(path):
+            db.execute("UPDATE games SET installed=0, install_path='' WHERE appid=?", (row['appid'],))
+
+    # Fuzzy-match unlinked folders against unlinked games
+    if os.path.isdir(games_dir):
+        unlinked_games = [(row['appid'], row['name']) for row in rows if not (row['install_path'] or '')]
+        for entry in os.scandir(games_dir):
+            if not entry.is_dir() or entry.path in already_linked:
+                continue
+            match = _find_best_match(entry.name, unlinked_games)
+            if match:
+                appid, _ = match
+                db.execute(
+                    "UPDATE games SET install_path=?, installed=1 WHERE appid=?",
+                    (entry.path, appid),
+                )
+                unlinked_games = [(a, n) for a, n in unlinked_games if a != appid]
+                already_linked.add(entry.path)
+
+    db.commit()
+    db.close()
+    log.info('IndieGala install status synced')
+
+
+# ── HTML parsing ────────────────────────────────────────────────────────────────
+
+_PROD_ID_RE    = re.compile(r'/products/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/')
+_SHOWCASE_RE   = re.compile(r'(https?://(?:www\.)?indiegala\.com/library/showcase/[^\s"\']+)')
+
+
+def _parse_page(html):
+    """Return list of dicts with prod_id, prod_name, date_str, img_url, showcase_url."""
+    soup  = BeautifulSoup(html, 'html.parser')
+    games = []
+    for card in soup.find_all('figcaption',
+                               class_='profile-private-page-library-title-padding-showcase'):
+        title_el = card.find(class_='profile-private-page-library-title')
+        if not title_el:
+            continue
+        title    = title_el.get_text(strip=True)
+        date_els = card.find_all(class_='profile-private-page-library-date-showcase')
+        date_str = date_els[1].get_text(strip=True) if len(date_els) > 1 else ''
+
+        fig          = card.find_previous_sibling('figure')
+        img_url      = ''
+        prod_id      = ''
+        showcase_url = ''
+        if fig:
+            # The figure or a parent <a> may link directly to the showcase page
+            wrap = fig.find_parent('a', href=True) or fig.find('a', href=True)
+            if wrap:
+                href = wrap['href']
+                if '/library/showcase/' in href:
+                    showcase_url = href if href.startswith('http') else f'https://www.indiegala.com{href}'
+
+            img = fig.find('img')
+            if img:
+                # Raw HTML uses data-src (JS swaps to src in browser)
+                src = img.get('data-src') or img.get('src') or ''
+                img_url = src
+                m = _PROD_ID_RE.search(src)
+                if m:
+                    prod_id = m.group(1)
+                    if not showcase_url:
+                        showcase_url = f'https://www.indiegala.com/library/showcase/{prod_id}'
+
+        if not prod_id:
+            continue
+        games.append({'prod_id': prod_id, 'prod_name': title,
+                      'date_str': date_str, 'img_url': img_url,
+                      'showcase_url': showcase_url})
+    return games
+
+
+def _parse_total_pages(html):
+    """Extract total page count from pagination HTML, default 1."""
+    soup = BeautifulSoup(html, 'html.parser')
+    # IndieGala pagination links: href="/library?page=N" or similar
+    pages = [1]
+    for a in soup.select('a[href*="page="]'):
+        href = a.get('href', '')
+        m = re.search(r'page=(\d+)', href)
+        if m:
+            pages.append(int(m.group(1)))
+    return max(pages)
+
+
+# ── Library sync ────────────────────────────────────────────────────────────────
+
+def get_sync_state():
+    return dict(_sync_state)
+
+
+def start_library_sync():
+    with _sync_lock:
+        if _sync_state['running']:
+            return {'status': 'already_running'}
+        _sync_state.update({
+            'running': True, 'status': 'Starting…',
+            'added': 0, 'updated': 0, 'error': None,
+        })
+    threading.Thread(target=_run_sync, daemon=True).start()
+    return {'status': 'started'}
+
+
+def _parse_dt(s):
+    if not s:
+        return None
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S'):
+        try:
+            return int(datetime.strptime(s[:19], fmt).replace(tzinfo=timezone.utc).timestamp())
+        except ValueError:
+            continue
+    return None
+
+
+def _run_sync():
+    try:
+        db = get_db()
+        existing = {
+            row['platform_id']: row['appid']
+            for row in db.execute(
+                "SELECT appid, platform_id FROM games WHERE platform='indiegala'"
+            ).fetchall()
+        }
+        blacklisted = {
+            row[0]
+            for row in db.execute(
+                "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
+            ).fetchall()
+        }
+
+        page        = 1
+        total_pages = 1
+        added       = 0
+        updated     = 0
+
+        while page <= total_pages:
+            _sync_state['status'] = f'Fetching page {page}…'
+            url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}?page={page}'
+            try:
+                resp = requests.get(url, headers=_headers(), timeout=20,
+                                    allow_redirects=True)
+                if resp.status_code != 200 or '/login' in resp.url:
+                    log.warning(f'IndieGala: page {page} returned {resp.status_code} / {resp.url}')
+                    break
+            except Exception as e:
+                log.warning(f'IndieGala: page {page} fetch failed: {e}')
+                break
+
+            if page == 1:
+                total_pages = _parse_total_pages(resp.text)
+                log.info(f'IndieGala sync: {total_pages} page(s)')
+
+            games = _parse_page(resp.text)
+            log.info(f'IndieGala sync: page {page} — {len(games)} games parsed')
+
+            for game in games:
+                prod_id = game['prod_id']
+                if prod_id in blacklisted:
+                    continue
+
+                if prod_id in existing:
+                    updated += 1
+                    continue
+
+                prod_name    = game['prod_name']
+                date_ts      = _parse_dt(game['date_str']) or int(time.time())
+                showcase_url = game.get('showcase_url') or ''
+                appid        = next_negative_appid(db)
+
+                db.execute(
+                    """INSERT OR IGNORE INTO games
+                       (appid, name, platform, platform_id, platform_slug,
+                        date_added, completion_status, installed,
+                        art_fetched, meta_fetched, cheevos_fetched,
+                        protondb_fetched, hltb_fetched)
+                       VALUES (?, ?, 'indiegala', ?, ?,
+                               ?, 'Never Played', 0,
+                               '0', '0', '0', '0', '0')""",
+                    (appid, prod_name, prod_id, showcase_url, date_ts),
+                )
+                db.commit()
+                existing[prod_id] = appid
+                added += 1
+
+                if game['img_url']:
+                    _download_art(appid, game['img_url'])
+
+            if page >= total_pages:
+                break
+            page += 1
+            time.sleep(0.5)
+
+        db.close()
+        _sync_state.update({
+            'running': False,
+            'status': f'Done — {added} added, {updated} already in library.',
+            'added': added, 'updated': updated,
+        })
+        log.info(f'IndieGala sync complete: {added} added, {updated} existing')
+
+    except Exception as e:
+        log.error(f'IndieGala sync error: {e}', exc_info=True)
+        _sync_state.update({'running': False, 'status': '', 'error': str(e)})
+
+
+# ── Purchase date re-fetch ───────────────────────────────────────────────────
+
+def fetch_dates_for_appids(appids):
+    """
+    Re-scrape IndieGala library pages to find purchase dates for the given appids.
+    Returns {appid: unix_ts_or_None}.
+    """
+    db   = get_db()
+    rows = db.execute(
+        f'SELECT appid, platform_id FROM games WHERE appid IN ({",".join("?" * len(appids))})',
+        appids,
+    ).fetchall()
+    db.close()
+
+    prod_id_to_appid = {row['platform_id']: row['appid'] for row in rows if row['platform_id']}
+    still_needed     = set(prod_id_to_appid)
+    result           = {appid: None for appid in appids}
+
+    page        = 1
+    total_pages = 1
+    while page <= total_pages and still_needed:
+        url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}?page={page}'
+        try:
+            resp = requests.get(url, headers=_headers(), timeout=20, allow_redirects=True)
+            if resp.status_code != 200 or '/login' in resp.url:
+                break
+        except Exception as e:
+            log.warning(f'IndieGala date re-fetch page {page} failed: {e}')
+            break
+
+        if page == 1:
+            total_pages = _parse_total_pages(resp.text)
+
+        for game in _parse_page(resp.text):
+            pid = game['prod_id']
+            if pid in still_needed:
+                ts = _parse_dt(game['date_str'])
+                result[prod_id_to_appid[pid]] = ts
+                still_needed.discard(pid)
+
+        page += 1
+        time.sleep(0.5)
+
+    return result
+
+
+# ── Art ─────────────────────────────────────────────────────────────────────────
+
+def _download_art(appid, img_url):
+    vert_path = os.path.join(VERTICAL_DIR, f'{appid}.jpg')
+    if os.path.exists(vert_path):
+        return
+    try:
+        r = requests.get(img_url, timeout=15)
+        if r.status_code == 200 and len(r.content) > 500:
+            save_as_jpg(r.content, vert_path)
+            log.info(f'IndieGala art saved for appid {appid}')
+    except Exception as e:
+        log.warning(f'IndieGala art download failed for appid {appid}: {e}')
+
+
+
+# ── Launch ───────────────────────────────────────────────────────────────────────
+
+def _open_browser(url):
+    try:
+        if sys.platform == 'win32':
+            os.startfile(url)
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', url])
+        else:
+            subprocess.Popen(['xdg-open', url])
+    except Exception as e:
+        log.warning(f'IndieGala: failed to open browser: {e}')
+
+
+_SKIP_EXE_PREFIXES = ('setup', 'install', 'unins', 'uninst', 'redist')
+_HELPER_EXE_NAMES  = {
+    'unitycrashhandler64', 'unitycrashhandler32', 'unitycrashhandler', 'unityplayer',
+    'dxsetup', 'dxwebsetup', 'vcredist_x64', 'vcredist_x86', 'vc_redist.x64', 'vc_redist.x86',
+    'dotnetfx', 'dotnet',
+}
+
+
+def _is_elf(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read(4) == b'\x7fELF'
+    except Exception:
+        return False
+
+
+def _is_macho(path):
+    try:
+        with open(path, 'rb') as f:
+            magic = f.read(4)
+            return magic in (b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf',
+                             b'\xce\xfa\xed\xfe', b'\xcf\xfa\xed\xfe',
+                             b'\xca\xfe\xba\xbe')
+    except Exception:
+        return False
+
+
+def _find_executable(game_dir):
+    is_windows = sys.platform == 'win32'
+    is_mac     = sys.platform == 'darwin'
+
+    if is_mac:
+        for entry in os.listdir(game_dir):
+            if entry.endswith('.app'):
+                app_path = os.path.join(game_dir, entry)
+                if os.path.isdir(app_path):
+                    macos_dir = os.path.join(app_path, 'Contents', 'MacOS')
+                    if os.path.isdir(macos_dir):
+                        for candidate in os.listdir(macos_dir):
+                            inner = os.path.join(macos_dir, candidate)
+                            if os.path.isfile(inner) and os.access(inner, os.X_OK):
+                                return inner, False
+                    return app_path, False
+
+    appimages, natives, scripts, winexes = [], [], [], []
+    for dirpath, dirs, filenames in os.walk(game_dir):
+        dirs[:] = [d for d in dirs if not d.startswith('.')]
+        for fname in filenames:
+            if fname.startswith('.'):
+                continue
+            fpath = os.path.join(dirpath, fname)
+            ext   = os.path.splitext(fname)[1].lower()
+            stem  = os.path.splitext(fname.lower())[0]
+            depth = fpath.count(os.sep)
+
+            if ext == '.appimage':
+                appimages.append((depth, fpath))
+            elif ext in ('.x86_64', '.x86', '.amd64', '.arm64', '.linux'):
+                natives.append((depth, fpath))
+            elif ext == '.sh' and not is_windows:
+                scripts.append((depth, fpath))
+            elif not ext and not is_windows and (_is_elf(fpath) or (is_mac and _is_macho(fpath))):
+                natives.append((depth, fpath))
+            elif ext == '.exe':
+                if any(stem.startswith(p) for p in _SKIP_EXE_PREFIXES):
+                    continue
+                if stem in _HELPER_EXE_NAMES:
+                    continue
+                winexes.append((depth, fpath))
+
+    for group in (appimages, natives, scripts):
+        if group:
+            return sorted(group)[0][1], False
+    if winexes:
+        return sorted(winexes)[0][1], True
+    return None, False
+
+
+def _open_folder(path):
+    if sys.platform == 'win32':
+        os.startfile(path)
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', path])
+    else:
+        subprocess.Popen(['xdg-open', path])
+
+
+def _safe_dirname(name):
+    return re.sub(r'[^\w\s\-.]', '', name).strip()[:80] or 'game'
+
+
+def _maybe_unzip(game_dir):
+    """If game_dir has zip files but no executable, extract them in place.
+
+    Normalizes Windows-style backslash paths in zip entries so they extract
+    as proper subdirectories on Linux rather than files with backslashes in
+    their names.
+    """
+    import zipfile
+    has_exe = bool(_find_executable(game_dir)[0])
+    if has_exe:
+        return
+    for fname in os.listdir(game_dir):
+        if not fname.lower().endswith('.zip'):
+            continue
+        zpath = os.path.join(game_dir, fname)
+        try:
+            with zipfile.ZipFile(zpath) as zf:
+                for member in zf.infolist():
+                    # Normalize Windows backslashes to forward slashes
+                    normalized = member.filename.replace('\\', '/')
+                    dest = os.path.join(game_dir, normalized)
+                    if member.is_dir() or normalized.endswith('/'):
+                        os.makedirs(dest, exist_ok=True)
+                    else:
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        with zf.open(member) as src, open(dest, 'wb') as dst:
+                            dst.write(src.read())
+            os.remove(zpath)
+            log.info(f'IndieGala: extracted {fname!r} in {game_dir}')
+        except Exception as e:
+            log.warning(f'IndieGala: zip extraction failed for {fname!r}: {e}')
+
+
+def launch_game(appid):
+    is_windows = sys.platform == 'win32'
+
+    db  = get_db()
+    row = db.execute(
+        "SELECT name, platform_id, platform_slug, installed, install_path, platform_executable "
+        "FROM games WHERE appid=?", (appid,)
+    ).fetchone()
+    db.close()
+
+    if row and row['installed']:
+        game_dir = row['install_path'] or ''
+        if not game_dir or not os.path.isdir(game_dir):
+            return {'status': 'error', 'message': 'Game folder not found — it may have been moved or deleted.'}
+
+        _maybe_unzip(game_dir)
+
+        cached     = row['platform_executable']
+        cached_abs = os.path.join(game_dir, cached) if cached else None
+        if cached and (os.path.isfile(cached_abs) or (cached_abs.endswith('.app') and os.path.isdir(cached_abs))):
+            exe_abs = cached_abs
+            is_win  = cached.lower().endswith('.exe')
+        else:
+            exe_abs, is_win = _find_executable(game_dir)
+            if exe_abs:
+                update_game_data(appid, platform_executable=os.path.relpath(exe_abs, game_dir))
+
+        if not exe_abs:
+            _open_folder(game_dir)
+            return {'status': 'launched'}
+
+        from runners.launch import check_launch, popen_checked
+
+        if not is_win and exe_abs.endswith('.app') and os.path.isdir(exe_abs):
+            try:
+                subprocess.Popen(['open', exe_abs])
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
+            update_game_data(appid, last_played=int(time.time()))
+            return {'status': 'launched'}
+
+        if is_win and not is_windows:
+            from runners.proton import launch_game as _proton_launch, get_default_proton
+            prefix = os.path.join(get_games_dir(), '.prefixes', str(appid))
+            p      = get_default_proton()
+            proc   = None
+            if p:
+                try:
+                    proc = _proton_launch(game_dir, os.path.relpath(exe_abs, game_dir),
+                                         prefix, proton_path=p['path'])
+                except Exception as e:
+                    log.warning(f'IndieGala: Proton launch failed ({e}), falling back to Wine')
+                    proc = None
+            if proc is None:
+                try:
+                    from runners.wine import run_in_prefix
+                    proc = run_in_prefix(prefix_path=prefix, exe=exe_abs)
+                except Exception as e:
+                    return {'status': 'error', 'message': str(e)}
+            if proc:
+                err = check_launch(proc)
+                if err:
+                    return err
+        else:
+            try:
+                os.chmod(exe_abs, os.stat(exe_abs).st_mode | 0o111)
+                _, err = popen_checked([exe_abs], cwd=os.path.dirname(exe_abs))
+                if err:
+                    return err
+            except Exception as e:
+                return {'status': 'error', 'message': str(e)}
+
+        update_game_data(appid, last_played=int(time.time()))
+        return {'status': 'launched'}
+
+    # Not installed — create the game subfolder and open it so the user can drop files in
+    name     = (row['name'] if row else '') or 'game'
+    game_dir = os.path.join(get_games_dir(), _safe_dirname(name))
+    os.makedirs(game_dir, exist_ok=True)
+    update_game_data(appid, install_path=game_dir)
+    _open_folder(game_dir)
+
+    showcase_url = (row['platform_slug'] if row else '') or ''
+    if not showcase_url and row and row['platform_id']:
+        showcase_url = f'https://www.indiegala.com/library/showcase/{row["platform_id"]}'
+    if showcase_url:
+        _open_browser(showcase_url)
+
+    return {
+        'status':  'not_installed',
+        'message': f'Game folder opened — drop the downloaded files in, then launch again.',
+    }
+
+
+# ── Uninstall & folder management ────────────────────────────────────────────────
+
+def uninstall_game(appid):
+    db  = get_db()
+    row = db.execute("SELECT name, install_path FROM games WHERE appid=?", (appid,)).fetchone()
+    db.close()
+    if not row:
+        return False, 'Game not found'
+    path = row['install_path'] or ''
+    if path and os.path.isdir(path):
+        try:
+            shutil.rmtree(path)
+        except Exception as e:
+            return False, str(e)
+    update_game_data(appid, installed=0, install_path='', platform_executable='')
+    return True, 'Uninstalled'
+
+
+def link_folder(appid, folder_path):
+    if not os.path.isdir(folder_path):
+        return False, 'Folder does not exist'
+    update_game_data(appid, install_path=folder_path, installed=1, platform_executable='')
+    return True, 'Linked'

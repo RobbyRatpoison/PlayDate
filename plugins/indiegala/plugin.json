@@ -1,0 +1,10 @@
+{
+    "id": "indiegala",
+    "name": "IndieGala",
+    "version": "1.0.0",
+    "platform": "indiegala",
+    "author": "RobbyRatpoison",
+    "launcher": {
+        "required": false
+    }
+}
