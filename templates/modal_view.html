@@ -39,33 +39,18 @@
             </button>
         </div>
 
-        {% set _plat_labels = platform_labels() %}
-        {% if available_platforms is defined and available_platforms | length > 1 %}
-        <!-- Platforms -->
-        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1.25rem;">
-            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Platforms</span>
-            {% for plat in available_platforms %}
-            <button class="opt-plat-toggle{% if plat in hidden_platforms %} plat-off{% endif %}"
-                    onclick="vmTogglePlatform('{{ plat }}')" data-modal-row="2" data-platform="{{ plat }}">
-                <span class="plat-check">{{ '✓' if plat not in hidden_platforms else '' }}</span>
-                {{ _plat_labels.get(plat, plat) }}
-            </button>
-            {% endfor %}
-        </div>
-        {% endif %}
-
         <!-- Display mode + Card Size -->
         <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem;">
             <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Display</span>
-            <div style="display:flex; gap:0.375rem;" data-modal-row="3">
-                <button id="vm-view-vertical"   class="vm-view-btn" onclick="vmSetView('vertical')"   data-modal-row="3">▮ Vertical</button>
-                <button id="vm-view-horizontal" class="vm-view-btn" onclick="vmSetView('horizontal')" data-modal-row="3">▬ Horizontal</button>
-                <button id="vm-view-list"       class="vm-view-btn" onclick="vmSetView('list')"       data-modal-row="3">☰ List</button>
+            <div style="display:flex; gap:0.375rem;" data-modal-row="2">
+                <button id="vm-view-vertical"   class="vm-view-btn" onclick="vmSetView('vertical')"   data-modal-row="2">▮ Vertical</button>
+                <button id="vm-view-horizontal" class="vm-view-btn" onclick="vmSetView('horizontal')" data-modal-row="2">▬ Horizontal</button>
+                <button id="vm-view-list"       class="vm-view-btn" onclick="vmSetView('list')"       data-modal-row="2">☰ List</button>
             </div>
             <input type="range" id="card-size-slider" min="120" max="400" step="10"
                    value="{{ state.get('card_height', 200) }}"
                    oninput="onCardSizeSlider(this.value)"
-                   data-modal-row="3"
+                   data-modal-row="2"
                    data-tooltip="Adjust card size (grid modes only)"
                    style="flex:1; min-width:6rem;">
         </div>
@@ -74,7 +59,7 @@
         <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
             <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Group by</span>
             <select id="group-by-dropdown" class="nav-dropdown" onchange="vmSetGroupBy(this.value)"
-                    data-modal-row="4" data-picker-title="Group by"
+                    data-modal-row="3" data-picker-title="Group by"
                     style="flex:1; height:2.5rem; min-width:0;">
                 <option value="" {{ 'selected' if not state.get('group_by') }}>None</option>
                 <option value="installed" {{ 'selected' if state.get('group_by') == 'installed' }}>Installed</option>
@@ -94,8 +79,8 @@
 
     <!-- Footer -->
     <div style="padding:0.875rem 1.5rem; border-top:1px solid #2a3f55; display:flex; gap:0.625rem; flex-shrink:0;">
-        <button onclick="closeViewModal()" class="nav-btn" data-modal-row="6" style="flex:1;">Close</button>
-        <button onclick="applyViewModal()" class="nav-btn" data-modal-row="6"
+        <button onclick="closeViewModal()" class="nav-btn" data-modal-row="4" style="flex:1;">Close</button>
+        <button onclick="applyViewModal()" class="nav-btn" data-modal-row="4"
                 style="flex:2; background:#1a5c2e; border-color:#2a7c3e; color:#fff;">Apply</button>
     </div>
 
@@ -158,7 +143,6 @@
 // Pending state — null/undefined means "no change from server-rendered state"
 let _vmPendSort = null;
 let _vmPendOrder = null;
-let _vmPendHiddenPlatforms = null; // Set when user has changed platforms
 let _vmPendView = null;
 let _vmPendGroupBy = undefined; // undefined = unchanged
 const _vmServerOrder = '{{ state.order if state is defined and state.order is defined else "ASC" }}';
@@ -173,7 +157,6 @@ function _vmSyncViewButtons(mode) {
 function openViewModal() {
     _vmPendSort = null;
     _vmPendOrder = null;
-    _vmPendHiddenPlatforms = null;
     _vmPendView = null;
     _vmPendGroupBy = undefined;
 
@@ -183,19 +166,6 @@ function openViewModal() {
 
     // Sync view mode buttons to current JS state
     _vmSyncViewButtons(typeof _artOrientation !== 'undefined' ? _artOrientation : 'vertical');
-
-    // Reset platform buttons to current JS state
-    if (typeof _hiddenPlatforms !== 'undefined') {
-        document.querySelectorAll('.opt-plat-toggle[data-platform]').forEach(btn => {
-            const plat = btn.dataset.platform;
-            const isOff = _hiddenPlatforms.has(plat);
-            btn.classList.toggle('plat-off', isOff);
-            const check = btn.querySelector('.plat-check');
-            if (check) check.textContent = isOff ? '' : '✓';
-        });
-    }
-
-    // Reset sort/groupby dropdowns to server-rendered values (already correct from Jinja)
 
     document.getElementById('viewModal').style.display = 'flex';
 }
@@ -225,22 +195,6 @@ function vmToggleOrder() {
     if (btn) btn.textContent = _vmPendOrder === 'ASC' ? '▲' : '▼';
 }
 
-function vmTogglePlatform(platform) {
-    if (_vmPendHiddenPlatforms === null) {
-        _vmPendHiddenPlatforms = new Set(typeof _hiddenPlatforms !== 'undefined' ? _hiddenPlatforms : []);
-    }
-    if (_vmPendHiddenPlatforms.has(platform)) _vmPendHiddenPlatforms.delete(platform);
-    else _vmPendHiddenPlatforms.add(platform);
-
-    // Update button visual
-    const btn = document.querySelector(`.opt-plat-toggle[data-platform="${platform}"]`);
-    if (btn) {
-        const isOff = _vmPendHiddenPlatforms.has(platform);
-        btn.classList.toggle('plat-off', isOff);
-        const check = btn.querySelector('.plat-check');
-        if (check) check.textContent = isOff ? '' : '✓';
-    }
-}
 
 function vmSetView(mode) {
     _vmPendView = mode;
@@ -256,7 +210,6 @@ async function applyViewModal() {
 
     if (_vmPendSort !== null) updates.sort = _vmPendSort;
     if (_vmPendOrder !== null) updates.order = _vmPendOrder;
-    if (_vmPendHiddenPlatforms !== null) updates.hidden_platforms = [..._vmPendHiddenPlatforms];
     if (_vmPendView !== null) updates.artwork_orientation = _vmPendView;
     if (_vmPendGroupBy !== undefined) updates.group_by = _vmPendGroupBy;
 
