@@ -1,3 +1,4 @@
+import logging
 import requests
 from flask import Blueprint, request, jsonify
 import html as _html
@@ -8,11 +9,13 @@ import sys
 import threading
 import uuid
 
+log = logging.getLogger(__name__)
+
 _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.5.6"
+__version__ = "1.5.8"
 
 if getattr(sys, 'frozen', False):
     BASE_DIR    = os.path.dirname(sys.executable)
@@ -1040,6 +1043,30 @@ def start_launcher_install_route(platform_id):
 def get_launcher_install_status_route(platform_id):
     from runners.launcher_installer import get_state
     return jsonify(get_state(platform_id))
+
+
+@config_bp.route('/api/launcher-uninstall/<platform_id>', methods=['POST'])
+def launcher_uninstall_route(platform_id):
+    import shutil
+    cfg = get_launcher_config(platform_id)
+    prefix = os.path.expanduser(cfg.get('prefix', '').strip())
+    removed = False
+    if prefix:
+        try:
+            if os.path.isdir(prefix):
+                shutil.rmtree(prefix)
+                removed = True
+                log.info('Launcher uninstall [%s]: deleted prefix %s', platform_id, prefix)
+        except Exception as e:
+            log.error('Launcher uninstall [%s]: failed to delete prefix %s: %s', platform_id, prefix, e)
+            return jsonify({'status': 'error', 'message': f'Failed to delete prefix: {e}'}), 500
+    config_data = load_config() or {}
+    launchers = config_data.get('launchers', {})
+    launchers.pop(platform_id, None)
+    config_data['launchers'] = launchers
+    _save_config_data(config_data)
+    log.info('Launcher uninstall [%s]: cleared config (prefix_deleted=%s)', platform_id, removed)
+    return jsonify({'status': 'success', 'prefix_deleted': removed})
 
 
 # ── What's New ────────────────────────────────────────────────────────────────
