@@ -550,12 +550,14 @@ class PyWebviewAPI:
                 def _gtk_run_js():
                     from urllib.parse import urlparse as _up
                     wk = None
+                    found_uris = []
                     for win in Gtk.Window.list_toplevels():
                         candidate = _find_webkit_in_widget(win)
                         if candidate is None:
                             continue
                         try:
                             uri = candidate.get_uri() or ''
+                            found_uris.append(uri)
                             pp = _up(uri)
                             base = pp.scheme + '://' + pp.netloc + pp.path
                             if redirect_pattern in base:
@@ -563,11 +565,54 @@ class PyWebviewAPI:
                                 break
                         except Exception:
                             pass
+                    log.info(f'open_auth_popup: _gtk_run_js fired — URIs found: {found_uris}')
+                    if wk is None and popup_wk_ref[0] is not None:
+                        wk = popup_wk_ref[0]
+                        try:
+                            cur = wk.get_uri() or ''
+                        except Exception:
+                            cur = '?'
+                        log.info(f'open_auth_popup: no URI match for {redirect_pattern!r} — falling back to saved popup wk at {cur!r}')
                     if wk is None:
                         log.warning('open_auth_popup: no WebKit view found for isolated JS')
                         threading.Thread(target=_exchange_and_close, args=('',),
                                          daemon=True).start()
                         return False
+
+                    # Read localStorage and document.cookie to find the session code.
+                    def _ls_dump_cb(wkview, async_result, *_):
+                        try:
+                            val = wkview.evaluate_javascript_finish(async_result)
+                            raw = (val.to_string() if val else '') or ''
+                            log.debug(f'open_auth_popup: storage dump = {raw[:500]}')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: storage dump failed: {_e}')
+                    try:
+                        wk.evaluate_javascript(
+                            "JSON.stringify({"
+                            "ls:(function(){try{var o={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);o[k]=(localStorage.getItem(k)||'').slice(0,80);}return o;}catch(e){return {};}})()"
+                            "})",
+                            -1, None, None, None, _ls_dump_cb,
+                        )
+                    except Exception as _e:
+                        log.warning(f'open_auth_popup: storage dump eval failed: {_e}')
+
+                    # Read native HttpOnly cookies via WebKit cookie manager.
+                    def _native_cookie_cb(mgr, async_result, *_):
+                        try:
+                            cookies = mgr.get_cookies_finish(async_result)
+                            if cookies:
+                                for _c in cookies:
+                                    log.debug(f'open_auth_popup: native cookie {_c.get_name()!r} = {_c.get_value()[:80]!r}')
+                            else:
+                                log.debug('open_auth_popup: no native cookies returned')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: native cookie cb: {_e}')
+                    try:
+                        _cookie_mgr = wk.get_website_data_manager().get_cookie_manager()
+                        _cookie_mgr.get_cookies(current, None, _native_cookie_cb)
+                    except Exception as _e:
+                        log.warning(f'open_auth_popup: native cookie lookup failed: {_e}')
 
                     def _cb(wkview, async_result, *_):
                         extracted = ''
@@ -626,7 +671,8 @@ class PyWebviewAPI:
             def _on_closed():
                 _notify_main()
 
-            popup_ref = [None]
+            popup_ref    = [None]
+            popup_wk_ref = [None]   # WebKit view for the popup, saved during setup
             try:
                 # Open with about:blank so we can configure WebKit before the real
                 # page loads. Sites like Ubisoft run a cookie/storage capability
@@ -684,9 +730,8 @@ class PyWebviewAPI:
         try { Object.defineProperty(window, 'localStorage',   {get: () => _ls, configurable: true}); } catch(e) {}
         try { Object.defineProperty(window, 'sessionStorage', {get: () => _ls, configurable: true}); } catch(e) {}
     })();
-    // Intercept XHR and fetch calls to Ubisoft's sessions API so we can capture
-    // the ticket that the login page itself fetches, then store it in localStorage
-    // for code_js to read after navigation to change_domain.
+    // Intercept XHR and fetch calls to Ubisoft's sessions API to capture
+    // the session ticket and store it in localStorage for code_js to read.
     (function() {
         var _NEEDLE = 'profiles/sessions';
         var _KEY    = '_pd_ubi_sess';
@@ -767,6 +812,7 @@ class PyWebviewAPI:
                             _wk.connect('load-changed', _on_load_changed)
                         except Exception as _e:
                             log.warning(f'open_auth_popup: load-changed hook failed: {_e}')
+                        popup_wk_ref[0] = _wk
                         try:
                             _wk.load_uri(url)
                             log.info(f'open_auth_popup: navigating to {url!r}')
@@ -983,17 +1029,6 @@ if __name__ == '__main__':
 
     threading.Thread(target=_run_playtime_sync, daemon=True).start()
     log.info("Playtime sync started in background.")
-
-    # 2d. Snapshot MiaM achievement data for filter builder.
-    def _run_miam_snapshot():
-        try:
-            from app import take_miam_snapshot
-            take_miam_snapshot()
-            log.info("MiaM achievement snapshot taken.")
-        except Exception as e:
-            log.warning(f"MiaM snapshot failed: {e}")
-
-    threading.Thread(target=_run_miam_snapshot, daemon=True).start()
 
     # 3. Start Flask in a background thread
     flask_thread = threading.Thread(target=_run_flask, args=(flask_app,), daemon=True)
