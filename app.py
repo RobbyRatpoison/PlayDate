@@ -3028,7 +3028,7 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'status': 'success'})
         state = load_state()
         saved = state.get('pagywosg_comp_defaults')
-        return jsonify({'statuses': saved if saved is not None else ['Never Played', 'Unfinished']})
+        return jsonify({'statuses': saved if saved else ['Never Played', 'Unfinished']})
 
     @app.route('/api/santa-gifts', methods=['GET', 'POST'])
     def santa_gifts():

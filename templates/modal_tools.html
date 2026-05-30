@@ -2230,8 +2230,8 @@ async function pagInit() {
         const tagsData = await tagsRes.json();
         const sgData   = await sgRes.json();
         const compData = await compRes.json();
-        _pagCompDefaults = compData.statuses || ['Never Played', 'Unfinished'];
-        document.querySelectorAll('.pag-comp-btn').forEach(b => {
+        _pagCompDefaults = compData.statuses?.length ? compData.statuses : ['Never Played', 'Unfinished'];
+        document.querySelectorAll('.pag-comp-btn[data-modal-row="pag-comp"]').forEach(b => {
             b.classList.toggle('active', _pagCompDefaults.includes(b.dataset.val));
         });
         if (tagsData.status !== 'success') throw new Error(tagsData.message);
@@ -2831,7 +2831,7 @@ function pagClearAll() {
     pagRenderTags('wins');
     document.getElementById('pag-all-conds').innerHTML = '';
     document.getElementById('pag-wins-conds').innerHTML = '';
-    document.querySelectorAll('.pag-comp-btn').forEach(b => {
+    document.querySelectorAll('.pag-comp-btn[data-modal-row="pag-comp"]').forEach(b => {
         b.classList.toggle('active', _pagCompDefaults.includes(b.dataset.val));
     });
     _pagEventId   = null;
