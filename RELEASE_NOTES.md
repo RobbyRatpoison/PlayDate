@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.5.8
+## v1.5.8 — May 2026
 
 ### New Plugins
 

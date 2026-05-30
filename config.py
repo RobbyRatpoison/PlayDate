@@ -1091,10 +1091,10 @@ def _build_whats_new_html(since_version=None):
     parts = []
 
     for section in sections:
-        m = re.match(r'^## (v[\d.]+)\s*[—\-]+\s*(.+)', section.strip())
+        m = re.match(r'^## (v[\d.]+)(?:\s*[—\-]+\s*(.+))?', section.strip())
         if not m:
             continue
-        ver_str, date = m.group(1), m.group(2).strip()
+        ver_str, date = m.group(1), (m.group(2) or '').strip()
         ver_tuple = _parse_version_tuple(ver_str)
         if since_tuple and ver_tuple <= since_tuple:
             continue
