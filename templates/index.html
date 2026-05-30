@@ -358,9 +358,12 @@
             <div class="shelf-grid">
                 {% for game in shelf.games %}
                 <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" onclick="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
-                    <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
-                         onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
-                    <div class="no-art-name">{{ game.name | e }}</div>
+                    <div class="shelf-capsule-inner">
+                        <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
+                             onload="_shelfImgLoad(this)"
+                             onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
+                        <div class="no-art-name">{{ game.name | e }}</div>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
