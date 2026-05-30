@@ -1114,7 +1114,10 @@ def _build_whats_new_html(since_version=None):
                 continue
             out += f'<div class="wn-section"><h4>{_html.escape(sub_name)}</h4><ul>'
             for item in items:
-                out += f'<li>{_html.escape(item)}</li>'
+                escaped = _html.escape(item)
+                escaped = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped)
+                escaped = re.sub(r'\*(.+?)\*',     r'<em>\1</em>',         escaped)
+                out += f'<li>{escaped}</li>'
             out += '</ul></div>'
 
         out += '</div>'
