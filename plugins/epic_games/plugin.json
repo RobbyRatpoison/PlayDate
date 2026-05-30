@@ -12,7 +12,11 @@
         "installer": {
             "url": "https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/download/EpicGamesLauncherInstaller.msi",
             "type": "msi",
-            "winearch": "win64"
+            "winearch": "win64",
+            "post_install_dlls": [
+                "lib/vkd3d/x86_64-windows/libvkd3d-1.dll",
+                "lib/vkd3d/x86_64-windows/libvkd3d-shader-1.dll"
+            ]
         }
     }
 }
