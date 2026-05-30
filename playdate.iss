@@ -3,7 +3,7 @@
 
 #define AppName      "PlayDate"
 #ifndef AppVersion
-#define AppVersion "0.0.0"
+#error "AppVersion must be supplied via /DAppVersion=X.Y.Z -- use build.py instead of running iscc directly"
 #endif
 #define AppPublisher "PlayDate"
 #define AppURL       "https://github.com/RobbyRatpoison/PlayDate"
