@@ -104,10 +104,9 @@ function _gogStartSyncPoll(st) {
                 _gogSyncPollInterval = null;
                 _gogSetSyncRunning(false);
                 if (d.phase === 'error') return;
-                const newGames = d.new_games || 0, totalGames = d.total_games || 0, newDupes = d.duplicates_detected || 0;
+                const newGames = d.new_games || 0, totalGames = d.total_games || 0;
                 const stopped  = d.phase === 'stopped';
                 const parts    = [`${newGames} new game${newGames !== 1 ? 's' : ''} (${totalGames} total)`];
-                if (newDupes > 0) parts.push(`${newDupes} duplicate${newDupes !== 1 ? 's' : ''} detected`);
                 const prefix   = stopped ? 'Stopped' : 'Done';
                 if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `${prefix} — ${parts.join(', ')}`; }
                 if (newGames > 0) setTimeout(() => location.reload(), 2000);

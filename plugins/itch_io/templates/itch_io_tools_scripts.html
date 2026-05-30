@@ -74,10 +74,8 @@ function _itchStartSyncPoll(st) {
                 if (d.phase === 'error') return;
                 const n       = d.new_games || 0;
                 const total   = d.total_games || 0;
-                const dupes   = d.duplicates_detected || 0;
                 const stopped = d.phase === 'stopped';
                 const parts   = [`${n} new game${n !== 1 ? 's' : ''} (${total} total)`];
-                if (dupes > 0) parts.push(`${dupes} duplicate${dupes !== 1 ? 's' : ''} detected`);
                 if (st) {
                     st.style.color = 'var(--accent-positive, #5c7e10)';
                     st.textContent = `${stopped ? 'Stopped' : 'Done'} — ${parts.join(', ')}`;
