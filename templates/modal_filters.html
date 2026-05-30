@@ -167,11 +167,28 @@
                 ⭐ SAVE CURRENT
             </button>
         </div>
+        {% set _fm_plat_labels = platform_labels() %}
+        {% if available_platforms is defined and available_platforms | length > 1 %}
+        <!-- Sources row -->
+        <div id="fm-sources-row" style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; padding:0.75rem 0; border-top:1px solid #2a3f55; margin-bottom:0.625rem;">
+            <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Sources</span>
+            <button id="fm-plat-all-none" onclick="_fmToggleAllNone()" data-modal-row="4"
+                    class="nav-btn"
+                    style="height:2rem; padding:0 0.75rem; font-size:0.78rem; flex-shrink:0;">All</button>
+            {% for plat in available_platforms %}
+            <button class="opt-plat-toggle{% if plat in hidden_platforms %} plat-off{% endif %}"
+                    onclick="_fmTogglePlatform('{{ plat }}')" data-modal-row="4" data-fm-platform="{{ plat }}">
+                <span class="plat-check">{{ '✓' if plat not in hidden_platforms else '' }}</span>
+                {{ _fm_plat_labels.get(plat, plat) }}
+            </button>
+            {% endfor %}
+        </div>
+        {% endif %}
         <!-- Action row -->
         <div style="display:flex; gap:0.625rem;">
-            <button onclick="applyFilters()" class="btn-save" data-modal-row="4" style="flex:2;margin:0;">APPLY</button>
-            <button onclick="clearAllFilters()" class="nav-btn" data-modal-row="4" style="flex:1;">CLEAR ALL</button>
-            <button onclick="closeFilterModal()" class="nav-btn" data-modal-row="4" style="flex:1;">CLOSE</button>
+            <button onclick="applyFilters()" class="btn-save" data-modal-row="5" style="flex:2;margin:0;">APPLY</button>
+            <button onclick="clearAllFilters()" class="nav-btn" data-modal-row="5" style="flex:1;">CLEAR ALL</button>
+            <button onclick="closeFilterModal()" class="nav-btn" data-modal-row="5" style="flex:1;">CLOSE</button>
         </div>
     </div>
 
@@ -428,16 +445,16 @@ const FM_FILTER_CONFIG = {
                             options: ['Never Played','Unfinished','Beaten','Completed',"Won't Play"] },
     'installed':          { label: 'Installed',            type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {'1':'Yes','0':'No'}, default: '1' },
-    'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches','IS NULL':'not set','IS NOT NULL':'is set'} },
+    'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches','STARTS_WITH':'starts with','IS NULL':'not set','IS NOT NULL':'is set'} },
     'appid':              { label: 'AppID',                type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
     'groups':             { label: 'Group',                type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_groups | tojson if unique_groups is defined else '[]' }} },
     'release_date':       { label: 'Release Date',         type: 'date_text',
-                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','STRFTIME_WEEKDAY':'weekday is','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
     'date_added':         { label: 'Date Added',           type: 'date_text',
-                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','STRFTIME_WEEKDAY':'weekday is','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
     'last_played':        { label: 'Last Played',          type: 'date_text',
-                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','LIKE':'matches pattern','IS NULL':'never played','IS NOT NULL':'has been played'} },
+                            comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','STRFTIME_WEEKDAY':'weekday is','LIKE':'matches pattern','IS NULL':'never played','IS NOT NULL':'has been played'} },
     'playtime_forever':   { label: 'Playtime (mins)',      type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'review_percentage':  { label: 'Review %',             type: 'number', comparisons: {'>':'over','<':'under','=':'is','IS NULL':'not set','IS NOT NULL':'is set'} },
     'weighted_percentage':{ label: 'Weighted Review %',    type: 'number', comparisons: {'>':'over','<':'under','=':'is','IS NULL':'not set','IS NOT NULL':'is set'} },
@@ -561,9 +578,41 @@ function populateModalFromTree(tree) {
     updateSqlPreview();
 }
 
+let _fmHiddenPlatforms = new Set({{ hidden_platforms | tojson if hidden_platforms is defined else '[]' }});
+
+function _fmSyncPlatformButtons() {
+    document.querySelectorAll('#fm-sources-row .opt-plat-toggle[data-fm-platform]').forEach(btn => {
+        const plat = btn.dataset.fmPlatform;
+        const isOff = _fmHiddenPlatforms.has(plat);
+        btn.classList.toggle('plat-off', isOff);
+        const check = btn.querySelector('.plat-check');
+        if (check) check.textContent = isOff ? '' : '✓';
+    });
+    const allNoneBtn = document.getElementById('fm-plat-all-none');
+    if (allNoneBtn) allNoneBtn.textContent = _fmHiddenPlatforms.size === 0 ? 'None' : 'All';
+}
+
+function _fmTogglePlatform(platform) {
+    if (_fmHiddenPlatforms.has(platform)) _fmHiddenPlatforms.delete(platform);
+    else _fmHiddenPlatforms.add(platform);
+    _fmSyncPlatformButtons();
+}
+
+function _fmToggleAllNone() {
+    const allPlats = Array.from(document.querySelectorAll('#fm-sources-row .opt-plat-toggle[data-fm-platform]')).map(b => b.dataset.fmPlatform);
+    if (_fmHiddenPlatforms.size === 0) {
+        allPlats.forEach(p => _fmHiddenPlatforms.add(p));
+    } else {
+        _fmHiddenPlatforms.clear();
+    }
+    _fmSyncPlatformButtons();
+}
+
 function openFilterModal() {
     const modal = document.getElementById('filterModal');
     modal.style.display = 'flex';
+    _fmHiddenPlatforms = new Set(typeof _hiddenPlatforms !== 'undefined' ? _hiddenPlatforms : []);
+    _fmSyncPlatformButtons();
 
     const tree = {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
 
@@ -663,9 +712,11 @@ function treeToSql(node) {
         }
         const DATE_COLS = new Set(['release_date','date_added','last_played']);
         if (DATE_COLS.has(col) && op === 'LIKE') return `${col} LIKE '${val}'`;
-        if (DATE_COLS.has(col) && op === 'STRFTIME_MONTH') return `strftime('%m', ${col}) = '${String(val).padStart(2,'0')}'`;
-        if (DATE_COLS.has(col) && op === 'STRFTIME_DAY')   return `strftime('%d', ${col}) = '${String(val).padStart(2,'0')}'`;
-        if (DATE_COLS.has(col) && op === 'STRFTIME_YEAR')  return `strftime('%Y', ${col}) = '${val}'`;
+        if (DATE_COLS.has(col) && op === 'STRFTIME_MONTH')   return `strftime('%m', ${col}) = '${String(val).padStart(2,'0')}'`;
+        if (DATE_COLS.has(col) && op === 'STRFTIME_DAY')    return `strftime('%d', ${col}) = '${String(val).padStart(2,'0')}'`;
+        if (DATE_COLS.has(col) && op === 'STRFTIME_YEAR')   return `strftime('%Y', ${col}) = '${val}'`;
+        if (DATE_COLS.has(col) && op === 'STRFTIME_WEEKDAY') return `strftime('%w', datetime(${col}, 'unixepoch')) = '${val}'`;
+        if (col === 'name' && op === 'STARTS_WITH') return `name LIKE '${val.replace(/'/g,"''")}%'`;
         if (op === 'LIKE')     return `${col} LIKE '%${val}%'`;
         if (op === 'NOT LIKE') return `${col} NOT LIKE '%${val}%'`;
         if (op === '=')        return `${col} = '${val}'`;
@@ -813,6 +864,8 @@ function _buildLiteralInput(container, cfg, op, initVal) {
             el.type = 'number'; el.min = 1; el.max = 31; el.placeholder = '1–31';
         } else if (op === 'STRFTIME_YEAR') {
             el.type = 'number'; el.min = 1900; el.max = 2100; el.placeholder = 'YYYY';
+        } else if (op === 'STRFTIME_WEEKDAY') {
+            el.type = 'number'; el.min = 0; el.max = 6; el.placeholder = '0=Sun 1=Mon … 6=Sat';
         } else {
             el.type = 'text';
             el.placeholder = op === 'LIKE' ? 'e.g. %-03-% (March) or 2023-%' : 'YYYY-MM-DD';
@@ -1623,7 +1676,7 @@ async function applyFilters() {
         if (unchanged) filterToSave = { saved_filter: _loadedSavedFilterName };
     }
 
-    await sendStateUpdate({ filter_tree: filterToSave });
+    await sendStateUpdate({ filter_tree: filterToSave, hidden_platforms: [..._fmHiddenPlatforms] });
     if (typeof window._onFiltersApplied === 'function') {
         const appliedName = (filterToSave.saved_filter) || null;
         const hasFilters  = !!(collected.items?.length || collected.custom_sql);
@@ -1641,6 +1694,8 @@ function clearAllFilters() {
     clearSimpleRows();
     resetAdvancedTree();
     document.getElementById('fm-custom-sql-input').value = '';
+    _fmHiddenPlatforms = new Set();
+    _fmSyncPlatformButtons();
 }
 
 // _savedFilters may already be declared by the host page (e.g. index.html)

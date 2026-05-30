@@ -197,6 +197,9 @@ def build_condition_sql(cond, params):
     elif op == 'NOT LIKE':
         params.append(f"%{val}%")
         return f"{col} NOT LIKE ?"
+    elif op == 'STARTS_WITH':
+        params.append(f"{val}%")
+        return f"{col} LIKE ?"
     elif op in ('>', '<', '>=', '<='):
         if col in DATE_COLUMNS:
             from database import date_to_ts
@@ -216,6 +219,9 @@ def build_condition_sql(cond, params):
     elif op == 'STRFTIME_YEAR':
         params.append(val)
         return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%Y', {col}, 'unixepoch') = ?)"
+    elif op == 'STRFTIME_WEEKDAY':
+        params.append(str(val))
+        return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%w', datetime({col}, 'unixepoch')) = ?)"
     elif op == 'IS NULL':
         if col in DATE_COLUMNS:
             return f"{col} IS NULL"

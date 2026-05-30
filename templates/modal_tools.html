@@ -1817,12 +1817,13 @@ const PAG_OPS = [
     { value: 'lt',           label: '<' },
 ];
 const PAG_DATE_OPS = [
-    { value: 'month_is', label: 'month is (1–12)' },
-    { value: 'day_is',   label: 'day is (1–31)' },
-    { value: 'year_is',  label: 'year is (YYYY)' },
-    { value: 'gt',       label: 'after' },
-    { value: 'lt',       label: 'before' },
-    { value: 'equals',   label: 'on (exact)' },
+    { value: 'month_is',   label: 'month is (1–12)' },
+    { value: 'day_is',     label: 'day is (1–31)' },
+    { value: 'year_is',    label: 'year is (YYYY)' },
+    { value: 'weekday_is', label: 'weekday is (0=Sun…6=Sat)' },
+    { value: 'gt',         label: 'after' },
+    { value: 'lt',         label: 'before' },
+    { value: 'equals',     label: 'on (exact)' },
 ];
 const PAG_DATE_COLUMNS = new Set(['release_date', 'date_added', 'last_played']);
 
@@ -2435,10 +2436,11 @@ function pagAddCond(pool, opts) {
 
     function pagRefreshPlaceholder() {
         const op = opSel.value;
-        if (op === 'month_is')    { valInput.type = 'number'; valInput.placeholder = '1–12'; }
-        else if (op === 'day_is') { valInput.type = 'number'; valInput.placeholder = '1–31'; }
-        else if (op === 'year_is'){ valInput.type = 'number'; valInput.placeholder = 'YYYY'; }
-        else                      { valInput.type = 'text';   valInput.placeholder = 'value'; }
+        if (op === 'month_is')       { valInput.type = 'number'; valInput.placeholder = '1–12'; }
+        else if (op === 'day_is')    { valInput.type = 'number'; valInput.placeholder = '1–31'; }
+        else if (op === 'year_is')   { valInput.type = 'number'; valInput.placeholder = 'YYYY'; }
+        else if (op === 'weekday_is'){ valInput.type = 'number'; valInput.placeholder = '0=Sun 1=Mon … 6=Sat'; }
+        else                         { valInput.type = 'text';   valInput.placeholder = 'value'; }
     }
 
     colSel.onchange = () => { pagRefreshOps(); pagUpdateSql(); };
@@ -2476,6 +2478,7 @@ function pagCondToSql(row) {
         case 'month_is':     return `strftime('%m', ${col}) = '${String(val).padStart(2,'0')}'`;
         case 'day_is':       return `strftime('%d', ${col}) = '${String(val).padStart(2,'0')}'`;
         case 'year_is':      return `strftime('%Y', ${col}) = '${val}'`;
+        case 'weekday_is':   return `strftime('%w', datetime(${col}, 'unixepoch')) = '${val}'`;
         default:             return null;
     }
 }
@@ -2497,6 +2500,7 @@ function pagCondToTree(row) {
         'month_is':     'STRFTIME_MONTH',
         'day_is':       'STRFTIME_DAY',
         'year_is':      'STRFTIME_YEAR',
+        'weekday_is':   'STRFTIME_WEEKDAY',
     };
     return { type: 'condition', column: col, operator: opMap[op] || '=', value: val };
 }
@@ -2521,7 +2525,7 @@ function pagBuildTree() {
     const allTagItems  = allTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
     const winsTagItems = winsTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
 
-    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active')).map(b => b.dataset.val);
+    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active[data-modal-row="pag-comp"]')).map(b => b.dataset.val);
 
     const mainParts = [];
 
@@ -2574,7 +2578,7 @@ function pagBuildTree() {
 function pagToggleComp(btn) {
     btn.classList.toggle('active');
     pagUpdateSql();
-    _pagCompDefaults = [...document.querySelectorAll('.pag-comp-btn.active')].map(b => b.dataset.val);
+    _pagCompDefaults = [...document.querySelectorAll('.pag-comp-btn.active[data-modal-row="pag-comp"]')].map(b => b.dataset.val);
     fetch('/api/pagywosg-comp-defaults', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -2607,7 +2611,7 @@ function pagBuildWhere() {
     ];
 
     // Completion filter
-    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active')).map(b => b.dataset.val);
+    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active[data-modal-row="pag-comp"]')).map(b => b.dataset.val);
     let compClause = '';
     if (compVals.length > 0 && compVals.length < 5) {
         compClause = '(' + compVals.map(v => `completion_status = '${v.replace(/'/g,"''")}'`).join(' OR ') + ')';

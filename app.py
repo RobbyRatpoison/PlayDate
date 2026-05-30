@@ -491,6 +491,19 @@ def create_app(template_folder=None, static_folder=None):
                     if tree_sql and tree_sql != '1=1':
                         where = tree_sql
 
+        hidden_platforms = state.get('hidden_platforms') or []
+        if hidden_platforms:
+            plat_conds = []
+            if 'steam' in hidden_platforms:
+                plat_conds.append("platform != 'steam'")
+            non_steam_hidden = [p for p in hidden_platforms if p != 'steam']
+            if non_steam_hidden:
+                ph = ','.join('?' * len(non_steam_hidden))
+                plat_conds.append(f"platform NOT IN ({ph})")
+                params = list(params) + non_steam_hidden
+            if plat_conds:
+                where = f"({where}) AND ({' AND '.join(plat_conds)})"
+
         if statuses is not None:
             placeholders = ','.join('?' * len(statuses))
             where = f"({where}) AND completion_status IN ({placeholders})"
@@ -617,7 +630,9 @@ def create_app(template_folder=None, static_folder=None):
 
                 if relax_factor < 1.0:
                     w_rev_dir = w_review if mode == 'weighted' else 35.0
-                    if b_review is not None and rev is not None:
+                    if b_review is not None:
+                        if rev is None:
+                            return None
                         rev_pct = rev * 100
                         if w_rev_dir >= 0:
                             if rev_pct < b_review * (1 - relax_factor):
@@ -638,28 +653,30 @@ def create_app(template_folder=None, static_folder=None):
                                 return None
                     if b_recency is not None:
                         _rd = g.get('release_date')
-                        if _rd:
-                            try:
-                                from datetime import datetime, timezone as _tzc
-                                _yr = datetime.fromtimestamp(float(_rd), tz=_tzc.utc).year
-                                if w_recency >= 0:
-                                    if _yr < b_recency - relax_factor * (b_recency - 1970):
-                                        return None
-                                else:
-                                    _cur_yr = datetime.now(_tzc.utc).year
-                                    if _yr > b_recency + relax_factor * (_cur_yr - b_recency):
-                                        return None
-                            except Exception:
-                                pass
-                    if b_hltb is not None:
-                        _times = [v for v in [g.get('hltb_main'), g.get('hltb_extras'), g.get('hltb_completionist')] if v]
-                        if _times:
-                            if w_hltb >= 0:
-                                if max(_times) / 60 < b_hltb * (1 - relax_factor):
+                        if not _rd:
+                            return None
+                        try:
+                            from datetime import datetime, timezone as _tzc
+                            _yr = datetime.fromtimestamp(float(_rd), tz=_tzc.utc).year
+                            if w_recency >= 0:
+                                if _yr < b_recency - relax_factor * (b_recency - 1970):
                                     return None
                             else:
-                                if min(_times) / 60 > b_hltb * (1 + 9 * relax_factor):
+                                _cur_yr = datetime.now(_tzc.utc).year
+                                if _yr > b_recency + relax_factor * (_cur_yr - b_recency):
                                     return None
+                        except Exception:
+                            return None
+                    if b_hltb is not None:
+                        _times = [v for v in [g.get('hltb_main'), g.get('hltb_extras'), g.get('hltb_completionist')] if v]
+                        if not _times:
+                            return None
+                        if w_hltb >= 0:
+                            if max(_times) / 60 < b_hltb * (1 - relax_factor):
+                                return None
+                        else:
+                            if min(_times) / 60 > b_hltb * (1 + 9 * relax_factor):
+                                return None
 
                 if mode == 'weighted':
                     total_w = (abs(w_tags) + abs(w_review) + abs(w_staleness) + abs(w_recency) + abs(w_hltb)) or 1.0
@@ -2507,9 +2524,14 @@ def create_app(template_folder=None, static_folder=None):
             'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
             'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
         }
+        WEEKDAYS = {
+            'sunday':0,'monday':1,'tuesday':2,'wednesday':3,'thursday':4,'friday':5,'saturday':6
+        }
         month_pat    = re.compile(r'released?\s+in\s+(' + '|'.join(MONTHS) + r')\b', re.I)
         year_pat     = re.compile(r'released?\s+in\s+(\d{4})\b', re.I)
         day_pat      = re.compile(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', re.I)
+        weekday_pat  = re.compile(r'released?\s+on\s+(?:a\s+)?(' + '|'.join(WEEKDAYS) + r')\b', re.I)
+        letter_pat   = re.compile(r'starting\s+with\s+([A-Za-z])\b', re.I)
         steamid_pat1 = re.compile(r'steam\s+id\s+containing\s+(\w+)', re.I)
         steamid_pat2 = re.compile(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', re.I)
         title_pat    = re.compile(r'["\u201c\u201d]([^"\u201c\u201d]+)["\u201c\u201d]\s+in\s+(?:the|their)\s+title', re.I)
@@ -2587,6 +2609,18 @@ def create_app(template_folder=None, static_folder=None):
             m = day_pat.search(base)
             if m:
                 _add_cond('release_date', 'day_is', m.group(1))
+                continue
+
+            # Weekday release (e.g. "released on a Sunday")
+            m = weekday_pat.search(base)
+            if m:
+                _add_cond('release_date', 'weekday_is', str(WEEKDAYS[m.group(1).lower()]))
+                continue
+
+            # Title starts with letter (e.g. "Games starting with S")
+            m = letter_pat.search(base)
+            if m:
+                _add_cond('name', 'starts_with', m.group(1).upper())
                 continue
 
             # Steam ID containing (two phrasings)
@@ -2706,6 +2740,12 @@ def create_app(template_folder=None, static_folder=None):
                 elif op == 'day_is':
                     parts.append(f"strftime('%d', {col}) = ?")
                     params.append(str(int(val)).zfill(2))
+                elif op == 'weekday_is':
+                    parts.append(f"({col} IS NOT NULL AND {col} != 0 AND strftime('%w', datetime({col}, 'unixepoch')) = ?)")
+                    params.append(str(val))
+                elif op == 'starts_with':
+                    parts.append(f"{col} LIKE ?")
+                    params.append(f'{val}%')
             if not parts:
                 return set()
             # Query only the tag/condition filter against the whole library,
