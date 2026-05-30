@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         PlayDate Date Importer
 // @namespace    playdate
-// @version      2.6
-// @description  Imports Steam activation dates and GOG purchase dates into PlayDate
+// @version      2.7
+// @description  Imports Steam activation dates, GOG purchase dates, and EA purchase dates into PlayDate
 // @match        https://help.steampowered.com/*
 // @match        https://www.gog.com/en/account/settings/orders*
+// @match        https://myaccount.ea.com/am/ui/payment-wallet/order-history*
 // @updateURL    https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js
 // @downloadURL  https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js
 // @license      MIT
@@ -14,6 +15,13 @@
 
 (function () {
     'use strict';
+
+    // EA activates by path only — the auth redirect strips ?ref=playdate
+    if (window.location.hostname === 'myaccount.ea.com' &&
+        window.location.pathname.includes('/payment-wallet/order-history')) {
+        runEA();
+        return;
+    }
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('ref') !== 'playdate') return;
@@ -441,6 +449,133 @@
         } catch (e) {
             setError('Could not reach PlayDate. Make sure it is running.');
         }
+    }
+
+    // =========================================================================
+    // EA — scrape order history from myaccount.ea.com and send to PlayDate
+    // Activates on /payment-wallet/order-history after user switches to "All"
+    // =========================================================================
+    function runEA() {
+        const btn = document.createElement('button');
+        btn.textContent = 'Import Dates → PlayDate';
+        Object.assign(btn.style, {
+            position: 'fixed', bottom: '20px', right: '20px', zIndex: '99999',
+            background: '#1a7f4b', color: '#fff', border: 'none', borderRadius: '6px',
+            padding: '10px 16px', fontSize: '0.88rem', cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.5)', fontFamily: "'Segoe UI', sans-serif",
+        });
+        btn.title = 'Switch the time filter to "All" first, then click this button';
+        document.body.appendChild(btn);
+
+        function showResult(msg, ok) {
+            btn.remove();
+            const el = document.createElement('div');
+            el.textContent = msg;
+            Object.assign(el.style, {
+                position: 'fixed', bottom: '20px', right: '20px', zIndex: '99999',
+                background: '#1a2332', border: `1px solid ${ok ? '#1a7f4b' : '#c97c00'}`,
+                color: '#c7d5e0', padding: '10px 16px', borderRadius: '8px',
+                fontSize: '0.88rem', maxWidth: '380px', boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                fontFamily: "'Segoe UI', sans-serif",
+            });
+            document.body.appendChild(el);
+        }
+
+        // Scrape one page by finding date spans directly, then extracting title from same <td>
+        function scrapePage(titles) {
+            const dateRe   = /\b(\d{4}-\d{2}-\d{2})\b/;
+            const statusRe = /^(Completed|Failed|Cancelled|Processing|Payment pending|Pre-ordered|Refunded|Empty)$/i;
+            const orderRe  = /^Order\s*#/i;
+            const priceRe  = /^\$[\d.,]+$/;
+
+            const dateSpans = [...document.querySelectorAll('span')].filter(s =>
+                s.children.length === 0 && dateRe.test(s.textContent.trim())
+            );
+
+            for (const dateSpan of dateSpans) {
+                const dateMatch = dateSpan.textContent.match(dateRe);
+                const ts = Math.floor(Date.parse(dateMatch[1]) / 1000);
+                if (isNaN(ts * 1000)) continue;
+
+                const td = dateSpan.closest('td') || dateSpan.parentElement;
+                if (!td) continue;
+
+                const titleSpan = [...td.querySelectorAll('span')].find(s => {
+                    const t = s.textContent.trim();
+                    return s.children.length === 0 && t &&
+                        !dateRe.test(t) && !statusRe.test(t) &&
+                        !orderRe.test(t) && !priceRe.test(t);
+                });
+                if (!titleSpan) continue;
+                const title = titleSpan.textContent.trim();
+                if (!title || title === 'Description not available') continue;
+                if (!titles[title] || ts < titles[title]) titles[title] = ts;
+            }
+
+            return dateSpans.length;
+        }
+
+        // Click the next page number button; return false if not found
+        async function nextPage(current) {
+            const label = String(current + 1);
+            const candidate = [...document.querySelectorAll('button, [role="button"], a')]
+                .find(el => el.textContent.trim() === label && !el.disabled);
+            if (!candidate) return false;
+            candidate.click();
+            await new Promise(r => setTimeout(r, 1500));
+            return true;
+        }
+
+        btn.addEventListener('click', async () => {
+            btn.textContent = 'Reading orders…';
+            btn.disabled = true;
+
+            const titles = {};
+            let page = 1;
+            let totalSpans = 0;
+
+            while (true) {
+                const spansFound = scrapePage(titles);
+                totalSpans += spansFound;
+                btn.textContent = `Page ${page} — ${Object.keys(titles).length} orders…`;
+                const more = await nextPage(page);
+                if (!more) break;
+                page++;
+            }
+
+            if (Object.keys(titles).length === 0) {
+                showResult(
+                    totalSpans === 0
+                        ? 'No order rows found — make sure the time filter is set to "All" and orders are visible.'
+                        : `Found ${totalSpans} date spans but could not extract titles — open DevTools console and report what you see.`,
+                    false
+                );
+                return;
+            }
+
+            const total = Object.keys(titles).length;
+            btn.textContent = `Sending ${total} dates…`;
+
+            try {
+                const res = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'POST',
+                        url: 'http://localhost:5000/api/ea_app/bulk-date-import',
+                        headers: { 'Content-Type': 'application/json' },
+                        data: JSON.stringify({ titles }),
+                        onload: resolve, onerror: reject, ontimeout: reject,
+                    });
+                });
+                const d = JSON.parse(res.responseText);
+                if (d.status === 'success') {
+                    showResult(`Done — ${d.updated} date${d.updated !== 1 ? 's' : ''} imported, ${d.not_found} not matched`, true);
+                } else {
+                    showResult('PlayDate error: ' + (d.message || 'unknown'), false);
+                }
+            } catch (e) {
+                showResult('Could not reach PlayDate — make sure it is running.', false);
+            }
+        });
     }
 
 })();

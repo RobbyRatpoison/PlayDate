@@ -741,41 +741,33 @@ def start_meta_sync(force=False):
     return {'status': 'started'}
 
 
-def import_purchase_dates():
+def _fetch_entitlement_date_maps():
     """
-    Fetch Epic entitlements and update date_added for all matched library games.
-    Returns {'updated': int, 'not_found': int} or {'error': str}.
+    Fetch all Epic entitlements and return (ns_date_map, cid_date_map).
+    Raises RuntimeError on auth failure or unexpected response.
     """
-    from database import get_db, update_game_data
     from datetime import datetime
 
     tokens = load_epic_tokens()
     if not tokens:
-        return {'error': 'Epic account not connected'}
-
+        raise RuntimeError('Epic account not connected')
     account_id = tokens.get('account_id', '')
     if not account_id:
-        return {'error': 'No account ID stored'}
-
+        raise RuntimeError('No Epic account ID stored')
     session = get_valid_session()
     if not session:
-        return {'error': 'Could not refresh Epic token'}
+        raise RuntimeError('Could not refresh Epic token')
 
-    try:
-        r = session.get(
-            f'https://entitlement-public-service-prod08.ol.epicgames.com'
-            f'/entitlement/api/account/{account_id}/entitlements',
-            params={'count': 5000},
-            timeout=30,
-        )
-        r.raise_for_status()
-        entitlements = r.json()
-    except Exception as e:
-        log.warning(f'Epic import-dates: entitlements fetch failed: {e}')
-        return {'error': f'Failed to fetch entitlements: {e}'}
-
+    r = session.get(
+        f'https://entitlement-public-service-prod08.ol.epicgames.com'
+        f'/entitlement/api/account/{account_id}/entitlements',
+        params={'count': 5000},
+        timeout=30,
+    )
+    r.raise_for_status()
+    entitlements = r.json()
     if not isinstance(entitlements, list):
-        return {'error': 'Unexpected entitlements response format'}
+        raise RuntimeError('Unexpected entitlements response format')
 
     log.info(f'Epic import-dates: {len(entitlements)} entitlements received')
 
@@ -801,6 +793,22 @@ def import_purchase_dates():
             if cid not in cid_date_map or ts < cid_date_map[cid]:
                 cid_date_map[cid] = ts
 
+    return ns_date_map, cid_date_map
+
+
+def import_purchase_dates():
+    """
+    Fetch Epic entitlements and update date_added for all matched library games.
+    Returns {'updated': int, 'not_found': int} or {'error': str}.
+    """
+    from database import get_db, update_game_data
+
+    try:
+        ns_date_map, cid_date_map = _fetch_entitlement_date_maps()
+    except Exception as e:
+        log.warning(f'Epic import-dates: {e}')
+        return {'error': str(e)}
+
     db   = get_db()
     rows = db.execute(
         "SELECT appid, platform_id, platform_ns FROM games WHERE platform = 'epic_games'"
@@ -823,8 +831,37 @@ def import_purchase_dates():
         except Exception as e:
             log.warning(f'Epic import-dates: DB update failed for {platform_id}: {e}')
 
-    log.info(f'Epic import-dates: {updated} updated, {not_found} not in library')
+    log.info(f'Epic import-dates: {updated} updated, {not_found} not in library | '
+             f'debug={{"entitlement_count": {len(ns_date_map)+len(cid_date_map)}, '
+             f'"db_epic_count": {len(rows)}, '
+             f'"entitlement_sample": {list(cid_date_map.keys())[:10]}}}')
     return {'updated': updated, 'not_found': not_found}
+
+
+def fetch_purchase_dates_for_appids(appids):
+    """
+    Return {appid: unix_ts_or_None} for the given Epic appids without updating the DB.
+    Raises RuntimeError on auth/API failure.
+    """
+    from database import get_db
+
+    ns_date_map, cid_date_map = _fetch_entitlement_date_maps()
+
+    db   = get_db()
+    ph   = ','.join('?' * len(appids))
+    rows = db.execute(
+        f'SELECT appid, platform_id, platform_ns FROM games WHERE appid IN ({ph})', appids
+    ).fetchall()
+    db.close()
+
+    result = {}
+    for row in rows:
+        ts = (cid_date_map.get(row['platform_id'] or '')
+              or ns_date_map.get(row['platform_ns'] or ''))
+        result[row['appid']] = ts
+    for appid in appids:
+        result.setdefault(appid, None)
+    return result
 
 
 def _sync_metadata(force=False):

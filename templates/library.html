@@ -2167,8 +2167,8 @@ async function startBulkDateImport() {
         document.body.appendChild(_e); _e.click(); document.body.removeChild(_e);
     }
 
-    // Open Steam Help page if any Steam games are in scope
-    if (data.total > 0) {
+    // Open Steam Help page only when there are Steam games in the queue
+    if (data.first_appid != null) {
         const _a = document.createElement('a');
         _a.href = `https://help.steampowered.com/en/wizard/HelpWithGame/?appid=${data.first_appid}&ref=playdate&bulk=1`;
         _a.target = '_blank';
@@ -2195,26 +2195,29 @@ async function startBulkDateImport() {
     document.getElementById('bdi-progress').style.display = 'block';
     document.getElementById('bdi-progress-bar').style.width = '0%';
     document.getElementById('bdi-progress-label').textContent = `0 / ${data.total}`;
-    document.getElementById('bdi-current-game').textContent = data.first_name;
+    document.getElementById('bdi-current-game').textContent = data.first_name || '';
     stopBtn.style.display = '';
     stopBtn.disabled = false;
 
     // Auto-cancel if the Tampermonkey script hasn't pinged back within 15 seconds
-    _bdiScriptCheckTimeout = setTimeout(async () => {
-        try {
-            const r = await fetch('/api/bulk-date-import/status');
-            const d = await r.json();
-            if (!d.script_connected) {
-                await fetch('/api/bulk-date-import/cancel', { method: 'POST' }).catch(() => {});
-                clearInterval(_bdiPollInterval); _bdiPollInterval = null;
-                stopBtn.style.display = 'none';
-                startBtn.disabled = false;
-                status.className = 'bulk-status-error';
-                status.textContent = 'Tampermonkey script not detected. Install steam_date_import.user.js and ensure Tampermonkey is enabled.';
-                document.getElementById('bdi-progress').style.display = 'none';
-            }
-        } catch (e) { /* ignore */ }
-    }, 15000);
+    // (only needed when there are Steam games in the queue)
+    if (data.first_appid != null) {
+        _bdiScriptCheckTimeout = setTimeout(async () => {
+            try {
+                const r = await fetch('/api/bulk-date-import/status');
+                const d = await r.json();
+                if (!d.script_connected) {
+                    await fetch('/api/bulk-date-import/cancel', { method: 'POST' }).catch(() => {});
+                    clearInterval(_bdiPollInterval); _bdiPollInterval = null;
+                    stopBtn.style.display = 'none';
+                    startBtn.disabled = false;
+                    status.className = 'bulk-status-error';
+                    status.textContent = 'Tampermonkey script not detected. Install steam_date_import.user.js and ensure Tampermonkey is enabled.';
+                    document.getElementById('bdi-progress').style.display = 'none';
+                }
+            } catch (e) { /* ignore */ }
+        }, 15000);
+    }
 
     _bdiLastResultCount = 0;
     _bdiPollInterval = setInterval(async () => {
@@ -2249,8 +2252,10 @@ async function startBulkDateImport() {
                 clearInterval(_bdiPollInterval); _bdiPollInterval = null;
                 startBtn.disabled = false;
                 stopBtn.style.display = 'none';
-                status.className = 'bulk-status-success';
-                status.textContent = `Done — ${d.done} date${d.done !== 1 ? 's' : ''} imported, ${d.failed} not found.`;
+                const errs = (d.api_errors || []);
+                status.className = errs.length ? 'bulk-status-error' : 'bulk-status-success';
+                status.textContent = `Done — ${d.done} date${d.done !== 1 ? 's' : ''} imported, ${d.failed} not found.`
+                    + (errs.length ? ' ' + errs.join(' ') : '');
             }
         } catch (e) { /* ignore poll errors */ }
     }, 1000);

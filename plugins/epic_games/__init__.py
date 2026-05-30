@@ -259,6 +259,11 @@ class EpicGamesPlugin:
             ],
         }
 
+    def fetch_purchase_dates(self, appids, on_result):
+        from .epic import fetch_purchase_dates_for_appids
+        for appid, ts in fetch_purchase_dates_for_appids(appids).items():
+            on_result(appid, ts)
+
     def fetch_description(self, appid, platform_id):
         from .epic import fetch_description
         return fetch_description(appid, platform_id)

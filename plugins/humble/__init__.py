@@ -28,6 +28,10 @@ class HumblePlugin:
         from .humble import disconnect
         disconnect()
 
+    def fetch_purchase_dates(self, appids, on_result):
+        from .humble import fetch_dates_for_appids
+        fetch_dates_for_appids(appids, on_result)
+
     def launch_game(self, appid):
         from .humble import launch_game
         return launch_game(appid)

@@ -369,6 +369,66 @@ def _download_itch_cover(cover_url, appid, vertical=True, horizontal=True):
         img.save(os.path.join(d, f'{appid}.jpg'), 'JPEG', quality=95)
 
 
+# ── Purchase date re-fetch ─────────────────────────────────────────────────────
+
+def fetch_dates_for_appids(appids, on_result):
+    """
+    Re-fetch purchase dates for specific appids from the itch.io owned-keys API.
+    Calls on_result(appid, ts_or_None) for each appid as it is found or exhausted.
+    """
+    key = _api_key()
+    if not key:
+        raise RuntimeError('itch.io account not connected')
+
+    db   = get_db()
+    rows = db.execute(
+        f'SELECT appid, platform_id FROM games WHERE appid IN ({",".join("?" * len(appids))})',
+        appids,
+    ).fetchall()
+    db.close()
+
+    game_id_to_appid = {row['platform_id']: row['appid'] for row in rows if row['platform_id']}
+    still_needed     = set(game_id_to_appid)
+    page             = 1
+
+    while still_needed:
+        try:
+            r = requests.get(
+                f'{ITCH_API_NEW}/profile/owned-keys',
+                params={'page': page},
+                headers={'Authorization': f'Bearer {key}'},
+                timeout=20,
+            )
+            if r.status_code == 401:
+                raise RuntimeError('itch.io API key invalid — please reconnect')
+            r.raise_for_status()
+            data = r.json()
+        except RuntimeError:
+            raise
+        except Exception as e:
+            log.warning(f'itch.io date re-fetch page {page} failed: {e}')
+            break
+
+        owned    = data.get('owned_keys') or []
+        per_page = data.get('per_page', 10)
+
+        for entry in owned:
+            game    = entry.get('game') or {}
+            game_id = str(game.get('id') or '')
+            if game_id in still_needed:
+                ts = _parse_date(entry.get('created_at'))
+                on_result(game_id_to_appid[game_id], ts)
+                still_needed.discard(game_id)
+
+        if not owned or len(owned) < per_page:
+            break
+        page += 1
+        time.sleep(0.3)
+
+    for game_id in still_needed:
+        on_result(game_id_to_appid[game_id], None)
+
+
 # ── Install detection via butler.db ───────────────────────────────────────────
 
 def _butler_db_path():

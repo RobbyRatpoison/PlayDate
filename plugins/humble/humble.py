@@ -308,6 +308,58 @@ def _run_sync():
         _sync_state.update({'running': False, 'status': '', 'error': str(e)})
 
 
+# ── Purchase date re-fetch ───────────────────────────────────────────────────────
+
+def fetch_dates_for_appids(appids, on_result):
+    """
+    Re-fetch purchase dates for specific appids, calling on_result(appid, ts_or_None)
+    after each order is fetched so the caller sees incremental progress.
+    Uses platform_slug (format: "gamekey/machine_name") to target only the orders needed.
+    """
+    if not is_connected():
+        raise RuntimeError('Humble account not connected')
+
+    db   = get_db()
+    rows = db.execute(
+        f'SELECT appid, platform_slug FROM games WHERE appid IN ({",".join("?" * len(appids))})',
+        appids,
+    ).fetchall()
+    db.close()
+
+    gamekey_to_appids = {}
+    no_slug_appids    = []
+    for row in rows:
+        slug  = row['platform_slug'] or ''
+        parts = slug.split('/', 1)
+        if len(parts) == 2 and parts[0]:
+            gamekey_to_appids.setdefault(parts[0], []).append(row['appid'])
+        else:
+            no_slug_appids.append(row['appid'])
+
+    for gamekey, game_appids in gamekey_to_appids.items():
+        ts = None
+        try:
+            resp = requests.get(
+                f'{HUMBLE_API}/order/{gamekey}',
+                headers=_headers(),
+                timeout=20,
+                allow_redirects=False,
+            )
+            if resp.status_code in (301, 302) or not resp.ok:
+                raise RuntimeError('Humble session expired — please reconnect')
+            ts = _parse_dt(resp.json().get('created'))
+        except RuntimeError:
+            raise
+        except Exception as e:
+            log.warning(f'Humble date re-fetch failed for order {gamekey}: {e}')
+        for appid in game_appids:
+            on_result(appid, ts)
+        time.sleep(0.3)
+
+    for appid in no_slug_appids:
+        on_result(appid, None)
+
+
 # ── Download & launch ───────────────────────────────────────────────────────────
 
 if sys.platform == 'win32':

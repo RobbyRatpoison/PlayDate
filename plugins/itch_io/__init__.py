@@ -34,7 +34,9 @@ class ItchIoPlugin:
         from .itch_io import start_library_sync
         return start_library_sync()
 
-    date_import_url = 'https://itch.io/bundle/purchases'
+    def fetch_purchase_dates(self, appids, on_result):
+        from .itch_io import fetch_dates_for_appids
+        fetch_dates_for_appids(appids, on_result)
 
     def launch_game(self, appid):
         from .itch_io import launch_game
