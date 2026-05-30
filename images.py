@@ -1,3 +1,4 @@
+import logging
 import os
 import io
 import requests
@@ -5,6 +6,8 @@ from urllib.parse import quote as url_quote
 from PIL import Image
 from config import BASE_DIR, load_config
 from flask import Blueprint
+
+log = logging.getLogger(__name__)
 
 images_bp = Blueprint('images', __name__)
 
@@ -32,7 +35,7 @@ def save_as_jpg(image_bytes, save_path):
         img.save(save_path, 'JPEG', quality=95)
         return True
     except Exception as e:
-        print(f"[save_as_jpg] Conversion failed: {e}")
+        log.warning(f"save_as_jpg: conversion failed: {e}")
         return False
 
 
@@ -74,7 +77,7 @@ def _get_steam_assets(appid):
             result[key] = base.replace('${FILENAME}', val)
         return result
     except Exception as e:
-        print(f"[_get_steam_assets] {appid}: {e}")
+        log.warning(f"_get_steam_assets {appid}: {e}")
         return {}
 
 
@@ -89,7 +92,7 @@ def _sgdb_get(endpoint, sgdb_key):
         if res.status_code == 200:
             return res.json()
     except Exception as e:
-        print(f"[_sgdb_get] {endpoint}: {e}")
+        log.warning(f"_sgdb_get {endpoint}: {e}")
     return None
 
 
@@ -103,7 +106,7 @@ def _sgdb_search_game_id(name):
         if data and data.get('success') and data.get('data'):
             return data['data'][0]['id']
     except Exception as e:
-        print(f"[_sgdb_search_game_id] {name!r}: {e}")
+        log.warning(f"_sgdb_search_game_id {name!r}: {e}")
     return None
 
 
@@ -130,7 +133,7 @@ def download_vertical(appid, assets=None, source='auto', sgdb_id=None):
                     if res.status_code == 200 and save_as_jpg(res.content, save_path):
                         return 'capsule_2x' if '2x' in key else 'capsule'
                 except Exception as e:
-                    print(f"[download_vertical] asset manifest error for {appid}: {e}")
+                    log.warning(f"download_vertical: asset manifest error for {appid}: {e}")
 
         # 2. Legacy CDN (older games without content-hash URLs)
         for url, cdn_source in [
@@ -142,7 +145,7 @@ def download_vertical(appid, assets=None, source='auto', sgdb_id=None):
                 if res.status_code == 200 and save_as_jpg(res.content, save_path):
                     return cdn_source
             except Exception as e:
-                print(f"[download_vertical] CDN error for {appid}: {e}")
+                log.warning(f"download_vertical: CDN error for {appid}: {e}")
 
     if source != 'steam':
         # 3. SteamGridDB grid — fetch all, filter to portrait orientation client-side
@@ -162,7 +165,7 @@ def download_vertical(appid, assets=None, source='auto', sgdb_id=None):
                         if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
                             return 'sgdb_grid'
                     except Exception as e:
-                        print(f"[download_vertical] SGDB grid download error for {appid}: {e}")
+                        log.warning(f"download_vertical: SGDB grid download error for {appid}: {e}")
                     break
 
     return 'missing'
@@ -190,7 +193,7 @@ def download_horizontal(appid, assets=None, source='auto', sgdb_id=None):
                 if res.status_code == 200 and save_as_jpg(res.content, save_path):
                     return 'header'
             except Exception as e:
-                print(f"[download_horizontal] asset manifest error for {appid}: {e}")
+                log.warning(f"download_horizontal: asset manifest error for {appid}: {e}")
 
         # 2. Legacy CDN fallback
         try:
@@ -201,7 +204,7 @@ def download_horizontal(appid, assets=None, source='auto', sgdb_id=None):
             if res.status_code == 200 and save_as_jpg(res.content, save_path):
                 return 'header'
         except Exception as e:
-            print(f"[download_horizontal] CDN error for {appid}: {e}")
+            log.warning(f"download_horizontal: CDN error for {appid}: {e}")
 
     if source != 'steam':
         # 3. SteamGridDB wide grid (header style, non-animated)
@@ -218,7 +221,7 @@ def download_horizontal(appid, assets=None, source='auto', sgdb_id=None):
                         if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
                             return 'sgdb_grid_wide'
                     except Exception as e:
-                        print(f"[download_horizontal] SGDB wide grid download error for {appid}: {e}")
+                        log.warning(f"download_horizontal: SGDB wide grid download error for {appid}: {e}")
                     break
 
     return 'missing'
@@ -249,7 +252,7 @@ def download_icon(appid, icon_hash, source='auto', sgdb_id=None):
                         if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
                             return 'sgdb_icon'
                     except Exception as e:
-                        print(f"[download_icon] SGDB icon download error for {appid}: {e}")
+                        log.warning(f"download_icon: SGDB icon download error for {appid}: {e}")
                     break
 
     if source != 'sgdb' and icon_hash:
@@ -261,7 +264,7 @@ def download_icon(appid, icon_hash, source='auto', sgdb_id=None):
                 if res.status_code == 200 and save_as_jpg(res.content, save_path):
                     return 'steam'
             except Exception as e:
-                print(f"[download_icon] Steam icon error for {appid}: {e}")
+                log.warning(f"download_icon: Steam icon error for {appid}: {e}")
                 break
 
     return 'missing'
@@ -282,14 +285,14 @@ def download_from_url(appid, url, orientation):
     save_dir = dir_map.get(orientation, VERTICAL_DIR)
     save_path = os.path.join(save_dir, f'{appid}.jpg')
 
-    print(f"[download_from_url] Downloading {orientation} art for {appid} from: {url}")
+    log.info(f"download_from_url: {orientation} art for {appid} from {url}")
     try:
         res = requests.get(url, timeout=10)
         if res.status_code == 200 and save_as_jpg(res.content, save_path):
             return 'custom'
-        print(f"[download_from_url] Failed: HTTP {res.status_code}")
+        log.warning(f"download_from_url: HTTP {res.status_code} for {appid}")
     except Exception as e:
-        print(f"[download_from_url] Exception for {appid}: {e}")
+        log.warning(f"download_from_url: exception for {appid}: {e}")
     return 'missing'
 
 

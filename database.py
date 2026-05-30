@@ -1,8 +1,12 @@
-from config import BASE_DIR
+import logging
+import os
 import re
 import sqlite3
-import os
 from datetime import datetime, timezone
+
+from config import BASE_DIR
+
+log = logging.getLogger(__name__)
 
 
 def date_to_ts(date_str):
@@ -208,7 +212,7 @@ def update_game_data(appid, **kwargs):
         cursor.execute(query, values)
         conn.commit()
     except sqlite3.Error as e:
-        print(f"Database update failed: {e}")
+        log.error(f"Database update failed: {e}")
     finally:
         conn.close()
 
@@ -231,7 +235,7 @@ def bulk_update_column(appids, column, value):
         cursor.execute(query, params)
         conn.commit()
     except sqlite3.Error as e:
-        print(f"Bulk update failed: {e}")
+        log.error(f"Bulk update failed: {e}")
     finally:
         conn.close()
 
