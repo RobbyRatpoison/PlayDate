@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.5.9 — 2026-05-30
+
+### Bug Fixes
+
+- Fixed PAGYWOSG filter builder not saving completion status toggles when building and saving a filter — the gamepad row-numbering pass was overwriting the attribute used to identify the completion status buttons, so they were invisible to all read and write operations.
+
 ## v1.5.8 — 2026-05-30
 
 ### New Plugins
