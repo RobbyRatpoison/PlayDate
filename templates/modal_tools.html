@@ -2231,7 +2231,7 @@ async function pagInit() {
         const sgData   = await sgRes.json();
         const compData = await compRes.json();
         _pagCompDefaults = compData.statuses?.length ? compData.statuses : ['Never Played', 'Unfinished'];
-        document.querySelectorAll('.pag-comp-btn[data-modal-row="pag-comp"]').forEach(b => {
+        document.querySelectorAll('#pag-completion-btns .pag-comp-btn').forEach(b => {
             b.classList.toggle('active', _pagCompDefaults.includes(b.dataset.val));
         });
         if (tagsData.status !== 'success') throw new Error(tagsData.message);
@@ -2525,7 +2525,7 @@ function pagBuildTree() {
     const allTagItems  = allTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
     const winsTagItems = winsTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
 
-    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active[data-modal-row="pag-comp"]')).map(b => b.dataset.val);
+    const compVals = Array.from(document.querySelectorAll('#pag-completion-btns .pag-comp-btn.active')).map(b => b.dataset.val);
 
     const mainParts = [];
 
@@ -2578,7 +2578,7 @@ function pagBuildTree() {
 function pagToggleComp(btn) {
     btn.classList.toggle('active');
     pagUpdateSql();
-    _pagCompDefaults = [...document.querySelectorAll('.pag-comp-btn.active[data-modal-row="pag-comp"]')].map(b => b.dataset.val);
+    _pagCompDefaults = [...document.querySelectorAll('#pag-completion-btns .pag-comp-btn.active')].map(b => b.dataset.val);
     fetch('/api/pagywosg-comp-defaults', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -2611,7 +2611,7 @@ function pagBuildWhere() {
     ];
 
     // Completion filter
-    const compVals = Array.from(document.querySelectorAll('.pag-comp-btn.active[data-modal-row="pag-comp"]')).map(b => b.dataset.val);
+    const compVals = Array.from(document.querySelectorAll('#pag-completion-btns .pag-comp-btn.active')).map(b => b.dataset.val);
     let compClause = '';
     if (compVals.length > 0 && compVals.length < 5) {
         compClause = '(' + compVals.map(v => `completion_status = '${v.replace(/'/g,"''")}'`).join(' OR ') + ')';
@@ -2831,7 +2831,7 @@ function pagClearAll() {
     pagRenderTags('wins');
     document.getElementById('pag-all-conds').innerHTML = '';
     document.getElementById('pag-wins-conds').innerHTML = '';
-    document.querySelectorAll('.pag-comp-btn[data-modal-row="pag-comp"]').forEach(b => {
+    document.querySelectorAll('#pag-completion-btns .pag-comp-btn').forEach(b => {
         b.classList.toggle('active', _pagCompDefaults.includes(b.dataset.val));
     });
     _pagEventId   = null;
