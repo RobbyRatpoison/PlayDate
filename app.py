@@ -2140,6 +2140,11 @@ def create_app(template_folder=None, static_folder=None):
         from library import bulk_edit_games
         return bulk_edit_games(request.json)
 
+    @app.route('/api/bulk-edit/distinct-values', methods=['POST'])
+    def bulk_edit_distinct_values():
+        from library import bulk_distinct_values
+        return bulk_distinct_values(request.json)
+
     @app.route('/api/save-filter', methods=['POST'])
     def save_filter():
         from config import _state_lock, _load_state_unlocked, _write_state_atomic, _compact_tree_pv, _compact_appid_list_refs, _compact_shared_ids

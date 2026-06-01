@@ -479,7 +479,7 @@ def bulk_edit_games(data):
     column = allowed_columns.get(column)
     if not column:
         return jsonify({"status": "error", "message": f"Column is not editable."}), 400
-    if not value and mode != 'remove':
+    if not value and mode not in ('replace', 'remove'):
         return jsonify({"status": "error", "message": "Value cannot be empty."}), 400
 
     # Build WHERE clause
@@ -527,7 +527,7 @@ def bulk_edit_games(data):
         db = get_db()
 
         if mode == 'replace':
-            db.execute(f"UPDATE games SET {column} = ? WHERE {where}", [value] + params)
+            db.execute(f"UPDATE games SET {column} = ? WHERE {where}", [value if value else None] + params)
             updated = db.execute("SELECT changes()").fetchone()[0]
             db.commit()
             db.close()
@@ -576,5 +576,63 @@ def bulk_edit_games(data):
         db.close()
         return jsonify({"status": "error", "message": "Invalid mode."}), 400
 
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def bulk_distinct_values(data):
+    from flask import jsonify
+    column = data.get('column', '').strip()
+    if column not in {'tags', 'groups', 'genres', 'categories'}:
+        return jsonify({"status": "error", "message": "Column not allowed."}), 400
+
+    params = []
+    where = "1=1"
+    appids = data.get('appids')
+    filter_tree = data.get('filter_tree')
+
+    if appids is not None:
+        if not appids:
+            return jsonify({"values": []})
+        placeholders = ','.join('?' * len(appids))
+        where = f"appid IN ({placeholders})"
+        params = list(appids)
+    elif filter_tree:
+        custom_sql = _strip_sql_wrapper(filter_tree.get('custom_sql', ''))
+        if custom_sql:
+            if is_safe_sql(custom_sql):
+                where = _auto_cast_int_division(custom_sql)
+        else:
+            tree_sql = build_tree_sql(filter_tree, params)
+            if tree_sql and tree_sql != '1=1':
+                where = tree_sql
+
+    hidden_platforms = [p for p in (data.get('hidden_platforms') or []) if _re.match(r'^[a-z][a-z0-9_]*$', p or '')]
+    if hidden_platforms:
+        plat_conds = []
+        if 'steam' in hidden_platforms:
+            plat_conds.append("platform != 'steam'")
+        non_steam = [p for p in hidden_platforms if p != 'steam']
+        if non_steam:
+            placeholders = ','.join('?' for _ in non_steam)
+            plat_conds.append(f"platform NOT IN ({placeholders})")
+            params.extend(non_steam)
+        plat_cond = ' AND '.join(plat_conds)
+        where = plat_cond if where == '1=1' else f"({where}) AND ({plat_cond})"
+
+    try:
+        db = get_db()
+        rows = db.execute(
+            f"SELECT {column} FROM games WHERE ({where}) AND {column} IS NOT NULL AND {column} != ''",
+            params
+        ).fetchall()
+        db.close()
+        seen = set()
+        for row in rows:
+            for v in row[column].split(','):
+                v = v.strip()
+                if v:
+                    seen.add(v)
+        return jsonify({"values": sorted(seen, key=str.lower)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

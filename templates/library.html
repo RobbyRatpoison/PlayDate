@@ -1589,6 +1589,7 @@ const BULK_PILL_SUGGESTIONS = {
     genres:     {{ unique_genres     | tojson }},
     categories: {{ unique_categories | tojson }},
 };
+const _BULK_FILTER_TREE = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
 const BULK_GAME_COUNT = {{ games|length }};
 
 const ALL_GAME_COUNT = {{ total_games }};
@@ -1659,6 +1660,40 @@ function openBulkArtScrapeModal()  { openBulkEditModal('rescrape'); }
 function openBulkDateImportModal() { openBulkEditModal('dates'); }
 
 // ── EDIT TAB ─────────────────────────────────────────────────────────────────
+function _buildBulkScopePayload() {
+    const scope = document.querySelector('input[name="bulk-scope"]:checked')?.value || 'filtered';
+    const payload = {};
+    if (scope === 'selected') {
+        payload.appids = Array.from(_selectedIds);
+    } else if (scope === 'filtered') {
+        payload.filter_tree = _BULK_FILTER_TREE;
+        if (_hiddenPlatforms.size) payload.hidden_platforms = Array.from(_hiddenPlatforms);
+    }
+    return payload;
+}
+
+let _removeSuggestionsAbort = null;
+
+async function _loadRemoveSuggestions() {
+    const col = document.getElementById('bulk-column').value;
+    if (!LIST_COLUMNS.has(col)) return;
+    if (_removeSuggestionsAbort) _removeSuggestionsAbort.abort();
+    _removeSuggestionsAbort = new AbortController();
+    try {
+        const res = await fetch('/api/bulk-edit/distinct-values', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ column: col, ..._buildBulkScopePayload() }),
+            signal: _removeSuggestionsAbort.signal
+        });
+        const data = await res.json();
+        if (data.values) PILL_SUGGESTIONS['bulk-pills-hidden'] = data.values;
+    } catch (e) {
+        if (e.name !== 'AbortError')
+            PILL_SUGGESTIONS['bulk-pills-hidden'] = BULK_PILL_SUGGESTIONS[col] || [];
+    }
+}
+
 function onBulkScopeChange() {
     const scope = document.querySelector('input[name="bulk-scope"]:checked')?.value;
     if (!scope) return;
@@ -1681,6 +1716,9 @@ function onBulkScopeChange() {
         document.getElementById('bulk-selected-info').textContent = `${_selectedIds.size} game${_selectedIds.size !== 1 ? 's' : ''} selected`;
     }
     onBulkModeChange();
+    const _col = document.getElementById('bulk-column').value;
+    if (document.getElementById('bulk-mode').value === 'remove' && LIST_COLUMNS.has(_col))
+        _loadRemoveSuggestions();
 }
 
 function onBulkColumnChange() {
@@ -1705,10 +1743,10 @@ function onBulkColumnChange() {
     document.getElementById('bulk-value-pills-wrap').style.display   = isPills   ? '' : 'none';
 
     if (isPills) {
-        // Point the shared pill suggestion lookup at this column's values
         PILL_SUGGESTIONS['bulk-pills-hidden'] = BULK_PILL_SUGGESTIONS[col] || [];
         _pillSync('bulk-pills-hidden', []);
         _pillRender('bulk-pills-hidden', 'bulk-pills-box');
+        if (modeSelect.value === 'remove') _loadRemoveSuggestions();
     }
 
     const isDate = ['date_added', 'release_date', 'last_played'].includes(col);
@@ -1729,7 +1767,7 @@ function onBulkModeChange() {
 
     if (mode === 'replace') {
         hint.textContent = 'Overwrites the entire value for every matching game.';
-        valHint.textContent = '';
+        valHint.textContent = 'Leave the value empty to clear this field for all matching games.';
         warning.style.display = 'block';
         warning.style.borderColor = '#c97c00';
         warning.style.background = 'rgba(193,120,0,0.12)';
@@ -1745,12 +1783,21 @@ function onBulkModeChange() {
         warning.style.color = '#7ab8d9';
     } else if (mode === 'remove') {
         hint.textContent = 'Removes the value from the list. Other values are kept.';
-        valHint.textContent = 'You can enter multiple values to remove, separated by commas.';
+        valHint.textContent = 'Suggestions show values present in the current scope.';
         warning.style.display = 'block';
         warning.innerHTML = `ℹ <strong>${count} game${count !== 1 ? 's' : ''}</strong> will have values removed from <strong>${colLabel}</strong> where present.`;
         warning.style.borderColor = '#2a6496';
         warning.style.background = 'rgba(42,100,150,0.12)';
         warning.style.color = '#7ab8d9';
+    }
+
+    const _mCol = document.getElementById('bulk-column').value;
+    if (LIST_COLUMNS.has(_mCol)) {
+        if (mode === 'remove') {
+            _loadRemoveSuggestions();
+        } else {
+            PILL_SUGGESTIONS['bulk-pills-hidden'] = BULK_PILL_SUGGESTIONS[_mCol] || [];
+        }
     }
 }
 
@@ -1772,7 +1819,7 @@ async function runBulkEdit() {
     const scope  = document.querySelector('input[name="bulk-scope"]:checked').value;
     const status = document.getElementById('bulk-status');
 
-    if (!value && column !== 'completion_status' && mode !== 'remove') {
+    if (!value && column !== 'completion_status' && mode !== 'remove' && mode !== 'replace') {
         status.className = 'bulk-status-error';
         status.textContent = 'Please enter a value.';
         return;
@@ -1787,13 +1834,7 @@ async function runBulkEdit() {
     btn.disabled = true; btn.textContent = 'Applying…';
     status.className = ''; status.textContent = '';
 
-    const payload = { column, mode, value };
-    if (scope === 'selected') {
-        payload.appids = Array.from(_selectedIds);
-    } else if (scope === 'filtered') {
-        payload.filter_tree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};
-        if (_hiddenPlatforms.size) payload.hidden_platforms = Array.from(_hiddenPlatforms);
-    }
+    const payload = { column, mode, value, ..._buildBulkScopePayload() };
     // scope === 'all': no appids and no filter_tree → backend uses WHERE 1=1
 
     try {
