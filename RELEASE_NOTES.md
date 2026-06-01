@@ -1,12 +1,7 @@
 # Release Notes
 
-## v1.5.10 — 2026-06-01
+## v1.5.11 — 2026-06-01
 
 ### Bug Fixes
 
-- Fixed a startup crash on reboot ("no such column: duplicate_auto") that forced a full reinstall to recover. The column is now added before migration 9 queries it.
-
-### Improvements
-
-- Bulk edit: replace mode now accepts an empty value to clear the field (set to null) for all matching games.
-- Bulk edit: remove mode now populates pill suggestions from the values actually present in the current scope, rather than the full library.
+- PAGYWOSG quals: "game name starts with" and "released on a specific weekday" categories now correctly display the qualifying reason in the library tooltip and edit modal.

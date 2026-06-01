@@ -1463,6 +1463,9 @@ const achLink = document.getElementById('achievements-link');
             if (node.type === 'condition') {
                 if (node.column === 'groups' || node.column === 'completion_status') return;
                 conds.push({col: node.column, op: node.operator, val: node.value, pool});
+            } else if (node.type === 'custom_expr' && node.sql) {
+                const swM = node.sql.match(/^(\w+) LIKE '([^']*)%'$/i);
+                if (swM) conds.push({col: swM[1], op: 'STARTS_WITH', val: swM[2], pool});
             } else if (node.type === 'group') {
                 if (node.logic === 'AND') {
                     // Wins branch: AND group whose first child is either a groups condition
@@ -1497,16 +1500,19 @@ const achLink = document.getElementById('achievements-link');
                         'July','August','September','October','November','December'];
         const {col, op, val} = cond;
         const rd = game.release_date || '';
+        const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         const map = {
-            tags:        { LIKE:           [`Tags includes ${val}`,           g => _pagCsvContains(g.tags, val)] },
-            name:        { LIKE:           [`Title contains "${val}"`,        g => (g.name||'').toLowerCase().includes(val.toLowerCase())] },
-            appid:       { LIKE:           [`AppID contains ${val}`,          g => String(g.appid).includes(val)] },
-            developers:  { LIKE:           [`Developer includes ${val}`,      g => _pagCsvContains(g.developers, val)] },
-            publishers:  { LIKE:           [`Publisher includes ${val}`,      g => _pagCsvContains(g.publishers, val)] },
+            tags:        { LIKE:           [`Tags includes ${val}`,                    g => _pagCsvContains(g.tags, val)] },
+            name:        { LIKE:           [`Title contains "${val}"`,                 g => (g.name||'').toLowerCase().includes(val.toLowerCase())],
+                           STARTS_WITH:   [`Title starts with "${val}"`,              g => (g.name||'').toLowerCase().startsWith(val.toLowerCase())] },
+            appid:       { LIKE:           [`AppID contains ${val}`,                   g => String(g.appid).includes(val)] },
+            developers:  { LIKE:           [`Developer includes ${val}`,               g => _pagCsvContains(g.developers, val)] },
+            publishers:  { LIKE:           [`Publisher includes ${val}`,               g => _pagCsvContains(g.publishers, val)] },
             release_date: {
-                STRFTIME_MONTH: [`Released in ${MONTHS[+val]||val}`,          g => _rdStr(g).slice(5,7) === String(val).padStart(2,'0')],
-                STRFTIME_DAY:   [`Released on the ${val}${_ordSuffix(+val)}`, g => _rdStr(g).slice(8,10) === String(val).padStart(2,'0')],
-                STRFTIME_YEAR:  [`Released in ${val}`,                        g => _rdStr(g).slice(0,4) === String(val)],
+                STRFTIME_MONTH:   [`Released in ${MONTHS[+val]||val}`,                 g => _rdStr(g).slice(5,7) === String(val).padStart(2,'0')],
+                STRFTIME_DAY:     [`Released on the ${val}${_ordSuffix(+val)}`,        g => _rdStr(g).slice(8,10) === String(val).padStart(2,'0')],
+                STRFTIME_YEAR:    [`Released in ${val}`,                               g => _rdStr(g).slice(0,4) === String(val)],
+                STRFTIME_WEEKDAY: [`Released on a ${WEEKDAYS[+val]||val}`,             g => { const s = _rdStr(g); return s ? new Date(s + 'T00:00:00Z').getUTCDay() === +val : false; }],
             },
         };
         const entry = map[col]?.[op];
