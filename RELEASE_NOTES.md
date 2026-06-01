@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.5.10 — Pending
+## v1.5.10 — 2026-06-01
 
 ### Bug Fixes
 
