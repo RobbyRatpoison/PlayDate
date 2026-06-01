@@ -398,6 +398,10 @@ def _m9_auto_detect_duplicates():
     for db_path in _all_db_files():
         conn = sqlite3.connect(db_path, timeout=10)
         try:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(games)")}
+            if 'duplicate_auto' not in cols:
+                conn.execute("ALTER TABLE games ADD COLUMN duplicate_auto INT")
+                conn.commit()
             legacy = conn.execute(
                 "SELECT COUNT(*) FROM games "
                 "WHERE platform = 'gog' AND duplicate_auto IS NULL "
