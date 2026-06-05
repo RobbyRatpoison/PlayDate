@@ -123,6 +123,7 @@ def init_db():
         'platform_executable': 'TEXT',   # Relative path to main exe within install_path
         'duplicate_of': 'TEXT',          # appid of preferred version of this game (e.g. Steam appid for a GOG duplicate); NULL = canonical
         'duplicate_auto': 'INT',         # 1 = set by auto-detection; 0/NULL = manually set
+        'name_from_store': 'INT',        # 1 = name confirmed from Steam store API; 0/NULL = from GetOwnedGames or local files
     }
 
     for column_name, column_type in required_columns.items():
@@ -142,6 +143,13 @@ def init_db():
             name TEXT,
             date_blacklisted TEXT,
             platform_id TEXT
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS blaeo_lists (
+            list_id TEXT PRIMARY KEY,
+            list_name TEXT NOT NULL
         )
     """)
     try:

@@ -10,7 +10,7 @@ from config import BASE_DIR, CONFIG_PATH
 log = logging.getLogger(__name__)
 
 CURRENT_VERSION    = 9
-BACKGROUND_VERSION = 10
+BACKGROUND_VERSION = 11
 
 _migrations:            dict[int, callable] = {}
 _background_migrations: dict[int, callable] = {}
@@ -441,4 +441,16 @@ def _bm10_store_release_dates():
     runs in the startup background thread. Progress is tracked in
     release_date_migration.json so the job can resume across restarts.
     Implemented in scrapers.sync_store_release_dates.
+    """
+
+
+@background_migration(11)
+def _bm11_store_names():
+    """Fetch Steam store display names for all existing games.
+
+    GetOwnedGames returns internal app names (e.g. "Sokpop S09: Grey Scout")
+    that differ from the store display name ("Grey Scout"). This migration
+    calls appdetails for each Steam game that hasn't had its name confirmed
+    from the store yet and updates the name column.
+    Implemented in scrapers.sync_store_names.
     """
