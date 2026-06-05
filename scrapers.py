@@ -182,7 +182,7 @@ def _art_worker(normal_q, priority_q, cancel_event, icon_hash_map, today, progre
             log.error(f"[art] Error for {appid}: {e}")
 
 
-def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, progress_cb):
+def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, progress_cb, batch_appids=None):
     session = requests.Session()
     session.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
@@ -195,6 +195,11 @@ def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, prog
         appid = _next(priority_q, normal_q)
         if appid is None:
             return
+
+        # Priority queue may receive arbitrary visible appids from /api/populate-priority;
+        # skip anything outside the current batch to avoid processing unrelated games.
+        if batch_appids is not None and appid not in batch_appids:
+            continue
 
         db  = get_db()
         row = db.execute("SELECT meta_fetched, name FROM games WHERE appid=?", (appid,)).fetchone()
@@ -225,15 +230,15 @@ def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, prog
             game_data = {'meta_fetched': today}
 
             if store_info:
-                if not name:
-                    # Name not provided by GetOwnedGames or local files — use store name
-                    new_name = store_info.pop('name', '') or f"AppID {appid}"
-                    db = get_db()
-                    db.execute("UPDATE games SET name=? WHERE appid=?", (new_name, appid))
-                    db.commit()
-                    db.close()
-                else:
-                    store_info.pop('name', None)
+                store_name = store_info.pop('name', '')
+                # Always prefer the store name — GetOwnedGames returns internal names
+                # (e.g. "Sokpop S09: Grey Scout") that differ from the display name.
+                new_name = store_name or name or f"AppID {appid}"
+                db = get_db()
+                db.execute("UPDATE games SET name=? WHERE appid=?", (new_name, appid))
+                db.commit()
+                db.close()
+                game_data['name_from_store'] = 1
                 game_data.update(store_info)
 
             review_info = fetch_review_data(appid, session=session)
@@ -263,7 +268,7 @@ def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, prog
             time.sleep(0.1)
 
 
-def _cheevo_worker(normal_q, priority_q, backoff, cancel_event, today, progress_cb):
+def _cheevo_worker(normal_q, priority_q, backoff, cancel_event, today, progress_cb, batch_appids=None):
     while True:
         if cancel_event and cancel_event.is_set():
             return
@@ -273,6 +278,9 @@ def _cheevo_worker(normal_q, priority_q, backoff, cancel_event, today, progress_
         appid = _next(priority_q, normal_q)
         if appid is None:
             return
+
+        if batch_appids is not None and appid not in batch_appids:
+            continue
 
         db  = get_db()
         row = db.execute("SELECT cheevos_fetched FROM games WHERE appid=?", (appid,)).fetchone()
@@ -629,6 +637,14 @@ def _hltb_worker(normal_q, priority_q, cancel_event, today, threshold, progress_
 # ── Main populate entry point ─────────────────────────────────────────────────
 
 def add_new(cancel_event=None, progress_cb=None):
+    _populate_idle.clear()
+    try:
+        return _add_new(cancel_event=cancel_event, progress_cb=progress_cb)
+    finally:
+        _populate_idle.set()
+
+
+def _add_new(cancel_event=None, progress_cb=None):
     account = get_active_account()
     if not account:
         return {"status": "error", "message": "No account configured"}
@@ -782,7 +798,11 @@ def add_new(cancel_event=None, progress_cb=None):
                 return
             blaeo_result = scrape_blaeo_games(today=today)
             if blaeo_result.get('status') == 'success':
-                log.info(f"[populate] BLAEO pre-scrape updated {blaeo_result['updated']} game(s).")
+                sc_count = len(blaeo_result.get('status_changes', []))
+                rn_count = len(blaeo_result.get('renames', []))
+                log.info(f"[populate] BLAEO pre-scrape updated {blaeo_result['updated']} game(s)"
+                         + (f", {sc_count} status change(s)" if sc_count else "")
+                         + (f", {rn_count} group rename(s)" if rn_count else "") + ".")
             else:
                 log.info(f"[populate] BLAEO pre-scrape skipped: {blaeo_result.get('message', 'no account')}")
         except Exception as e:
@@ -799,9 +819,10 @@ def add_new(cancel_event=None, progress_cb=None):
             futures.append(executor.submit(
                 _art_worker, art_nq, art_pq, cancel_event, icon_hash_map, today, progress_cb
             ))
+        batch = set(appid_list)
         for _ in range(META_WORKERS):
             futures.append(executor.submit(
-                _meta_worker, meta_nq, meta_pq, meta_backoff, cancel_event, total, today, progress_cb
+                _meta_worker, meta_nq, meta_pq, meta_backoff, cancel_event, total, today, progress_cb, batch
             ))
         for _ in range(PROTONDB_WORKERS):
             futures.append(executor.submit(
@@ -819,7 +840,7 @@ def add_new(cancel_event=None, progress_cb=None):
             blaeo_thread.join()
             for _ in range(CHEEVO_WORKERS):
                 futures.append(executor.submit(
-                    _cheevo_worker, cheevo_nq, cheevo_pq, cheevo_backoff, cancel_event, today, progress_cb
+                    _cheevo_worker, cheevo_nq, cheevo_pq, cheevo_backoff, cancel_event, today, progress_cb, batch
                 ))
 
         futures_wait(futures)
@@ -1041,13 +1062,15 @@ def fetch_cheevo_data(appid):
         response = requests.get(url, timeout=15)
         if response.status_code == 429:
             raise RateLimitedError()
+        if response.status_code == 400:
+            return {'total_achievements': 0, 'unlocked_achievements': 0}
         response.raise_for_status()
         json_data = response.json()
 
         playerstats = json_data.get('playerstats', {})
         if not playerstats.get('success'):
             log.info(f"No achievement data for {appid} (game may not have achievements)")
-            return None
+            return {'total_achievements': 0, 'unlocked_achievements': 0}
 
         achievements = playerstats.get('achievements', [])
 
@@ -1126,7 +1149,6 @@ def scrape_blaeo_games(today=None):
         "Beaten":       "Beaten",
         "Completed":    "Completed",
     }
-    status_rank = {"Never Played": 0, "Unfinished": 1, "Beaten": 2, "Completed": 3}
 
     try:
         session = requests.Session()
@@ -1164,9 +1186,42 @@ def scrape_blaeo_games(today=None):
 
         log.info(f"Fetched {len(all_rows)} games from BLAEO across {page} page(s)")
 
+        # Build id → name map from all list-tag hrefs seen across the full scan
+        current_lists = {}
+        for row in all_rows:
+            for tag in row.select("a.list-tag"):
+                href = tag.get('href', '')
+                list_id_match = re.search(r'/lists/(\w+)', href)
+                if list_id_match:
+                    current_lists[list_id_match.group(1)] = tag.get_text(strip=True)
+
         db = get_db()
         cursor = db.cursor()
         updated_count = 0
+
+        # Reconcile renames against stored list map
+        stored = {r['list_id']: r['list_name']
+                  for r in cursor.execute("SELECT list_id, list_name FROM blaeo_lists").fetchall()}
+
+        renames = []  # {from, to}
+        for list_id, new_name in current_lists.items():
+            old_name = stored.get(list_id)
+            if old_name and old_name != new_name:
+                log.info(f"BLAEO list renamed: '{old_name}' → '{new_name}' (id={list_id})")
+                cursor.execute(
+                    "UPDATE games SET groups = TRIM(REPLACE(',' || groups || ',', ?, ?), ',') WHERE ',' || groups || ',' LIKE ?",
+                    (f",{old_name},", f",{new_name},", f"%,{old_name},%")
+                )
+                renames.append({"from": old_name, "to": new_name})
+
+        # Persist the current list map
+        cursor.executemany(
+            "INSERT OR REPLACE INTO blaeo_lists (list_id, list_name) VALUES (?, ?)",
+            current_lists.items()
+        )
+
+        _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
+        status_changes = []  # {from, to, name, appid}
 
         for row in all_rows:
             try:
@@ -1206,7 +1261,7 @@ def scrape_blaeo_games(today=None):
                             total_ach    = int(ach_match.group(2))
 
                 # Match against the DB
-                cursor.execute("SELECT groups, completion_status FROM games WHERE appid = ?", (appid,))
+                cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
                 db_row = cursor.fetchone()
 
                 if db_row:
@@ -1216,21 +1271,11 @@ def scrape_blaeo_games(today=None):
                     updated_groups_set = existing_groups_set.union(set(blaeo_groups))
                     new_groups_str = ",".join(sorted(updated_groups_set))
 
-                    current_status = db_row['completion_status'] or 'Never Played'
-                    if current_status == "Won't Play":
-                        # Never overwrite an existing Won't Play
-                        effective_status = current_status
-                    elif clean_status == "Won't Play":
-                        # Apply Won't Play from BLAEO unless game is already Beaten/Completed
-                        if current_status in ("Beaten", "Completed"):
-                            effective_status = current_status
-                        else:
-                            effective_status = clean_status
-                    else:
-                        # Don't downgrade within the normal progression
-                        effective_status = clean_status if (
-                            status_rank.get(clean_status, -1) >= status_rank.get(current_status, 0)
-                        ) else current_status
+                    old_status = db_row['completion_status'] or 'Never Played'
+                    effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
+                    if effective_status != old_status:
+                        status_changes.append({"from": old_status, "to": effective_status,
+                                               "name": db_row['name'], "appid": appid})
 
                     if unlocked_ach is not None:
                         cursor.execute(
@@ -1253,7 +1298,16 @@ def scrape_blaeo_games(today=None):
         db.commit()
         db.close()
         log.info(f"Successfully synced {updated_count} games from BLAEO.")
-        return {"status": "success", "updated": updated_count}
+        for sc in status_changes:
+            log.info(f"[BLAEO] Status change: {sc['name']} (appid={sc['appid']}): {sc['from']} → {sc['to']}")
+        for r in renames:
+            log.info(f"[BLAEO] Group renamed: '{r['from']}' → '{r['to']}')")
+        return {
+            "status":         "success",
+            "updated":        updated_count,
+            "status_changes": status_changes,
+            "renames":        renames,
+        }
 
     except Exception as e:
         log.error(f"BLAEO scraper error: {e}")
@@ -1442,13 +1496,14 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
                         return
 
                     store_data  = fetch_store_data(appid)  or {}
-                    store_data.pop('name', None)
                     store_data.pop('type', None)
                     review_data = fetch_review_data(appid) or {}
                     tag_data    = fetch_tag_data(appid)    or {}
                     cheevo_data = fetch_cheevo_data(appid) or {} if has_key else {}
 
                     game_data = {}
+                    if store_data:
+                        game_data['name_from_store'] = 1
                     game_data.update(store_data)
                     game_data.update(review_data)
                     game_data.update(tag_data)
@@ -1625,6 +1680,9 @@ def bulk_protondb_scrape_games(appids, cancel_event, progress_cb):
 
 _startup_hltb_cancel = threading.Event()
 _store_date_migration_cancel = threading.Event()
+_store_name_migration_cancel = threading.Event()
+_populate_idle = threading.Event()
+_populate_idle.set()  # set = no populate running; cleared while add_new() is running
 
 
 def sync_hltb_unfetched():
@@ -1799,6 +1857,77 @@ def sync_store_release_dates():
         log.info(f"sync_store_release_dates: complete. failed={failed}")
     else:
         log.info(f"sync_store_release_dates: paused with {len(remaining)} remaining, failed={failed}")
+
+
+def sync_store_names():
+    """
+    One-time startup migration: fetch the store display name from appdetails for
+    all Steam games where name_from_store is 0 or NULL (names sourced from
+    GetOwnedGames or local files, which can differ from the store page name).
+
+    Uses background migration v11. Runs 1 request/second to avoid rate limiting.
+    """
+    import migration
+
+    if not migration.needs_background(11):
+        return
+
+    db   = get_db()
+    rows = db.execute(
+        "SELECT appid, name FROM games "
+        "WHERE platform = 'steam' AND (name_from_store IS NULL OR name_from_store = 0) "
+        "AND meta_fetched IS NOT NULL AND meta_fetched != '0'"
+    ).fetchall()
+    db.close()
+
+    if not rows:
+        migration.mark_background_done(11)
+        log.info("sync_store_names: nothing to update.")
+        return
+
+    log.info(f"sync_store_names: updating names for {len(rows)} game(s).")
+    session = requests.Session()
+    failed  = 0
+
+    for row in rows:
+        if _store_name_migration_cancel.is_set():
+            log.info("sync_store_names: cancelled.")
+            return
+
+        # Pause while populate is running to avoid competing for the Steam API
+        if not _populate_idle.is_set():
+            log.info("sync_store_names: waiting for populate to finish.")
+            _populate_idle.wait()
+
+        appid = row['appid']
+        try:
+            store_info = fetch_store_data(appid, session=session)
+            if store_info:
+                store_name = store_info.get('name', '') or row['name']
+                update_game_data(appid, name=store_name, name_from_store=1)
+            else:
+                update_game_data(appid, name_from_store=1)
+        except RateLimitedError:
+            log.warning(f"sync_store_names: rate limited at appid {appid}, pausing 30s.")
+            time.sleep(30)
+            try:
+                store_info = fetch_store_data(appid, session=session)
+                if store_info:
+                    store_name = store_info.get('name', '') or row['name']
+                    update_game_data(appid, name=store_name, name_from_store=1)
+                else:
+                    update_game_data(appid, name_from_store=1)
+            except Exception as e:
+                log.error(f"sync_store_names: retry failed for {appid} — {e}")
+                failed += 1
+        except Exception as e:
+            log.error(f"sync_store_names: error for {appid} — {e}")
+            failed += 1
+
+        time.sleep(1)
+
+    migration.mark_background_done(11)
+    log.info(f"sync_store_names: complete. failed={failed}")
 
 
 def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):

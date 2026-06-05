@@ -1022,10 +1022,11 @@ if __name__ == '__main__':
     # 2c. Sync recent playtime from Steam API in background, then fetch any
     #     unfetched HLTB data and migrate store release dates silently in the same thread.
     def _run_playtime_sync():
-        from scrapers import sync_recent_playtime, sync_hltb_unfetched, sync_store_release_dates
+        from scrapers import sync_recent_playtime, sync_hltb_unfetched, sync_store_release_dates, sync_store_names
         sync_recent_playtime()
         sync_hltb_unfetched()
         sync_store_release_dates()
+        sync_store_names()
 
     threading.Thread(target=_run_playtime_sync, daemon=True).start()
     log.info("Playtime sync started in background.")
@@ -1123,8 +1124,10 @@ if __name__ == '__main__':
 
     def _on_closing():
         populate_cancel.set()   # stop any running populate before the process exits
-        from scrapers import _store_date_migration_cancel
+        from scrapers import _store_date_migration_cancel, _store_name_migration_cancel, _populate_idle
         _store_date_migration_cancel.set()
+        _store_name_migration_cancel.set()
+        _populate_idle.set()  # unblock sync_store_names if it's waiting
         _save_window_state(_tracked)
 
     window.events.maximized += _on_maximized
