@@ -531,6 +531,7 @@ async function _hltbScrapeNoMatch() {
     scrapeBtn.style.display = 'none';
     stopBtn.style.display   = '';
     statusEl.textContent    = `0 / ${res.total}`;
+    document.dispatchEvent(new CustomEvent('bulkop:started'));
 
     _hltbScrapeInterval = setInterval(async () => {
         try {

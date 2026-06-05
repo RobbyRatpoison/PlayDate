@@ -1972,6 +1972,7 @@ async function startBulkOp(op) {
         return;
     }
 
+    document.dispatchEvent(new CustomEvent('bulkop:started'));
     _pollBulkOp();
 }
 
@@ -2115,6 +2116,53 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('bulk-status-select'));
 });
 
+// Resume bulk op / date import UI if an operation is already running when the page loads
+(async () => {
+    try {
+        const [opRes, dateRes] = await Promise.all([
+            fetch('/api/bulk-op/status'),
+            fetch('/api/bulk-date-import/status')
+        ]);
+        const op = await opRes.json();
+        const dt = await dateRes.json();
+
+        if (op.running) {
+            const done = op.done + op.failed;
+            const pct  = op.total > 0 ? Math.round((done / op.total) * 100) : 0;
+            document.getElementById('brs-progress').style.display = 'block';
+            document.getElementById('brs-progress-bar').style.width = pct + '%';
+            document.getElementById('brs-progress-label').textContent = `${done} / ${op.total}`;
+            document.getElementById('brs-start-meta-btn').disabled = true;
+            document.getElementById('brs-start-art-btn').disabled  = true;
+            const pdbBtn  = document.getElementById('brs-start-protondb-btn');
+            if (pdbBtn)  pdbBtn.disabled  = true;
+            const hltbBtn = document.getElementById('brs-start-hltb-btn');
+            if (hltbBtn) hltbBtn.disabled = true;
+            const stopBtn = document.getElementById('brs-stop-btn');
+            stopBtn.style.display = '';
+            stopBtn.disabled = false;
+            stopBtn.textContent = 'Stop';
+            _pollBulkOp();
+        }
+
+        if (dt.active) {
+            const done = dt.done + dt.failed;
+            const pct  = dt.total > 0 ? Math.round((done / dt.total) * 100) : 0;
+            document.getElementById('bdi-progress').style.display = 'block';
+            document.getElementById('bdi-progress-bar').style.width = pct + '%';
+            document.getElementById('bdi-progress-label').textContent =
+                `${done} / ${dt.total} — ${dt.done} imported, ${dt.failed} not found`;
+            document.getElementById('bdi-current-game').textContent = dt.current ? dt.current.name : '…';
+            document.getElementById('bdi-start-btn').disabled = true;
+            const stopBtn = document.getElementById('bdi-stop-btn');
+            stopBtn.style.display = '';
+            stopBtn.disabled = false;
+            _bdiLastResultCount = (dt.results || []).length;
+            _pollBulkDateImport();
+        }
+    } catch(e) {}
+})();
+
 // ── DATE IMPORTER TAB ───────────────────────────────────────────────────────
 function closeBulkDateImportModal() {
     if (_bdiPollInterval) { clearInterval(_bdiPollInterval); _bdiPollInterval = null; }
@@ -2149,6 +2197,8 @@ let _bdiScriptCheckTimeout = null;
 let _bdiLastResultCount = 0;
 
 async function startBulkDateImport() {
+    if (_bdiPollInterval) return;
+
     const scope    = document.querySelector('input[name="bdi-scope"]:checked').value;
     const status   = document.getElementById('bdi-status');
     const startBtn = document.getElementById('bdi-start-btn');
@@ -2260,7 +2310,12 @@ async function startBulkDateImport() {
         }, 15000);
     }
 
+    document.dispatchEvent(new CustomEvent('dateimport:started'));
     _bdiLastResultCount = 0;
+    _pollBulkDateImport();
+}
+
+function _pollBulkDateImport() {
     _bdiPollInterval = setInterval(async () => {
         try {
             const r = await fetch('/api/bulk-date-import/status');
@@ -2274,6 +2329,7 @@ async function startBulkDateImport() {
                 d.current ? d.current.name : (d.active ? '…' : 'Done');
 
             // Append any new log entries (results are newest-first)
+            const logEl   = document.getElementById('bdi-log');
             const results = d.results || [];
             if (results.length > _bdiLastResultCount) {
                 const newEntries = results.slice(0, results.length - _bdiLastResultCount);
@@ -2291,9 +2347,10 @@ async function startBulkDateImport() {
             if (!d.active) {
                 clearTimeout(_bdiScriptCheckTimeout); _bdiScriptCheckTimeout = null;
                 clearInterval(_bdiPollInterval); _bdiPollInterval = null;
-                startBtn.disabled = false;
-                stopBtn.style.display = 'none';
+                document.getElementById('bdi-start-btn').disabled = false;
+                document.getElementById('bdi-stop-btn').style.display = 'none';
                 const errs = (d.api_errors || []);
+                const status = document.getElementById('bdi-status');
                 status.className = errs.length ? 'bulk-status-error' : 'bulk-status-success';
                 status.textContent = `Done — ${d.done} date${d.done !== 1 ? 's' : ''} imported, ${d.failed} not found.`
                     + (errs.length ? ' ' + errs.join(' ') : '');
