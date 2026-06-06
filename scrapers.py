@@ -1866,8 +1866,11 @@ def sync_store_names():
     GetOwnedGames or local files, which can differ from the store page name).
 
     Uses background migration v11. Runs 1 request/second to avoid rate limiting.
+    Name differences are written to store_names_pending.json for user review
+    rather than applied automatically.
     """
     import migration
+    from config import BASE_DIR
 
     if not migration.needs_background(11):
         return
@@ -1885,9 +1888,10 @@ def sync_store_names():
         log.info("sync_store_names: nothing to update.")
         return
 
-    log.info(f"sync_store_names: updating names for {len(rows)} game(s).")
+    log.info(f"sync_store_names: checking names for {len(rows)} game(s).")
     session = requests.Session()
     failed  = 0
+    pending = []
 
     for row in rows:
         if _store_name_migration_cancel.is_set():
@@ -1904,7 +1908,9 @@ def sync_store_names():
             store_info = fetch_store_data(appid, session=session)
             if store_info:
                 store_name = store_info.get('name', '') or row['name']
-                update_game_data(appid, name=store_name, name_from_store=1)
+                update_game_data(appid, name_from_store=1)
+                if store_name != row['name']:
+                    pending.append({'appid': appid, 'old_name': row['name'], 'new_name': store_name})
             else:
                 update_game_data(appid, name_from_store=1)
         except RateLimitedError:
@@ -1914,7 +1920,9 @@ def sync_store_names():
                 store_info = fetch_store_data(appid, session=session)
                 if store_info:
                     store_name = store_info.get('name', '') or row['name']
-                    update_game_data(appid, name=store_name, name_from_store=1)
+                    update_game_data(appid, name_from_store=1)
+                    if store_name != row['name']:
+                        pending.append({'appid': appid, 'old_name': row['name'], 'new_name': store_name})
                 else:
                     update_game_data(appid, name_from_store=1)
             except Exception as e:
@@ -1926,8 +1934,14 @@ def sync_store_names():
 
         time.sleep(1)
 
+    if pending:
+        pending_path = os.path.join(BASE_DIR, 'store_names_pending.json')
+        with open(pending_path, 'w') as f:
+            json.dump({'items': pending}, f, indent=2)
+        log.info(f"sync_store_names: {len(pending)} name(s) differ — written to store_names_pending.json for review.")
+
     migration.mark_background_done(11)
-    log.info(f"sync_store_names: complete. failed={failed}")
+    log.info(f"sync_store_names: complete. diffs={len(pending)}, failed={failed}")
 
 
 def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
