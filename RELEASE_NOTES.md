@@ -1,10 +1,11 @@
 # Release Notes
 
-## v1.5.12 — Pending
+## v1.5.12
 
 ### Improvements
 
-- Game names now use the store display name instead of Steam's internal name, which can differ (e.g. "Grey Scout" instead of "Sokpop S09: Grey Scout"). Existing games with incorrect names will be corrected automatically in the background on first launch.
+- Game names can now be updated to match Steam's store display name, which sometimes differs from the internal name. After the first launch, any differences are flagged in the hamburger menu. Clicking the notification opens a review list where you can pick which names to update — nothing changes automatically. Keeping names in sync is important for PAGYWOSG, since category sorting uses the store display name.
+- PAGYWOSG filter builder: after auto-filling an event, a Personal categories section lists all categories that have a mod-verified game list. Checking a category marks it as personal — games verified for another user in those categories are excluded from the filter and qualifications panel entirely, since eligibility depends on your own history (e.g. "won in June").
 - BLAEO sync: completion status downgrades are no longer blocked — if your status on BLAEO differs from PlayDate, BLAEO now wins.
 - BLAEO sync: renaming a list on BLAEO will now automatically rename it in your PlayDate library on the next sync instead of creating a duplicate.
 - BLAEO sync: the result now shows a breakdown of what changed — which games had their status updated and any lists that were renamed. Details are expandable, and everything is also written to the log.

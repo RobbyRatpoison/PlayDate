@@ -200,7 +200,7 @@ The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the mo
 
 **icaio detection:** phrases matched exactly — `"icaio has made a GA for"` → giveaways list; both `"icaio"` + `"wishlist"` → wishlist. Exact matching is intentional to avoid false positives. These entries get `auto: true` (suppresses "mod verified" label).
 
-**Supplement file** (`pagywosg_supplement.json`): top-level keys `icaio_giveaways`, `icaio_wishlist`, and numeric event IDs. Event entries keyed by category ID: `{pool, id_name, developers?, publishers?, appids?, verifiers?}` where `verifiers` is `{appid_str: username}`.
+**Supplement file** (`pagywosg_supplement.json`): top-level keys `icaio_giveaways` (list of `{appid, name}`) and `icaio_wishlist` (dict of `{appid_str: name}`).
 
 **Saved filter keys:** PAGYWOSG filters carry `pagywosg: true`, `pagywosg_event: {id, name}`, `pagywosg_verified: {appid: [{cat, pool, verifier?, auto?}]}`. These must be preserved when re-applying — `modal_filters.html` copies them from `_loadedSavedTree` onto the rebuilt tree. `openFilterModal()` also seeds `_loadedSavedTree` from the server tree when `pagywosg: true` and it isn't already set, so editing an active filter preserves these keys.
 

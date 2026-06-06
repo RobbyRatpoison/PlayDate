@@ -57,3 +57,7 @@ git-push.sh
 make-zip.sh
 CLAUDE.md
 *.zip
+
+# --- Personal Reference ---
+HOWTO.md
+release.py
