@@ -9,7 +9,7 @@ from config import BASE_DIR, CONFIG_PATH
 
 log = logging.getLogger(__name__)
 
-CURRENT_VERSION    = 9
+CURRENT_VERSION    = 10
 BACKGROUND_VERSION = 11
 
 _migrations:            dict[int, callable] = {}
@@ -428,6 +428,24 @@ def _m9_auto_detect_duplicates():
             auto_detect_duplicates(platform_priority=priority)
         except Exception as e:
             log.warning(f"_m9_auto_detect_duplicates: auto-detection failed: {e}")
+
+
+@migration(10)
+def _m10_backfill_achievement_nulls():
+    """Convert NULL achievement counts to 0.
+
+    Games imported before the 0-default was enforced may have NULL in
+    total_achievements or unlocked_achievements instead of 0, causing
+    blank achievement counts in the UI.
+    """
+    for db_path in _all_db_files():
+        conn = sqlite3.connect(db_path, timeout=10)
+        try:
+            conn.execute("UPDATE games SET total_achievements    = 0 WHERE total_achievements    IS NULL")
+            conn.execute("UPDATE games SET unlocked_achievements = 0 WHERE unlocked_achievements IS NULL")
+            conn.commit()
+        finally:
+            conn.close()
 
 
 # ── Background migrations ─────────────────────────────────────────────────────
