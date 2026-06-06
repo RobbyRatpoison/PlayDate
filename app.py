@@ -2369,6 +2369,48 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    @app.route('/api/store-names-pending', methods=['GET'])
+    def store_names_pending():
+        pending_path = os.path.join(BASE_DIR, 'store_names_pending.json')
+        if not os.path.exists(pending_path):
+            return jsonify({'items': []})
+        try:
+            with open(pending_path) as f:
+                data = json.load(f)
+            return jsonify(data)
+        except Exception as e:
+            log.error(f"store_names_pending: {e}")
+            return jsonify({'items': []})
+
+    @app.route('/api/store-names-apply', methods=['POST'])
+    def store_names_apply():
+        body = request.get_json(silent=True) or {}
+        appids_to_apply = {int(a) for a in body.get('appids', [])}
+        dismiss_all = body.get('dismiss', False)
+        pending_path = os.path.join(BASE_DIR, 'store_names_pending.json')
+        try:
+            if not os.path.exists(pending_path):
+                return jsonify({'ok': True, 'remaining': 0})
+            with open(pending_path) as f:
+                data = json.load(f)
+            items = data.get('items', [])
+            for item in items:
+                if item['appid'] in appids_to_apply:
+                    update_game_data(item['appid'], name=item['new_name'])
+            if dismiss_all:
+                os.remove(pending_path)
+                return jsonify({'ok': True, 'remaining': 0})
+            remaining = [item for item in items if item['appid'] not in appids_to_apply]
+            if remaining:
+                with open(pending_path, 'w') as f:
+                    json.dump({'items': remaining}, f, indent=2)
+            else:
+                os.remove(pending_path)
+            return jsonify({'ok': True, 'remaining': len(remaining)})
+        except Exception as e:
+            log.error(f"store_names_apply: {e}")
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
     @app.route('/api/blacklist', methods=['GET'])
     def blacklist_get():
         try:
@@ -2679,36 +2721,6 @@ def create_app(template_folder=None, static_folder=None):
             else:
                 skipped.append(base)
 
-        # --- Supplement JSON (event-specific entries) ---
-        supplement_loaded = False
-        if _supplement:
-            try:
-                db = get_db()
-                for _cat_id, sdata in _supplement.get(str(event_id), {}).items():
-                    s_pool    = sdata.get('pool', 'wins')
-                    cat_label = sdata.get('id_name', f'Category {_cat_id}')
-                    target_conds  = conds_all  if s_pool == 'all' else conds_wins
-                    target_appids = appids_all if s_pool == 'all' else appids_wins
-                    for dev in sdata.get('developers', []):
-                        target_conds.append({'col': 'developers', 'op': 'contains', 'val': dev})
-                    for pub in sdata.get('publishers', []):
-                        target_conds.append({'col': 'publishers', 'op': 'contains', 'val': pub})
-                    s_verifiers = sdata.get('verifiers', {})
-                    for appid in sdata.get('appids', []):
-                        row = db.execute("SELECT name FROM games WHERE appid = ?", (appid,)).fetchone()
-                        name = row['name'] if row else f"App {appid}"
-                        if appid not in target_appids:
-                            target_appids[appid] = {"name": name, "categories": []}
-                        if not any(c["cat"] == cat_label for c in target_appids[appid]["categories"]):
-                            entry = {"cat": cat_label}
-                            if str(appid) in s_verifiers:
-                                entry["verifier"] = s_verifiers[str(appid)]
-                            target_appids[appid]["categories"].append(entry)
-                db.close()
-                supplement_loaded = True
-            except Exception:
-                pass
-
         # Scan the whole games table once (fast — user's library is small) and
         # intersect in Python, avoiding a huge IN (?, ?, ...) with 5000+ params.
         _lib_db = get_db()
@@ -2800,7 +2812,6 @@ def create_app(template_folder=None, static_folder=None):
             "wins":   _serialise_pool(appids_wins, tags_wins, conds_wins),
             "all":    _serialise_pool(appids_all,  tags_all,  conds_all),
             "skipped": skipped,
-            "supplement_loaded": supplement_loaded,
         }
         _lib_db.close()
         return jsonify(result)
@@ -2967,25 +2978,6 @@ def create_app(template_folder=None, static_folder=None):
                 continue
             if base_appids:
                 _add_v(base_appids, base, pool)
-
-        if _supplement:
-            try:
-                db = get_db()
-                for _cat_id, sdata in _supplement.get(str(event_id), {}).items():
-                    s_pool    = sdata.get('pool', 'wins')
-                    cat_label = sdata.get('id_name', f'Category {_cat_id}')
-                    s_verifs  = sdata.get('verifiers', {})
-                    for dev in sdata.get('developers', []):
-                        conds.append({'col': 'developers', 'op': 'LIKE', 'val': dev, 'pool': s_pool})
-                    for pub in sdata.get('publishers', []):
-                        conds.append({'col': 'publishers', 'op': 'LIKE', 'val': pub, 'pool': s_pool})
-                    for appid in sdata.get('appids', []):
-                        row  = db.execute("SELECT name FROM games WHERE appid = ?", (appid,)).fetchone()
-                        name = row['name'] if row else f"App {appid}"
-                        _add_v({appid: name}, cat_label, s_pool, verifiers=s_verifs)
-                db.close()
-            except Exception:
-                pass
 
         from config import load_state
         sg_group = load_state().get('pagywosg_sg_group') or None

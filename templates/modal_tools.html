@@ -1252,6 +1252,8 @@
                     onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">+ Add Condition</button>
             </div>
 
+            <div id="pag-personal-cats-section" style="display:none;"></div>
+
             <div style="margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <span style="color:var(--text-secondary); font-size:0.8rem; white-space:nowrap;">Completion status</span>
                 <div id="pag-completion-btns" style="display:flex; flex-wrap:wrap; gap:5px;">
@@ -1836,6 +1838,7 @@ let _pagEventName  = '';
 // _pagSgGroup: string = chosen wins group name; null = no SG wins (omit wins branch); undefined = not yet loaded
 let _pagSgGroup    = undefined;
 let _pagAllGroups  = [];  // all distinct groups in the library
+let _pagPersonalCats = new Set();  // category names marked as personal (auto=true when saving)
 
 // Columns available for the condition builder
 const PAG_COLUMNS = [
@@ -2552,7 +2555,11 @@ function pagBuildTree() {
     const winsTags = [..._pagSelectedWins];
 
     const _toAppidListNodes = (sources, fallbackAppids) => {
-        if (sources.length) return sources.map(s => ({ type: 'appid_list', appids: s.appids, label: s.label, auto: s.auto }));
+        if (sources.length) {
+            return sources
+                .filter(s => !_pagPersonalCats.has(s.label))
+                .map(s => ({ type: 'appid_list', appids: s.appids, label: s.label, auto: s.auto }));
+        }
         return fallbackAppids.length ? [{ type: 'appid_list', appids: fallbackAppids }] : [];
     };
     const allExtraItems  = [
@@ -2720,6 +2727,7 @@ async function pagConfirmSave() {
         const key = String(appid);
         if (!verifiedLookup[key]) verifiedLookup[key] = [];
         categories.forEach(({cat, verifier, auto}) => {
+            if (_pagPersonalCats.has(cat)) return;
             if (!verifiedLookup[key].some(e => e.cat === cat && e.pool === pool)) {
                 const entry = {cat, pool};
                 if (verifier) entry.verifier = verifier;
@@ -2768,7 +2776,8 @@ function pagUpdateAppidsInfo(pool) {
     const el = document.getElementById(`pag-${pool}-appids-info`);
     if (!el) return;
     const allGames = pool === 'wins' ? _pagWinsGames : _pagAllGames;
-    const games = allGames.filter(g => g.in_library && !g.redundant);
+    const games = allGames.filter(g => g.in_library && !g.redundant &&
+        g.categories.some(c => !c.auto && !_pagPersonalCats.has(c.cat)));
     if (!games.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
 
     const listId = `pag-${pool}-appids-list`;
@@ -2791,6 +2800,41 @@ function pagUpdateAppidsInfo(pool) {
             ).join('')}
         </div>`;
     _pagRenumberRows();
+    pagRenderPersonalCats();
+}
+
+function pagRenderPersonalCats() {
+    const section = document.getElementById('pag-personal-cats-section');
+    if (!section) return;
+    const cats = new Set();
+    [..._pagWinsGames, ..._pagAllGames].forEach(g => {
+        (g.categories || []).forEach(({cat, auto}) => { if (!auto) cats.add(cat); });
+    });
+    if (!cats.size) { section.style.display = 'none'; section.innerHTML = ''; return; }
+    const sorted = [...cats].sort();
+    pagRenderPersonalCats._list = sorted;
+    let html = `<div style="border-top:1px solid var(--border); padding-top:14px; margin-bottom:16px;">
+        <div style="font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:4px;">Personal categories</div>
+        <div style="font-size:0.76rem; color:var(--text-secondary); margin-bottom:8px; line-height:1.4;">Categories where eligibility depends on your own history. Checking one excludes its games from the filter and qualifications panel entirely — verified entries for another user don&rsquo;t apply to you.</div>`;
+    sorted.forEach((cat, i) => {
+        const checked = _pagPersonalCats.has(cat) ? ' checked' : '';
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;" onclick="pagTogglePersonalCat(${i})">
+            <input type="checkbox" style="width:auto;margin:0;flex-shrink:0;"${checked} onclick="event.stopPropagation();pagTogglePersonalCat(${i})">
+            <span style="font-size:0.82rem;color:var(--text-primary);">${escHtml(cat)}</span>
+        </div>`;
+    });
+    html += '</div>';
+    section.innerHTML = html;
+    section.style.display = '';
+    _pagRenumberRows();
+}
+
+function pagTogglePersonalCat(idx) {
+    const cat = (pagRenderPersonalCats._list || [])[idx];
+    if (!cat) return;
+    if (_pagPersonalCats.has(cat)) _pagPersonalCats.delete(cat);
+    else _pagPersonalCats.add(cat);
+    pagRenderPersonalCats();
 }
 
 async function pagAutoFill(next = false) {
@@ -2848,6 +2892,8 @@ async function pagAutoFill(next = false) {
         const monthYear = data.event.name.split(' - ')[0].trim();
         const nameInput = document.getElementById('pag-filter-name');
         if (!nameInput.value) nameInput.value = `PAGYWOSG ${monthYear}`;
+        const inner = document.getElementById('pagywosg-inner');
+        if (inner) inner.scrollTop = inner.scrollHeight;
     } catch (e) {
         document.getElementById('pag-auto-status').textContent = '✘ ' + e.message;
         document.getElementById('pag-auto-status').style.color = 'var(--accent-negative)';
@@ -2867,6 +2913,7 @@ function pagClearAll() {
     _pagWinsAppidSources  = [];
     _pagAllGames          = [];
     _pagWinsGames         = [];
+    _pagPersonalCats.clear();
     pagUpdateAppidsInfo('all');
     pagUpdateAppidsInfo('wins');
     pagRenderTags('all');
@@ -6516,5 +6563,124 @@ function _emuPollScan(statusEl) {
             .catch(function() { clearInterval(_emuScanPollIv); _emuScanPollIv = null; });
     }, 1500);
 }
+
+// ── Store name review ─────────────────────────────────────────────────────────
+
+var _storeNameItems = [];
+
+function openStoreNamesModal() {
+    fetch('/api/store-names-pending')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            _storeNameItems = data.items || [];
+            _renderStoreNamesList();
+            document.getElementById('store-names-modal').style.display = 'flex';
+        })
+        .catch(function() {});
+}
+
+function closeStoreNamesModal() {
+    document.getElementById('store-names-modal').style.display = 'none';
+}
+
+function _renderStoreNamesList() {
+    var list = document.getElementById('store-names-list');
+    if (!_storeNameItems.length) {
+        list.innerHTML = '<div style="color:var(--text-secondary);font-size:0.9rem;padding:8px 0;">No pending name changes.</div>';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < _storeNameItems.length; i++) {
+        var item = _storeNameItems[i];
+        html += '<div class="sn-row" data-idx="' + i + '" onclick="var cb=this.querySelector(\'.sn-cb\');cb.checked=!cb.checked;" style="display:flex;align-items:flex-start;gap:10px;padding:7px 4px;border-bottom:1px solid var(--border-color,#2a3f55);cursor:pointer;">';
+        html += '<input type="checkbox" class="sn-cb" style="width:auto;margin:2px 0 0;flex-shrink:0;" onclick="event.stopPropagation()">';
+        html += '<div style="min-width:0;">';
+        html += '<div style="color:var(--text-secondary);font-size:0.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escHtml(item.old_name) + '">' + escHtml(item.old_name) + '</div>';
+        html += '<div style="color:var(--text-primary);font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + escHtml(item.new_name) + '">→ ' + escHtml(item.new_name) + '</div>';
+        html += '</div></div>';
+    }
+    list.innerHTML = html;
+}
+
+function storeNamesSelectAll(checked) {
+    var cbs = document.querySelectorAll('#store-names-list .sn-cb');
+    for (var i = 0; i < cbs.length; i++) cbs[i].checked = checked;
+}
+
+function applyStoreNames() {
+    var cbs = document.querySelectorAll('#store-names-list .sn-cb');
+    var appids = [];
+    for (var i = 0; i < cbs.length; i++) {
+        if (cbs[i].checked && _storeNameItems[i]) appids.push(_storeNameItems[i].appid);
+    }
+    var btn = document.getElementById('store-names-apply-btn');
+    btn.disabled = true;
+    btn.textContent = 'Applying…';
+    fetch('/api/store-names-apply', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({appids: appids})
+    }).then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Apply Selected';
+        if (data.remaining > 0) {
+            var appliedSet = new Set(appids);
+            _storeNameItems = _storeNameItems.filter(function(it) { return !appliedSet.has(it.appid); });
+            _renderStoreNamesList();
+            var n = _storeNameItems.length;
+            document.getElementById('store-names-btn-label').textContent =
+                n + ' game name' + (n === 1 ? '' : 's') + ' differ from Steam store';
+        } else {
+            _clearStoreNamesNotification();
+            closeStoreNamesModal();
+        }
+    }).catch(function() {
+        btn.disabled = false;
+        btn.textContent = 'Apply Selected';
+    });
+}
+
+function dismissStoreNames() {
+    fetch('/api/store-names-apply', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({appids: [], dismiss: true})
+    }).then(function() {
+        _clearStoreNamesNotification();
+        closeStoreNamesModal();
+    }).catch(function() { closeStoreNamesModal(); });
+}
+
+function _clearStoreNamesNotification() {
+    document.getElementById('store-names-btn').style.display = 'none';
+    document.getElementById('store-names-dot').classList.remove('visible');
+}
 </script>
+
+<!-- ── STORE NAMES REVIEW MODAL ── -->
+<div id="store-names-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeStoreNamesModal();">
+    <div class="modal-content" style="width:480px;max-height:80vh;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <h2 style="margin:0;color:var(--text-primary);">Review Store Names</h2>
+            <button onclick="closeStoreNamesModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
+        </div>
+        <p style="margin:0 0 6px;font-size:0.85rem;color:var(--text-secondary);line-height:1.5;">
+            These Steam games have a different name on the store page. Select which names you'd like to update. Unchecked games keep their current name.
+        </p>
+        <p style="margin:0 0 10px;font-size:0.82rem;color:var(--accent);line-height:1.5;">
+            PAGYWOSG category sorting uses these names, so applying store names ensures your games appear in the correct category.
+        </p>
+        <div style="margin-bottom:8px;font-size:0.8rem;color:var(--accent);">
+            <a href="#" onclick="storeNamesSelectAll(true);return false;" style="color:var(--accent);">All</a>
+            &nbsp;/&nbsp;
+            <a href="#" onclick="storeNamesSelectAll(false);return false;" style="color:var(--accent);">None</a>
+        </div>
+        <div id="store-names-list" style="overflow-y:auto;flex:1;min-height:0;"></div>
+        <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end;">
+            <button class="nav-btn" onclick="dismissStoreNames()" style="font-size:0.85rem;">Dismiss</button>
+            <button id="store-names-apply-btn" class="nav-btn" onclick="applyStoreNames()" style="font-size:0.85rem;">Apply Selected</button>
+        </div>
+    </div>
+</div>
 
