@@ -432,17 +432,13 @@ def _m9_auto_detect_duplicates():
 
 @migration(10)
 def _m10_backfill_achievement_nulls():
-    """Convert NULL achievement counts to 0.
-
-    Games imported before the 0-default was enforced may have NULL in
-    total_achievements or unlocked_achievements instead of 0, causing
-    blank achievement counts in the UI.
-    """
+    """Convert NULL and empty-string achievement counts to 0."""
     for db_path in _all_db_files():
         conn = sqlite3.connect(db_path, timeout=10)
         try:
-            conn.execute("UPDATE games SET total_achievements    = 0 WHERE total_achievements    IS NULL")
-            conn.execute("UPDATE games SET unlocked_achievements = 0 WHERE unlocked_achievements IS NULL")
+            conn.execute("UPDATE games SET total_achievements    = 0 WHERE total_achievements    IS NULL OR total_achievements    = ''")
+            conn.execute("UPDATE games SET unlocked_achievements = 0 WHERE unlocked_achievements IS NULL OR unlocked_achievements = ''")
+            conn.execute("UPDATE games SET playtime_forever      = 0 WHERE playtime_forever      IS NULL OR playtime_forever      = ''")
             conn.commit()
         finally:
             conn.close()

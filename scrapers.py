@@ -719,7 +719,7 @@ def _add_new(cancel_event=None, progress_cb=None):
             continue
         if appinfo_db.get(appid, {}).get('type', 'game').lower() != 'game':
             continue
-        playtime = g['playtime_forever']
+        playtime = g['playtime_forever'] or 0
         new_games.append({
             'appid':            appid,
             'name':             g['name'],

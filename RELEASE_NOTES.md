@@ -14,6 +14,7 @@
 
 ### Bug Fixes
 
-- Games with no Steam achievements no longer show blank achievement counts after a full library scan. Existing games with blank counts will be corrected automatically on first launch.
+- Games with no Steam achievements no longer show blank achievement counts after a full library scan. Existing games with blank achievement counts or playtime will be corrected automatically on first launch.
+- Games with no playtime are now imported with 0 minutes instead of blank.
 - Populate progress counter no longer overshoots the total when games with unfetched metadata are visible in the library during a populate run.
 - Populate no longer gets stuck in a running state when the library contains games added by plugins that have not yet had metadata fetched.
