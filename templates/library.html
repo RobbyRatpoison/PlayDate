@@ -2461,7 +2461,7 @@ async function stopBulkDateImport() {
         if (x < pad) x = pad;
         if (y < pad) y = pad;
         if (y + th > window.innerHeight - pad) y = window.innerHeight - th - pad;
-        return { x, y };
+        return { x: Math.round(x), y: Math.round(y) };
     }
 
     function _positionGpTooltip(card) {
