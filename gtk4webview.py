@@ -170,8 +170,9 @@ class BrowserView:
             user_content_manager=self.manager,
             network_session=self._network_session,
         )
-        self.webview.connect('notify::visible', self.on_webview_ready)
+        self.webview.connect('map', self.on_webview_ready)
         self.webview.connect('load-changed', self.on_load_finish)
+        self.webview.connect('web-process-terminated', self._on_web_process_terminated)
         self.webview.connect('decide-policy', self.on_navigation)
         self.webview.connect('resource-load-started', self.on_request)
 
@@ -274,15 +275,21 @@ class BrowserView:
             self.pywebview_window.events.resized.set(w, h)
 
     def on_js_bridge_call(self, manager, message):
-        body = json.loads(message.get_js_value().to_string())
+        body = json.loads(message.to_string())
         if body['funcName'] == '_pywebviewAlert':
             self.message_box(body['params'])
         else:
             js_bridge_call(self.pywebview_window, body['funcName'], body['params'], body['id'])
 
-    def on_webview_ready(self, arg1, arg2):
+    def on_webview_ready(self, *args):
         if 'shown' in dir(self):
             self.shown.set()
+
+    def _on_web_process_terminated(self, webview, reason):
+        logger.warning(f'WebKit web process terminated ({reason}), reloading')
+        url = self.pywebview_window.real_url
+        if url:
+            glib.timeout_add(500, lambda: webview.load_uri(url) or False)
 
     def on_response(self, resource, _):
         response = resource.get_response()
@@ -370,8 +377,6 @@ class BrowserView:
 
     def show(self):
         self.window.present()
-        if gtk.main_level() > 0:
-            glib.idle_add(self.window.present)
 
     def hide(self):
         glib.idle_add(self.window.hide)
@@ -421,7 +426,8 @@ class BrowserView:
         dialog.destroy()
         return response == gtk.ResponseType.OK
 
-    def create_file_dialog(self, dialog_type, directory, allow_multiple, save_filename, file_types):
+    def build_file_dialog(self, dialog_type, directory, allow_multiple, save_filename, file_types):
+        """Create and configure a FileChooserNative; caller must show() and handle response."""
         if dialog_type == FileDialog.FOLDER:
             action = gtk.FileChooserAction.SELECT_FOLDER
             title = self.localization['linux.openFolder']
@@ -435,7 +441,7 @@ class BrowserView:
             title = self.localization['global.saveFile']
             accept_label = title
 
-        dialog = gtk.FileChooserNative.new(title, self.window, action, accept_label, None)
+        dialog = gtk.FileChooserNative.new(title, None, action, accept_label, None)
         dialog.set_select_multiple(allow_multiple)
 
         if directory:
@@ -449,21 +455,7 @@ class BrowserView:
         if dialog_type == FileDialog.SAVE and save_filename:
             dialog.set_current_name(save_filename)
 
-        response = dialog.run()
-
-        if response == gtk.ResponseType.ACCEPT:
-            if dialog_type == FileDialog.SAVE:
-                f = dialog.get_file()
-                file_name = (f.get_path(),) if f else None
-            else:
-                files = dialog.get_files()
-                paths = [files.get_item(i).get_path() for i in range(files.get_n_items())]
-                file_name = paths if paths else None
-        else:
-            file_name = None
-
-        dialog.destroy()
-        return file_name
+        return dialog
 
     def _add_file_filters(self, dialog, file_types):
         for s in file_types:
@@ -786,17 +778,40 @@ def get_active_window():
 
 def create_file_dialog(dialog_type, directory, allow_multiple, save_filename, file_types, uid):
     i = BrowserView.instances.get(uid)
-    file_name_semaphore = Semaphore(0)
+    semaphore = Semaphore(0)
     file_names = []
 
+    def on_response(dialog, response):
+        try:
+            if response == gtk.ResponseType.ACCEPT:
+                if dialog_type == FileDialog.SAVE:
+                    f = dialog.get_file()
+                    file_names.append((f.get_path(),) if f else None)
+                else:
+                    files = dialog.get_files()
+                    paths = [files.get_item(j).get_path() for j in range(files.get_n_items())]
+                    file_names.append(paths if paths else None)
+            else:
+                file_names.append(None)
+        finally:
+            dialog.destroy()
+            semaphore.release()
+
     def _create():
-        result = i.create_file_dialog(dialog_type, directory, allow_multiple, save_filename, file_types)
-        file_names.append(tuple(result) if result else None)
-        file_name_semaphore.release()
+        # Build dialog on GTK main thread, connect response, show without blocking.
+        # The calling thread (held on semaphore) unblocks when response fires.
+        try:
+            dialog = i.build_file_dialog(dialog_type, directory, allow_multiple, save_filename, file_types)
+            dialog.connect('response', on_response)
+            dialog.show()
+        except Exception as e:
+            logger.error(f'GTK4 file dialog setup failed: {e}')
+            file_names.append(None)
+            semaphore.release()
 
     glib.idle_add(_create)
-    file_name_semaphore.acquire()
-    return file_names[0]
+    semaphore.acquire()
+    return file_names[0] if file_names else None
 
 
 def evaluate_js(script, uid, parse_json=True):

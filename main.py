@@ -141,20 +141,12 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
             print(msg)
         sys.exit(1)
 
-if _USE_GTK4:
-    # Inject the GTK4/WebKit6 renderer before pywebview is imported
-    import importlib.util as _ilu
-    _gtk4_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gtk4webview.py')
-    _spec = _ilu.spec_from_file_location('webview.platforms.gtk', _gtk4_path)
-    _mod = _ilu.module_from_spec(_spec)
-    sys.modules['webview.platforms.gtk'] = _mod
-    _spec.loader.exec_module(_mod)
-    log.info("GTK4/WebKit 6.0 renderer loaded")
-
 # ── Linux/Wayland fixes — must be set before importing webview ────────────────
 os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
 if not _USE_GTK4:
     os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+else:
+    os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
 
 if sys.platform == "linux":
@@ -169,6 +161,21 @@ if sys.platform == "linux":
 
 # ── Imports ───────────────────────────────────────────────────────────────────
 import webview
+
+if _USE_GTK4:
+    # pywebview loads its GTK renderer lazily at webview.start() time, so we can
+    # safely replace webview.platforms.gtk after import. Import the parent package
+    # first so the attribute is reachable, then exec our module (webview is now
+    # importable, so gtk4webview.py's top-level "from webview import ..." works).
+    import importlib.util as _ilu
+    import webview.platforms as _wp
+    _gtk4_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gtk4webview.py')
+    _spec = _ilu.spec_from_file_location('webview.platforms.gtk', _gtk4_path)
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    sys.modules['webview.platforms.gtk'] = _mod
+    _wp.gtk = _mod
+    log.info("GTK4/WebKit 6.0 renderer loaded")
 
 import migration
 from app import create_app, populate_cancel
@@ -202,11 +209,7 @@ def _fix_window_role_and_icon(window):
             try:
                 native = getattr(window, 'native', None)
                 if _USE_GTK4:
-                    tl = Gtk.Window.get_toplevels()
-                    for i in range(tl.get_n_items()):
-                        w = tl.get_item(i)
-                        if native is None or w is native:
-                            w.set_role('PlayDate')
+                    pass  # GLib.set_prgname() handles Wayland app-id; no WM role in GTK4
                 else:
                     for w in Gtk.Window.list_toplevels():
                         if native is None or w is native:
