@@ -13,4 +13,4 @@
 
 ### Bug Fixes
 
-- Linux: installer no longer incorrectly accepts webkit-gtk:6 (GTK4) as a valid WebKit installation. PlayDate requires the GTK3-based webkit-gtk:4.0 or :4.1.
+- PAGYWOSG qualification tooltips no longer appear blurry on some systems due to subpixel positioning.
