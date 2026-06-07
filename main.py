@@ -82,6 +82,7 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
                         break
         except Exception:
             pass
+        _note = "WebKit2GTK (4.0/4.1) is preferred; WebKit 6.0 (GTK4) also works."
         if "steamos" in distro_id:
             msg = (
                 "PlayDate requires WebKit2GTK, which was removed by a SteamOS system update.\n\n"
@@ -89,24 +90,27 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
             )
         elif any(d in distro_id for d in ("debian", "ubuntu", "mint", "pop", "lmde", "kali", "elementary")):
             cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
-            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
-                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+            msg = (f"PlayDate requires WebKitGTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.\n\n{_note}")
         elif any(d in distro_id for d in ("fedora", "rhel", "centos", "nobara", "rocky", "alma")):
             cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
-            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
-                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+            msg = (f"PlayDate requires WebKitGTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.\n\n{_note}")
         elif any(d in distro_id for d in ("arch", "manjaro", "endeavour", "garuda")):
             cmd = "sudo pacman -S python-gobject webkit2gtk"
-            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
-                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+            msg = (f"PlayDate requires WebKitGTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.\n\n{_note}")
         elif "gentoo" in distro_id:
             cmd = "sudo emerge net-libs/webkit-gtk:4.1"
-            msg = (f"PlayDate requires WebKit2GTK (slot 4.1) to display its interface.\n\n"
-                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+            msg = (f"PlayDate requires WebKitGTK to display its interface.\n\n"
+                   f"Install either slot:\n\n"
+                   f"    {cmd}  (preferred)\n"
+                   f"    sudo emerge net-libs/webkit-gtk:6  (GTK4, experimental)\n\n"
+                   f"Then re-run PlayDate.")
         elif any(d in distro_id for d in ("opensuse", "suse", "sles")):
             cmd = "sudo zypper install python3-gobject webkit2gtk3"
-            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
-                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+            msg = (f"PlayDate requires WebKitGTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.\n\n{_note}")
         else:
             import shutil as _shutil
             _pkgmgr = {
@@ -120,10 +124,11 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
             }
             cmd = next((c for m, c in _pkgmgr.items() if _shutil.which(m)), None)
             if cmd:
-                msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
-                       f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+                msg = (f"PlayDate requires WebKitGTK to display its interface.\n\n"
+                       f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.\n\n{_note}")
             else:
-                msg = ("PlayDate requires WebKit2GTK (4.0 or 4.1) to display its interface.\n\n"
+                msg = ("PlayDate requires WebKitGTK to display its interface.\n\n"
+                       f"{_note}\n\n"
                        "See README.md for your distribution's install command.")
         log.critical(msg)
         try:

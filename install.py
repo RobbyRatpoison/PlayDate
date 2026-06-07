@@ -327,16 +327,14 @@ class InstallerApp(tk.Tk):
                     "See README.md for full prerequisites and troubleshooting."
                 )
 
-            # Check WebKit2GTK specifically — gi can be present without it.
-            # Note: webkit-gtk:6 (GTK4 / WebKit 6.0) is NOT compatible — PlayDate
-            # requires GTK3-based webkit-gtk:4.0 or :4.1.
+            # Check for any supported WebKit: GTK3 (4.0/4.1) preferred, GTK4 (6.0) also works.
             _webkit_check = (
-                "import gi\n"
+                "import gi, sys\n"
                 "ok = False\n"
-                "for v in ('4.1', '4.0'):\n"
+                "for mod, v in (('WebKit2','4.1'),('WebKit2','4.0'),('WebKit','6.0')):\n"
                 "    try:\n"
-                "        gi.require_version('WebKit2', v)\n"
-                "        from gi.repository import WebKit2\n"
+                "        gi.require_version(mod, v)\n"
+                "        __import__('gi.repository.' + mod)\n"
                 "        ok = True; break\n"
                 "    except Exception:\n"
                 "        pass\n"
@@ -347,12 +345,12 @@ class InstallerApp(tk.Tk):
                 stderr=subprocess.DEVNULL
             )
             if result.returncode == 0:
-                self._log_line("✔  WebKit2GTK found", "ok")
+                self._log_line("✔  WebKitGTK found", "ok")
             else:
                 raise RuntimeError(
-                    "WebKit2GTK (GTK3) is not installed or not found.\n\n"
-                    "PlayDate requires webkit-gtk 4.0 or 4.1 (GTK3-based).\n"
-                    "webkit-gtk:6 (GTK4) is NOT compatible.\n\n"
+                    "WebKitGTK is not installed or not found.\n\n"
+                    "PlayDate requires webkit-gtk 4.0 or 4.1 (GTK3, preferred)\n"
+                    "or webkit-gtk:6 (GTK4, experimental).\n\n"
                     f"Run this command, then re-run the installer:\n\n"
                     f"    {webkit_cmd}\n\n"
                     "See README.md for full prerequisites and troubleshooting."
