@@ -42,23 +42,37 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
-# ── Linux WebKit check — friendly error before pywebview blows up ─────────────
+# ── Linux WebKit detection — must run before importing webview ────────────────
+# Set PLAYDATE_GTK4=1 to force the GTK4/WebKit6 renderer (useful for testing
+# on systems that have both GTK3 and GTK4 WebKit installed).
+_USE_GTK4 = False
 if sys.platform == "linux" and not getattr(sys, 'frozen', False):
     try:
         import gi as _gi
         _webkit_ok = False
-        for _v in ('4.1', '4.0', '6.0'):
+        _force_gtk4 = os.environ.get('PLAYDATE_GTK4') == '1'
+        # Try GTK3/WebKit2 first (4.1, then 4.0), unless GTK4 is forced
+        if not _force_gtk4:
+            for _v in ('4.1', '4.0'):
+                try:
+                    _gi.require_version('WebKit2', _v)
+                    from gi.repository import WebKit2 as _wk2  # noqa
+                    _webkit_ok = True
+                    break
+                except Exception:
+                    pass
+        # Fall back to (or force) GTK4/WebKit 6.0
+        if not _webkit_ok:
             try:
-                _gi.require_version('WebKit2', _v)
-                from gi.repository import WebKit2 as _wk2  # noqa
+                _gi.require_version('WebKit', '6.0')
+                from gi.repository import WebKit as _wk6  # noqa
                 _webkit_ok = True
-                break
+                _USE_GTK4 = True
             except Exception:
                 pass
         if not _webkit_ok:
-            raise ImportError("WebKit2GTK not found")
+            raise ImportError("WebKitGTK not found")
     except Exception:
-        import subprocess
         distro_id = ""
         try:
             with open("/etc/os-release") as _f:
@@ -73,47 +87,80 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
                 "PlayDate requires WebKit2GTK, which was removed by a SteamOS system update.\n\n"
                 "Re-run install_steamdeck.sh (in the PlayDate folder) to reinstall it."
             )
-        elif any(d in distro_id for d in ("debian", "ubuntu")):
+        elif any(d in distro_id for d in ("debian", "ubuntu", "mint", "pop", "lmde", "kali", "elementary")):
             cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
-            msg = (
-                "PlayDate requires WebKit2GTK to display its interface.\n\n"
-                f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate."
-            )
-        elif any(d in distro_id for d in ("fedora", "rhel", "centos")):
+            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+        elif any(d in distro_id for d in ("fedora", "rhel", "centos", "nobara", "rocky", "alma")):
             cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
-            msg = (
-                "PlayDate requires WebKit2GTK to display its interface.\n\n"
-                f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate."
-            )
-        elif "arch" in distro_id:
+            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+        elif any(d in distro_id for d in ("arch", "manjaro", "endeavour", "garuda")):
             cmd = "sudo pacman -S python-gobject webkit2gtk"
-            msg = (
-                "PlayDate requires WebKit2GTK to display its interface.\n\n"
-                f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate."
-            )
+            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+        elif "gentoo" in distro_id:
+            cmd = "sudo emerge net-libs/webkit-gtk:4.1"
+            msg = (f"PlayDate requires WebKit2GTK (slot 4.1) to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+        elif any(d in distro_id for d in ("opensuse", "suse", "sles")):
+            cmd = "sudo zypper install python3-gobject webkit2gtk3"
+            msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
+                   f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
         else:
-            msg = (
-                "PlayDate requires WebKit2GTK to display its interface.\n\n"
-                "See README.md for your distribution's install command.\n\n"
-                "Then re-run PlayDate."
-            )
+            import shutil as _shutil
+            _pkgmgr = {
+                "apt-get":      "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0",
+                "dnf":          "sudo dnf install python3-gobject webkit2gtk4.0",
+                "pacman":       "sudo pacman -S python-gobject webkit2gtk",
+                "zypper":       "sudo zypper install python3-gobject webkit2gtk3",
+                "emerge":       "sudo emerge net-libs/webkit-gtk:4.1",
+                "xbps-install": "sudo xbps-install python3-gobject webkit2gtk",
+                "apk":          "sudo apk add py3-gobject3 webkit2gtk",
+            }
+            cmd = next((c for m, c in _pkgmgr.items() if _shutil.which(m)), None)
+            if cmd:
+                msg = (f"PlayDate requires WebKit2GTK to display its interface.\n\n"
+                       f"Install it with:\n\n    {cmd}\n\nThen re-run PlayDate.")
+            else:
+                msg = ("PlayDate requires WebKit2GTK (4.0 or 4.1) to display its interface.\n\n"
+                       "See README.md for your distribution's install command.")
         log.critical(msg)
-        # Show a plain tkinter dialog if possible, otherwise just print
         try:
             import tkinter as _tk
             from tkinter import messagebox as _mb
             _r = _tk.Tk(); _r.withdraw()
-            _mb.showerror("Missing dependency — WebKit2GTK", msg)
+            _mb.showerror("Missing dependency — WebKitGTK", msg)
             _r.destroy()
         except Exception:
             print(msg)
         sys.exit(1)
 
+if _USE_GTK4:
+    # Inject the GTK4/WebKit6 renderer before pywebview is imported
+    import importlib.util as _ilu
+    _gtk4_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gtk4webview.py')
+    _spec = _ilu.spec_from_file_location('webview.platforms.gtk', _gtk4_path)
+    _mod = _ilu.module_from_spec(_spec)
+    sys.modules['webview.platforms.gtk'] = _mod
+    _spec.loader.exec_module(_mod)
+    log.info("GTK4/WebKit 6.0 renderer loaded")
+
 # ── Linux/Wayland fixes — must be set before importing webview ────────────────
 os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
-os.environ.setdefault("GDK_BACKEND", "x11")
-os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+if not _USE_GTK4:
+    os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
 os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
+
+if sys.platform == "linux":
+    # Set the GLib program name before the GTK window is created so GTK uses
+    # "playdate" as the Wayland xdg_toplevel app-id. KDE then matches it to
+    # playdate.desktop and shows the correct icon in the titlebar and taskbar.
+    try:
+        from gi.repository import GLib
+        GLib.set_prgname("playdate")
+    except Exception:
+        pass
 
 # ── Imports ───────────────────────────────────────────────────────────────────
 import webview
@@ -122,7 +169,8 @@ import migration
 from app import create_app, populate_cancel
 from config import BASE_DIR
 from database import init_db
-from utils import (find_steam_path, start_steamapps_watcher, stop_steamapps_watcher,
+from utils import (find_steam_path, get_all_steam_library_paths,
+                   start_steamapps_watcher, stop_steamapps_watcher,
                    sync_local_install_status)
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -138,29 +186,35 @@ def _run_flask(flask_app):
     serve(flask_app, host=HOST, port=PORT, threads=8, _quiet=True)
 
 # ── GTK icon patch (Linux only) ───────────────────────────────────────────────
-def _fix_window_icon(window):
+def _fix_window_role_and_icon(window):
+    """Set WM_WINDOW_ROLE and reapply _NET_WM_ICON after the window is mapped."""
+    if sys.platform != 'linux':
+        return
     try:
-        import gi
-        gi.require_version('Gtk', '3.0')
-        from gi.repository import Gtk, GLib, GdkPixbuf
+        from gi.repository import Gtk
 
-        def apply_icon():
+        def apply():
             try:
-                main_gtk_win = getattr(window, 'native', None)
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file(ICON_PATH) if os.path.exists(ICON_PATH) else None
-                for gtk_window in Gtk.Window.list_toplevels():
-                    # Only touch the main window — skip WebKit offscreen windows,
-                    # GtkTooltipWindows, etc.
-                    if main_gtk_win is not None and gtk_window is not main_gtk_win:
-                        continue
-                    gtk_window.set_role('PlayDate')
-                    if pixbuf:
-                        gtk_window.set_icon(pixbuf)
+                native = getattr(window, 'native', None)
+                if _USE_GTK4:
+                    tl = Gtk.Window.get_toplevels()
+                    for i in range(tl.get_n_items()):
+                        w = tl.get_item(i)
+                        if native is None or w is native:
+                            w.set_role('PlayDate')
+                else:
+                    for w in Gtk.Window.list_toplevels():
+                        if native is None or w is native:
+                            w.set_role('PlayDate')
+                    # Reapply icon after window is mapped so KWin picks up _NET_WM_ICON.
+                    # pywebview sets it during __init__ (pre-map); some compositors
+                    # need it set again once the window is visible.
+                    if native and os.path.exists(ICON_PATH):
+                        native.set_icon_from_file(ICON_PATH)
             except Exception as e:
-                log.warning(f"Icon patch failed: {e}")
+                log.warning(f"Window role/icon apply failed: {e}")
 
-        window.events.loaded += lambda: apply_icon()
-        apply_icon()
+        window.events.shown += lambda: apply()
     except Exception:
         pass
 
@@ -172,33 +226,44 @@ def _setup_focus_handler(webview_window):
     _os = _platform.system()
 
     if _os == 'Linux':
-        # GTK: connect to focus-in-event on the native window.
-        # Fires immediately on alt-tab — no click required.
+        # GTK: listen for focus return so gamepad input can be unsuppressed.
         try:
             import gi
-            gi.require_version('Gtk', '3.0')
             from gi.repository import Gtk
 
             _connected = set()
 
-            def _on_gtk_focus_in(gtk_win, event):
-                # For Steam games the JS watcher handles unsuppression via pgrep.
-                # focusInUnsuppress() is a no-op once pgrep has fired, so this
-                # only takes effect for non-Steam games where pgrep never detects
-                # anything and focus-in is the only reliable close signal.
-                def _do():
+            def _do_unsuppress():
+                def _run():
                     try:
                         webview_window.evaluate_js(_UNSUPPRESS_GAMEPAD_JS)
                     except Exception:
                         pass
-                threading.Thread(target=_do, daemon=True).start()
-                return False  # don't consume the event
+                threading.Thread(target=_run, daemon=True).start()
 
-            def _connect_focus():
-                for gtk_win in Gtk.Window.list_toplevels():
-                    if id(gtk_win) not in _connected:
-                        gtk_win.connect('focus-in-event', _on_gtk_focus_in)
-                        _connected.add(id(gtk_win))
+            if _USE_GTK4:
+                # GTK4: use EventControllerFocus on each top-level window.
+                # 'focus-in-event' signal is removed in GTK4.
+                def _connect_focus():
+                    tl = Gtk.Window.get_toplevels()
+                    for i in range(tl.get_n_items()):
+                        gtk_win = tl.get_item(i)
+                        if id(gtk_win) not in _connected:
+                            ctrl = Gtk.EventControllerFocus.new()
+                            ctrl.connect('enter', lambda c: _do_unsuppress())
+                            gtk_win.add_controller(ctrl)
+                            _connected.add(id(gtk_win))
+            else:
+                # GTK3: connect to focus-in-event directly.
+                def _on_gtk_focus_in(gtk_win, event):
+                    _do_unsuppress()
+                    return False
+
+                def _connect_focus():
+                    for gtk_win in Gtk.Window.list_toplevels():
+                        if id(gtk_win) not in _connected:
+                            gtk_win.connect('focus-in-event', _on_gtk_focus_in)
+                            _connected.add(id(gtk_win))
 
             webview_window.events.loaded += lambda: _connect_focus()
             _connect_focus()
@@ -1000,9 +1065,9 @@ if __name__ == '__main__':
         raise
 
     # 2b. Start filesystem watchers + sync install status on launch
-    _steamapps_path = find_steam_path()
-    if _steamapps_path:
-        start_steamapps_watcher(_steamapps_path)
+    _steamapps_paths = get_all_steam_library_paths()
+    if _steamapps_paths:
+        start_steamapps_watcher(_steamapps_paths)
     else:
         log.warning("Steam path not found — steamapps watcher not started")
 
@@ -1137,13 +1202,14 @@ if __name__ == '__main__':
     window.events.shown     += _on_shown
     window.events.closing   += _on_closing
 
-    # 6. Linux icon fix + GTK focus handler
-    _fix_window_icon(window)
+    # 6. Window role + icon + GTK focus handler
+    _fix_window_role_and_icon(window)
     _setup_focus_handler(window)
 
-    # 7. Start webview event loop
+    # 7. Start webview event loop (icon= sets _NET_WM_ICON via pywebview's renderer)
     log.info("Launching PlayDate window")
-    webview.start(debug=False, storage_path=os.path.join(BASE_DIR, 'webview_storage'))
+    _icon = ICON_PATH if os.path.exists(ICON_PATH) else None
+    webview.start(debug=False, storage_path=os.path.join(BASE_DIR, 'webview_storage'), icon=_icon)
 
     # 8. Clean exit
     log.info("Window closed. PlayDate exiting.")

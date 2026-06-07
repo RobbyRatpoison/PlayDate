@@ -278,14 +278,38 @@ class InstallerApp(tk.Tk):
 
         if SYSTEM == "Linux":
             os_release = self._os_release
-            if any(d in os_release for d in ("debian", "ubuntu")):
+            if any(d in os_release for d in ("debian", "ubuntu", "mint", "pop", "lmde", "kali", "elementary")):
                 webkit_cmd = "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"
-            elif any(d in os_release for d in ("fedora", "rhel", "centos")):
+            elif any(d in os_release for d in ("fedora", "rhel", "centos", "nobara", "rocky", "alma")):
                 webkit_cmd = "sudo dnf install python3-gobject webkit2gtk4.0"
-            elif "arch" in os_release:
+            elif any(d in os_release for d in ("arch", "manjaro", "endeavour", "garuda")):
                 webkit_cmd = "sudo pacman -S python-gobject webkit2gtk"
+            elif "gentoo" in os_release:
+                webkit_cmd = "sudo emerge net-libs/webkit-gtk:4.1"
+            elif any(d in os_release for d in ("opensuse", "suse", "sles")):
+                webkit_cmd = "sudo zypper install python3-gobject webkit2gtk3"
+            elif "void" in os_release:
+                webkit_cmd = "sudo xbps-install python3-gobject webkit2gtk"
+            elif "alpine" in os_release:
+                webkit_cmd = "sudo apk add py3-gobject3 webkit2gtk"
+            elif "nixos" in os_release:
+                webkit_cmd = "Add pythonPackages.pygobject3 and webkitgtk_4_1 to your system packages"
             else:
-                webkit_cmd = "See README.md for instructions for your distribution."
+                # Fall back to probing for a known package manager
+                _pkgmgr_cmds = [
+                    ("apt-get",    "sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0"),
+                    ("dnf",        "sudo dnf install python3-gobject webkit2gtk4.0"),
+                    ("pacman",     "sudo pacman -S python-gobject webkit2gtk"),
+                    ("zypper",     "sudo zypper install python3-gobject webkit2gtk3"),
+                    ("xbps-install", "sudo xbps-install python3-gobject webkit2gtk"),
+                    ("apk",        "sudo apk add py3-gobject3 webkit2gtk"),
+                    ("emerge",     "sudo emerge net-libs/webkit-gtk:4.1"),
+                ]
+                import shutil
+                webkit_cmd = next(
+                    (cmd for mgr, cmd in _pkgmgr_cmds if shutil.which(mgr)),
+                    "See README.md for instructions for your distribution."
+                )
 
             # Check python3-gi
             try:
@@ -304,11 +328,12 @@ class InstallerApp(tk.Tk):
                 )
 
             # Check WebKit2GTK specifically — gi can be present without it.
-            # Try all known version strings; distros ship 4.0, 4.1, or 6.0.
+            # Note: webkit-gtk:6 (GTK4 / WebKit 6.0) is NOT compatible — PlayDate
+            # requires GTK3-based webkit-gtk:4.0 or :4.1.
             _webkit_check = (
                 "import gi\n"
                 "ok = False\n"
-                "for v in ('4.1', '4.0', '6.0'):\n"
+                "for v in ('4.1', '4.0'):\n"
                 "    try:\n"
                 "        gi.require_version('WebKit2', v)\n"
                 "        from gi.repository import WebKit2\n"
@@ -325,8 +350,9 @@ class InstallerApp(tk.Tk):
                 self._log_line("✔  WebKit2GTK found", "ok")
             else:
                 raise RuntimeError(
-                    "WebKit2GTK is not installed. This is the browser engine PlayDate\n"
-                    "uses to render its interface and cannot be installed via pip.\n\n"
+                    "WebKit2GTK (GTK3) is not installed or not found.\n\n"
+                    "PlayDate requires webkit-gtk 4.0 or 4.1 (GTK3-based).\n"
+                    "webkit-gtk:6 (GTK4) is NOT compatible.\n\n"
                     f"Run this command, then re-run the installer:\n\n"
                     f"    {webkit_cmd}\n\n"
                     "See README.md for full prerequisites and troubleshooting."
@@ -545,8 +571,8 @@ class InstallerApp(tk.Tk):
                     f.write(
                         "[Desktop Entry]\nVersion=1.0\nType=Application\nName=PlayDate\n"
                         "Comment=Your personal Steam library manager\n"
-                        f"Exec={launch_sh}\nIcon={ICON_PATH}\nTerminal=false\n"
-                        "Categories=Game;\nStartupWMClass=main.py\n"
+                        f"Exec={launch_sh}\nIcon=playdate\nTerminal=false\n"
+                        "Categories=Game;\nStartupWMClass=PlayDate\n"
                     )
                 os.chmod(dest, 0o755)
                 self._log_line("✔  Desktop shortcut created", "ok")
@@ -604,6 +630,19 @@ class InstallerApp(tk.Tk):
         self._log_line("✔  PlayDate.app created in ~/Applications", "ok")
 
     def _register_linux(self):
+        # Install icon into XDG icon theme so KDE/GNOME use it for titlebar + taskbar
+        icon_dir = os.path.expanduser("~/.local/share/icons/hicolor/256x256/apps")
+        os.makedirs(icon_dir, exist_ok=True)
+        theme_icon = os.path.join(icon_dir, "playdate.png")
+        try:
+            import shutil
+            shutil.copy2(ICON_PATH, theme_icon)
+            subprocess.run(["gtk-update-icon-cache", "-f", "-t",
+                            os.path.expanduser("~/.local/share/icons/hicolor")],
+                           capture_output=True)
+        except Exception as e:
+            self._log_line(f"⚠  Icon theme registration failed (non-fatal): {e}", "warn")
+
         desktop_dir  = os.path.expanduser("~/.local/share/applications")
         desktop_file = os.path.join(desktop_dir, "playdate.desktop")
         os.makedirs(desktop_dir, exist_ok=True)
@@ -611,8 +650,8 @@ class InstallerApp(tk.Tk):
             f.write(
                 "[Desktop Entry]\nVersion=1.0\nType=Application\nName=PlayDate\n"
                 "Comment=Your personal Steam library manager\n"
-                f"Exec={LAUNCHER_SH}\nIcon={ICON_PATH}\nTerminal=false\n"
-                "Categories=Game;\nStartupWMClass=main.py\n"
+                f"Exec={LAUNCHER_SH}\nIcon=playdate\nTerminal=false\n"
+                "Categories=Game;\nStartupWMClass=PlayDate\n"
             )
         os.chmod(desktop_file, 0o755)
         subprocess.run(["update-desktop-database", desktop_dir], capture_output=True)
