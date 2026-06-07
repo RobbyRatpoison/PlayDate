@@ -1,20 +1,16 @@
 # Release Notes
 
-## v1.5.12
+## v1.5.13
 
 ### Improvements
 
-- Game names can now be updated to match Steam's store display name, which sometimes differs from the internal name. After the first launch, any differences are flagged in the hamburger menu. Clicking the notification opens a review list where you can pick which names to update — nothing changes automatically. Keeping names in sync is important for PAGYWOSG, since category sorting uses the store display name.
-- PAGYWOSG filter builder: after auto-filling an event, a Personal categories section lists all categories that have a mod-verified game list. Checking a category marks it as personal — games verified for another user in those categories are excluded from the filter and qualifications panel entirely, since eligibility depends on your own history (e.g. "won in June").
-- BLAEO sync: completion status downgrades are no longer blocked — if your status on BLAEO differs from PlayDate, BLAEO now wins.
-- BLAEO sync: renaming a list on BLAEO will now automatically rename it in your PlayDate library on the next sync instead of creating a duplicate.
-- BLAEO sync: the result now shows a breakdown of what changed — which games had their status updated and any lists that were renamed. Details are expandable, and everything is also written to the log.
-- Bulk operations (re-scrape, art, ProtonDB, HLTB, date import) now show a progress indicator in the hamburger menu while running. Navigating away and back will resume the progress display and prevent accidentally starting a second operation.
-- Blacklist Manager now has a search box to filter by game name.
+- BLAEO sync: when a game is removed from a BLAEO list, the list name is now removed from the game's groups on the next sync. Previously groups could only be added, never removed.
+- BLAEO sync: adding a game to a BLAEO list now appears in the sync result summary alongside status changes, renames, and removals. All group changes are expandable with per-game detail.
+- Linux: games installed to secondary Steam library locations are now recognized as installed. Previously only the default library path was scanned.
+- Linux: the installer and startup error dialog now include the correct install command for more distributions, including Gentoo, openSUSE, Void, Alpine, and other distros detected via package manager.
+- Linux: the window icon now appears correctly in KDE Plasma 6 titlebar and taskbar when running under native Wayland.
+- Linux: experimental support for GTK4/WebKit 6.0 (webkit-gtk:6 on Gentoo). Enabled automatically when only WebKit 6.0 is available, or via `PLAYDATE_GTK4=1`.
 
 ### Bug Fixes
 
-- Games with no Steam achievements no longer show blank achievement counts after a full library scan. Existing games with blank achievement counts or playtime will be corrected automatically on first launch.
-- Games with no playtime are now imported with 0 minutes instead of blank.
-- Populate progress counter no longer overshoots the total when games with unfetched metadata are visible in the library during a populate run.
-- Populate no longer gets stuck in a running state when the library contains games added by plugins that have not yet had metadata fetched.
+- Linux: installer no longer incorrectly accepts webkit-gtk:6 (GTK4) as a valid WebKit installation. PlayDate requires the GTK3-based webkit-gtk:4.0 or :4.1.
