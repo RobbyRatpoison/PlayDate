@@ -152,6 +152,13 @@ def init_db():
             list_name TEXT NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS blaeo_list_members (
+            appid INTEGER NOT NULL,
+            list_id TEXT NOT NULL,
+            PRIMARY KEY (appid, list_id)
+        )
+    """)
     try:
         cursor.execute("ALTER TABLE blacklist ADD COLUMN platform_id TEXT")
     except Exception:

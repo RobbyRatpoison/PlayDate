@@ -800,9 +800,13 @@ def _add_new(cancel_event=None, progress_cb=None):
             if blaeo_result.get('status') == 'success':
                 sc_count = len(blaeo_result.get('status_changes', []))
                 rn_count = len(blaeo_result.get('renames', []))
+                ad_count = len(blaeo_result.get('additions', []))
+                rm_count = len(blaeo_result.get('removals', []))
                 log.info(f"[populate] BLAEO pre-scrape updated {blaeo_result['updated']} game(s)"
                          + (f", {sc_count} status change(s)" if sc_count else "")
-                         + (f", {rn_count} group rename(s)" if rn_count else "") + ".")
+                         + (f", {rn_count} group rename(s)" if rn_count else "")
+                         + (f", {ad_count} group addition(s)" if ad_count else "")
+                         + (f", {rm_count} group removal(s)" if rm_count else "") + ".")
             else:
                 log.info(f"[populate] BLAEO pre-scrape skipped: {blaeo_result.get('message', 'no account')}")
         except Exception as e:
@@ -1223,6 +1227,10 @@ def scrape_blaeo_games(today=None):
         _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
         status_changes = []  # {from, to, name, appid}
 
+        # Build current membership set from scraped rows
+        current_members = set()  # (appid, list_id)
+        row_data = []  # parsed per-row data for the update loop below
+
         for row in all_rows:
             try:
                 steam_link = row.select_one("a.steam")
@@ -1235,7 +1243,6 @@ def scrape_blaeo_games(today=None):
                     continue
                 appid = int(appid_match.group(1))
 
-                # Extract status from class (e.g., class="game game-never-played")
                 classes = row.get('class', [])
                 raw_status = "Unknown"
                 for c in classes:
@@ -1244,11 +1251,15 @@ def scrape_blaeo_games(today=None):
 
                 clean_status = status_map.get(raw_status, raw_status)
 
-                # Extract Group Tags
                 tag_elements = row.select("a.list-tag")
                 blaeo_groups = [tag.get_text(strip=True) for tag in tag_elements]
+                tag_list_ids = []
+                for tag in tag_elements:
+                    m = re.search(r'/lists/(\w+)', tag.get('href', ''))
+                    if m:
+                        tag_list_ids.append(m.group(1))
+                        current_members.add((appid, m.group(1)))
 
-                # Extract achievement counts from "(X of Y)" span; skip if no achievements
                 unlocked_ach = None
                 total_ach = None
                 ach_td = row.select_one("td.achievements")
@@ -1260,7 +1271,47 @@ def scrape_blaeo_games(today=None):
                             unlocked_ach = int(ach_match.group(1))
                             total_ach    = int(ach_match.group(2))
 
-                # Match against the DB
+                row_data.append((appid, clean_status, blaeo_groups, unlocked_ach, total_ach))
+
+            except Exception as e:
+                log.error(f"Skipping a BLAEO row due to error: {e}")
+                continue
+
+        # Reconcile membership removals
+        stored_members = {(r[0], r[1])
+                          for r in cursor.execute("SELECT appid, list_id FROM blaeo_list_members").fetchall()}
+        removed_members = stored_members - current_members
+        removals = []  # {name, list_name, appid}
+        for appid, list_id in removed_members:
+            list_name = stored.get(list_id) or current_lists.get(list_id)
+            if not list_name:
+                continue
+            cursor.execute(
+                "SELECT name, groups FROM games WHERE appid = ?", (appid,)
+            )
+            db_row = cursor.fetchone()
+            if not db_row:
+                continue
+            existing = set(g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())
+            if list_name in existing:
+                existing.discard(list_name)
+                cursor.execute(
+                    "UPDATE games SET groups = ? WHERE appid = ?",
+                    (",".join(sorted(existing)), appid)
+                )
+                removals.append({"appid": appid, "name": db_row['name'], "list_name": list_name})
+                log.info(f"[BLAEO] Removed '{list_name}' from groups for {db_row['name']} (appid={appid})")
+
+        # Upsert current membership
+        cursor.execute("DELETE FROM blaeo_list_members")
+        cursor.executemany(
+            "INSERT INTO blaeo_list_members (appid, list_id) VALUES (?, ?)",
+            current_members
+        )
+
+        additions = []  # {appid, name, list_names}
+        for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
+            try:
                 cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
                 db_row = cursor.fetchone()
 
@@ -1270,6 +1321,12 @@ def scrape_blaeo_games(today=None):
 
                     updated_groups_set = existing_groups_set.union(set(blaeo_groups))
                     new_groups_str = ",".join(sorted(updated_groups_set))
+
+                    newly_added = set(blaeo_groups) - existing_groups_set
+                    if newly_added:
+                        additions.append({"appid": appid, "name": db_row['name'], "list_names": sorted(newly_added)})
+                        for ln in sorted(newly_added):
+                            log.info(f"[BLAEO] Added '{ln}' to groups for {db_row['name']} (appid={appid})")
 
                     old_status = db_row['completion_status'] or 'Never Played'
                     effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
@@ -1292,7 +1349,7 @@ def scrape_blaeo_games(today=None):
                     log.info(f"Game found on BLAEO but not in local DB: AppID {appid}")
 
             except Exception as e:
-                log.error(f"Skipping a BLAEO row due to error: {e}")
+                log.error(f"Skipping a BLAEO row during update: {e}")
                 continue
 
         db.commit()
@@ -1307,6 +1364,8 @@ def scrape_blaeo_games(today=None):
             "updated":        updated_count,
             "status_changes": status_changes,
             "renames":        renames,
+            "additions":      additions,
+            "removals":       removals,
         }
 
     except Exception as e:
