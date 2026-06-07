@@ -10,7 +10,3 @@
 - Linux: the installer and startup error dialog now include the correct install command for more distributions, including Gentoo, openSUSE, Void, Alpine, and other distros detected via package manager.
 - Linux: the window icon now appears correctly in KDE Plasma 6 titlebar and taskbar when running under native Wayland.
 - Linux: experimental support for GTK4/WebKit 6.0 (webkit-gtk:6 on Gentoo). Enabled automatically when only WebKit 6.0 is available, or via `PLAYDATE_GTK4=1`.
-
-### Bug Fixes
-
-- PAGYWOSG qualification tooltips no longer appear blurry on some systems due to subpixel positioning.
