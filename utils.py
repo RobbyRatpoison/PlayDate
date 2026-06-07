@@ -22,17 +22,22 @@ def consume_install_dirty():
 _watcher_observer = None
 
 
-def start_steamapps_watcher(steamapps_path: str):
+def start_steamapps_watcher(steamapps_paths):
     """
-    Watch the steamapps folder for appmanifest_*.acf changes and automatically
-    update installed status in the DB.  Safe to call from any thread.
+    Watch one or more steamapps folders for appmanifest_*.acf changes and
+    automatically update installed status in the DB.  Safe to call from any thread.
+    Accepts a single path string or a list of paths.
     Returns the Observer instance (already started), or None if watchdog is
-    unavailable or the path doesn't exist.
+    unavailable or no valid paths exist.
     """
     global _watcher_observer
 
-    if not steamapps_path or not os.path.isdir(steamapps_path):
-        log.warning(f"Steamapps watcher: path not found — {steamapps_path!r}")
+    if isinstance(steamapps_paths, str):
+        steamapps_paths = [steamapps_paths]
+
+    valid_paths = [p for p in steamapps_paths if p and os.path.isdir(p)]
+    if not valid_paths:
+        log.warning("Steamapps watcher: no valid paths found")
         return None
 
     try:
@@ -73,10 +78,12 @@ def start_steamapps_watcher(steamapps_path: str):
     stop_steamapps_watcher()  # stop any previous instance
 
     observer = Observer()
-    observer.schedule(_ManifestHandler(), path=steamapps_path, recursive=False)
+    handler = _ManifestHandler()
+    for path in valid_paths:
+        observer.schedule(handler, path=path, recursive=False)
     observer.start()
     _watcher_observer = observer
-    log.info(f"Steamapps watcher started on: {steamapps_path}")
+    log.info(f"Steamapps watcher started on: {valid_paths}")
     return observer
 
 
@@ -118,6 +125,41 @@ def find_steam_path():
             pass
 
     return None
+
+
+def get_all_steam_library_paths():
+    """Returns all steamapps paths from libraryfolders.vdf, plus the default."""
+    default = find_steam_path()
+    paths = [default] if default else []
+    seen = {os.path.realpath(default)} if default else set()
+
+    steam_root = find_steam_root()
+    if not steam_root:
+        return paths
+
+    vdf_path = os.path.join(steam_root, 'config', 'libraryfolders.vdf')
+    if not os.path.isfile(vdf_path):
+        return paths
+
+    try:
+        import vdf as vdf_lib
+        with open(vdf_path, encoding='utf-8', errors='ignore') as f:
+            data = vdf_lib.load(f)
+        folders = data.get('libraryfolders', data.get('LibraryFolders', {}))
+        for key, entry in folders.items():
+            if not key.isdigit():
+                continue
+            path = entry.get('path', '') if isinstance(entry, dict) else str(entry)
+            if path:
+                steamapps = os.path.join(path, 'steamapps')
+                real = os.path.realpath(steamapps)
+                if os.path.isdir(steamapps) and real not in seen:
+                    paths.append(steamapps)
+                    seen.add(real)
+    except Exception as e:
+        log.warning(f"Could not parse libraryfolders.vdf: {e}")
+
+    return paths
 
 
 def detect_steam_id():
@@ -271,48 +313,50 @@ def fetch_local_library(steam_id=None):
 
 def get_acf_names():
     """
-    Reads every appmanifest_*.acf file in the steamapps folder and returns a
-    dict mapping appid (int) → game name (str) for all installed real games.
+    Reads every appmanifest_*.acf file across all Steam library folders and
+    returns a dict mapping appid (int) -> game name (str) for installed real games.
     """
     names = {}
-    steam_path = find_steam_path()
-    if not steam_path or not os.path.isdir(steam_path):
-        return names
-
-    for filename in os.listdir(steam_path):
-        if not (filename.startswith('appmanifest_') and filename.endswith('.acf')):
+    for steam_path in get_all_steam_library_paths():
+        if not os.path.isdir(steam_path):
             continue
-        match = re.search(r'appmanifest_(\d+)\.acf', filename)
-        if not match:
-            continue
-        file_path = os.path.join(steam_path, filename)
-        try:
-            with open(file_path, encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-            if not is_real_game(file_path, content):
+        for filename in os.listdir(steam_path):
+            if not (filename.startswith('appmanifest_') and filename.endswith('.acf')):
                 continue
-            name_match = re.search(r'"name"\s+"([^"]+)"', content)
-            if name_match:
-                names[int(match.group(1))] = name_match.group(1)
-        except Exception:
-            pass
+            match = re.search(r'appmanifest_(\d+)\.acf', filename)
+            if not match:
+                continue
+            file_path = os.path.join(steam_path, filename)
+            try:
+                with open(file_path, encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                if not is_real_game(file_path, content):
+                    continue
+                name_match = re.search(r'"name"\s+"([^"]+)"', content)
+                if name_match:
+                    names[int(match.group(1))] = name_match.group(1)
+            except Exception:
+                pass
 
     return names
 
 def get_locally_installed_appids():
-    """Scans the Steam library for manifest files to find truly installed games."""
-    steam_path = find_steam_path()
-    if not steam_path or not os.path.exists(steam_path):
+    """Scans all Steam library folders for manifest files to find truly installed games."""
+    library_paths = get_all_steam_library_paths()
+    if not library_paths:
         log.warning("Steam path not found. Skipping local scan.")
         return []
 
     installed_ids = []
-    for filename in os.listdir(steam_path):
-        if not (filename.startswith("appmanifest_") and filename.endswith(".acf")):
+    for steam_path in library_paths:
+        if not os.path.isdir(steam_path):
             continue
-        match = re.search(r"appmanifest_(\d+)\.acf", filename)
-        if match and is_real_game(os.path.join(steam_path, filename)):
-            installed_ids.append(int(match.group(1)))
+        for filename in os.listdir(steam_path):
+            if not (filename.startswith("appmanifest_") and filename.endswith(".acf")):
+                continue
+            match = re.search(r"appmanifest_(\d+)\.acf", filename)
+            if match and is_real_game(os.path.join(steam_path, filename)):
+                installed_ids.append(int(match.group(1)))
     return installed_ids
 
 def is_real_game(file_path, content=None):
