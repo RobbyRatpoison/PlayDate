@@ -281,6 +281,7 @@ def _run_sync():
         total_pages = 1
         added       = 0
         updated     = 0
+        fetch_error = None
 
         while page <= total_pages:
             _sync_state['status'] = f'Fetching page {page}…'
@@ -290,9 +291,15 @@ def _run_sync():
                                     allow_redirects=True)
                 if resp.status_code != 200 or '/login' in resp.url:
                     log.warning(f'IndieGala: page {page} returned {resp.status_code} / {resp.url}')
+                    if '/login' in resp.url:
+                        fetch_error = 'Session expired — please reconnect IndieGala in the Plugins settings.'
+                    elif page == 1:
+                        fetch_error = f'Could not load IndieGala library (HTTP {resp.status_code}).'
                     break
             except Exception as e:
                 log.warning(f'IndieGala: page {page} fetch failed: {e}')
+                if page == 1:
+                    fetch_error = f'Connection failed: {e}'
                 break
 
             if page == 1:
@@ -340,12 +347,21 @@ def _run_sync():
             time.sleep(0.5)
 
         db.close()
-        _sync_state.update({
-            'running': False,
-            'status': f'Done — {added} added, {updated} already in library.',
-            'added': added, 'updated': updated,
-        })
-        log.info(f'IndieGala sync complete: {added} added, {updated} existing')
+        if fetch_error:
+            _sync_state.update({
+                'running': False,
+                'status': '',
+                'added': added, 'updated': updated,
+                'error': fetch_error,
+            })
+            log.warning(f'IndieGala sync failed: {fetch_error}')
+        else:
+            _sync_state.update({
+                'running': False,
+                'status': f'Done — {added} added, {updated} already in library.',
+                'added': added, 'updated': updated,
+            })
+            log.info(f'IndieGala sync complete: {added} added, {updated} existing')
 
     except Exception as e:
         log.error(f'IndieGala sync error: {e}', exc_info=True)
