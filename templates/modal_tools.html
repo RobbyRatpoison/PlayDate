@@ -38,6 +38,13 @@
     .tool-status.info    { color: var(--accent); }
     .blaeo-toggle { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
     .blaeo-details { padding-left: 12px; margin-top: 3px; color: var(--text-secondary); font-size: 0.85em; }
+    .blaeo-preview-section { margin-top: 6px; }
+    .blaeo-section-header { display: flex; align-items: center; gap: 6px; }
+    .blaeo-select-links { font-size: 0.8em; color: var(--accent); }
+    .blaeo-select-links span { cursor: pointer; text-decoration: underline; }
+    .blaeo-item { display: flex; align-items: baseline; gap: 5px; padding: 1px 0; }
+    .blaeo-item input[type=checkbox] { margin: 0; flex-shrink: 0; cursor: pointer; position: relative; top: 1px; }
+    .blaeo-item label { cursor: pointer; }
 
     /* Import wizard */
     .import-step {
@@ -661,7 +668,11 @@
         <div class="hub-section">
             <div class="hub-section-label">BLAEO</div>
             <button id="blaeo-btn" class="settings-item" data-modal-row="3" onclick="runBlaeo()">Sync BLAEO</button>
-            <div id="blaeo-status" class="tool-status" style="margin-top:2px;padding:0 10px;"></div>
+            <div id="blaeo-status" class="tool-status" style="margin-top:4px;padding:0 10px;"></div>
+            <div id="blaeo-actions" style="display:none;padding:0 10px;margin-top:6px;gap:8px;flex-wrap:wrap;">
+                <button id="blaeo-apply-btn" class="settings-item" onclick="applyBlaeo()" style="flex:0 0 auto;">Apply Selected</button>
+                <button id="blaeo-cancel-btn" class="settings-item" onclick="cancelBlaeo()" style="flex:0 0 auto;">Discard</button>
+            </div>
         </div>
     </div>
 </div>
@@ -1760,88 +1771,181 @@ async function runPlayniteImport() {
 }
 
 // ── BLAEO ──
+let _blaeoHasPreview = false;
+
 async function runBlaeo() {
-    const btn = document.getElementById('blaeo-btn');
-    const status = document.getElementById('blaeo-status');
+    const btn     = document.getElementById('blaeo-btn');
+    const actions = document.getElementById('blaeo-actions');
+    const status  = document.getElementById('blaeo-status');
     btn.textContent = 'Syncing...';
     btn.disabled = true;
+    actions.style.display = 'none';
+    _blaeoHasPreview = false;
     status.className = 'tool-status info';
     status.textContent = 'Connecting to BLAEO — this may take a minute...';
     try {
-        const res = await fetch('/sync-blaeo');
+        const res  = await fetch('/api/blaeo-preview');
         const data = await res.json();
         if (data.status === 'success') {
-            status.className = 'tool-status success';
             const sc        = data.status_changes || [];
             const renames   = data.renames || [];
             const additions = data.additions || [];
             const removals  = data.removals || [];
-            let html = '';
+            const total = sc.length + renames.length + additions.length + removals.length;
 
-            if (!data.updated && !sc.length && !renames.length && !additions.length && !removals.length) {
-                html = '<div>✔ Nothing to update.</div>';
+            if (total === 0) {
+                status.className = 'tool-status success';
+                status.innerHTML = '<div>&#x2714; Nothing to update.</div>';
             } else {
-                html += `<div>✔ Sync complete — ${data.updated} game${data.updated !== 1 ? 's' : ''} updated.</div>`;
-
-                if (sc.length) {
-                    const grouped = {};
-                    sc.forEach(c => {
-                        const key = c.from + '|' + c.to;
-                        if (!grouped[key]) grouped[key] = { from: c.from, to: c.to, names: [] };
-                        grouped[key].names.push(c.name);
-                    });
-                    const uid = 'blaeo-sc-' + Date.now();
-                    html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${sc.length} status change${sc.length !== 1 ? 's' : ''} ▾</span>`;
-                    html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
-                    Object.values(grouped).forEach(g => {
-                        html += `<div>${escHtml(g.from)} → ${escHtml(g.to)} (${g.names.length}): ${g.names.map(n => escHtml(n)).join(', ')}</div>`;
-                    });
-                    html += '</div></div>';
-                }
-
-                if (renames.length) {
-                    const uid = 'blaeo-rn-' + Date.now();
-                    html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${renames.length} group${renames.length !== 1 ? 's' : ''} renamed ▾</span>`;
-                    html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
-                    renames.forEach(r => {
-                        html += `<div>"${escHtml(r.from)}" → "${escHtml(r.to)}"</div>`;
-                    });
-                    html += '</div></div>';
-                }
-
-                if (additions.length) {
-                    const uid = 'blaeo-ad-' + Date.now();
-                    html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${additions.length} group addition${additions.length !== 1 ? 's' : ''} ▾</span>`;
-                    html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
-                    additions.forEach(a => {
-                        html += `<div>${escHtml(a.name)}: added to ${a.list_names.map(l => `"${escHtml(l)}"`).join(', ')}</div>`;
-                    });
-                    html += '</div></div>';
-                }
-
-                if (removals.length) {
-                    const uid = 'blaeo-rm-' + Date.now();
-                    html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${removals.length} group removal${removals.length !== 1 ? 's' : ''} ▾</span>`;
-                    html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
-                    removals.forEach(r => {
-                        html += `<div>${escHtml(r.name)}: removed from "${escHtml(r.list_name)}"</div>`;
-                    });
-                    html += '</div></div>';
-                }
+                status.className = 'tool-status info';
+                let html = `<div style="margin-bottom:6px;">Review ${total} proposed change${total !== 1 ? 's' : ''} — uncheck any you want to skip:</div>`;
+                html += _blaeoPreviewSection('sc',  sc,       'status change',   'status change',
+                    c => `<input type="checkbox" checked data-btype="status" data-appid="${c.appid}"> <label>${escHtml(c.name)}: ${escHtml(c.from)} &#x2192; ${escHtml(c.to)}</label>`);
+                html += _blaeoPreviewSection('rn',  renames,  'group rename',    'group rename',
+                    r => `<input type="checkbox" checked data-btype="rename" data-from="${escHtml(r.from)}" data-to="${escHtml(r.to)}"> <label>&#x201C;${escHtml(r.from)}&#x201D; &#x2192; &#x201C;${escHtml(r.to)}&#x201D;</label>`);
+                html += _blaeoPreviewSection('add', additions, 'group addition', 'group addition',
+                    a => `<input type="checkbox" checked data-btype="add" data-appid="${a.appid}"> <label>${escHtml(a.name)}: added to ${a.list_names.map(l => `&#x201C;${escHtml(l)}&#x201D;`).join(', ')}</label>`);
+                html += _blaeoPreviewSection('rm',  removals,  'group removal',  'group removal',
+                    r => `<input type="checkbox" checked data-btype="rem" data-appid="${r.appid}" data-listname="${escHtml(r.list_name)}"> <label>${escHtml(r.name)}: removed from &#x201C;${escHtml(r.list_name)}&#x201D;</label>`);
+                status.innerHTML = html;
+                _blaeoHasPreview = true;
+                actions.style.display = 'flex';
             }
-
-            status.innerHTML = html;
         } else {
             status.className = 'tool-status error';
-            status.textContent = '✘ ' + (data.message || 'Sync failed. Check the log.');
+            status.textContent = '&#x2718; ' + (data.message || 'Sync failed. Check the log.');
         }
     } catch (e) {
         status.className = 'tool-status error';
-        status.textContent = '✘ Network error.';
+        status.textContent = '&#x2718; Network error.';
     } finally {
         btn.textContent = 'Sync BLAEO';
         btn.disabled = false;
     }
+}
+
+function _blaeoPreviewSection(key, items, singular, plural, rowFn) {
+    if (!items.length) return '';
+    const uid   = 'blaeo-' + key + '-' + Date.now();
+    const label = items.length === 1 ? `1 ${singular}` : `${items.length} ${plural}s`;
+    let html = `<div class="blaeo-preview-section">`;
+    html += `<div class="blaeo-section-header">`;
+    html += `<span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${label} &#x25BE;</span>`;
+    html += ` <span class="blaeo-select-links">(<span onclick="_blaeoSetAll('${uid}',true)">all</span> / <span onclick="_blaeoSetAll('${uid}',false)">none</span>)</span>`;
+    html += `</div>`;
+    html += `<div id="${uid}">`;
+    items.forEach(item => { html += `<div class="blaeo-item blaeo-details">${rowFn(item)}</div>`; });
+    html += '</div></div>';
+    return html;
+}
+
+function _blaeoSetAll(containerId, checked) {
+    document.getElementById(containerId).querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = checked; });
+}
+
+async function applyBlaeo() {
+    if (!_blaeoHasPreview) return;
+    const applyBtn = document.getElementById('blaeo-apply-btn');
+    const cancelBtn = document.getElementById('blaeo-cancel-btn');
+    const actions  = document.getElementById('blaeo-actions');
+    const statusDiv = document.getElementById('blaeo-status');
+
+    const accept_status    = [];
+    const accept_additions = [];
+    const accept_removals  = [];
+    const accept_renames   = [];
+    statusDiv.querySelectorAll('input[type=checkbox]:checked').forEach(cb => {
+        const t = cb.dataset.btype;
+        if      (t === 'status') accept_status.push(parseInt(cb.dataset.appid));
+        else if (t === 'add')    accept_additions.push(parseInt(cb.dataset.appid));
+        else if (t === 'rem')    accept_removals.push({appid: parseInt(cb.dataset.appid), list_name: cb.dataset.listname});
+        else if (t === 'rename') accept_renames.push({from: cb.dataset.from, to: cb.dataset.to});
+    });
+
+    _blaeoHasPreview = false;
+    actions.style.display = 'none';
+    applyBtn.disabled = true;
+    cancelBtn.disabled = true;
+    statusDiv.className = 'tool-status info';
+    statusDiv.textContent = 'Applying...';
+
+    try {
+        const res  = await fetch('/api/blaeo-apply', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({accept_status, accept_additions, accept_removals, accept_renames})
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            statusDiv.className = 'tool-status success';
+            statusDiv.innerHTML = _blaeoResultHtml(data);
+        } else {
+            statusDiv.className = 'tool-status error';
+            statusDiv.textContent = '&#x2718; ' + (data.message || 'Apply failed. Check the log.');
+        }
+    } catch (e) {
+        statusDiv.className = 'tool-status error';
+        statusDiv.textContent = '&#x2718; Network error.';
+    } finally {
+        applyBtn.disabled = false;
+        cancelBtn.disabled = false;
+    }
+}
+
+function cancelBlaeo() {
+    _blaeoHasPreview = false;
+    document.getElementById('blaeo-actions').style.display = 'none';
+    const s = document.getElementById('blaeo-status');
+    s.className = 'tool-status';
+    s.innerHTML = '';
+}
+
+function _blaeoResultHtml(data) {
+    const sc        = data.status_changes || [];
+    const renames   = data.renames || [];
+    const additions = data.additions || [];
+    const removals  = data.removals || [];
+    if (!data.updated && !sc.length && !renames.length && !additions.length && !removals.length) {
+        return '<div>&#x2714; Nothing applied.</div>';
+    }
+    let html = `<div>&#x2714; Applied &#x2014; ${data.updated} game${data.updated !== 1 ? 's' : ''} updated.</div>`;
+    if (sc.length) {
+        const grouped = {};
+        sc.forEach(c => {
+            const key = c.from + '|' + c.to;
+            if (!grouped[key]) grouped[key] = {from: c.from, to: c.to, names: []};
+            grouped[key].names.push(c.name);
+        });
+        const uid = 'blaeo-r-sc-' + Date.now();
+        html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${sc.length} status change${sc.length !== 1 ? 's' : ''} &#x25BE;</span>`;
+        html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
+        Object.values(grouped).forEach(g => {
+            html += `<div>${escHtml(g.from)} &#x2192; ${escHtml(g.to)} (${g.names.length}): ${g.names.map(n => escHtml(n)).join(', ')}</div>`;
+        });
+        html += '</div></div>';
+    }
+    if (renames.length) {
+        const uid = 'blaeo-r-rn-' + Date.now();
+        html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${renames.length} group${renames.length !== 1 ? 's' : ''} renamed &#x25BE;</span>`;
+        html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
+        renames.forEach(r => { html += `<div>&#x201C;${escHtml(r.from)}&#x201D; &#x2192; &#x201C;${escHtml(r.to)}&#x201D;</div>`; });
+        html += '</div></div>';
+    }
+    if (additions.length) {
+        const uid = 'blaeo-r-ad-' + Date.now();
+        html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${additions.length} group addition${additions.length !== 1 ? 's' : ''} &#x25BE;</span>`;
+        html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
+        additions.forEach(a => { html += `<div>${escHtml(a.name)}: added to ${a.list_names.map(l => `&#x201C;${escHtml(l)}&#x201D;`).join(', ')}</div>`; });
+        html += '</div></div>';
+    }
+    if (removals.length) {
+        const uid = 'blaeo-r-rm-' + Date.now();
+        html += `<div><span class="blaeo-toggle" onclick="var d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'':'none'">${removals.length} group removal${removals.length !== 1 ? 's' : ''} &#x25BE;</span>`;
+        html += `<div id="${uid}" class="blaeo-details" style="display:none">`;
+        removals.forEach(r => { html += `<div>${escHtml(r.name)}: removed from &#x201C;${escHtml(r.list_name)}&#x201D;</div>`; });
+        html += '</div></div>';
+    }
+    return html;
 }
 
 // ── PAGYWOSG ──

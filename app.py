@@ -53,7 +53,7 @@ from library import library_bp
 from utils import sync_local_install_status, record_launch
 from config import BASE_DIR
 from imports import inspect_database, execute_import
-from scrapers import scrape_blaeo_games
+from scrapers import scrape_blaeo_games, get_blaeo_preview, apply_blaeo_changes
 from database import get_db, init_db, update_game_data, add_to_blacklist, remove_from_blacklist, get_blacklist
 import re
 import scrapers
@@ -2493,6 +2493,23 @@ def create_app(template_folder=None, static_folder=None):
     def sync_blaeo():
         try:
             result = scrape_blaeo_games()
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/blaeo-preview')
+    def blaeo_preview():
+        try:
+            result = get_blaeo_preview()
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/blaeo-apply', methods=['POST'])
+    def blaeo_apply():
+        try:
+            selections = request.get_json() or {}
+            result = apply_blaeo_changes(selections)
             return jsonify(result)
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500

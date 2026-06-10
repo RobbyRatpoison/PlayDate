@@ -162,9 +162,9 @@ def _art_worker(normal_q, priority_q, cancel_event, icon_hash_map, today, progre
                 db2.close()
                 name    = game_row['name'] if game_row else ''
                 sgdb_id = _sgdb_search_game_id(name) if name else None
-                v_src   = download_vertical(appid, sgdb_id=sgdb_id)
-                h_src   = download_horizontal(appid, sgdb_id=sgdb_id)
-                i_src   = download_icon(appid, '', sgdb_id=sgdb_id)
+                v_src   = download_vertical(appid, sgdb_id=sgdb_id, game_name=name)
+                h_src   = download_horizontal(appid, sgdb_id=sgdb_id, game_name=name)
+                i_src   = download_icon(appid, '', sgdb_id=sgdb_id, game_name=name)
             else:
                 assets  = _get_steam_assets(appid)
                 v_src   = download_vertical(appid, assets=assets)
@@ -1134,18 +1134,23 @@ def fetch_tag_data(appid, session=None):
 
     return None
 
-def scrape_blaeo_games(today=None):
+_blaeo_preview_cache = None
+
+
+def _blaeo_scrape_and_compute(today=None):
+    """Scrape BLAEO and compute proposed changes without writing to the database."""
     if today is None:
         today = datetime.now().strftime('%Y-%m-%d')
-    config = load_config()
+    config_data = load_config()
     account = get_active_account()
-    blaeo_url = config.get('blaeo_url')
+    blaeo_url = config_data.get('blaeo_url')
     if not blaeo_url:
         steam_id = (account or {}).get('steam_id')
+        if not steam_id:
+            return {"status": "skipped", "message": "No BLAEO account configured."}
         blaeo_url = f"https://www.backlog-assassins.net/users/+{steam_id}/games"
 
     base_url = blaeo_url.rstrip('/')
-
     status_map = {
         "Never-played": "Never Played",
         "Wont-play":    "Won't Play",
@@ -1154,223 +1159,415 @@ def scrape_blaeo_games(today=None):
         "Completed":    "Completed",
     }
 
-    try:
-        session = requests.Session()
-        session.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
 
-        all_rows = []
-        url = base_url
-        page = 1
+    all_rows = []
+    url = base_url
+    page = 1
 
-        while url:
-            log.info(f"Fetching BLAEO page {page}: {url}")
-            r = session.get(url, timeout=15)
-            if r.status_code == 404:
-                raise RuntimeError("BLAEO profile not found. You may not have a BLAEO account.")
-            if r.status_code != 200:
-                raise RuntimeError(f"BLAEO may be down (HTTP {r.status_code}).")
+    while url:
+        log.info(f"Fetching BLAEO page {page}: {url}")
+        r = session.get(url, timeout=15)
+        if r.status_code == 404:
+            raise RuntimeError("BLAEO profile not found. You may not have a BLAEO account.")
+        if r.status_code != 200:
+            raise RuntimeError(f"BLAEO may be down (HTTP {r.status_code}).")
 
-            soup = BeautifulSoup(r.text, 'html.parser')
+        soup = BeautifulSoup(r.text, 'html.parser')
+        if page == 1 and not soup.select_one("table.game-table"):
+            raise RuntimeError("No BLAEO game list found. You may not have a BLAEO account.")
 
-            if page == 1 and not soup.select_one("table.game-table"):
-                raise RuntimeError("No BLAEO game list found. You may not have a BLAEO account.")
+        rows = soup.select("table.game-table tbody tr.game")
+        if not rows:
+            break
 
-            rows = soup.select("table.game-table tbody tr.game")
-            if not rows:
-                break
+        all_rows.extend(rows)
+        last_cursor = rows[-1].get('data-item')
+        if not last_cursor:
+            break
 
-            all_rows.extend(rows)
-            last_cursor = rows[-1].get('data-item')
-            if not last_cursor:
-                break
+        url = f"{base_url}?start_at={last_cursor}"
+        page += 1
+        time.sleep(0.5)
 
-            url = f"{base_url}?start_at={last_cursor}"
-            page += 1
-            time.sleep(0.5)
+    log.info(f"Fetched {len(all_rows)} games from BLAEO across {page} page(s)")
 
-        log.info(f"Fetched {len(all_rows)} games from BLAEO across {page} page(s)")
+    current_lists = {}
+    for row in all_rows:
+        for tag in row.select("a.list-tag"):
+            href = tag.get('href', '')
+            m = re.search(r'/lists/(\w+)', href)
+            if m:
+                current_lists[m.group(1)] = tag.get_text(strip=True)
 
-        # Build id → name map from all list-tag hrefs seen across the full scan
-        current_lists = {}
-        for row in all_rows:
-            for tag in row.select("a.list-tag"):
-                href = tag.get('href', '')
-                list_id_match = re.search(r'/lists/(\w+)', href)
-                if list_id_match:
-                    current_lists[list_id_match.group(1)] = tag.get_text(strip=True)
+    db = get_db()
+    cursor = db.cursor()
 
-        db = get_db()
-        cursor = db.cursor()
-        updated_count = 0
+    stored = {r['list_id']: r['list_name']
+              for r in cursor.execute("SELECT list_id, list_name FROM blaeo_lists").fetchall()}
 
-        # Reconcile renames against stored list map
-        stored = {r['list_id']: r['list_name']
-                  for r in cursor.execute("SELECT list_id, list_name FROM blaeo_lists").fetchall()}
+    renames = []
+    for list_id, new_name in current_lists.items():
+        old_name = stored.get(list_id)
+        if old_name and old_name != new_name:
+            renames.append({"from": old_name, "to": new_name})
 
-        renames = []  # {from, to}
-        for list_id, new_name in current_lists.items():
-            old_name = stored.get(list_id)
-            if old_name and old_name != new_name:
-                log.info(f"BLAEO list renamed: '{old_name}' → '{new_name}' (id={list_id})")
-                cursor.execute(
-                    "UPDATE games SET groups = TRIM(REPLACE(',' || groups || ',', ?, ?), ',') WHERE ',' || groups || ',' LIKE ?",
-                    (f",{old_name},", f",{new_name},", f"%,{old_name},%")
-                )
-                renames.append({"from": old_name, "to": new_name})
+    rename_map = {r['from']: r['to'] for r in renames}
 
-        # Persist the current list map
-        cursor.executemany(
-            "INSERT OR REPLACE INTO blaeo_lists (list_id, list_name) VALUES (?, ?)",
-            current_lists.items()
+    _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
+    status_changes = []
+    current_members = set()
+    row_data = []
+
+    for row in all_rows:
+        try:
+            steam_link = row.select_one("a.steam")
+            if not steam_link:
+                continue
+            href = steam_link.get('href', '')
+            appid_match = re.search(r'/app/(\d+)', href)
+            if not appid_match:
+                continue
+            appid = int(appid_match.group(1))
+
+            classes = row.get('class', [])
+            raw_status = "Unknown"
+            for c in classes:
+                if c.startswith("game-") and c != "game":
+                    raw_status = c.replace("game-", "").capitalize()
+            clean_status = status_map.get(raw_status, raw_status)
+
+            tag_elements = row.select("a.list-tag")
+            blaeo_groups = [tag.get_text(strip=True) for tag in tag_elements]
+            for tag in tag_elements:
+                m = re.search(r'/lists/(\w+)', tag.get('href', ''))
+                if m:
+                    current_members.add((appid, m.group(1)))
+
+            unlocked_ach = None
+            total_ach = None
+            ach_td = row.select_one("td.achievements")
+            if ach_td and ach_td.get('data-value', '-2') != '-2':
+                spans = ach_td.select('span')
+                if len(spans) >= 2:
+                    ach_match = re.search(r'\((\d+) of (\d+)\)', spans[1].get_text())
+                    if ach_match:
+                        unlocked_ach = int(ach_match.group(1))
+                        total_ach    = int(ach_match.group(2))
+
+            row_data.append((appid, clean_status, blaeo_groups, unlocked_ach, total_ach))
+        except Exception as e:
+            log.error(f"Skipping a BLAEO row due to error: {e}")
+            continue
+
+    stored_members = {(r[0], r[1])
+                      for r in cursor.execute("SELECT appid, list_id FROM blaeo_list_members").fetchall()}
+    removed_members = stored_members - current_members
+
+    removals = []
+    for appid, list_id in removed_members:
+        list_name = stored.get(list_id) or current_lists.get(list_id)
+        if not list_name:
+            continue
+        cursor.execute("SELECT name, groups FROM games WHERE appid = ?", (appid,))
+        db_row = cursor.fetchone()
+        if not db_row:
+            continue
+        # Simulate pending renames when checking membership
+        existing = {rename_map.get(g, g) for g in
+                    (g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())}
+        effective_list_name = rename_map.get(list_name, list_name)
+        if effective_list_name in existing:
+            removals.append({"appid": appid, "name": db_row['name'], "list_name": effective_list_name})
+
+    additions = []
+    for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
+        cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
+        db_row = cursor.fetchone()
+        if not db_row:
+            continue
+
+        # Simulate pending renames so additions aren't counted for renamed groups
+        existing_groups_set = {rename_map.get(g, g) for g in
+                               (g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())}
+        newly_added = set(blaeo_groups) - existing_groups_set
+        if newly_added:
+            additions.append({"appid": appid, "name": db_row['name'], "list_names": sorted(newly_added)})
+
+        old_status = db_row['completion_status'] or 'Never Played'
+        effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
+        if effective_status != old_status:
+            status_changes.append({"from": old_status, "to": effective_status,
+                                   "name": db_row['name'], "appid": appid})
+
+    db.close()
+
+    return {
+        "status":         "success",
+        "row_data":       row_data,
+        "current_members": current_members,
+        "current_lists":  current_lists,
+        "stored_lists":   stored,
+        "status_changes": status_changes,
+        "renames":        renames,
+        "additions":      additions,
+        "removals":       removals,
+        "today":          today,
+    }
+
+
+def _blaeo_apply_all(data):
+    """Write all proposed BLAEO changes to the database. Used by the populate flow."""
+    today          = data['today']
+    row_data       = data['row_data']
+    current_members = data['current_members']
+    current_lists  = data['current_lists']
+    renames        = data['renames']
+    removals       = data['removals']
+    additions      = data['additions']
+    status_changes = data['status_changes']
+
+    db = get_db()
+    cursor = db.cursor()
+    updated_count = 0
+
+    for r in renames:
+        log.info(f"BLAEO list renamed: '{r['from']}' -> '{r['to']}'")
+        cursor.execute(
+            "UPDATE games SET groups = TRIM(REPLACE(',' || groups || ',', ?, ?), ',') WHERE ',' || groups || ',' LIKE ?",
+            (f",{r['from']},", f",{r['to']},", f"%,{r['from']},%")
         )
 
-        _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
-        status_changes = []  # {from, to, name, appid}
+    cursor.executemany(
+        "INSERT OR REPLACE INTO blaeo_lists (list_id, list_name) VALUES (?, ?)",
+        current_lists.items()
+    )
 
-        # Build current membership set from scraped rows
-        current_members = set()  # (appid, list_id)
-        row_data = []  # parsed per-row data for the update loop below
+    for r in removals:
+        cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],))
+        db_row = cursor.fetchone()
+        if db_row:
+            existing = set(g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())
+            existing.discard(r['list_name'])
+            cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                           (",".join(sorted(existing)), r['appid']))
+            log.info(f"[BLAEO] Removed '{r['list_name']}' from groups for {r['name']} (appid={r['appid']})")
 
-        for row in all_rows:
-            try:
-                steam_link = row.select_one("a.steam")
-                if not steam_link:
-                    continue
+    cursor.execute("DELETE FROM blaeo_list_members")
+    cursor.executemany(
+        "INSERT INTO blaeo_list_members (appid, list_id) VALUES (?, ?)",
+        current_members
+    )
 
-                href = steam_link.get('href', '')
-                appid_match = re.search(r'/app/(\d+)', href)
-                if not appid_match:
-                    continue
-                appid = int(appid_match.group(1))
+    _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
 
-                classes = row.get('class', [])
-                raw_status = "Unknown"
-                for c in classes:
-                    if c.startswith("game-") and c != "game":
-                        raw_status = c.replace("game-", "").capitalize()
-
-                clean_status = status_map.get(raw_status, raw_status)
-
-                tag_elements = row.select("a.list-tag")
-                blaeo_groups = [tag.get_text(strip=True) for tag in tag_elements]
-                tag_list_ids = []
-                for tag in tag_elements:
-                    m = re.search(r'/lists/(\w+)', tag.get('href', ''))
-                    if m:
-                        tag_list_ids.append(m.group(1))
-                        current_members.add((appid, m.group(1)))
-
-                unlocked_ach = None
-                total_ach = None
-                ach_td = row.select_one("td.achievements")
-                if ach_td and ach_td.get('data-value', '-2') != '-2':
-                    spans = ach_td.select('span')
-                    if len(spans) >= 2:
-                        ach_match = re.search(r'\((\d+) of (\d+)\)', spans[1].get_text())
-                        if ach_match:
-                            unlocked_ach = int(ach_match.group(1))
-                            total_ach    = int(ach_match.group(2))
-
-                row_data.append((appid, clean_status, blaeo_groups, unlocked_ach, total_ach))
-
-            except Exception as e:
-                log.error(f"Skipping a BLAEO row due to error: {e}")
-                continue
-
-        # Reconcile membership removals
-        stored_members = {(r[0], r[1])
-                          for r in cursor.execute("SELECT appid, list_id FROM blaeo_list_members").fetchall()}
-        removed_members = stored_members - current_members
-        removals = []  # {name, list_name, appid}
-        for appid, list_id in removed_members:
-            list_name = stored.get(list_id) or current_lists.get(list_id)
-            if not list_name:
-                continue
-            cursor.execute(
-                "SELECT name, groups FROM games WHERE appid = ?", (appid,)
-            )
+    for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
+        try:
+            cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
             db_row = cursor.fetchone()
             if not db_row:
+                log.info(f"Game found on BLAEO but not in local DB: AppID {appid}")
                 continue
-            existing = set(g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())
-            if list_name in existing:
-                existing.discard(list_name)
+
+            existing_groups_str = db_row['groups'] if db_row['groups'] else ""
+            existing_groups_set = set(g.strip() for g in existing_groups_str.split(',') if g.strip())
+            updated_groups_set = existing_groups_set.union(set(blaeo_groups))
+            new_groups_str = ",".join(sorted(updated_groups_set))
+
+            old_status = db_row['completion_status'] or 'Never Played'
+            effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
+
+            if unlocked_ach is not None:
                 cursor.execute(
-                    "UPDATE games SET groups = ? WHERE appid = ?",
-                    (",".join(sorted(existing)), appid)
+                    "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? WHERE appid = ?",
+                    (effective_status, new_groups_str, unlocked_ach, total_ach, today, appid)
                 )
-                removals.append({"appid": appid, "name": db_row['name'], "list_name": list_name})
-                log.info(f"[BLAEO] Removed '{list_name}' from groups for {db_row['name']} (appid={appid})")
+            else:
+                cursor.execute(
+                    "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
+                    (effective_status, new_groups_str, appid)
+                )
+            updated_count += 1
+        except Exception as e:
+            log.error(f"Skipping a BLAEO row during update: {e}")
+            continue
 
-        # Upsert current membership
-        cursor.execute("DELETE FROM blaeo_list_members")
-        cursor.executemany(
-            "INSERT INTO blaeo_list_members (appid, list_id) VALUES (?, ?)",
-            current_members
-        )
+    db.commit()
+    db.close()
 
-        additions = []  # {appid, name, list_names}
-        for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
-            try:
-                cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
-                db_row = cursor.fetchone()
+    log.info(f"Successfully synced {updated_count} games from BLAEO.")
+    for sc in status_changes:
+        log.info(f"[BLAEO] Status change: {sc['name']} (appid={sc['appid']}): {sc['from']} -> {sc['to']}")
+    for r in renames:
+        log.info(f"[BLAEO] Group renamed: '{r['from']}' -> '{r['to']}'")
+    for a in additions:
+        for ln in a['list_names']:
+            log.info(f"[BLAEO] Added '{ln}' to groups for {a['name']} (appid={a['appid']})")
 
-                if db_row:
-                    existing_groups_str = db_row['groups'] if db_row['groups'] else ""
-                    existing_groups_set = set(g.strip() for g in existing_groups_str.split(',') if g.strip())
+    return {
+        "status":         "success",
+        "updated":        updated_count,
+        "status_changes": status_changes,
+        "renames":        renames,
+        "additions":      additions,
+        "removals":       removals,
+    }
 
-                    updated_groups_set = existing_groups_set.union(set(blaeo_groups))
-                    new_groups_str = ",".join(sorted(updated_groups_set))
 
-                    newly_added = set(blaeo_groups) - existing_groups_set
-                    if newly_added:
-                        additions.append({"appid": appid, "name": db_row['name'], "list_names": sorted(newly_added)})
-                        for ln in sorted(newly_added):
-                            log.info(f"[BLAEO] Added '{ln}' to groups for {db_row['name']} (appid={appid})")
-
-                    old_status = db_row['completion_status'] or 'Never Played'
-                    effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
-                    if effective_status != old_status:
-                        status_changes.append({"from": old_status, "to": effective_status,
-                                               "name": db_row['name'], "appid": appid})
-
-                    if unlocked_ach is not None:
-                        cursor.execute(
-                            "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? WHERE appid = ?",
-                            (effective_status, new_groups_str, unlocked_ach, total_ach, today, appid)
-                        )
-                    else:
-                        cursor.execute(
-                            "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
-                            (effective_status, new_groups_str, appid)
-                        )
-                    updated_count += 1
-                else:
-                    log.info(f"Game found on BLAEO but not in local DB: AppID {appid}")
-
-            except Exception as e:
-                log.error(f"Skipping a BLAEO row during update: {e}")
-                continue
-
-        db.commit()
-        db.close()
-        log.info(f"Successfully synced {updated_count} games from BLAEO.")
-        for sc in status_changes:
-            log.info(f"[BLAEO] Status change: {sc['name']} (appid={sc['appid']}): {sc['from']} → {sc['to']}")
-        for r in renames:
-            log.info(f"[BLAEO] Group renamed: '{r['from']}' → '{r['to']}')")
-        return {
-            "status":         "success",
-            "updated":        updated_count,
-            "status_changes": status_changes,
-            "renames":        renames,
-            "additions":      additions,
-            "removals":       removals,
-        }
-
+def scrape_blaeo_games(today=None):
+    try:
+        data = _blaeo_scrape_and_compute(today)
+        if data.get('status') != 'success':
+            return data
+        return _blaeo_apply_all(data)
     except Exception as e:
         log.error(f"BLAEO scraper error: {e}")
         return {"status": "error", "message": str(e)}
+
+
+def get_blaeo_preview(today=None):
+    """Scrape BLAEO and cache proposed changes for user review. Call apply_blaeo_changes() to commit."""
+    global _blaeo_preview_cache
+    try:
+        data = _blaeo_scrape_and_compute(today)
+        if data.get('status') != 'success':
+            return data
+        _blaeo_preview_cache = data
+        return {
+            "status":         "success",
+            "status_changes": data['status_changes'],
+            "renames":        data['renames'],
+            "additions":      data['additions'],
+            "removals":       data['removals'],
+        }
+    except Exception as e:
+        log.error(f"BLAEO preview error: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def apply_blaeo_changes(selections):
+    """Apply a user-selected subset of the cached BLAEO preview. Clears the cache when done."""
+    global _blaeo_preview_cache
+    if not _blaeo_preview_cache:
+        return {"status": "error", "message": "No preview data. Run Sync first."}
+
+    data           = _blaeo_preview_cache
+    today          = data['today']
+    row_data       = data['row_data']
+    current_members = data['current_members']
+    current_lists  = data['current_lists']
+    renames        = data['renames']
+
+    accept_status_set   = set(int(a) for a in selections.get('accept_status', []))
+    accept_additions_set = set(int(a) for a in selections.get('accept_additions', []))
+    accept_removals_set = {(int(r['appid']), r['list_name']) for r in selections.get('accept_removals', [])}
+    accept_renames_set  = {(r['from'], r['to']) for r in selections.get('accept_renames', [])}
+
+    db = get_db()
+    cursor = db.cursor()
+    updated_count = 0
+
+    for r in renames:
+        if (r['from'], r['to']) in accept_renames_set:
+            log.info(f"[BLAEO] Applying rename: '{r['from']}' -> '{r['to']}'")
+            cursor.execute(
+                "UPDATE games SET groups = TRIM(REPLACE(',' || groups || ',', ?, ?), ',') WHERE ',' || groups || ',' LIKE ?",
+                (f",{r['from']},", f",{r['to']},", f"%,{r['from']},%")
+            )
+
+    # Always update internal tracking tables regardless of user selections
+    cursor.executemany(
+        "INSERT OR REPLACE INTO blaeo_lists (list_id, list_name) VALUES (?, ?)",
+        current_lists.items()
+    )
+    cursor.execute("DELETE FROM blaeo_list_members")
+    cursor.executemany(
+        "INSERT INTO blaeo_list_members (appid, list_id) VALUES (?, ?)",
+        current_members
+    )
+
+    applied_removals = []
+    for r in data['removals']:
+        if (r['appid'], r['list_name']) in accept_removals_set:
+            cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],))
+            db_row = cursor.fetchone()
+            if db_row:
+                existing = set(g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())
+                existing.discard(r['list_name'])
+                cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                               (",".join(sorted(existing)), r['appid']))
+                applied_removals.append(r)
+                log.info(f"[BLAEO] Removed '{r['list_name']}' from groups for {r['name']} (appid={r['appid']})")
+
+    _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
+    applied_status_changes = []
+    applied_additions = []
+
+    for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
+        try:
+            cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
+            db_row = cursor.fetchone()
+            if not db_row:
+                continue
+
+            existing_groups_str = db_row['groups'] if db_row['groups'] else ""
+            existing_groups_set = set(g.strip() for g in existing_groups_str.split(',') if g.strip())
+
+            old_status = db_row['completion_status'] or 'Never Played'
+            effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
+
+            apply_status   = appid in accept_status_set and effective_status != old_status
+            newly_added    = set(blaeo_groups) - existing_groups_set
+            apply_addition = appid in accept_additions_set and bool(newly_added)
+
+            if not apply_status and not apply_addition:
+                continue
+
+            new_groups_set = existing_groups_set.union(set(blaeo_groups)) if apply_addition else existing_groups_set
+            new_groups_str = ",".join(sorted(new_groups_set))
+            final_status   = effective_status if apply_status else old_status
+
+            if apply_status:
+                applied_status_changes.append({"appid": appid, "name": db_row['name'],
+                                               "from": old_status, "to": effective_status})
+                log.info(f"[BLAEO] Status: {db_row['name']} ({appid}): {old_status} -> {effective_status}")
+            if apply_addition:
+                applied_additions.append({"appid": appid, "name": db_row['name'],
+                                          "list_names": sorted(newly_added)})
+                for ln in sorted(newly_added):
+                    log.info(f"[BLAEO] Added '{ln}' to groups for {db_row['name']} (appid={appid})")
+
+            if unlocked_ach is not None:
+                cursor.execute(
+                    "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? WHERE appid = ?",
+                    (final_status, new_groups_str, unlocked_ach, total_ach, today, appid)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
+                    (final_status, new_groups_str, appid)
+                )
+            updated_count += 1
+        except Exception as e:
+            log.error(f"Skipping a BLAEO row during selective apply: {e}")
+            continue
+
+    db.commit()
+    db.close()
+    _blaeo_preview_cache = None
+
+    applied_renames = [r for r in renames if (r['from'], r['to']) in accept_renames_set]
+    log.info(f"[BLAEO] Selective apply: {updated_count} game(s) updated.")
+
+    return {
+        "status":         "success",
+        "updated":        updated_count,
+        "status_changes": applied_status_changes,
+        "renames":        applied_renames,
+        "additions":      applied_additions,
+        "removals":       applied_removals,
+    }
 
 def sync_recent_playtime():
     """
@@ -1650,11 +1847,11 @@ def bulk_art_scrape_games(appids, types, source, cancel_event, progress_cb):
                     name    = name_map.get(appid, '')
                     sgdb_id = _sgdb_search_game_id(name) if name else None
                     if 'vertical' in types:
-                        updates['vertical_art_source']   = download_vertical(appid, sgdb_id=sgdb_id)
+                        updates['vertical_art_source']   = download_vertical(appid, sgdb_id=sgdb_id, game_name=name)
                     if 'horizontal' in types:
-                        updates['horizontal_art_source'] = download_horizontal(appid, sgdb_id=sgdb_id)
+                        updates['horizontal_art_source'] = download_horizontal(appid, sgdb_id=sgdb_id, game_name=name)
                     if 'icon' in types:
-                        updates['icon_source']           = download_icon(appid, '', sgdb_id=sgdb_id)
+                        updates['icon_source']           = download_icon(appid, '', sgdb_id=sgdb_id, game_name=name)
                 else:
                     assets = _get_steam_assets(appid) if source != 'sgdb' else {}
                     if 'vertical' in types:
