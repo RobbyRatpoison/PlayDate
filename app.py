@@ -3005,7 +3005,20 @@ def create_app(template_folder=None, static_folder=None):
                 _add_v(base_appids, base, pool)
 
         from config import load_state
-        sg_group = load_state().get('pagywosg_sg_group') or None
+        _state   = load_state()
+        sg_group = _state.get('pagywosg_sg_group') or None
+        if not sg_group:
+            def _find_sg_group(node):
+                if not node: return None
+                if node.get('type') == 'condition' and node.get('column') == 'groups':
+                    return node.get('value')
+                for child in node.get('items', []):
+                    r = _find_sg_group(child)
+                    if r: return r
+                return None
+            _tree = _state.get('filter_tree')
+            if isinstance(_tree, dict) and _tree.get('pagywosg'):
+                sg_group = _find_sg_group(_tree)
 
         result = {
             'status':   'success',
