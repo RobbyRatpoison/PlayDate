@@ -486,7 +486,7 @@ const FM_FILTER_CONFIG = {
     'icon_source':           { label: 'Icon Source',           type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                                options: ['steam','sgdb_icon','custom','missing'] },
     'platform':              { label: 'Platform',              type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
-                               options: {{ dict((p, platform_labels().get(p, p)) for p in available_platforms) | tojson }} },
+                               options: {{ available_platform_options | tojson }} },
 };
 
 // Operators that need no value input

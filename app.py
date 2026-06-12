@@ -383,8 +383,11 @@ def create_app(template_folder=None, static_folder=None):
     def inject_globals():
         from config import BUILTIN_FILTERS, load_theme
         from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories, get_all_unique_platforms
+        from plugins import platform_labels as _platform_labels
         bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
         ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
+        _plat_list = get_all_unique_platforms()
+        _labels = _platform_labels()
         return dict(
             background_ts=ts,
             builtin_filters=BUILTIN_FILTERS,
@@ -393,7 +396,8 @@ def create_app(template_folder=None, static_folder=None):
             unique_groups=get_all_unique_groups(),
             unique_genres=get_all_unique_genres(),
             unique_categories=get_all_unique_categories(),
-            available_platforms=get_all_unique_platforms(),
+            available_platforms=_plat_list,
+            available_platform_options={p: _labels.get(p, p) for p in _plat_list},
             is_windows=sys.platform == 'win32',
         )
 
