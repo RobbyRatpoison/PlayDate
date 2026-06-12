@@ -253,6 +253,82 @@ def find_localconfig_path(steam_id=None):
     return None
 
 
+def read_steam_collections(steam_id=None):
+    """
+    Reads Steam library collections from cloud-storage-namespace-1.json.
+    Returns {collection_id: {'name': str, 'added': [int]}} for active
+    user-defined collections (id == 'favorite' or starts with 'uc-').
+    """
+    import json
+
+    steam_root = find_steam_root()
+    if not steam_root:
+        return {}
+
+    userdata = os.path.join(steam_root, 'userdata')
+    if not os.path.isdir(userdata):
+        return {}
+
+    subdir = None
+    if steam_id:
+        try:
+            steamid3 = str(int(steam_id) - 76561197960265728)
+            candidate_dir = os.path.join(userdata, steamid3)
+            if os.path.isdir(candidate_dir):
+                subdir = steamid3
+        except (ValueError, TypeError):
+            pass
+
+    if subdir is None:
+        for d in os.listdir(userdata):
+            if d.isdigit():
+                subdir = d
+                break
+
+    if subdir is None:
+        return {}
+
+    json_path = os.path.join(userdata, subdir, 'config', 'cloudstorage', 'cloud-storage-namespace-1.json')
+    if not os.path.isfile(json_path):
+        log.warning(f"read_steam_collections: {json_path} not found")
+        return {}
+
+    try:
+        with open(json_path, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        log.warning(f"read_steam_collections: failed to read {json_path}: {e}")
+        return {}
+
+    collections = {}
+    for entry in data:
+        if not isinstance(entry, list) or len(entry) < 2:
+            continue
+        key, val = entry[0], entry[1]
+        if not key.startswith('user-collections.'):
+            continue
+        if val.get('is_deleted'):
+            continue
+        raw_value = val.get('value')
+        if not raw_value:
+            continue
+        try:
+            col = json.loads(raw_value)
+        except Exception:
+            continue
+        col_id = col.get('id', '')
+        if col_id != 'favorite' and not col_id.startswith('uc-'):
+            continue
+        name = col.get('name', '').strip()
+        if not name:
+            continue
+        added = [int(a) for a in col.get('added', []) if isinstance(a, (int, float))]
+        collections[col_id] = {'name': name, 'added': added}
+
+    log.info(f"read_steam_collections: found {len(collections)} collection(s)")
+    return collections
+
+
 def fetch_local_library(steam_id=None):
     """
     Parses localconfig.vdf and returns a list of dicts for every game that has

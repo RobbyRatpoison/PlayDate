@@ -1,12 +1,13 @@
 # Release Notes
 
-## v1.5.13
+## v1.5.14
 
-### Improvements
+### New Features
 
-- BLAEO sync: when a game is removed from a BLAEO list, the list name is now removed from the game's groups on the next sync. Previously groups could only be added, never removed.
-- BLAEO sync: adding a game to a BLAEO list now appears in the sync result summary alongside status changes, renames, and removals. All group changes are expandable with per-game detail.
-- Games installed to secondary Steam library locations are now recognized as installed. Previously only the default library path was scanned.
-- Linux: the installer and startup error dialog now include the correct install command for more distributions, including Gentoo, openSUSE, Void, Alpine, and other distros detected via package manager.
-- Linux: the window icon now appears correctly in KDE Plasma 6 titlebar and taskbar when running under native Wayland.
-- Linux: experimental support for GTK4/WebKit 6.0 (webkit-gtk:6 on Gentoo). Enabled automatically when only WebKit 6.0 is available.
+- Steam library collections are now synced to groups at startup. Games in a collection get the collection name added as a group; removing a game from a collection removes the group on next launch. The Favorites collection is included; Hidden is not.
+- If a Steam collection and a BLAEO list share the same name, they merge into one group. Removing a game from one source only removes the group if the other source no longer claims it too.
+
+### Bug Fixes
+
+- IndieGala: sync now reports an error when the session cookie has expired, instead of silently reporting 0 games added.
+- BLAEO: renaming a list no longer affects games that have the same group name from a different source (e.g. a Steam collection).

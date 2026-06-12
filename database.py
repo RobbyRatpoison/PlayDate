@@ -159,6 +159,19 @@ def init_db():
             PRIMARY KEY (appid, list_id)
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS steam_collections (
+            collection_id TEXT PRIMARY KEY,
+            collection_name TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS steam_collection_members (
+            appid INTEGER NOT NULL,
+            collection_id TEXT NOT NULL,
+            PRIMARY KEY (appid, collection_id)
+        )
+    """)
     try:
         cursor.execute("ALTER TABLE blacklist ADD COLUMN platform_id TEXT")
     except Exception:
