@@ -438,6 +438,12 @@ select.nav-dropdown:hover {
 // FILTER MODAL ENGINE
 // ═══════════════════════════════════════════════════════════════
 
+const _fmPlatOptions = (function() {
+    const avail = new Set({{ available_platforms | tojson if available_platforms is defined else '[]' }});
+    if (!avail.size) return window._PLAT_LABELS;
+    return Object.fromEntries(Object.entries(window._PLAT_LABELS).filter(([k]) => avail.has(k)));
+})();
+
 const FM_FILTER_CONFIG = {
     'tags':               { label: 'Tag',                  type: 'select', comparisons: {'LIKE':'includes','NOT LIKE':'excludes','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_tags | tojson if unique_tags is defined else '[]' }} },
@@ -486,7 +492,7 @@ const FM_FILTER_CONFIG = {
     'icon_source':           { label: 'Icon Source',           type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                                options: ['steam','sgdb_icon','custom','missing'] },
     'platform':              { label: 'Platform',              type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
-                               options: window._PLAT_LABELS },
+                               options: _fmPlatOptions },
 };
 
 // Operators that need no value input
