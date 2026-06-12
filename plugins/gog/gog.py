@@ -361,10 +361,13 @@ def _do_sync_library():
             if kept:
                 try:
                     sgdb_id = _sgdb_search_game_id(name)
-                    download_vertical(next_appid,   sgdb_id=sgdb_id)
-                    download_horizontal(next_appid, sgdb_id=sgdb_id)
-                    download_icon(next_appid, '',   sgdb_id=sgdb_id)
-                    _update_game_data(next_appid, art_fetched=today)
+                    v_src   = download_vertical(next_appid,   sgdb_id=sgdb_id, game_name=name)
+                    h_src   = download_horizontal(next_appid, sgdb_id=sgdb_id, game_name=name)
+                    i_src   = download_icon(next_appid, '',   sgdb_id=sgdb_id, game_name=name)
+                    _update_game_data(next_appid, art_fetched=today,
+                                      vertical_art_source=v_src,
+                                      horizontal_art_source=h_src,
+                                      icon_source=i_src)
                     log.info(f'GOG art: downloaded for {name!r} (appid {next_appid})')
                 except Exception as e:
                     log.warning(f'GOG art: failed for {name!r}: {e}')
@@ -405,15 +408,21 @@ def sync_library():
 def _fetch_art_for_games(games):
     """Download SGDB art for a list of newly-added GOG games (runs in background)."""
     from images import download_vertical, download_horizontal, download_icon, _sgdb_search_game_id
+    from database import update_game_data
+    from datetime import date
 
     for g in games:
         appid = g['appid']
         name  = g['name']
         try:
             sgdb_id = _sgdb_search_game_id(name)
-            download_vertical(appid,   sgdb_id=sgdb_id)
-            download_horizontal(appid, sgdb_id=sgdb_id)
-            download_icon(appid, '',   sgdb_id=sgdb_id)
+            v_src   = download_vertical(appid,   sgdb_id=sgdb_id, game_name=name)
+            h_src   = download_horizontal(appid, sgdb_id=sgdb_id, game_name=name)
+            i_src   = download_icon(appid, '',   sgdb_id=sgdb_id, game_name=name)
+            update_game_data(appid, art_fetched=date.today().isoformat(),
+                             vertical_art_source=v_src,
+                             horizontal_art_source=h_src,
+                             icon_source=i_src)
             log.info(f'GOG art: downloaded for {name!r} (appid {appid})')
         except Exception as e:
             log.warning(f'GOG art: failed for {name!r}: {e}')

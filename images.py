@@ -110,12 +110,30 @@ def _sgdb_search_game_id(name):
     return None
 
 
-def download_vertical(appid, assets=None, source='auto', sgdb_id=None):
+def _steam_search_appid(name):
+    """Search the Steam store for a game by name. Returns Steam appid (int) or None."""
+    try:
+        res = requests.get(
+            'https://store.steampowered.com/api/storesearch/',
+            params={'term': name, 'l': 'english', 'cc': 'US'},
+            timeout=5
+        )
+        if res.status_code == 200:
+            items = res.json().get('items', [])
+            if items:
+                return items[0]['id']
+    except Exception as e:
+        log.warning(f"_steam_search_appid {name!r}: {e}")
+    return None
+
+
+def download_vertical(appid, assets=None, source='auto', sgdb_id=None, game_name=None):
     """
     Downloads vertical capsule art for a game.
     source: 'auto' (Steam → SGDB fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     Pass pre-fetched assets dict to avoid a redundant API call.
     Pass sgdb_id for non-Steam games to query SGDB by its game ID instead of Steam appid.
+    Pass game_name to enable Steam CDN fallback when SGDB has no images.
     """
     _ensure_dirs()
     save_path = os.path.join(VERTICAL_DIR, f'{appid}.jpg')
@@ -168,15 +186,41 @@ def download_vertical(appid, assets=None, source='auto', sgdb_id=None):
                         log.warning(f"download_vertical: SGDB grid download error for {appid}: {e}")
                     break
 
+    # 4. Steam CDN fallback for non-Steam games — find matching Steam appid by name
+    if game_name:
+        steam_appid = _steam_search_appid(game_name)
+        if steam_appid:
+            steam_assets = _get_steam_assets(steam_appid)
+            for key in ('library_capsule_2x', 'library_capsule'):
+                url = steam_assets.get(key)
+                if url:
+                    try:
+                        res = requests.get(url, timeout=5)
+                        if res.status_code == 200 and save_as_jpg(res.content, save_path):
+                            return 'capsule_2x_steam' if '2x' in key else 'capsule_steam'
+                    except Exception as e:
+                        log.warning(f"download_vertical: Steam fallback asset error for {appid}: {e}")
+            for url, cdn_source in [
+                (f'https://cdn.cloudflare.steamstatic.com/steam/apps/{steam_appid}/library_600x900_2x.jpg', 'capsule_2x_steam'),
+                (f'https://cdn.cloudflare.steamstatic.com/steam/apps/{steam_appid}/library_600x900.jpg',    'capsule_steam'),
+            ]:
+                try:
+                    res = requests.get(url, timeout=5)
+                    if res.status_code == 200 and save_as_jpg(res.content, save_path):
+                        return cdn_source
+                except Exception as e:
+                    log.warning(f"download_vertical: Steam fallback CDN error for {appid}: {e}")
+
     return 'missing'
 
 
-def download_horizontal(appid, assets=None, source='auto', sgdb_id=None):
+def download_horizontal(appid, assets=None, source='auto', sgdb_id=None, game_name=None):
     """
     Downloads horizontal header art for a game.
     source: 'auto' (Steam → SGDB fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     Pass pre-fetched assets dict to avoid a redundant API call.
     Pass sgdb_id for non-Steam games to query SGDB by its game ID instead of Steam appid.
+    Pass game_name to enable Steam CDN fallback when SGDB has no images.
     """
     _ensure_dirs()
     save_path = os.path.join(HORIZONTAL_DIR, f'{appid}.jpg')
@@ -224,15 +268,39 @@ def download_horizontal(appid, assets=None, source='auto', sgdb_id=None):
                         log.warning(f"download_horizontal: SGDB wide grid download error for {appid}: {e}")
                     break
 
+    # 4. Steam CDN fallback for non-Steam games — find matching Steam appid by name
+    if game_name:
+        steam_appid = _steam_search_appid(game_name)
+        if steam_appid:
+            steam_assets = _get_steam_assets(steam_appid)
+            url = steam_assets.get('header_image') or steam_assets.get('main_capsule')
+            if url:
+                try:
+                    res = requests.get(url, timeout=5)
+                    if res.status_code == 200 and save_as_jpg(res.content, save_path):
+                        return 'header_steam'
+                except Exception as e:
+                    log.warning(f"download_horizontal: Steam fallback asset error for {appid}: {e}")
+            try:
+                res = requests.get(
+                    f'https://cdn.cloudflare.steamstatic.com/steam/apps/{steam_appid}/header.jpg',
+                    timeout=5
+                )
+                if res.status_code == 200 and save_as_jpg(res.content, save_path):
+                    return 'header_steam'
+            except Exception as e:
+                log.warning(f"download_horizontal: Steam fallback CDN error for {appid}: {e}")
+
     return 'missing'
 
 
-def download_icon(appid, icon_hash, source='auto', sgdb_id=None):
+def download_icon(appid, icon_hash, source='auto', sgdb_id=None, game_name=None):
     """
     Downloads the game icon.
     source: 'auto' (SGDB first, then Steam fallback), 'steam' (Steam only), 'sgdb' (SGDB only)
     icon_hash is required for Steam source; ignored for SGDB-only.
     Pass sgdb_id for non-Steam games to query SGDB by its game ID instead of Steam appid.
+    Pass game_name to enable SGDB icon lookup via Steam appid when the SGDB game id yields nothing.
     """
     _ensure_dirs()
     save_path = os.path.join(ICONS_DIR, f'{appid}.jpg')
@@ -266,6 +334,23 @@ def download_icon(appid, icon_hash, source='auto', sgdb_id=None):
             except Exception as e:
                 log.warning(f"download_icon: Steam icon error for {appid}: {e}")
                 break
+
+    # 3. SGDB icon via Steam appid fallback for non-Steam games
+    if game_name and sgdb_key:
+        steam_appid = _steam_search_appid(game_name)
+        if steam_appid:
+            data = _sgdb_get(f'icons/steam/{steam_appid}', sgdb_key)
+            if data and data.get('success') and data.get('data'):
+                for item in data['data']:
+                    if item.get('animated'):
+                        continue
+                    try:
+                        img_res = requests.get(item['url'], timeout=5)
+                        if img_res.status_code == 200 and save_as_jpg(img_res.content, save_path):
+                            return 'sgdb_icon_steam'
+                    except Exception as e:
+                        log.warning(f"download_icon: SGDB icon via Steam fallback error for {appid}: {e}")
+                    break
 
     return 'missing'
 

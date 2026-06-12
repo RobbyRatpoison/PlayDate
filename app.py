@@ -1445,7 +1445,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/artwork/rescrape', methods=['POST'])
     def rescrape_artwork():
-        from images import download_vertical, download_horizontal, download_icon
+        from images import download_vertical, download_horizontal, download_icon, _sgdb_search_game_id
         from datetime import datetime
         data        = request.json or {}
         appid       = data.get('appid')
@@ -1454,18 +1454,21 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": "Missing or invalid parameters"}), 400
         appid = int(appid)
         today = datetime.now().strftime('%Y-%m-%d')
+        db    = get_db()
+        row   = db.execute("SELECT name, icon_hash FROM games WHERE appid = ?", (appid,)).fetchone()
+        db.close()
+        is_non_steam = appid < 0
+        game_name    = (row['name'] if row else None) if is_non_steam else None
+        sgdb_id      = _sgdb_search_game_id(game_name) if game_name else None
         if orientation == 'vertical':
-            source = download_vertical(appid)
+            source = download_vertical(appid, sgdb_id=sgdb_id, game_name=game_name)
             update_game_data(appid, vertical_art_source=source, art_fetched=today)
         elif orientation == 'horizontal':
-            source = download_horizontal(appid)
+            source = download_horizontal(appid, sgdb_id=sgdb_id, game_name=game_name)
             update_game_data(appid, horizontal_art_source=source, art_fetched=today)
         else:
-            db  = get_db()
-            row = db.execute("SELECT icon_hash FROM games WHERE appid = ?", (appid,)).fetchone()
-            db.close()
             icon_hash = row['icon_hash'] if row else None
-            source = download_icon(appid, icon_hash)
+            source = download_icon(appid, icon_hash, sgdb_id=sgdb_id, game_name=game_name)
             update_game_data(appid, icon_source=source, art_fetched=today)
         return jsonify({"status": "success", "source": source})
 

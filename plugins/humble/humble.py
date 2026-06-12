@@ -284,10 +284,13 @@ def _run_sync():
                         from images import download_vertical, download_horizontal, download_icon, _sgdb_search_game_id
                         from datetime import date
                         sgdb_id = _sgdb_search_game_id(name)
-                        download_vertical(appid, sgdb_id=sgdb_id)
-                        download_horizontal(appid, sgdb_id=sgdb_id)
-                        download_icon(appid, '', sgdb_id=sgdb_id)
-                        update_game_data(appid, art_fetched=str(date.today()))
+                        v_src   = download_vertical(appid, sgdb_id=sgdb_id, game_name=name)
+                        h_src   = download_horizontal(appid, sgdb_id=sgdb_id, game_name=name)
+                        i_src   = download_icon(appid, '', sgdb_id=sgdb_id, game_name=name)
+                        update_game_data(appid, art_fetched=str(date.today()),
+                                         vertical_art_source=v_src,
+                                         horizontal_art_source=h_src,
+                                         icon_source=i_src)
                     except Exception as _e:
                         log.warning(f'Humble art: failed for {name!r}: {_e}')
 

@@ -662,9 +662,13 @@ def _do_sync_library():
 
             # Download art: SGDB first, Juno CDN fallback
             try:
-                if _download_art_from_urls(next_appid, detail.get('vert_url', ''),
-                                           detail.get('horiz_url', ''), name=name):
-                    _update_game_data(next_appid, art_fetched=today)
+                v_src, h_src = _download_art_from_urls(next_appid, detail.get('vert_url', ''),
+                                                        detail.get('horiz_url', ''), name=name)
+                if v_src is not None or h_src is not None:
+                    art_update = {'art_fetched': today}
+                    if v_src: art_update['vertical_art_source']   = v_src
+                    if h_src: art_update['horizontal_art_source'] = h_src
+                    _update_game_data(next_appid, **art_update)
             except Exception as e:
                 log.warning(f'EA art: failed for {name!r}: {e}')
 
@@ -708,37 +712,35 @@ def _do_sync_library():
 def _download_art_from_urls(appid, vert_url, horiz_url, name=''):
     """
     Download art for an EA game. Tries SGDB first (by name), falls back to Juno CDN URLs.
-    Returns True on any success.
+    Returns (v_src, h_src) source strings; None for a slot that already existed on disk.
     """
     from images import _sgdb_search_game_id, download_vertical, download_horizontal
     vert_path  = os.path.join(VERTICAL_DIR,   f'{appid}.jpg')
     horiz_path = os.path.join(HORIZONTAL_DIR, f'{appid}.jpg')
-    success    = False
 
-    # SGDB first
+    # SGDB first, with Steam CDN fallback via game_name
     sgdb_id = _sgdb_search_game_id(name) if name else None
-    if sgdb_id:
-        if not os.path.exists(vert_path):
-            if download_vertical(appid, sgdb_id=sgdb_id):
-                success = True
-        if not os.path.exists(horiz_path):
-            if download_horizontal(appid, sgdb_id=sgdb_id):
-                success = True
-        if success:
-            return True
+    v_src   = download_vertical(appid, sgdb_id=sgdb_id, game_name=name) if not os.path.exists(vert_path) else None
+    h_src   = download_horizontal(appid, sgdb_id=sgdb_id, game_name=name) if not os.path.exists(horiz_path) else None
 
-    # Juno CDN fallback
-    for url, dest in [(vert_url, vert_path), (horiz_url, horiz_path)]:
-        if not url or os.path.exists(dest):
-            continue
+    # Juno CDN fallback for slots still missing
+    if v_src == 'missing' and vert_url:
         try:
-            r = requests.get(url, timeout=20)
+            r = requests.get(vert_url, timeout=20)
             if r.status_code == 200 and len(r.content) > 1000:
-                save_as_jpg(r.content, dest)
-                success = True
+                save_as_jpg(r.content, vert_path)
+                v_src = 'ea_cdn'
         except Exception as e:
-            log.warning(f'EA art download failed [{dest}]: {e}')
-    return success
+            log.warning(f'EA art download failed [{vert_path}]: {e}')
+    if h_src == 'missing' and horiz_url:
+        try:
+            r = requests.get(horiz_url, timeout=20)
+            if r.status_code == 200 and len(r.content) > 1000:
+                save_as_jpg(r.content, horiz_path)
+                h_src = 'ea_cdn'
+        except Exception as e:
+            log.warning(f'EA art download failed [{horiz_path}]: {e}')
+    return v_src, h_src
 
 
 def _download_art(session, appid, offer_id):

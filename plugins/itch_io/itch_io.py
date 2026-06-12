@@ -304,14 +304,17 @@ def _do_sync():
             cover_url = game.get('still_cover_url') or game.get('cover_url')
             try:
                 sgdb_id   = _sgdb_search_game_id(name)
-                got_vert  = download_vertical(next_appid,   sgdb_id=sgdb_id)
-                got_horiz = download_horizontal(next_appid, sgdb_id=sgdb_id)
-                if cover_url and (not got_vert or not got_horiz):
+                got_vert  = download_vertical(next_appid,   sgdb_id=sgdb_id, game_name=name)
+                got_horiz = download_horizontal(next_appid, sgdb_id=sgdb_id, game_name=name)
+                if cover_url and (got_vert == 'missing' or got_horiz == 'missing'):
                     _download_itch_cover(cover_url, next_appid,
-                                         vertical=not got_vert,
-                                         horizontal=not got_horiz)
-                download_icon(next_appid, '', sgdb_id=sgdb_id)
-                update_game_data(next_appid, art_fetched=today)
+                                         vertical=got_vert == 'missing',
+                                         horizontal=got_horiz == 'missing')
+                got_icon = download_icon(next_appid, '', sgdb_id=sgdb_id, game_name=name)
+                update_game_data(next_appid, art_fetched=today,
+                                 vertical_art_source=got_vert,
+                                 horizontal_art_source=got_horiz,
+                                 icon_source=got_icon)
             except Exception as e:
                 log.warning(f'itch.io art: failed for {name!r}: {e}')
                 if cover_url:
@@ -1091,13 +1094,17 @@ def rescrape_game(appid):
     # Art
     try:
         sgdb_id   = _sgdb_search_game_id(game_name)
-        got_vert  = download_vertical(appid,   sgdb_id=sgdb_id)
-        got_horiz = download_horizontal(appid, sgdb_id=sgdb_id)
-        if cover_url and (not got_vert or not got_horiz):
+        got_vert  = download_vertical(appid,   sgdb_id=sgdb_id, game_name=game_name)
+        got_horiz = download_horizontal(appid, sgdb_id=sgdb_id, game_name=game_name)
+        if cover_url and (got_vert == 'missing' or got_horiz == 'missing'):
             _download_itch_cover(cover_url, appid,
-                                 vertical=not got_vert, horizontal=not got_horiz)
-        download_icon(appid, '', sgdb_id=sgdb_id)
+                                 vertical=got_vert == 'missing',
+                                 horizontal=got_horiz == 'missing')
+        got_icon = download_icon(appid, '', sgdb_id=sgdb_id, game_name=game_name)
         result['art_fetched'] = today
+        result['vertical_art_source']   = got_vert
+        result['horizontal_art_source'] = got_horiz
+        result['icon_source']           = got_icon
     except Exception as e:
         log.warning(f'itch.io rescrape art: failed for {game_name!r}: {e}')
         if cover_url:
