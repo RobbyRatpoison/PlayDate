@@ -2892,12 +2892,17 @@ def create_app(template_folder=None, static_folder=None):
             'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
             'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
         }
+        WEEKDAYS = {
+            'sunday':0,'monday':1,'tuesday':2,'wednesday':3,'thursday':4,'friday':5,'saturday':6
+        }
         month_pat    = re.compile(r'released?\s+in\s+(' + '|'.join(MONTHS) + r')\b', re.I)
         year_pat     = re.compile(r'released?\s+in\s+(\d{4})\b', re.I)
         day_pat      = re.compile(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', re.I)
+        weekday_pat  = re.compile(r'released?\s+on\s+(?:a\s+)?(' + '|'.join(WEEKDAYS) + r')\b', re.I)
+        letter_pat   = re.compile(r'\bstart(?:s|ing)\s+with\s+(?:the\s+letters?\s+)?([A-Za-z](?:\s*[,/]\s*[A-Za-z])*(?:\s*,?\s*or\s+[A-Za-z])?)', re.I)
         steamid_pat1 = re.compile(r'steam\s+id\s+containing\s+(\w+)', re.I)
         steamid_pat2 = re.compile(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', re.I)
-        title_pat    = re.compile(r'[““”]([^”“”]+)[““”]\s+in\s+(?:the|their)\s+title', re.I)
+        title_pat    = re.compile(r'[“””]([^”””]+)[“””]\s+in\s+(?:the|their)\s+title', re.I)
         tag_pat      = re.compile(r'^\s*tag\s+(.+)$', re.I)
 
         _supplement = {}
@@ -2957,6 +2962,17 @@ def create_app(template_folder=None, static_folder=None):
                 conds.append({'col': 'release_date', 'op': 'STRFTIME_DAY',
                                'val': m.group(1), 'pool': pool})
                 continue
+            m = weekday_pat.search(base)
+            if m:
+                conds.append({'col': 'release_date', 'op': 'STRFTIME_WEEKDAY',
+                               'val': str(WEEKDAYS[m.group(1).lower()]), 'pool': pool})
+                continue
+            m = letter_pat.search(base)
+            if m:
+                letters = [c.upper() for c in re.findall(r'\b[A-Za-z]\b', m.group(1))]
+                if letters:
+                    conds.append({'col': 'name', 'op': 'STARTS_WITH_ANY', 'val': letters, 'pool': pool})
+                    continue
             m = steamid_pat1.search(base) or steamid_pat2.search(base)
             if m:
                 conds.append({'col': 'appid', 'op': 'LIKE', 'val': m.group(1), 'pool': pool})

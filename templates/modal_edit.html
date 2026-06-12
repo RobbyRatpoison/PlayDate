@@ -1504,7 +1504,8 @@ const achLink = document.getElementById('achievements-link');
         const map = {
             tags:        { LIKE:           [`Tags includes ${val}`,                    g => _pagCsvContains(g.tags, val)] },
             name:        { LIKE:           [`Title contains "${val}"`,                 g => (g.name||'').toLowerCase().includes(val.toLowerCase())],
-                           STARTS_WITH:   [`Title starts with "${val}"`,              g => (g.name||'').toLowerCase().startsWith(val.toLowerCase())] },
+                           STARTS_WITH:   [`Title starts with "${val}"`,              g => (g.name||'').toLowerCase().startsWith(val.toLowerCase())],
+                           STARTS_WITH_ANY: [`Title starts with ${Array.isArray(val) ? val.join(', ') : val}`, g => { const f = (g.name||'')[0]?.toUpperCase() || ''; return (Array.isArray(val) ? val : [val]).some(l => l.toUpperCase() === f); }] },
             appid:       { LIKE:           [`AppID contains ${val}`,                   g => String(g.appid).includes(val)] },
             developers:  { LIKE:           [`Developer includes ${val}`,               g => _pagCsvContains(g.developers, val)] },
             publishers:  { LIKE:           [`Publisher includes ${val}`,               g => _pagCsvContains(g.publishers, val)] },
