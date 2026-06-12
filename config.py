@@ -1080,7 +1080,7 @@ def _parse_version_tuple(v):
 
 
 def _build_whats_new_html(since_version=None):
-    notes_path = os.path.join(_BUNDLE_DIR, 'RELEASE_NOTES.md')
+    notes_path = os.path.join(_BUNDLE_DIR, 'CHANGELOG.md')
     if not os.path.exists(notes_path):
         return ''
     with open(notes_path, 'r', encoding='utf-8') as f:
