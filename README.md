@@ -39,10 +39,10 @@ Install the WebKit/GTK system dependencies for your distro first:
 sudo apt install python3-gi python3-gi-cairo gir1.2-webkit2-4.0 python3-venv python3-pip python3-tk
 
 # Fedora, Nobara, Ultramarine, etc.
-sudo dnf install python3-gobject webkit2gtk4.0
+sudo dnf install python3-gobject webkit2gtk4.0 python3-tkinter
 
 # Arch, Manjaro, EndeavourOS, CachyOS, Garuda, etc.
-sudo pacman -S python-gobject webkit2gtk
+sudo pacman -S python-gobject webkit2gtk-4.1 tk
 
 # openSUSE
 sudo zypper install python3-gobject typelib-1_0-WebKit2-4_0
