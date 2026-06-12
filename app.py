@@ -2855,7 +2855,8 @@ def create_app(template_folder=None, static_folder=None):
         if cached:
             ts, data = cached
             if datetime.now().timestamp() - ts < 3600:
-                return jsonify(data)
+                from config import load_state
+                return jsonify({**data, 'sg_group': load_state().get('pagywosg_sg_group') or None})
 
         def _fetch(eid):
             req = urllib.request.Request(
@@ -3011,10 +3012,9 @@ def create_app(template_folder=None, static_folder=None):
             'event':    {'id': event_id, 'name': event.get('name', ''), 'month_label': month_label},
             'conds':    conds,
             'verified': verified,
-            'sg_group': sg_group,
         }
         _pagywosg_quals_cache[event_id] = (datetime.now().timestamp(), result)
-        return jsonify(result)
+        return jsonify({**result, 'sg_group': sg_group})
 
     @app.route('/api/pagywosg-sg-group', methods=['GET', 'POST'])
     def pagywosg_sg_group():
