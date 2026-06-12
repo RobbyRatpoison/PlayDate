@@ -7,6 +7,7 @@ release_date_migration.json
 santa_gifts.json
 emulators.json
 *_cache.json
+group_sources_*.json
 
 # --- Claude Code ---
 .claude/

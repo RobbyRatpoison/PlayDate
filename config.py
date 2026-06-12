@@ -28,6 +28,66 @@ CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
 STATE_PATH  = os.path.join(BASE_DIR, 'state.json')
 THEME_PATH  = os.path.join(BASE_DIR, 'theme.json')
 
+_gs_lock = threading.Lock()
+
+
+def get_group_sources_path() -> str:
+    """Return the group_sources JSON path for the active account."""
+    cfg = load_config()
+    steam_id = (cfg or {}).get('active_account', '')
+    if steam_id:
+        return os.path.join(BASE_DIR, f'group_sources_{steam_id}.json')
+    return os.path.join(BASE_DIR, 'group_sources.json')
+
+
+def load_group_sources() -> dict:
+    """Load group_sources JSON for the active account. Returns empty structure if missing."""
+    path = get_group_sources_path()
+    try:
+        if os.path.exists(path):
+            with open(path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {'version': 1, 'sources': {}, 'assignments': {}}
+
+
+def save_group_sources(data: dict):
+    """Atomically save group_sources JSON for the active account."""
+    path = get_group_sources_path()
+    tmp = path + '.tmp'
+    with _gs_lock:
+        with open(tmp, 'w') as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+
+
+def gs_is_protected(gs: dict, appid: int, group_name: str, excluding_source: str) -> bool:
+    """Return True if any source other than excluding_source owns group_name on appid."""
+    owners = gs.get('assignments', {}).get(str(appid), {}).get(group_name, [])
+    return any(s != excluding_source for s in owners)
+
+
+def gs_add_owner(gs: dict, appid: int, group_name: str, source_id: str):
+    """Add source_id as owner of group_name on appid. No-op if already present."""
+    game = gs.setdefault('assignments', {}).setdefault(str(appid), {})
+    owners = game.setdefault(group_name, [])
+    if source_id not in owners:
+        owners.append(source_id)
+
+
+def gs_remove_owner(gs: dict, appid: int, group_name: str, source_id: str):
+    """Remove source_id as owner of group_name on appid. Cleans up empty entries."""
+    assignments = gs.get('assignments', {})
+    game = assignments.get(str(appid), {})
+    owners = game.get(group_name, [])
+    if source_id in owners:
+        owners.remove(source_id)
+    if not owners:
+        game.pop(group_name, None)
+    if not game:
+        assignments.pop(str(appid), None)
+
 DEFAULT_THEME = {
     # Backgrounds
     "--bg-page":          "#0e1419",

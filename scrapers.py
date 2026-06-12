@@ -1201,11 +1201,12 @@ def _blaeo_scrape_and_compute(today=None):
             if m:
                 current_lists[m.group(1)] = tag.get_text(strip=True)
 
-    db = get_db()
-    cursor = db.cursor()
+    from config import load_group_sources
+    gs = load_group_sources()
 
-    stored = {r['list_id']: r['list_name']
-              for r in cursor.execute("SELECT list_id, list_name FROM blaeo_lists").fetchall()}
+    stored = {sid[len('blaeo:'):]: sdata['name']
+              for sid, sdata in gs.get('sources', {}).items()
+              if sdata.get('type') == 'blaeo'}
 
     renames = []
     for list_id, new_name in current_lists.items():
@@ -1214,6 +1215,9 @@ def _blaeo_scrape_and_compute(today=None):
             renames.append({"id": list_id, "from": old_name, "to": new_name})
 
     rename_map = {r['from']: r['to'] for r in renames}
+
+    db = get_db()
+    cursor = db.cursor()
 
     _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
     status_changes = []
@@ -1261,8 +1265,10 @@ def _blaeo_scrape_and_compute(today=None):
             log.error(f"Skipping a BLAEO row due to error: {e}")
             continue
 
-    stored_members = {(r[0], r[1])
-                      for r in cursor.execute("SELECT appid, list_id FROM blaeo_list_members").fetchall()}
+    stored_members = {(appid, sid[len('blaeo:'):])
+                      for sid, sdata in gs.get('sources', {}).items()
+                      if sdata.get('type') == 'blaeo'
+                      for appid in sdata.get('members', [])}
     removed_members = stored_members - current_members
 
     removals = []
@@ -1279,7 +1285,7 @@ def _blaeo_scrape_and_compute(today=None):
                     (g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())}
         effective_list_name = rename_map.get(list_name, list_name)
         if effective_list_name in existing:
-            removals.append({"appid": appid, "name": db_row['name'], "list_name": effective_list_name})
+            removals.append({"appid": appid, "name": db_row['name'], "list_name": effective_list_name, "list_id": list_id})
 
     additions = []
     for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
@@ -1317,85 +1323,138 @@ def _blaeo_scrape_and_compute(today=None):
     }
 
 
+def _rebuild_blaeo_sources(gs, current_lists, current_members, cursor):
+    """Rebuild BLAEO sources in gs from the current scraped state and mark
+    any untracked DB groups as manual. cursor must be open; caller commits."""
+    from config import gs_add_owner
+    # Strip all existing BLAEO ownership from assignments
+    for sid in [s for s in list(gs.get('sources', {})) if s.startswith('blaeo:')]:
+        for game in gs.get('assignments', {}).values():
+            for group in list(game.keys()):
+                if sid in game[group]:
+                    game[group].remove(sid)
+                if not game[group]:
+                    del game[group]
+        del gs['sources'][sid]
+    gs['assignments'] = {k: v for k, v in gs.get('assignments', {}).items() if v}
+
+    for list_id, name in current_lists.items():
+        source_id = f'blaeo:{list_id}'
+        members   = sorted({appid for appid, lid in current_members if lid == list_id})
+        gs.setdefault('sources', {})[source_id] = {'type': 'blaeo', 'name': name, 'members': members}
+        for appid in members:
+            gs_add_owner(gs, appid, name, source_id)
+
+    for db_row in cursor.execute(
+        "SELECT appid, groups FROM games WHERE groups IS NOT NULL AND groups != ''"
+    ).fetchall():
+        appid_str = str(db_row['appid'])
+        for group in (g.strip() for g in db_row['groups'].split(',') if g.strip()):
+            if group not in gs.get('assignments', {}).get(appid_str, {}):
+                gs_add_owner(gs, db_row['appid'], group, 'manual')
+
+
+def _rebuild_steam_sources(gs, current_collections, current_members, cursor):
+    """Rebuild Steam collection sources in gs and mark untracked DB groups as manual."""
+    from config import gs_add_owner
+    for sid in [s for s in list(gs.get('sources', {})) if s.startswith('steam:')]:
+        for game in gs.get('assignments', {}).values():
+            for group in list(game.keys()):
+                if sid in game[group]:
+                    game[group].remove(sid)
+                if not game[group]:
+                    del game[group]
+        del gs['sources'][sid]
+    gs['assignments'] = {k: v for k, v in gs.get('assignments', {}).items() if v}
+
+    for col_id, col_data in current_collections.items():
+        source_id = f'steam:{col_id}'
+        members   = sorted({appid for appid, cid in current_members if cid == col_id})
+        gs.setdefault('sources', {})[source_id] = {'type': 'steam', 'name': col_data['name'], 'members': members}
+        for appid in members:
+            gs_add_owner(gs, appid, col_data['name'], source_id)
+
+    for db_row in cursor.execute(
+        "SELECT appid, groups FROM games WHERE groups IS NOT NULL AND groups != ''"
+    ).fetchall():
+        appid_str = str(db_row['appid'])
+        for group in (g.strip() for g in db_row['groups'].split(',') if g.strip()):
+            if group not in gs.get('assignments', {}).get(appid_str, {}):
+                gs_add_owner(gs, db_row['appid'], group, 'manual')
+
+
 def _blaeo_apply_all(data):
     """Write all proposed BLAEO changes to the database. Used by the populate flow."""
-    today          = data['today']
-    row_data       = data['row_data']
+    from config import load_group_sources, save_group_sources, gs_is_protected, gs_add_owner
+    today           = data['today']
+    row_data        = data['row_data']
     current_members = data['current_members']
-    current_lists  = data['current_lists']
-    renames        = data['renames']
-    removals       = data['removals']
-    additions      = data['additions']
-    status_changes = data['status_changes']
+    current_lists   = data['current_lists']
+    renames         = data['renames']
+    removals        = data['removals']
+    additions       = data['additions']
+    status_changes  = data['status_changes']
 
     db = get_db()
     cursor = db.cursor()
     updated_count = 0
 
+    gs = load_group_sources()
+
     for r in renames:
         log.info(f"BLAEO list renamed: '{r['from']}' -> '{r['to']}'")
-        # Scope to members of this list only — avoids clobbering Steam collections with the same name
-        member_appids = [appid for (appid, lid) in current_members if lid == r['id']]
-        if member_appids:
-            placeholders = ','.join('?' * len(member_appids))
-            old_csv, new_csv = f",{r['from']},", f",{r['to']},"
-            cursor.execute(
-                f"UPDATE games SET groups = TRIM(REPLACE(',' || groups || ',', ?, ?), ',') "
-                f"WHERE appid IN ({placeholders}) AND ',' || groups || ',' LIKE ?",
-                [old_csv, new_csv] + member_appids + [f"%{old_csv}%"]
-            )
-
-    cursor.executemany(
-        "INSERT OR REPLACE INTO blaeo_lists (list_id, list_name) VALUES (?, ?)",
-        current_lists.items()
-    )
+        source_id = f'blaeo:{r["id"]}'
+        for appid, lid in current_members:
+            if lid != r['id']:
+                continue
+            row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (appid,)).fetchone()
+            if not row:
+                continue
+            existing = {g.strip() for g in (row['groups'] or '').split(',') if g.strip()}
+            if r['from'] not in existing:
+                continue
+            if not gs_is_protected(gs, appid, r['from'], source_id):
+                existing.discard(r['from'])
+            existing.add(r['to'])
+            cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                           (','.join(sorted(existing)), appid))
 
     for r in removals:
-        # Skip if game is still in a Steam collection with the same name
-        steam_match = cursor.execute(
-            "SELECT 1 FROM steam_collection_members scm JOIN steam_collections sc "
-            "ON scm.collection_id = sc.collection_id WHERE scm.appid = ? AND sc.collection_name = ?",
-            (r['appid'], r['list_name'])
-        ).fetchone()
-        if steam_match:
-            log.info(f"[BLAEO] Kept '{r['list_name']}' on {r['name']} — still in Steam collection")
+        source_id = f'blaeo:{r["list_id"]}'
+        if gs_is_protected(gs, r['appid'], r['list_name'], source_id):
+            log.info(f"[BLAEO] Kept '{r['list_name']}' on {r['name']} — still owned by another source")
             continue
-        cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],))
-        db_row = cursor.fetchone()
+        db_row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],)).fetchone()
         if db_row:
-            existing = set(g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())
+            existing = {g.strip() for g in (db_row['groups'] or '').split(',') if g.strip()}
             existing.discard(r['list_name'])
             cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
-                           (",".join(sorted(existing)), r['appid']))
+                           (','.join(sorted(existing)), r['appid']))
             log.info(f"[BLAEO] Removed '{r['list_name']}' from groups for {r['name']} (appid={r['appid']})")
-
-    cursor.execute("DELETE FROM blaeo_list_members")
-    cursor.executemany(
-        "INSERT INTO blaeo_list_members (appid, list_id) VALUES (?, ?)",
-        current_members
-    )
 
     _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
 
     for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
         try:
-            cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
-            db_row = cursor.fetchone()
+            db_row = cursor.execute(
+                "SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,)
+            ).fetchone()
             if not db_row:
                 log.info(f"Game found on BLAEO but not in local DB: AppID {appid}")
                 continue
 
-            existing_groups_str = db_row['groups'] if db_row['groups'] else ""
-            existing_groups_set = set(g.strip() for g in existing_groups_str.split(',') if g.strip())
-            updated_groups_set = existing_groups_set.union(set(blaeo_groups))
-            new_groups_str = ",".join(sorted(updated_groups_set))
+            existing_groups_set = {g.strip() for g in (db_row['groups'] or '').split(',') if g.strip()}
+            updated_groups_set  = existing_groups_set.union(set(blaeo_groups))
+            new_groups_str      = ','.join(sorted(updated_groups_set))
 
-            old_status = db_row['completion_status'] or 'Never Played'
+            old_status       = db_row['completion_status'] or 'Never Played'
             effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
 
             if unlocked_ach is not None:
                 cursor.execute(
-                    "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? WHERE appid = ?",
+                    "UPDATE games SET completion_status = ?, groups = ?, "
+                    "unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? "
+                    "WHERE appid = ?",
                     (effective_status, new_groups_str, unlocked_ach, total_ach, today, appid)
                 )
             else:
@@ -1409,7 +1468,10 @@ def _blaeo_apply_all(data):
             continue
 
     db.commit()
+
+    _rebuild_blaeo_sources(gs, current_lists, current_members, cursor)
     db.close()
+    save_group_sources(gs)
 
     log.info(f"Successfully synced {updated_count} games from BLAEO.")
     for sc in status_changes:
@@ -1443,13 +1505,20 @@ def sync_steam_collections(steam_id=None):
         log.info("[SteamCollections] No collections found — sync skipped.")
         return {'status': 'skipped', 'message': 'No collections found.'}
 
+    from config import load_group_sources, save_group_sources, gs_is_protected
+
     db = get_db()
     cursor = db.cursor()
 
-    stored = {r['collection_id']: r['collection_name']
-              for r in cursor.execute("SELECT collection_id, collection_name FROM steam_collections").fetchall()}
-    stored_members = {(r['appid'], r['collection_id'])
-                      for r in cursor.execute("SELECT appid, collection_id FROM steam_collection_members").fetchall()}
+    gs = load_group_sources()
+
+    stored = {sid[len('steam:'):]: sdata['name']
+              for sid, sdata in gs.get('sources', {}).items()
+              if sdata.get('type') == 'steam'}
+    stored_members = {(appid, sid[len('steam:'):])
+                      for sid, sdata in gs.get('sources', {}).items()
+                      if sdata.get('type') == 'steam'
+                      for appid in sdata.get('members', [])}
 
     # Build current members, limited to appids present in the games table
     db_appids = {r['appid'] for r in cursor.execute("SELECT appid FROM games").fetchall()}
@@ -1460,7 +1529,6 @@ def sync_steam_collections(steam_id=None):
         if appid in db_appids
     }
 
-    # Detect renames (same collection_id, different name)
     renames = [
         {'id': col_id, 'from': stored[col_id], 'to': col_data['name']}
         for col_id, col_data in current_collections.items()
@@ -1470,7 +1538,6 @@ def sync_steam_collections(steam_id=None):
     added_members   = current_members - stored_members
     removed_members = stored_members  - current_members
 
-    # Resolve names for reporting
     game_names = {r['appid']: r['name'] for r in cursor.execute("SELECT appid, name FROM games").fetchall()}
 
     added = [
@@ -1485,29 +1552,29 @@ def sync_steam_collections(steam_id=None):
         if col_id in stored
     ]
 
-    # Apply renames — scoped to members of the renamed collection only
     for r in renames:
-        member_appids = [appid for (appid, col_id) in current_members if col_id == r['id']]
+        member_appids = [appid for appid, col_id in current_members if col_id == r['id']]
         if not member_appids:
             continue
-        placeholders = ','.join('?' * len(member_appids))
-        old_csv, new_csv = f",{r['from']},", f",{r['to']},"
-        cursor.execute(
-            f"UPDATE games SET groups = TRIM(REPLACE(',' || groups || ',', ?, ?), ',') "
-            f"WHERE appid IN ({placeholders}) AND ',' || groups || ',' LIKE ?",
-            [old_csv, new_csv] + member_appids + [f"%{old_csv}%"]
-        )
         log.info(f"[SteamCollections] Renamed '{r['from']}' -> '{r['to']}'")
+        source_id = f'steam:{r["id"]}'
+        for appid in member_appids:
+            row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (appid,)).fetchone()
+            if not row:
+                continue
+            existing = {g.strip() for g in (row['groups'] or '').split(',') if g.strip()}
+            if r['from'] not in existing:
+                continue
+            if not gs_is_protected(gs, appid, r['from'], source_id):
+                existing.discard(r['from'])
+            existing.add(r['to'])
+            cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                           (','.join(sorted(existing)), appid))
 
-    # Apply removals — skip if game is also in a BLAEO list with the same name
     for r in removed:
-        blaeo_match = cursor.execute(
-            "SELECT 1 FROM blaeo_list_members bl JOIN blaeo_lists bll ON bl.list_id = bll.list_id "
-            "WHERE bl.appid = ? AND bll.list_name = ?",
-            (r['appid'], r['collection_name'])
-        ).fetchone()
-        if blaeo_match:
-            log.info(f"[SteamCollections] Kept '{r['collection_name']}' on {r['name']} — still in BLAEO list")
+        source_id = f'steam:{r["collection_id"]}'
+        if gs_is_protected(gs, r['appid'], r['collection_name'], source_id):
+            log.info(f"[SteamCollections] Kept '{r['collection_name']}' on {r['name']} — still owned by another source")
             continue
         row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],)).fetchone()
         if row:
@@ -1517,30 +1584,24 @@ def sync_steam_collections(steam_id=None):
                            (','.join(sorted(existing)), r['appid']))
             log.info(f"[SteamCollections] Removed '{r['collection_name']}' from {r['name']} (appid={r['appid']})")
 
-    # Apply additions
+    from config import gs_add_owner as _gs_add_owner
     for a in added:
         row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (a['appid'],)).fetchone()
         if row:
             existing = {g.strip() for g in (row['groups'] or '').split(',') if g.strip()}
+            if a['collection_name'] in existing:
+                # Group pre-existed before this Steam collection claimed it — treat as manual co-owner
+                _gs_add_owner(gs, a['appid'], a['collection_name'], 'manual')
             existing.add(a['collection_name'])
             cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
                            (','.join(sorted(existing)), a['appid']))
             log.info(f"[SteamCollections] Added '{a['collection_name']}' to {a['name']} (appid={a['appid']})")
 
-    # Update tracking tables
-    cursor.execute("DELETE FROM steam_collections")
-    cursor.executemany(
-        "INSERT INTO steam_collections (collection_id, collection_name) VALUES (?, ?)",
-        [(col_id, col_data['name']) for col_id, col_data in current_collections.items()]
-    )
-    cursor.execute("DELETE FROM steam_collection_members")
-    cursor.executemany(
-        "INSERT INTO steam_collection_members (appid, collection_id) VALUES (?, ?)",
-        current_members
-    )
-
     db.commit()
+
+    _rebuild_steam_sources(gs, current_collections, current_members, cursor)
     db.close()
+    save_group_sources(gs)
 
     log.info(f"[SteamCollections] Sync complete: {len(renames)} rename(s), "
              f"{len(added)} addition(s), {len(removed)} removal(s)")
@@ -1600,50 +1661,41 @@ def apply_blaeo_changes(selections):
     cursor = db.cursor()
     updated_count = 0
 
+    from config import load_group_sources, save_group_sources, gs_is_protected
+    gs = load_group_sources()
+
     for r in renames:
         if (r['from'], r['to']) in accept_renames_set:
             log.info(f"[BLAEO] Applying rename: '{r['from']}' -> '{r['to']}'")
-            # Scope to members of this list only
-            member_appids = [appid for (appid, lid) in current_members if lid == r['id']]
-            if member_appids:
-                placeholders = ','.join('?' * len(member_appids))
-                old_csv, new_csv = f",{r['from']},", f",{r['to']},"
-                cursor.execute(
-                    f"UPDATE games SET groups = TRIM(REPLACE(',' || groups || ',', ?, ?), ',') "
-                    f"WHERE appid IN ({placeholders}) AND ',' || groups || ',' LIKE ?",
-                    [old_csv, new_csv] + member_appids + [f"%{old_csv}%"]
-                )
-
-    # Always update internal tracking tables regardless of user selections
-    cursor.executemany(
-        "INSERT OR REPLACE INTO blaeo_lists (list_id, list_name) VALUES (?, ?)",
-        current_lists.items()
-    )
-    cursor.execute("DELETE FROM blaeo_list_members")
-    cursor.executemany(
-        "INSERT INTO blaeo_list_members (appid, list_id) VALUES (?, ?)",
-        current_members
-    )
+            source_id = f'blaeo:{r["id"]}'
+            for appid, lid in current_members:
+                if lid != r['id']:
+                    continue
+                row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (appid,)).fetchone()
+                if not row:
+                    continue
+                existing = {g.strip() for g in (row['groups'] or '').split(',') if g.strip()}
+                if r['from'] not in existing:
+                    continue
+                if not gs_is_protected(gs, appid, r['from'], source_id):
+                    existing.discard(r['from'])
+                existing.add(r['to'])
+                cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                               (','.join(sorted(existing)), appid))
 
     applied_removals = []
     for r in data['removals']:
         if (r['appid'], r['list_name']) in accept_removals_set:
-            # Skip if game is still in a Steam collection with the same name
-            steam_match = cursor.execute(
-                "SELECT 1 FROM steam_collection_members scm JOIN steam_collections sc "
-                "ON scm.collection_id = sc.collection_id WHERE scm.appid = ? AND sc.collection_name = ?",
-                (r['appid'], r['list_name'])
-            ).fetchone()
-            if steam_match:
-                log.info(f"[BLAEO] Kept '{r['list_name']}' on {r['name']} — still in Steam collection")
+            source_id = f'blaeo:{r["list_id"]}'
+            if gs_is_protected(gs, r['appid'], r['list_name'], source_id):
+                log.info(f"[BLAEO] Kept '{r['list_name']}' on {r['name']} — still owned by another source")
                 continue
-            cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],))
-            db_row = cursor.fetchone()
+            db_row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],)).fetchone()
             if db_row:
-                existing = set(g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())
+                existing = {g.strip() for g in (db_row['groups'] or '').split(',') if g.strip()}
                 existing.discard(r['list_name'])
                 cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
-                               (",".join(sorted(existing)), r['appid']))
+                               (','.join(sorted(existing)), r['appid']))
                 applied_removals.append(r)
                 log.info(f"[BLAEO] Removed '{r['list_name']}' from groups for {r['name']} (appid={r['appid']})")
 
@@ -1701,7 +1753,10 @@ def apply_blaeo_changes(selections):
             continue
 
     db.commit()
+
+    _rebuild_blaeo_sources(gs, current_lists, current_members, cursor)
     db.close()
+    save_group_sources(gs)
     _blaeo_preview_cache = None
 
     applied_renames = [r for r in renames if (r['from'], r['to']) in accept_renames_set]

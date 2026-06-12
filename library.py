@@ -6,6 +6,23 @@ from flask import Blueprint, jsonify, render_template, request, redirect, url_fo
 library_bp = Blueprint('library', __name__)
 
 
+def _track_manual_groups(appid: int, old_groups_str: str, new_groups_str: str):
+    """Update group_sources.json when a game's groups are edited manually."""
+    from config import load_group_sources, save_group_sources, gs_add_owner, gs_remove_owner
+    old = {g.strip() for g in (old_groups_str or '').split(',') if g.strip()}
+    new = {g.strip() for g in (new_groups_str or '').split(',') if g.strip()}
+    added   = new - old
+    removed = old - new
+    if not added and not removed:
+        return
+    gs = load_group_sources()
+    for group in added:
+        gs_add_owner(gs, appid, group, 'manual')
+    for group in removed:
+        gs_remove_owner(gs, appid, group, 'manual')
+    save_group_sources(gs)
+
+
 def _compute_outline_colors(games, state):
     """Return {appid: color} for the highest-priority matching outline rule per game."""
     outlines = state.get('card_outlines', {})
@@ -431,7 +448,15 @@ def update_game():
             data[col] = date_to_ts(data[col]) if data[col] else None
     from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
     try:
+        old_groups_str = None
+        if 'groups' in data:
+            db = get_db()
+            old_row = db.execute("SELECT groups FROM games WHERE appid = ?", (appid,)).fetchone()
+            db.close()
+            old_groups_str = (old_row['groups'] if old_row else None) or ''
         update_game_data(appid, **data)
+        if 'groups' in data:
+            _track_manual_groups(int(appid), old_groups_str, data['groups'] or '')
         db = get_db()
         row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
         db.close()
@@ -527,10 +552,19 @@ def bulk_edit_games(data):
         db = get_db()
 
         if mode == 'replace':
-            db.execute(f"UPDATE games SET {column} = ? WHERE {where}", [value if value else None] + params)
-            updated = db.execute("SELECT changes()").fetchone()[0]
-            db.commit()
-            db.close()
+            if column == 'groups':
+                games = db.execute(f"SELECT appid, groups FROM games WHERE {where}", params).fetchall()
+                db.execute(f"UPDATE games SET {column} = ? WHERE {where}", [value if value else None] + params)
+                updated = db.execute("SELECT changes()").fetchone()[0]
+                db.commit()
+                db.close()
+                for game in games:
+                    _track_manual_groups(game['appid'], game['groups'] or '', value or '')
+            else:
+                db.execute(f"UPDATE games SET {column} = ? WHERE {where}", [value if value else None] + params)
+                updated = db.execute("SELECT changes()").fetchone()[0]
+                db.commit()
+                db.close()
             return jsonify({"status": "success", "updated": updated})
 
         elif mode == 'append':
@@ -551,6 +585,8 @@ def bulk_edit_games(data):
                 if added:
                     db.execute(f"UPDATE games SET {column} = ? WHERE appid = ?",
                                (','.join(existing_list), appid))
+                    if column == 'groups':
+                        _track_manual_groups(appid, existing, ','.join(existing_list))
                     updated += 1
             db.commit()
             db.close()
@@ -568,6 +604,8 @@ def bulk_edit_games(data):
                 if len(new_list) != len(existing_list):
                     db.execute(f"UPDATE games SET {column} = ? WHERE appid = ?",
                                (','.join(new_list), appid))
+                    if column == 'groups':
+                        _track_manual_groups(appid, existing, ','.join(new_list))
                     updated += 1
             db.commit()
             db.close()

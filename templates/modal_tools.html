@@ -43,8 +43,8 @@
     .blaeo-select-links { font-size: 0.8em; color: var(--accent); }
     .blaeo-select-links span { cursor: pointer; text-decoration: underline; }
     .blaeo-item { display: flex; align-items: baseline; gap: 5px; padding: 1px 0; }
-    .blaeo-item input[type=checkbox] { margin: 0; flex-shrink: 0; cursor: pointer; position: relative; top: 1px; }
-    .blaeo-item label { cursor: pointer; }
+    .blaeo-item input[type=checkbox] { margin: 0; flex-shrink: 0; width: auto; cursor: pointer; position: relative; top: 1px; }
+    .blaeo-item label { cursor: pointer; flex: 1; min-width: 0; overflow-wrap: break-word; }
 
     /* Import wizard */
     .import-step {
@@ -1071,6 +1071,7 @@
                         <span style="font-size:0.82rem; color:var(--text-primary);">🎨 theme.json</span>
                         <span style="font-size:0.82rem; color:var(--text-primary);">🕹️ emulators.json</span>
                         <span style="font-size:0.82rem; color:var(--text-primary);">🎁 santa_gifts.json</span>
+                        <span style="font-size:0.82rem; color:var(--text-primary);">🏷️ group_sources.json</span>
                     </div>
                 </div>
                 <div id="backup-include-art-card" data-modal-row="1"
@@ -1092,7 +1093,7 @@
         <!-- Restore tab -->
         <div id="restore-tab" style="display:none;">
             <div style="background:rgba(0,0,0,0.15); border:1px solid var(--color-warning); border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.82rem; color:var(--color-warning); line-height:1.6;">
-                ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, and state.json. This cannot be undone.
+                ⚠ Restoring will <strong>overwrite</strong> your current games.db, config.json, state.json, and group_sources.json. This cannot be undone.
             </div>
             <div id="restore-drop-zone"
                  style="border:2px dashed var(--border); border-radius:8px; padding:24px; text-align:center; cursor:pointer; transition:border-color 0.2s, background 0.2s; margin-bottom:12px;"
@@ -1798,7 +1799,7 @@ async function runBlaeo() {
                 status.innerHTML = '<div>&#x2714; Nothing to update.</div>';
             } else {
                 status.className = 'tool-status info';
-                let html = `<div style="margin-bottom:6px;">Review ${total} proposed change${total !== 1 ? 's' : ''} — uncheck any you want to skip:</div>`;
+                let html = `<div style="margin-bottom:6px;">Review ${total} proposed change${total !== 1 ? 's' : ''}:</div>`;
                 html += _blaeoPreviewSection('sc',  sc,       'status change',   'status change',
                     c => `<input type="checkbox" checked data-btype="status" data-appid="${c.appid}"> <label>${escHtml(c.name)}: ${escHtml(c.from)} &#x2192; ${escHtml(c.to)}</label>`);
                 html += _blaeoPreviewSection('rn',  renames,  'group rename',    'group rename',

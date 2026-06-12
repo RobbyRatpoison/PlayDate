@@ -9,7 +9,7 @@ from config import BASE_DIR, CONFIG_PATH
 
 log = logging.getLogger(__name__)
 
-CURRENT_VERSION    = 10
+CURRENT_VERSION    = 11
 BACKGROUND_VERSION = 11
 
 _migrations:            dict[int, callable] = {}
@@ -442,6 +442,81 @@ def _m10_backfill_achievement_nulls():
             conn.commit()
         finally:
             conn.close()
+
+
+@migration(11)
+def _m11_group_sources_json():
+    """Migrate blaeo_lists/blaeo_list_members/steam_collections/steam_collection_members
+    to per-account group_sources_{steam_id}.json files. Marks untracked groups as manual."""
+    for db_path in _all_db_files():
+        stem = os.path.basename(db_path).replace('games_', '').replace('.db', '')
+        gs_path = os.path.join(BASE_DIR, f'group_sources_{stem}.json')
+
+        if os.path.exists(gs_path):
+            log.info(f"_m11: {os.path.basename(gs_path)} already exists — skipping")
+            continue
+
+        conn = sqlite3.connect(db_path, timeout=10)
+        conn.row_factory = sqlite3.Row
+        try:
+            tables = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()}
+
+            gs = {'version': 1, 'sources': {}, 'assignments': {}}
+
+            if 'blaeo_lists' in tables and 'blaeo_list_members' in tables:
+                blaeo_names = {r['list_id']: r['list_name']
+                               for r in conn.execute("SELECT list_id, list_name FROM blaeo_lists")}
+                blaeo_members: dict[str, list] = {}
+                for r in conn.execute("SELECT appid, list_id FROM blaeo_list_members"):
+                    blaeo_members.setdefault(r['list_id'], []).append(r['appid'])
+                for lid, name in blaeo_names.items():
+                    sid = f'blaeo:{lid}'
+                    members = blaeo_members.get(lid, [])
+                    gs['sources'][sid] = {'type': 'blaeo', 'name': name, 'members': members}
+                    for appid in members:
+                        gs['assignments'].setdefault(str(appid), {}).setdefault(name, [])
+                        if sid not in gs['assignments'][str(appid)][name]:
+                            gs['assignments'][str(appid)][name].append(sid)
+
+            if 'steam_collections' in tables and 'steam_collection_members' in tables:
+                steam_names = {r['collection_id']: r['collection_name']
+                               for r in conn.execute("SELECT collection_id, collection_name FROM steam_collections")}
+                steam_members: dict[str, list] = {}
+                for r in conn.execute("SELECT appid, collection_id FROM steam_collection_members"):
+                    steam_members.setdefault(r['collection_id'], []).append(r['appid'])
+                for cid, name in steam_names.items():
+                    sid = f'steam:{cid}'
+                    members = steam_members.get(cid, [])
+                    gs['sources'][sid] = {'type': 'steam', 'name': name, 'members': members}
+                    for appid in members:
+                        gs['assignments'].setdefault(str(appid), {}).setdefault(name, [])
+                        if sid not in gs['assignments'][str(appid)][name]:
+                            gs['assignments'][str(appid)][name].append(sid)
+
+            # Mark groups not owned by any sync source as manual
+            if 'games' in tables:
+                for r in conn.execute(
+                    "SELECT appid, groups FROM games WHERE groups IS NOT NULL AND groups != ''"
+                ):
+                    appid_str = str(r['appid'])
+                    game_assignments = gs['assignments'].get(appid_str, {})
+                    for group in (g.strip() for g in r['groups'].split(',') if g.strip()):
+                        if group not in game_assignments:
+                            gs['assignments'].setdefault(appid_str, {})[group] = ['manual']
+
+            for table in ('blaeo_list_members', 'blaeo_lists',
+                          'steam_collection_members', 'steam_collections'):
+                if table in tables:
+                    conn.execute(f"DROP TABLE {table}")
+            conn.commit()
+        finally:
+            conn.close()
+
+        with open(gs_path, 'w') as f:
+            json.dump(gs, f, indent=2)
+        log.info(f"_m11: wrote {os.path.basename(gs_path)}")
 
 
 # ── Background migrations ─────────────────────────────────────────────────────

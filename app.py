@@ -3227,6 +3227,8 @@ def create_app(template_folder=None, static_folder=None):
                 zf.write(filepath, arcname)
         for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
             zf.write(db_path, os.path.basename(db_path))
+        for gs_path in _glob.glob(os.path.join(BASE_DIR, 'group_sources_*.json')):
+            zf.write(gs_path, os.path.basename(gs_path))
         if include_art:
             art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
             if os.path.isdir(art_dir):
@@ -3487,6 +3489,17 @@ def create_app(template_folder=None, static_folder=None):
                     app.logger.info(f"Restore: wrote {len(data)} bytes → {dest}")
                     restored.append(arcname)
 
+                # Per-account group sources: group_sources_*.json
+                for arcname in [n for n in names if n.startswith('group_sources_') and n.endswith('.json')]:
+                    dest = _safe_dest(arcname)
+                    if not dest:
+                        continue
+                    with zf.open(arcname) as src:
+                        data = src.read()
+                    with open(dest, 'wb') as dst:
+                        dst.write(data)
+                    restored.append(arcname)
+
                 # Art files: restore to static/img/library/ (including subdirs)
                 art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
                 if art_files:
@@ -3565,6 +3578,15 @@ def create_app(template_folder=None, static_folder=None):
                         skipped.append(arcname)
 
                 for arcname in [n for n in names if n.startswith('games_') and n.endswith('.db')]:
+                    dest = _safe_dest_r(arcname)
+                    if dest:
+                        with zf.open(arcname) as src:
+                            data = src.read()
+                        with open(dest, 'wb') as dst:
+                            dst.write(data)
+                        restored.append(arcname)
+
+                for arcname in [n for n in names if n.startswith('group_sources_') and n.endswith('.json')]:
                     dest = _safe_dest_r(arcname)
                     if dest:
                         with zf.open(arcname) as src:
