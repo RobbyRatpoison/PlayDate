@@ -382,7 +382,7 @@ def create_app(template_folder=None, static_folder=None):
     @app.context_processor
     def inject_globals():
         from config import BUILTIN_FILTERS, load_theme
-        from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
+        from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories, get_all_unique_platforms
         bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
         ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
         return dict(
@@ -393,6 +393,7 @@ def create_app(template_folder=None, static_folder=None):
             unique_groups=get_all_unique_groups(),
             unique_genres=get_all_unique_genres(),
             unique_categories=get_all_unique_categories(),
+            available_platforms=get_all_unique_platforms(),
             is_windows=sys.platform == 'win32',
         )
 

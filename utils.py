@@ -501,6 +501,12 @@ def get_all_unique_genres():
 def get_all_unique_categories():
     return _get_unique_csv_column('categories')
 
+def get_all_unique_platforms():
+    db = get_db()
+    rows = db.execute("SELECT DISTINCT platform FROM games WHERE platform IS NOT NULL ORDER BY platform").fetchall()
+    db.close()
+    return [r['platform'] for r in rows]
+
 
 def parse_appinfo():
     """
