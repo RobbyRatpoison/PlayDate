@@ -6,6 +6,7 @@ state.json
 release_date_migration.json
 santa_gifts.json
 emulators.json
+*_cache.json
 
 # --- Claude Code ---
 .claude/
