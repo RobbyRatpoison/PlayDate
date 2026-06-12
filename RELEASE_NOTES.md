@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.5.14
-
+## v1.5.14 — 2026-06-12
 ### New Features
 
 - Steam library collections sync to groups at startup. Renaming or removing a collection updates the group on next launch.
