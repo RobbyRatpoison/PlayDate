@@ -2865,24 +2865,7 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 502
 
-        today_str = today.isoformat()
-        started, ended = event.get('startedAt', ''), event.get('endedAt', '')
-        if started and ended and not (started <= today_str < ended):
-            adj = event_id + 1 if today_str >= ended else event_id - 1
-            try:
-                adj_ev = _fetch(adj)
-                s2, e2 = adj_ev.get('startedAt', ''), adj_ev.get('endedAt', '')
-                if s2 <= today_str < e2:
-                    event, event_id = adj_ev, adj
-            except Exception:
-                pass
-
-        try:
-            month_label = date.fromisoformat(
-                event.get('startedAt', today_str)[:10]
-            ).strftime('%B %Y')
-        except Exception:
-            month_label = today.strftime('%B %Y')
+        month_label = today.strftime('%B %Y')
 
         categories = event.get('gameCategories', [])
         entries    = event.get('entries', [])
