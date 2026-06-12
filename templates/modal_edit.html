@@ -1883,6 +1883,7 @@ const achLink = document.getElementById('achievements-link');
         const source = useFilter ? null : (window._pagCurrentQuals || null);
 
         if (!useFilter && !source) { section.style.display = 'none'; return; }
+        if (game.platform !== 'steam') { section.style.display = 'none'; return; }
 
         let conds, verified, sgGroup, monthLabel;
         if (useFilter) {
