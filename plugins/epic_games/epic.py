@@ -367,7 +367,9 @@ def _do_sync_library():
                     # Metadata from catalog entry + store/ratings API
                     meta = _extract_metadata(entry)
                     if ns not in store_cache:
-                        store_cache[ns] = _fetch_epic_store_data(ns)
+                        s = _fetch_epic_store_data(ns)
+                        s.pop('_description', None)
+                        store_cache[ns] = s
                     if ns not in ratings_cache:
                         ratings_cache[ns] = _fetch_epic_ratings(ns)
                     meta.update(store_cache[ns])
@@ -691,10 +693,13 @@ def scrape_single(appid):
         return None
 
     from datetime import date
-    ns   = row['platform_ns']
-    meta = _extract_metadata(entry)
-    meta['meta_fetched'] = date.today().isoformat()
-    meta.update(_fetch_epic_store_data(ns))
+    ns    = row['platform_ns']
+    today = date.today().isoformat()
+    meta  = _extract_metadata(entry)
+    meta['meta_fetched'] = today
+    store = _fetch_epic_store_data(ns)
+    store.pop('_description', None)
+    meta.update(store)
     meta.update(_fetch_epic_ratings(ns))
 
     # Re-fetch art if files are missing
@@ -915,7 +920,9 @@ def _sync_metadata(force=False):
             else:
                 meta = _extract_metadata(entry)
                 meta['meta_fetched'] = today
-                meta.update(_fetch_epic_store_data(platform_ns))
+                store = _fetch_epic_store_data(platform_ns)
+                store.pop('_description', None)
+                meta.update(store)
                 meta.update(_fetch_epic_ratings(platform_ns))
 
                 try:
