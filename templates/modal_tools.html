@@ -5103,6 +5103,7 @@ async function _manageOpenAuthPopup(id) {
             action.code_js,
             action.callback_endpoint,
             action.cookie_name || null,
+            action.intercept_js || null,
         );
     } catch (e) {
         window._authPopupPendingId = null;

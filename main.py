@@ -461,7 +461,7 @@ class PyWebviewAPI:
             log.warning(f"Save dialog failed: {e}")
         return None
 
-    def open_auth_popup(self, url, redirect_pattern, code_js, callback_endpoint, cookie_name=None):
+    def open_auth_popup(self, url, redirect_pattern, code_js, callback_endpoint, cookie_name=None, intercept_js=None):
         """
         Open a popup window for OAuth login.
         Monitors navigation; when redirect_pattern appears in the URL, extracts the
@@ -803,44 +803,6 @@ class PyWebviewAPI:
         try { Object.defineProperty(window, 'localStorage',   {get: () => _ls, configurable: true}); } catch(e) {}
         try { Object.defineProperty(window, 'sessionStorage', {get: () => _ls, configurable: true}); } catch(e) {}
     })();
-    // Intercept XHR and fetch calls to Ubisoft's sessions API to capture
-    // the session ticket and store it in localStorage for code_js to read.
-    (function() {
-        var _NEEDLE = 'profiles/sessions';
-        var _KEY    = '_pd_ubi_sess';
-        function _store(text) {
-            try { if (text) localStorage.setItem(_KEY, text); } catch(e) {}
-            try { if (text) window.name = text; } catch(e) {}
-        }
-        var _oOpen = XMLHttpRequest.prototype.open;
-        var _oSend = XMLHttpRequest.prototype.send;
-        XMLHttpRequest.prototype.open = function(m, u) {
-            this._pdu = (u || '').indexOf(_NEEDLE) !== -1;
-            return _oOpen.apply(this, arguments);
-        };
-        XMLHttpRequest.prototype.send = function() {
-            if (this._pdu) {
-                var x = this;
-                x.addEventListener('load', function() {
-                    if (x.status >= 200 && x.status < 300) _store(x.responseText);
-                });
-            }
-            return _oSend.apply(this, arguments);
-        };
-        var _oFetch = window.fetch;
-        if (typeof _oFetch === 'function') {
-            window.fetch = function(input, init) {
-                var u = typeof input === 'string' ? input : (input && input.url) || '';
-                var p = _oFetch.apply(this, arguments);
-                if (u.indexOf(_NEEDLE) !== -1) {
-                    p.then(function(r) {
-                        if (r && r.ok) r.clone().text().then(_store).catch(function(){});
-                    }).catch(function(){});
-                }
-                return p;
-            };
-        }
-    })();
 })();
 """
                 _main_wk = _find_webkit_in_widget(
@@ -863,8 +825,9 @@ class PyWebviewAPI:
                             log.warning(f'open_auth_popup: set UA failed: {_e}')
                         try:
                             mgr = _wk.get_user_content_manager()
+                            _full_js = _ANTI_BOT_JS + ('\n' + intercept_js if intercept_js else '')
                             script = _WK2.UserScript(
-                                _ANTI_BOT_JS,
+                                _full_js,
                                 _WK2.UserContentInjectedFrames.ALL_FRAMES,
                                 _WK2.UserScriptInjectionTime.START,
                                 None, None,
