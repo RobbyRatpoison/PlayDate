@@ -5084,6 +5084,10 @@ async function _manageOpenAuthPopup(id) {
         const r = await fetch(action.url_endpoint);
         const d = await r.json();
         loginUrl = d.url;
+        if (!loginUrl) {
+            if (st) { st.style.color = 'var(--text-danger)'; st.textContent = d.error || 'Login URL not available — check credentials first'; }
+            return;
+        }
     } catch (e) {
         if (st) { st.style.color = 'var(--text-danger)'; st.textContent = 'Failed to get login URL'; }
         return;
@@ -5299,10 +5303,14 @@ function _buildManageModalHtml(id, name, spec) {
       <div id="${eid}-manage-disconnected"><div style="padding:8px 10px;">${disconnHtml}</div></div>
       <div id="${eid}-manage-connected" style="display:none;"><div style="padding:8px 10px;">${connHtml}</div></div>`;
 
+            let _oauthModalBuilt = false;
             for (const block of (section.auth.disconnected || [])) {
                 if (block.type === 'button' && block.action &&
                         (block.action.type === 'oauth_paste' || block.action.type === 'oauth_popup')) {
-                    oauthHtml += _buildManageOauthHtml(id, block.action);
+                    if (!_oauthModalBuilt) {
+                        oauthHtml += _buildManageOauthHtml(id, block.action);
+                        _oauthModalBuilt = true;
+                    }
                 }
             }
         } else {
