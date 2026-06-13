@@ -257,7 +257,7 @@ def read_steam_collections(steam_id=None):
     """
     Reads Steam library collections from cloud-storage-namespace-1.json.
     Returns {collection_id: {'name': str, 'added': [int]}} for active
-    user-defined collections (id == 'favorite' or starts with 'uc-').
+    user-defined collections, excluding known Steam built-ins (e.g. 'hidden').
     """
     import json
 
@@ -317,7 +317,7 @@ def read_steam_collections(steam_id=None):
         except Exception:
             continue
         col_id = col.get('id', '')
-        if col_id != 'favorite' and not col_id.startswith('uc-'):
+        if col_id in ('hidden',) or not col_id:
             continue
         name = col.get('name', '').strip()
         if not name:
