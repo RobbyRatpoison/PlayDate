@@ -880,13 +880,18 @@ def scrape_single(appid):
     # Supercat for rich metadata (genres, release date, description)
     meta = _fetch_supercat(session, offer_id) or {}
 
+    from datetime import date
+    today = date.today().isoformat()
+
     vert_path  = os.path.join(VERTICAL_DIR,   f'{appid}.jpg')
     horiz_path = os.path.join(HORIZONTAL_DIR, f'{appid}.jpg')
     if not os.path.exists(vert_path) or not os.path.exists(horiz_path):
         game_name = detail.get('name') or meta.get('name') or ''
         try:
-            _download_art_from_urls(appid, detail.get('vert_url', ''),
-                                    detail.get('horiz_url', ''), name=game_name)
+            v_src, h_src = _download_art_from_urls(appid, detail.get('vert_url', ''),
+                                                    detail.get('horiz_url', ''), name=game_name)
+            if (v_src and v_src != 'missing') or (h_src and h_src != 'missing'):
+                meta['art_fetched'] = today
         except Exception as e:
             log.warning(f'EA scrape-single: art re-fetch failed for appid {appid}: {e}')
     if detail.get('name') and not meta.get('name'):
@@ -894,8 +899,7 @@ def scrape_single(appid):
     if detail.get('slug') and not meta.get('platform_slug'):
         meta['platform_slug'] = _resolve_ea_store_slug(detail['slug'])
 
-    from datetime import date
-    meta['meta_fetched'] = date.today().isoformat()
+    meta['meta_fetched'] = today
     return meta
 
 
