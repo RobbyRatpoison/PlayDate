@@ -60,6 +60,12 @@ make-zip.sh
 CLAUDE.md
 *.zip
 
+# --- External Plugins (separate repos, installed locally) ---
+plugins/ubisoft/
+plugins/amazon_games/
+plugins/battle_net/
+plugins/rockstar/
+
 # --- Personal Reference ---
 HOWTO.md
 release.py
