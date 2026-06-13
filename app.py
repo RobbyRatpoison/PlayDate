@@ -2843,6 +2843,30 @@ def create_app(template_folder=None, static_folder=None):
 
     _pagywosg_quals_cache = {}  # {event_id: (timestamp, data)}
 
+    def _resolve_sg_group():
+        from config import load_state
+        _state = load_state()
+        sg = _state.get('pagywosg_sg_group') or None
+        if sg:
+            return sg
+        def _find(node):
+            if not node: return None
+            if node.get('type') == 'condition' and node.get('column') == 'groups':
+                return node.get('value')
+            for child in node.get('items', []):
+                r = _find(child)
+                if r: return r
+            return None
+        for _candidate in [_state.get('filter_tree')] + [
+            v.get('tree') if isinstance(v, dict) and 'tree' in v else v
+            for v in _state.get('saved_filters', {}).values()
+        ]:
+            if isinstance(_candidate, dict) and _candidate.get('pagywosg'):
+                sg = _find(_candidate)
+                if sg:
+                    return sg
+        return None
+
     @app.route('/api/pagywosg-quals')
     def pagywosg_quals_data():
         import urllib.request
@@ -2855,8 +2879,7 @@ def create_app(template_folder=None, static_folder=None):
         if cached:
             ts, data = cached
             if datetime.now().timestamp() - ts < 3600:
-                from config import load_state
-                return jsonify({**data, 'sg_group': load_state().get('pagywosg_sg_group') or None})
+                return jsonify({**data, 'sg_group': _resolve_sg_group()})
 
         def _fetch(eid):
             req = urllib.request.Request(
@@ -3004,27 +3027,7 @@ def create_app(template_folder=None, static_folder=None):
             if base_appids:
                 _add_v(base_appids, base, pool)
 
-        from config import load_state
-        _state   = load_state()
-        sg_group = _state.get('pagywosg_sg_group') or None
-        if not sg_group:
-            def _find_sg_group(node):
-                if not node: return None
-                if node.get('type') == 'condition' and node.get('column') == 'groups':
-                    return node.get('value')
-                for child in node.get('items', []):
-                    r = _find_sg_group(child)
-                    if r: return r
-                return None
-            # Check active filter tree first, then saved filters
-            for _candidate in [_state.get('filter_tree')] + [
-                v.get('tree') if isinstance(v, dict) and 'tree' in v else v
-                for v in _state.get('saved_filters', {}).values()
-            ]:
-                if isinstance(_candidate, dict) and _candidate.get('pagywosg'):
-                    sg_group = _find_sg_group(_candidate)
-                    if sg_group:
-                        break
+        sg_group = _resolve_sg_group()
 
         result = {
             'status':   'success',
