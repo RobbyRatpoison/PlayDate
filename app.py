@@ -3016,9 +3016,15 @@ def create_app(template_folder=None, static_folder=None):
                     r = _find_sg_group(child)
                     if r: return r
                 return None
-            _tree = _state.get('filter_tree')
-            if isinstance(_tree, dict) and _tree.get('pagywosg'):
-                sg_group = _find_sg_group(_tree)
+            # Check active filter tree first, then saved filters
+            for _candidate in [_state.get('filter_tree')] + [
+                v.get('tree') if isinstance(v, dict) and 'tree' in v else v
+                for v in _state.get('saved_filters', {}).values()
+            ]:
+                if isinstance(_candidate, dict) and _candidate.get('pagywosg'):
+                    sg_group = _find_sg_group(_candidate)
+                    if sg_group:
+                        break
 
         result = {
             'status':   'success',
