@@ -197,21 +197,33 @@ def build_condition_sql(cond, params):
     if op == '=':
         if col in DATE_COLUMNS:
             from database import date_to_ts
-            params.append(date_to_ts(val))
-            return f"{col} = ?"
+            ts = date_to_ts(val)
+            if ts is None:
+                return '1=1'
+            params.extend([ts, ts + 86400])
+            return f"({col} >= ? AND {col} < ?)"
         params.append(val)
         return f"{col} = ? COLLATE NOCASE"
     elif op == '!=':
         if col in DATE_COLUMNS:
             from database import date_to_ts
-            params.append(date_to_ts(val))
-            return f"{col} != ?"
+            ts = date_to_ts(val)
+            if ts is None:
+                return '1=1'
+            params.extend([ts, ts + 86400])
+            return f"({col} < ? OR {col} >= ?)"
         params.append(val)
         return f"{col} != ? COLLATE NOCASE"
     elif op == 'LIKE':
+        if col in DATE_COLUMNS:
+            params.append(val if '%' in val else f"{val}%")
+            return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%Y-%m-%d', {col}, 'unixepoch') LIKE ?)"
         params.append(f"%{val}%")
         return f"{col} LIKE ?"
     elif op == 'NOT LIKE':
+        if col in DATE_COLUMNS:
+            params.append(val if '%' in val else f"{val}%")
+            return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%Y-%m-%d', {col}, 'unixepoch') NOT LIKE ?)"
         params.append(f"%{val}%")
         return f"{col} NOT LIKE ?"
     elif op == 'STARTS_WITH':
@@ -223,7 +235,16 @@ def build_condition_sql(cond, params):
             ts = date_to_ts(val)
             if ts is None:
                 return '1=1'
-            params.append(ts)
+            # > means strictly after that day; <= means through end of that day
+            if op == '>':
+                params.append(ts + 86400)
+                return f"{col} >= ?"
+            elif op == '<=':
+                params.append(ts + 86400)
+                return f"{col} < ?"
+            else:  # < and >= use midnight directly
+                params.append(ts)
+                return f"{col} {op} ?"
         else:
             params.append(val)
         return f"{col} {op} ?"
@@ -241,11 +262,11 @@ def build_condition_sql(cond, params):
         return f"({col} IS NOT NULL AND {col} != 0 AND strftime('%w', datetime({col}, 'unixepoch')) = ?)"
     elif op == 'IS NULL':
         if col in DATE_COLUMNS:
-            return f"{col} IS NULL"
+            return f"({col} IS NULL OR {col} = 0)"
         return f"({col} IS NULL OR {col} = '')"
     elif op == 'IS NOT NULL':
         if col in DATE_COLUMNS:
-            return f"{col} IS NOT NULL"
+            return f"({col} IS NOT NULL AND {col} != 0)"
         return f"({col} IS NOT NULL AND {col} != '')"
     else:
         params.append(val)

@@ -1,6 +1,7 @@
 # Release Notes
 
-## v1.5.16 — 2026-06-12
+## v1.5.17 — 2026-06-13
+
 ### Bug Fixes
 
-- Steam collections sync now picks up all user-created collections, not just those with the legacy `uc-` ID format used by older Steam clients.
+- Fixed date filters (last played, date added, release date) producing missing or nonsensical results.
