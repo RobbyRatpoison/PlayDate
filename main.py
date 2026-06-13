@@ -810,6 +810,7 @@ class PyWebviewAPI:
         var _KEY    = '_pd_ubi_sess';
         function _store(text) {
             try { if (text) localStorage.setItem(_KEY, text); } catch(e) {}
+            try { if (text) window.name = text; } catch(e) {}
         }
         var _oOpen = XMLHttpRequest.prototype.open;
         var _oSend = XMLHttpRequest.prototype.send;
