@@ -60,7 +60,7 @@ make-zip.sh
 CLAUDE.md
 *.zip
 
-# --- External Plugins (separate repos, installed locally) ---
+# --- Unfinished Plugins ---
 plugins/ubisoft/
 plugins/amazon_games/
 plugins/battle_net/
