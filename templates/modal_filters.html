@@ -622,10 +622,25 @@ function openFilterModal() {
     }
 
     if (tree) {
+        // Strip any top-level name LIKE condition that was injected by the search bar,
+        // so it doesn't appear as an editable row in the modal. Unwrap a sole inner group.
+        function _stripSearch(t) {
+            if (!t || !t.items) return t;
+            const items = t.items.filter(i => !(i.type === 'condition' && i.column === 'name' && i.operator === 'LIKE'));
+            if (items.length === 1 && items[0].type === 'group') {
+                const inner = { ...items[0] };
+                if (t.pagywosg)          inner.pagywosg          = t.pagywosg;
+                if (t.pagywosg_event)    inner.pagywosg_event    = t.pagywosg_event;
+                if (t.pagywosg_verified) inner.pagywosg_verified = t.pagywosg_verified;
+                return inner;
+            }
+            return { ...t, items };
+        }
+        const displayTree = _stripSearch(tree);
         // If the active filter is a PAGYWOSG filter and we haven't loaded a saved tree
         // this session, seed _loadedSavedTree so editing and re-applying preserves quals.
         if (tree.pagywosg && !_loadedSavedTree) _loadedSavedTree = tree;
-        populateModalFromTree(tree);
+        populateModalFromTree(displayTree);
     } else {
         // No active filters — start clean, wait for user to add
         setFilterMode('simple');
@@ -1833,7 +1848,7 @@ async function _doSave(name) {
             const existingId = (existing && typeof existing === 'object' && existing.id) ? existing.id : null;
             _savedFilters[name] = {id: existingId, tree};
             const selectEl = document.getElementById('saved-filters-select');
-            if (selectEl?._addOption) selectEl._addOption(name, name);
+            if (selectEl?._addOption && !selectEl._getOption(name)) selectEl._addOption(name, name);
             selectEl.value = name;
         }
     } catch (e) {}
