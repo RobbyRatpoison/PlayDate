@@ -68,4 +68,5 @@ plugins/rockstar/
 
 # --- Personal Reference ---
 HOWTO.md
+TASKS.md
 release.py

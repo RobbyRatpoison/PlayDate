@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.5.18 — Pending
+## v1.5.18 — 2026-06-16
 
 ### Fixes
 
@@ -10,7 +10,7 @@
 ### Improvements
 
 - BLAEO sync now runs in the background. A dot appears in the menu when results are ready; click it to review and apply changes.
-- Your search is kept when you open and apply the filter modal. CLEAR ALL also clears the search.
+- Searches by name now populate in the filter modal.
 - Saving a filter that already exists now asks for confirmation before overwriting it.
-- Built-in filter presets (Installed, Never Played, etc.) now show as editable conditions when you reopen the filter modal.
+- Built-in filter presets now populate in the filter modal.
 - Clearing filters no longer resets your platform source toggles.
