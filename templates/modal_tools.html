@@ -1775,15 +1775,42 @@ async function runPlayniteImport() {
 let _blaeoHasPreview = false;
 
 async function runBlaeo() {
-    const btn     = document.getElementById('blaeo-btn');
-    const actions = document.getElementById('blaeo-actions');
-    const status  = document.getElementById('blaeo-status');
-    btn.textContent = 'Syncing...';
+    const btn    = document.getElementById('blaeo-btn');
+    const status = document.getElementById('blaeo-status');
     btn.disabled = true;
-    actions.style.display = 'none';
+    document.getElementById('blaeo-actions').style.display = 'none';
     _blaeoHasPreview = false;
     status.className = 'tool-status info';
-    status.textContent = 'Connecting to BLAEO — this may take a minute...';
+    status.textContent = 'Starting BLAEO sync...';
+    try {
+        const res  = await fetch('/api/blaeo-start', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'started') {
+            _hideBlaeoNotification();
+            status.textContent = 'Syncing in background — a notification will appear in the menu when done.';
+            document.dispatchEvent(new CustomEvent('blaeo:started'));
+        } else if (data.status === 'running') {
+            status.textContent = 'BLAEO sync already in progress...';
+        } else if (data.status === 'pending') {
+            status.textContent = 'Loading results...';
+            await _loadBlaeoPreview();
+        } else {
+            status.className = 'tool-status error';
+            status.textContent = '✘ ' + (data.message || 'Failed to start sync.');
+        }
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ Network error.';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function _loadBlaeoPreview() {
+    const status  = document.getElementById('blaeo-status');
+    const actions = document.getElementById('blaeo-actions');
+    _blaeoHasPreview = false;
+    actions.style.display = 'none';
     try {
         const res  = await fetch('/api/blaeo-preview');
         const data = await res.json();
@@ -1793,20 +1820,19 @@ async function runBlaeo() {
             const additions = data.additions || [];
             const removals  = data.removals || [];
             const total = sc.length + renames.length + additions.length + removals.length;
-
             if (total === 0) {
                 status.className = 'tool-status success';
                 status.innerHTML = '<div>&#x2714; Nothing to update.</div>';
             } else {
                 status.className = 'tool-status info';
                 let html = `<div style="margin-bottom:6px;">Review ${total} proposed change${total !== 1 ? 's' : ''}:</div>`;
-                html += _blaeoPreviewSection('sc',  sc,       'status change',   'status change',
+                html += _blaeoPreviewSection('sc',  sc,        'status change',  'status changes',
                     c => `<input type="checkbox" checked data-btype="status" data-appid="${c.appid}"> <label>${escHtml(c.name)}: ${escHtml(c.from)} &#x2192; ${escHtml(c.to)}</label>`);
-                html += _blaeoPreviewSection('rn',  renames,  'group rename',    'group rename',
+                html += _blaeoPreviewSection('rn',  renames,   'group rename',   'group renames',
                     r => `<input type="checkbox" checked data-btype="rename" data-from="${escHtml(r.from)}" data-to="${escHtml(r.to)}"> <label>&#x201C;${escHtml(r.from)}&#x201D; &#x2192; &#x201C;${escHtml(r.to)}&#x201D;</label>`);
-                html += _blaeoPreviewSection('add', additions, 'group addition', 'group addition',
+                html += _blaeoPreviewSection('add', additions, 'group addition', 'group additions',
                     a => `<input type="checkbox" checked data-btype="add" data-appid="${a.appid}"> <label>${escHtml(a.name)}: added to ${a.list_names.map(l => `&#x201C;${escHtml(l)}&#x201D;`).join(', ')}</label>`);
-                html += _blaeoPreviewSection('rm',  removals,  'group removal',  'group removal',
+                html += _blaeoPreviewSection('rm',  removals,  'group removal',  'group removals',
                     r => `<input type="checkbox" checked data-btype="rem" data-appid="${r.appid}" data-listname="${escHtml(r.list_name)}"> <label>${escHtml(r.name)}: removed from &#x201C;${escHtml(r.list_name)}&#x201D;</label>`);
                 status.innerHTML = html;
                 _blaeoHasPreview = true;
@@ -1814,14 +1840,11 @@ async function runBlaeo() {
             }
         } else {
             status.className = 'tool-status error';
-            status.textContent = '&#x2718; ' + (data.message || 'Sync failed. Check the log.');
+            status.textContent = '✘ ' + (data.message || 'Sync failed. Check the log.');
         }
     } catch (e) {
         status.className = 'tool-status error';
-        status.textContent = '&#x2718; Network error.';
-    } finally {
-        btn.textContent = 'Sync BLAEO';
-        btn.disabled = false;
+        status.textContent = '✘ Network error.';
     }
 }
 
@@ -1846,9 +1869,9 @@ function _blaeoSetAll(containerId, checked) {
 
 async function applyBlaeo() {
     if (!_blaeoHasPreview) return;
-    const applyBtn = document.getElementById('blaeo-apply-btn');
+    const applyBtn  = document.getElementById('blaeo-apply-btn');
     const cancelBtn = document.getElementById('blaeo-cancel-btn');
-    const actions  = document.getElementById('blaeo-actions');
+    const actions   = document.getElementById('blaeo-actions');
     const statusDiv = document.getElementById('blaeo-status');
 
     const accept_status    = [];
@@ -1880,6 +1903,7 @@ async function applyBlaeo() {
         if (data.status === 'success') {
             statusDiv.className = 'tool-status success';
             statusDiv.innerHTML = _blaeoResultHtml(data);
+            if (typeof _hideBlaeoNotification === 'function') _hideBlaeoNotification();
         } else {
             statusDiv.className = 'tool-status error';
             statusDiv.textContent = '&#x2718; ' + (data.message || 'Apply failed. Check the log.');
@@ -1899,6 +1923,8 @@ function cancelBlaeo() {
     const s = document.getElementById('blaeo-status');
     s.className = 'tool-status';
     s.innerHTML = '';
+    fetch('/api/blaeo-discard', { method: 'POST' }).catch(() => {});
+    if (typeof _hideBlaeoNotification === 'function') _hideBlaeoNotification();
 }
 
 function _blaeoResultHtml(data) {
@@ -5666,8 +5692,24 @@ async function detectDuplicates() {
     }
 }
 
-function openCommunityModal() {
+async function openCommunityModal() {
     document.getElementById('community-modal').style.display = 'flex';
+    try {
+        const res   = await fetch('/api/blaeo-status');
+        const state = await res.json();
+        const status = document.getElementById('blaeo-status');
+        if (state.done) {
+            status.className = 'tool-status info';
+            status.textContent = 'Loading results...';
+            await _loadBlaeoPreview();
+        } else if (state.running) {
+            status.className = 'tool-status info';
+            status.textContent = 'BLAEO sync in progress...';
+        } else if (state.error) {
+            status.className = 'tool-status error';
+            status.textContent = '✘ ' + state.error;
+        }
+    } catch(e) {}
 }
 function closeCommunityModal() {
     document.getElementById('community-modal').style.display = 'none';

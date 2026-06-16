@@ -1771,6 +1771,24 @@ def apply_blaeo_changes(selections):
         "removals":       applied_removals,
     }
 
+def get_blaeo_cached_result():
+    """Return the cached preview data without re-scraping, or None if no cache."""
+    if not _blaeo_preview_cache:
+        return None
+    return {
+        "status":         "success",
+        "status_changes": _blaeo_preview_cache['status_changes'],
+        "renames":        _blaeo_preview_cache['renames'],
+        "additions":      _blaeo_preview_cache['additions'],
+        "removals":       _blaeo_preview_cache['removals'],
+    }
+
+
+def clear_blaeo_cache():
+    global _blaeo_preview_cache
+    _blaeo_preview_cache = None
+
+
 def sync_recent_playtime():
     """
     On startup: update playtime_forever + last_played for all played games by

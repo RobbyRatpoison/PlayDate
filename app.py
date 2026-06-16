@@ -53,7 +53,7 @@ from library import library_bp
 from utils import sync_local_install_status, record_launch
 from config import BASE_DIR
 from imports import inspect_database, execute_import
-from scrapers import scrape_blaeo_games, get_blaeo_preview, apply_blaeo_changes
+from scrapers import scrape_blaeo_games, get_blaeo_preview, apply_blaeo_changes, get_blaeo_cached_result, clear_blaeo_cache
 from database import get_db, init_db, update_game_data, add_to_blacklist, remove_from_blacklist, get_blacklist
 import re
 import scrapers
@@ -82,6 +82,10 @@ _bulk_date_state = {
     'api_errors':          [],    # error messages from failed API fetch threads
 }
 _bulk_date_lock = threading.Lock()
+
+# ── BLAEO background sync state ───────────────────────────────────────────────
+_blaeo_sync_state = {'running': False, 'done': False, 'error': None}
+_blaeo_sync_lock  = threading.Lock()
 
 
 def _run_api_date_fetch(plugin, appids, appid_names):
@@ -2505,8 +2509,48 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    @app.route('/api/blaeo-start', methods=['POST'])
+    def blaeo_start():
+        with _blaeo_sync_lock:
+            if _blaeo_sync_state['running']:
+                return jsonify({'status': 'running', 'message': 'Sync already in progress'})
+            if _blaeo_sync_state['done']:
+                return jsonify({'status': 'pending'})
+            _blaeo_sync_state['running'] = True
+            _blaeo_sync_state['done']    = False
+            _blaeo_sync_state['error']   = None
+
+        def _run():
+            try:
+                result = get_blaeo_preview()
+                with _blaeo_sync_lock:
+                    if result.get('status') == 'success':
+                        _blaeo_sync_state['running'] = False
+                        _blaeo_sync_state['done']    = True
+                        _blaeo_sync_state['error']   = None
+                    else:
+                        _blaeo_sync_state['running'] = False
+                        _blaeo_sync_state['done']    = False
+                        _blaeo_sync_state['error']   = result.get('message', 'Sync failed')
+            except Exception as e:
+                with _blaeo_sync_lock:
+                    _blaeo_sync_state['running'] = False
+                    _blaeo_sync_state['done']    = False
+                    _blaeo_sync_state['error']   = str(e)
+
+        threading.Thread(target=_run, daemon=True).start()
+        return jsonify({'status': 'started'})
+
+    @app.route('/api/blaeo-status')
+    def blaeo_status_route():
+        return jsonify(dict(_blaeo_sync_state))
+
     @app.route('/api/blaeo-preview')
     def blaeo_preview():
+        if _blaeo_sync_state.get('done'):
+            cached = get_blaeo_cached_result()
+            if cached:
+                return jsonify(cached)
         try:
             result = get_blaeo_preview()
             return jsonify(result)
@@ -2518,9 +2562,21 @@ def create_app(template_folder=None, static_folder=None):
         try:
             selections = request.get_json() or {}
             result = apply_blaeo_changes(selections)
+            if result.get('status') == 'success':
+                with _blaeo_sync_lock:
+                    _blaeo_sync_state['done'] = False
             return jsonify(result)
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
+
+    @app.route('/api/blaeo-discard', methods=['POST'])
+    def blaeo_discard():
+        with _blaeo_sync_lock:
+            _blaeo_sync_state['running'] = False
+            _blaeo_sync_state['done']    = False
+            _blaeo_sync_state['error']   = None
+        clear_blaeo_cache()
+        return jsonify({'status': 'ok'})
 
 
     # Path to local supplement JSON file, relative to BASE_DIR.
