@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 
 
 def _find_native_launcher():
-    """Return path to EpicGamesLauncher executable on Windows/Mac, or None."""
+    """Return a truthy path/dir indicating EpicGamesLauncher is installed, or None."""
     if sys.platform == 'win32':
         candidates = []
         for env in ('PROGRAMFILES', 'PROGRAMFILES(X86)', 'PROGRAMW6432'):
@@ -22,6 +22,27 @@ def _find_native_launcher():
         for path in candidates:
             if os.path.isfile(path):
                 return path
+        # Check registry for custom install locations
+        try:
+            import winreg
+            for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                for sub in (r'SOFTWARE\WOW6432Node\EpicGames\EpicGamesLauncher',
+                            r'SOFTWARE\EpicGames\EpicGamesLauncher'):
+                    try:
+                        key = winreg.OpenKey(root, sub)
+                        app_data, _ = winreg.QueryValueEx(key, 'AppDataPath')
+                        winreg.CloseKey(key)
+                        if app_data and os.path.isdir(app_data):
+                            return app_data
+                    except Exception:
+                        pass
+        except ImportError:
+            pass
+        # Final fallback: ProgramData directory the installer always creates
+        programdata = os.environ.get('PROGRAMDATA', r'C:\ProgramData')
+        epic_dir = os.path.join(programdata, 'Epic', 'EpicGamesLauncher')
+        if os.path.isdir(epic_dir):
+            return epic_dir
     elif sys.platform == 'darwin':
         candidate = '/Applications/Epic Games Launcher.app/Contents/MacOS/EpicGamesLauncher'
         if os.path.isfile(candidate):

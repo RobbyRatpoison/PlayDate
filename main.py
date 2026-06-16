@@ -564,6 +564,22 @@ class PyWebviewAPI:
                 try:
                     from gi.repository import GLib, Gtk
                 except ImportError:
+                    # Windows/Mac: use pywebview's evaluate_js to read the response body.
+                    # WebView2 (Windows) runs JS outside eval() so CSP doesn't block it.
+                    log.info('open_auth_popup: gi not available, trying pywebview evaluate_js')
+                    try:
+                        raw = (w.evaluate_js('document.body.innerText') or '').strip()
+                        if raw.startswith('{'):
+                            import json as _json
+                            data = _json.loads(raw)
+                            extracted = (data.get('authorizationCode')
+                                         or data.get('code') or '').strip()
+                            if extracted:
+                                threading.Thread(target=_exchange_and_close,
+                                                 args=(extracted,), daemon=True).start()
+                                return
+                    except Exception as _e:
+                        log.warning(f'open_auth_popup: evaluate_js fallback failed: {_e}')
                     log.warning('open_auth_popup: gi not available, cannot read body')
                     _exchange_and_close('')
                     return
@@ -747,13 +763,14 @@ class PyWebviewAPI:
             popup_ref    = [None]
             popup_wk_ref = [None]   # WebKit view for the popup, saved during setup
             try:
-                # Open with about:blank so we can configure WebKit before the real
-                # page loads. Sites like Ubisoft run a cookie/storage capability
-                # check on first load and immediately redirect on failure -- faster
-                # than our GTK setup timers would fire.
+                # On Linux/GTK, start at about:blank so we can inject the anti-bot
+                # user script before the first real page load (some sites fingerprint
+                # on the very first request). On Windows/Mac the GTK setup block
+                # won't run, so navigate directly to the login URL.
+                initial_url = 'about:blank' if sys.platform == 'linux' else url
                 popup = webview.create_window(
                     'Login',
-                    'about:blank',
+                    initial_url,
                     width=900,
                     height=680,
                     resizable=True,

@@ -2,6 +2,11 @@
 
 ## v1.5.18 — Pending
 
+### Fixes
+
+- Epic Games: the Plugins panel no longer falsely reports the launcher as not installed when Epic is installed to a non-default location. Detection now checks the Windows registry and the ProgramData directory as fallbacks.
+- Epic Games: connecting an account on Windows no longer gets stuck at a blank page. The login popup now navigates correctly on Windows and extracts the authorization code from the redirect page.
+
 ### Improvements
 
 - BLAEO sync now runs in the background. Start a sync from Community Tools and continue using the app while it scrapes. A notification dot and menu item appear in the hamburger menu when results are ready (or failed); clicking it opens the BLAEO review panel to confirm or discard changes.
