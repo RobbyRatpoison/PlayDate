@@ -1676,11 +1676,27 @@ async function applyFilters() {
         if (unchanged) filterToSave = { saved_filter: _loadedSavedFilterName };
     }
 
+    const _appliedName = filterToSave.saved_filter || null;
+
+    // Re-inject the search term so it survives apply. clearAllFilters() blanks the
+    // search bar first, so CLEAR ALL + APPLY correctly drops the search condition.
+    const _srchQuery = (document.getElementById('library-search')?.value || '').trim();
+    if (_srchQuery) {
+        const nameNode = { type: 'condition', column: 'name', operator: 'LIKE', value: _srchQuery };
+        const base = filterToSave.saved_filter ? _loadedSavedTree : filterToSave;
+        const hasBase = base && (base.custom_sql || (base.items && base.items.length > 0));
+        filterToSave = { type: 'group', logic: 'AND', items: hasBase ? [nameNode, base] : [nameNode] };
+        if (_loadedSavedTree && _loadedSavedTree.pagywosg) {
+            filterToSave.pagywosg = _loadedSavedTree.pagywosg;
+            if (_loadedSavedTree.pagywosg_event)    filterToSave.pagywosg_event    = _loadedSavedTree.pagywosg_event;
+            if (_loadedSavedTree.pagywosg_verified) filterToSave.pagywosg_verified = _loadedSavedTree.pagywosg_verified;
+        }
+    }
+
     await sendStateUpdate({ filter_tree: filterToSave, hidden_platforms: [..._fmHiddenPlatforms] });
     if (typeof window._onFiltersApplied === 'function') {
-        const appliedName = (filterToSave.saved_filter) || null;
-        const hasFilters  = !!(collected.items?.length || collected.custom_sql);
-        window._onFiltersApplied(appliedName, hasFilters);
+        const hasFilters = !!(collected.items?.length || collected.custom_sql);
+        window._onFiltersApplied(_appliedName, hasFilters);
     }
     closeFilterModal();
 }
@@ -1694,7 +1710,7 @@ function clearAllFilters() {
     clearSimpleRows();
     resetAdvancedTree();
     document.getElementById('fm-custom-sql-input').value = '';
-    _fmHiddenPlatforms = new Set();
+    _fmHiddenPlatforms = new Set(typeof _hiddenPlatforms !== 'undefined' ? _hiddenPlatforms : []);
     _fmSyncPlatformButtons();
 }
 
@@ -1719,7 +1735,7 @@ async function applyBuiltinFilter(key) {
         closeFilterModal();
         return;
     }
-    const tree = { type: 'group', logic: 'AND', items: [], custom_sql: preset.where };
+    const tree = preset.tree || { type: 'group', logic: 'AND', items: [], custom_sql: preset.where };
     updateActivePills(tree);
     await sendStateUpdate({ filter_tree: tree });
     if (typeof window._onFiltersApplied === 'function') window._onFiltersApplied(preset.label || null, true);
@@ -1883,9 +1899,30 @@ async function confirmFmDialog() {
 
     if ((mode === 'save' || mode === 'rename') && !val) { inp?.focus(); return; }
 
+    if (mode === 'save' && val in _savedFilters) {
+        _fmDialogMode    = 'overwrite';
+        _fmDialogOldName = val;
+        const title = document.getElementById('fm-sd-title');
+        const body  = document.getElementById('fm-sd-body');
+        const btn   = document.getElementById('fm-sd-confirm');
+        title.textContent = 'Overwrite Filter';
+        body.innerHTML = '';
+        const p = document.createElement('p');
+        p.style.cssText = 'margin:0; color:var(--text-secondary,#8f98a0);';
+        const strong = document.createElement('strong');
+        strong.style.color = '#fff';
+        strong.textContent = `"${val}"`;
+        p.append('Overwrite ', strong, '? This cannot be undone.');
+        body.appendChild(p);
+        btn.textContent   = 'Overwrite';
+        btn.style.background  = 'var(--color-danger,#c0392b)';
+        btn.style.borderColor = 'var(--color-danger,#c0392b)';
+        return;
+    }
+
     closeFmDialog();
 
-    if (mode === 'save')   await _doSave(val);
+    if (mode === 'save' || mode === 'overwrite') await _doSave(oldName || val);
     if (mode === 'rename') await _doRename(oldName, val);
     if (mode === 'delete') await _doDelete(oldName);
 }

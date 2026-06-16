@@ -184,21 +184,36 @@ def rename_named_theme(old_name, new_name):
         json.dump(active, f, indent=4)
     return True
 
+def _cond(column, value):
+    return {"type": "condition", "column": column, "operator": "=", "value": value}
+
+def _group(logic, *conds):
+    return {"type": "group", "logic": logic, "items": list(conds)}
+
 BUILTIN_FILTERS = {
-    "all_games":     {"label": "All Games",         "where": "1=1",                                                    "group": "general"},
-    "installed":     {"label": "Installed",          "where": "installed = 1",                                          "group": "general"},
-    "not_installed": {"label": "Not Installed",      "where": "installed = 0",                                          "group": "general"},
-    "not_beaten":    {"label": "Never Played / Unfinished", "where": "completion_status IN ('Never Played', 'Unfinished')", "group": "general"},
-    "beaten":        {"label": "Beaten / Completed",       "where": "completion_status IN ('Beaten', 'Completed')",      "group": "general"},
+    "all_games":     {"label": "All Games",               "where": "1=1",                                                    "group": "general"},
+    "installed":     {"label": "Installed",               "where": "installed = 1",                                          "group": "general",
+                      "tree": _group("AND", _cond("installed", "1"))},
+    "not_installed": {"label": "Not Installed",           "where": "installed = 0",                                          "group": "general",
+                      "tree": _group("AND", _cond("installed", "0"))},
+    "not_beaten":    {"label": "Never Played / Unfinished", "where": "completion_status IN ('Never Played', 'Unfinished')",  "group": "general",
+                      "tree": _group("OR", _cond("completion_status", "Never Played"), _cond("completion_status", "Unfinished"))},
+    "beaten":        {"label": "Beaten / Completed",      "where": "completion_status IN ('Beaten', 'Completed')",           "group": "general",
+                      "tree": _group("OR", _cond("completion_status", "Beaten"), _cond("completion_status", "Completed"))},
     # Individual completion statuses
-    "never_played":  {"label": "Never Played",       "where": "completion_status = 'Never Played'",                    "group": "status"},
-    "unfinished":    {"label": "Unfinished",         "where": "completion_status = 'Unfinished'",                      "group": "status"},
-    "beaten_only":   {"label": "Beaten",             "where": "completion_status = 'Beaten'",                          "group": "status"},
-    "completed":     {"label": "Completed",          "where": "completion_status = 'Completed'",                       "group": "status"},
-    "wont_play":     {"label": "Won't Play",         "where": "completion_status = 'Won''t Play'",                     "group": "status"},
+    "never_played":  {"label": "Never Played",            "where": "completion_status = 'Never Played'",                    "group": "status",
+                      "tree": _group("AND", _cond("completion_status", "Never Played"))},
+    "unfinished":    {"label": "Unfinished",              "where": "completion_status = 'Unfinished'",                      "group": "status",
+                      "tree": _group("AND", _cond("completion_status", "Unfinished"))},
+    "beaten_only":   {"label": "Beaten",                  "where": "completion_status = 'Beaten'",                          "group": "status",
+                      "tree": _group("AND", _cond("completion_status", "Beaten"))},
+    "completed":     {"label": "Completed",               "where": "completion_status = 'Completed'",                       "group": "status",
+                      "tree": _group("AND", _cond("completion_status", "Completed"))},
+    "wont_play":     {"label": "Won't Play",              "where": "completion_status = 'Won''t Play'",                     "group": "status",
+                      "tree": _group("AND", _cond("completion_status", "Won't Play"))},
     # Widget presets — no SQL
-    "clock":          {"label": "Clock",             "where": None},
-    "completion_pie": {"label": "Completion Chart",  "where": None},
+    "clock":          {"label": "Clock",                  "where": None},
+    "completion_pie": {"label": "Completion Chart",       "where": None},
 }
 
 DEFAULT_CARD_OUTLINES = {

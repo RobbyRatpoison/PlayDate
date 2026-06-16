@@ -670,6 +670,13 @@
                     {%- endif -%}
                 {%- endfor -%}
             {%- endif -%}
+            {%- if ns.filter_label is none -%}
+                {%- for key, f in builtin_filters.items() -%}
+                    {%- if ns.filter_label is none and f.get('tree') is not none and (f.get('tree') | tojson) == (ft | tojson) -%}
+                        {%- set ns.filter_label = f.label -%}
+                    {%- endif -%}
+                {%- endfor -%}
+            {%- endif -%}
             {# Match against saved filters #}
             {%- if ns.filter_label is none -%}
                 {%- for name, saved_entry in state.get('saved_filters', {}).items() -%}
@@ -1021,7 +1028,7 @@
 
     async function clearAndReload() {
         const emptyTree = { type: 'group', logic: 'AND', items: [] };
-        await sendStateUpdate({ filter_tree: emptyTree, hidden_platforms: [] });
+        await sendStateUpdate({ filter_tree: emptyTree, hidden_platforms: [..._hiddenPlatforms] });
     }
 
     const _hiddenPlatforms = new Set({{ hidden_platforms | tojson }});
