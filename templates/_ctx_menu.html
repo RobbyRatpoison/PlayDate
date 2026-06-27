@@ -112,6 +112,12 @@
         <div class="ctx-item" id="ctx-store" data-action="store">
             <i class="ctx-icon">🌐</i> Open Store Page
         </div>
+        <div class="ctx-item" id="ctx-achievements" data-action="achievements" style="display:none;">
+            <i class="ctx-icon">★</i> Achievements
+        </div>
+        <div class="ctx-item" id="ctx-community-hub" data-action="community-hub" style="display:none;">
+            <i class="ctx-icon">💬</i> Community Hub
+        </div>
         <div class="ctx-item has-sub" id="ctx-completion" data-action="completion">
             <i class="ctx-icon">🏆</i> Completion Status
             <div class="ctx-sub" id="ctx-completion-sub">
@@ -136,6 +142,8 @@
 (function () {
     const menu     = document.getElementById('ctx-menu');
     const STATUSES = ['Never Played', 'Unfinished', 'Beaten', 'Completed'];
+
+    const _steamId = {{ existing_steam_id | tojson }};
 
     let _appid        = null;   // appid of game being right-clicked, or null
     let _currentStatus = null;  // current completion_status of that game
@@ -324,11 +332,14 @@
 
             // Show launch/install/uninstall based on installed status
             const isNonSteam = parseInt(appid) < 0;
-            document.getElementById('ctx-launch').style.display    = installed ? '' : 'none';
-            document.getElementById('ctx-install').style.display   = installed ? 'none' : '';
-            document.getElementById('ctx-uninstall').style.display = installed ? '' : 'none';
-            // Store page is Steam-only
-            document.getElementById('ctx-store').style.display     = isNonSteam ? 'none' : '';
+            document.getElementById('ctx-launch').style.display        = installed ? '' : 'none';
+            document.getElementById('ctx-install').style.display       = installed ? 'none' : '';
+            document.getElementById('ctx-uninstall').style.display     = installed ? '' : 'none';
+            // Steam-only links
+            document.getElementById('ctx-store').style.display         = isNonSteam ? 'none' : '';
+            document.getElementById('ctx-community-hub').style.display = isNonSteam ? 'none' : '';
+            const hasProfileSeg = !isNonSteam && !!_steamId;
+            document.getElementById('ctx-achievements').style.display  = hasProfileSeg ? '' : 'none';
 
             // Truncate long game names for the section label
             let gameName = domData.name || '';
@@ -486,6 +497,19 @@
             case 'store':
                 hideMenu();
                 if (appid) openUrl(`https://store.steampowered.com/app/${appid}`);
+                break;
+
+            case 'achievements':
+                hideMenu();
+                if (appid && _steamId) {
+                    const profileSeg = /^\d+$/.test(_steamId) ? `profiles/${_steamId}` : `id/${_steamId}`;
+                    openUrl(`https://steamcommunity.com/${profileSeg}/stats/${appid}/achievements/`);
+                }
+                break;
+
+            case 'community-hub':
+                hideMenu();
+                if (appid) openUrl(`https://steamcommunity.com/app/${appid}`);
                 break;
 
             case 'edit':

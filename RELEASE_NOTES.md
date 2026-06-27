@@ -1,16 +1,10 @@
 # Release Notes
 
-## v1.5.18 — 2026-06-16
-
-### Fixes
-
-- Epic Games: fixed false "launcher not installed" warning when Epic is installed to a non-default folder.
-- Epic Games: fixed login getting stuck on a blank page on Windows.
+## v1.5.19
 
 ### Improvements
 
-- BLAEO sync now runs in the background. A dot appears in the menu when results are ready; click it to review and apply changes.
-- Searches by name now populate in the filter modal.
-- Saving a filter that already exists now asks for confirmation before overwriting it.
-- Built-in filter presets now populate in the filter modal.
-- Clearing filters no longer resets your platform source toggles.
+- Name searches now appear as editable conditions in the filter modal, alongside any other active filters. They can be removed or modified from there like any other condition.
+- The filter header now shows the active search term alongside the filter name.
+- Applying filters now strips empty groups from the tree, keeping saved filters clean.
+- Right-clicking a Steam game card now shows links to the game's Achievements page and Community Hub.
