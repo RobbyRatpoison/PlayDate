@@ -338,7 +338,6 @@
             overflow: hidden;
             background-size: cover;
             background-position: center;
-            transform: translateZ(0);
             isolation: isolate;
         }
 
@@ -1104,7 +1103,7 @@
         if (!container) return;
         container.classList.remove('no-art');
         container.classList.add('has-art');
-        applyBlurArt(img, container);
+        applyBlurArt(img, container, _artOrientation === 'horizontal' ? (616 / 353) : (2 / 3));
     }
 
     function _doImgLoad(card) {

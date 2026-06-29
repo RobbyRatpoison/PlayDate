@@ -64,13 +64,14 @@ function _makeStorage(getter, mem) {
 }());
 
 /** Escape a string for safe insertion into innerHTML. */
-function applyBlurArt(img, container) {
+function applyBlurArt(img, container, containerRatio) {
     if (!container) return;
     container.style.backgroundImage = `url('${img.src}')`;
     const iw = img.naturalWidth, ih = img.naturalHeight;
-    const cw = container.clientWidth, ch = container.clientHeight;
-    const ratioMatch = iw && ih && cw && ch &&
-        Math.abs((iw / ih) - (cw / ch)) / (cw / ch) < 0.05;
+    // Use the supplied ratio constant to avoid a forced synchronous layout.
+    const cr = containerRatio ?? (container.clientWidth / container.clientHeight);
+    const ratioMatch = iw && ih && cr &&
+        Math.abs((iw / ih) - cr) / cr < 0.05;
     container.classList.toggle('needs-blur', !ratioMatch);
 }
 
