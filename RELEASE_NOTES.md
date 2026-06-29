@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.5.19
-
+## v1.5.19 — 2026-06-29
 ### Improvements
 
 - Name searches now appear as editable conditions in the filter modal, alongside any other active filters. They can be removed or modified from there like any other condition.
