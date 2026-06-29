@@ -2584,6 +2584,130 @@ def create_app(template_folder=None, static_folder=None):
     _PAGYWOSG_SUPPLEMENT_PATH = 'pagywosg_supplement.json'
     _SANTA_GIFTS_PATH = 'santa_gifts.json'
 
+    def _load_pagywosg_supplements():
+        _supplement = {}
+        if _PAGYWOSG_SUPPLEMENT_PATH:
+            try:
+                with open(os.path.join(BASE_DIR, _PAGYWOSG_SUPPLEMENT_PATH), 'r', encoding='utf-8') as f:
+                    _supplement = json.load(f)
+            except Exception:
+                pass
+        icaio_ga = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
+        icaio_wl = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
+        santa = {}
+        try:
+            with open(os.path.join(BASE_DIR, _SANTA_GIFTS_PATH), 'r', encoding='utf-8') as f:
+                santa = {g['appid']: g['name'] for g in json.load(f)}
+        except Exception:
+            pass
+        return icaio_ga, icaio_wl, santa
+
+    def _classify_pagywosg_category(base, base_appids, icaio_ga_dict, icaio_wl_dict, santa_gift_dict):
+        """Classify one PAGYWOSG category name into action dicts.
+
+        Returns a list (usually one item; title-word categories return one per word):
+          {'type': 'tag',   'tag': str}
+          {'type': 'cond',  'col': str, 'op': str, 'val': str | list}
+          {'type': 'appids','appids': {appid: name}, 'auto': bool, 'force_wins': bool}
+          {'type': 'skip'}
+
+        op neutral names:
+          month_is / year_is / day_is / weekday_is /
+          starts_with_any / contains / title_word / gte / lt
+        """
+        _MONTHS = {
+            'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
+            'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
+        }
+        _WEEKDAYS = {
+            'sunday':0,'monday':1,'tuesday':2,'wednesday':3,'thursday':4,'friday':5,'saturday':6
+        }
+        def _cond(col, op, val):
+            return [{'type': 'cond', 'col': col, 'op': op, 'val': val}]
+
+        m = re.match(r'^\s*tag\s+(.+)$', base, re.I)
+        if m:
+            return [{'type': 'tag', 'tag': m.group(1).strip()}]
+
+        m = re.search(r'released?\s+in\s+(' + '|'.join(_MONTHS) + r')\b', base, re.I)
+        if m:
+            return _cond('release_date', 'month_is', str(_MONTHS[m.group(1).lower()]))
+
+        m = re.search(r'released?\s+in\s+(\d{4})\b', base, re.I)
+        if m:
+            return _cond('release_date', 'year_is', m.group(1))
+
+        m = re.search(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', base, re.I)
+        if m:
+            return _cond('release_date', 'day_is', m.group(1))
+
+        m = re.search(r'released?\s+on\s+(?:a\s+)?(' + '|'.join(_WEEKDAYS) + r')\b', base, re.I)
+        if m:
+            return _cond('release_date', 'weekday_is', str(_WEEKDAYS[m.group(1).lower()]))
+
+        m = re.search(
+            r'\bstart(?:s|ing)\s+with\s+(?:the\s+letters?\s+)?'
+            r'([A-Za-z](?:\s*[,/]\s*[A-Za-z])*(?:\s*,?\s*or\s+[A-Za-z])?)',
+            base, re.I,
+        )
+        if m:
+            letters = [c.upper() for c in re.findall(r'\b[A-Za-z]\b', m.group(1))]
+            if letters:
+                return [{'type': 'cond', 'col': 'name', 'op': 'starts_with_any', 'val': letters}]
+
+        m = (re.search(r'steam\s+id\s+containing\s+(\w+)', base, re.I) or
+             re.search(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', base, re.I))
+        if m:
+            return _cond('appid', 'contains', m.group(1))
+
+        m = re.search(r'["“”]([^"“”]+)["“”]\s+in\s+(?:the|their)\s+title', base, re.I)
+        if m:
+            return _cond('name', 'contains', m.group(1).strip())
+
+        m = re.match(r'^game\s+title\s+with\s+(.+)$', base, re.I)
+        if m:
+            words = [w.strip() for w in re.split(r',|\bor\b', m.group(1), flags=re.I) if w.strip()]
+            return [{'type': 'cond', 'col': 'name', 'op': 'title_word', 'val': w} for w in words]
+
+        m = re.search(
+            r'(?:'
+            r'(?:under|less\s+than|at\s+most|shorter\s+than|below)\s+(?P<h_lt>\d+)\s*h\b'
+            r'|(?:over|more\s+than|at\s+least|longer\s+than|above)\s+(?P<h_gt>\d+)\s*h\b'
+            r'|(?P<h_plus>\d+)\s*h\+'
+            r').*?hltb\s*'
+            r'(?P<field>completionist\b|(?:main\s*\+\s*)?extras?\b|main\b)',
+            base, re.I,
+        )
+        if m:
+            hours = int(m.group('h_lt') or m.group('h_gt') or m.group('h_plus'))
+            f = (m.group('field') or '').lower()
+            col = ('hltb_completionist' if 'completionist' in f
+                   else 'hltb_extras' if 'extra' in f
+                   else 'hltb_main')
+            return _cond(col, 'lt' if m.group('h_lt') else 'gte', str(hours * 60))
+
+        if re.search(r'gifter', base, re.I):
+            return [{'type': 'skip'}]
+
+        if 'icaio has made a GA for' in base:
+            if icaio_ga_dict:
+                return [{'type': 'appids', 'appids': icaio_ga_dict, 'auto': True, 'force_wins': False}]
+            return [{'type': 'skip'}]
+
+        if 'icaio' in base and 'wishlist' in base.lower():
+            if icaio_wl_dict:
+                return [{'type': 'appids', 'appids': icaio_wl_dict, 'auto': True, 'force_wins': False}]
+            return [{'type': 'skip'}]
+
+        if re.search(r'snowball|secret.santa', base, re.I):
+            if santa_gift_dict:
+                return [{'type': 'appids', 'appids': santa_gift_dict, 'auto': True, 'force_wins': True}]
+            return [{'type': 'skip'}]
+
+        if base_appids:
+            return [{'type': 'appids', 'appids': base_appids, 'auto': False, 'force_wins': False}]
+        return [{'type': 'skip'}]
+
     @app.route('/api/pagywosg-auto')
     def pagywosg_auto():
         import urllib.request
@@ -2647,51 +2771,16 @@ def create_app(template_folder=None, static_folder=None):
                 cid = str(entry['category']['id'])
                 verified_by_cat.setdefault(cid, {})[entry['game']['id']] = entry['game']['name']
 
-        # --- Category name classifiers ---
-        MONTHS = {
-            'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
-            'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
-        }
-        WEEKDAYS = {
-            'sunday':0,'monday':1,'tuesday':2,'wednesday':3,'thursday':4,'friday':5,'saturday':6
-        }
-        month_pat    = re.compile(r'released?\s+in\s+(' + '|'.join(MONTHS) + r')\b', re.I)
-        year_pat     = re.compile(r'released?\s+in\s+(\d{4})\b', re.I)
-        day_pat      = re.compile(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', re.I)
-        weekday_pat  = re.compile(r'released?\s+on\s+(?:a\s+)?(' + '|'.join(WEEKDAYS) + r')\b', re.I)
-        letter_pat   = re.compile(r'starting\s+with\s+([A-Za-z])\b', re.I)
-        steamid_pat1 = re.compile(r'steam\s+id\s+containing\s+(\w+)', re.I)
-        steamid_pat2 = re.compile(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', re.I)
-        title_pat    = re.compile(r'["\u201c\u201d]([^"\u201c\u201d]+)["\u201c\u201d]\s+in\s+(?:the|their)\s+title', re.I)
-        tag_pat      = re.compile(r'^\s*tag\s+(.+)$', re.I)
-
         tags_wins, tags_all   = [], []
         conds_wins, conds_all = [], []
-        # {appid: {"name": str, "categories": [str]}} for each pool
         appids_wins, appids_all = {}, {}
         skipped = []
 
-        # --- Load supplement early so icaio data is available during category loop ---
-        _supplement = {}
-        if _PAGYWOSG_SUPPLEMENT_PATH:
-            try:
-                with open(os.path.join(BASE_DIR, _PAGYWOSG_SUPPLEMENT_PATH), 'r', encoding='utf-8') as f:
-                    _supplement = json.load(f)
-            except Exception:
-                pass
-        _icaio_ga_dict  = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
-        _icaio_wl_dict  = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
-        _santa_gift_dict = {}
-        try:
-            with open(os.path.join(BASE_DIR, _SANTA_GIFTS_PATH), 'r', encoding='utf-8') as _sf:
-                _santa_gift_dict = {g['appid']: g['name'] for g in json.load(_sf)}
-        except Exception:
-            pass
+        _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = _load_pagywosg_supplements()
 
         for base, cats in base_to_cats.items():
             pool = 'all' if base in all_pool_bases else 'wins'
 
-            # Collect all verified {appid: name} for this logical category group
             base_appids = {}
             for cat in cats:
                 base_appids.update(verified_by_cat.get(str(cat['id']), {}))
@@ -2702,105 +2791,37 @@ def create_app(template_folder=None, static_folder=None):
             def _add_cond(col, op, val):
                 (conds_all if pool == 'all' else conds_wins).append({'col': col, 'op': op, 'val': val})
 
-            def _add_appids(appid_name_dict, category_name, verifiers=None, auto=False):
+            def _add_appids(appid_name_dict, category_name, auto=False):
                 target = appids_all if pool == 'all' else appids_wins
                 for appid, name in appid_name_dict.items():
                     if appid not in target:
                         target[appid] = {"name": name, "categories": []}
                     if not any(c["cat"] == category_name for c in target[appid]["categories"]):
                         entry = {"cat": category_name}
-                        if verifiers and str(appid) in verifiers:
-                            entry["verifier"] = verifiers[str(appid)]
                         if auto:
                             entry["auto"] = True
                         target[appid]["categories"].append(entry)
 
-            # Tag
-            m = tag_pat.match(base)
-            if m:
-                _add_tag(m.group(1).strip())
-                continue
-
-            # Month release
-            m = month_pat.search(base)
-            if m:
-                _add_cond('release_date', 'month_is', str(MONTHS[m.group(1).lower()]))
-                continue
-
-            # Year release (after month so "2001" doesn't match month pattern)
-            m = year_pat.search(base)
-            if m:
-                _add_cond('release_date', 'year_is', m.group(1))
-                continue
-
-            # Day release
-            m = day_pat.search(base)
-            if m:
-                _add_cond('release_date', 'day_is', m.group(1))
-                continue
-
-            # Weekday release (e.g. "released on a Sunday")
-            m = weekday_pat.search(base)
-            if m:
-                _add_cond('release_date', 'weekday_is', str(WEEKDAYS[m.group(1).lower()]))
-                continue
-
-            # Title starts with letter (e.g. "Games starting with S")
-            m = letter_pat.search(base)
-            if m:
-                _add_cond('name', 'starts_with', m.group(1).upper())
-                continue
-
-            # Steam ID containing (two phrasings)
-            m = steamid_pat1.search(base) or steamid_pat2.search(base)
-            if m:
-                _add_cond('appid', 'contains', m.group(1))
-                continue
-
-            # Title contains
-            m = title_pat.search(base)
-            if m:
-                _add_cond('name', 'contains', m.group(1).strip())
-                continue
-
-            # Gifter Steam ID — not trackable in our DB
-            if re.search(r'gifter', base, re.I):
-                skipped.append(base)
-                continue
-
-            # icaio giveaway categories — matched by exact copy-pasted phrase
-            if 'icaio has made a GA for' in base:
-                if _icaio_ga_dict:
-                    _add_appids(_icaio_ga_dict, base, auto=True)
-                else:
+            for r in _classify_pagywosg_category(base, base_appids,
+                                                  _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
+                if r['type'] == 'tag':
+                    _add_tag(r['tag'])
+                elif r['type'] == 'cond':
+                    if r['op'] == 'starts_with_any':
+                        for letter in r['val']:
+                            _add_cond('name', 'starts_with', letter)
+                    else:
+                        _add_cond(r['col'], r['op'], r['val'])
+                elif r['type'] == 'appids':
+                    if r['force_wins']:
+                        _real_pool = pool
+                        pool = 'wins'
+                        _add_appids(r['appids'], base, auto=r['auto'])
+                        pool = _real_pool
+                    else:
+                        _add_appids(r['appids'], base, auto=r['auto'])
+                elif r['type'] == 'skip':
                     skipped.append(base)
-                continue
-
-            # icaio wishlist categories
-            if 'icaio' in base and 'wishlist' in base.lower():
-                if _icaio_wl_dict:
-                    _add_appids(_icaio_wl_dict, base, auto=True)
-                else:
-                    skipped.append(base)
-                continue
-
-            # Secret Santa / Snowballs Discord gift categories — always wins pool
-            if re.search(r'snowball|secret.santa', base, re.I):
-                if _santa_gift_dict:
-                    # Force wins pool regardless of suffix logic
-                    _real_pool = pool
-                    pool = 'wins'
-                    _add_appids(_santa_gift_dict, base, auto=True)
-                    pool = _real_pool
-                else:
-                    skipped.append(base)
-                continue
-
-            # Everything else: use verified appids if available
-            if base_appids:
-                _add_appids(base_appids, base)
-            else:
-                skipped.append(base)
 
         # Scan the whole games table once (fast — user's library is small) and
         # intersect in Python, avoiding a huge IN (?, ?, ...) with 5000+ params.
@@ -2844,6 +2865,18 @@ def create_app(template_folder=None, static_folder=None):
                 elif op == 'starts_with':
                     parts.append(f"{col} LIKE ?")
                     params.append(f'{val}%')
+                elif op == 'title_word':
+                    w = val.lower()
+                    parts.append("(' ' || LOWER(name) || ' ') LIKE ?")
+                    params.append(f'% {w} %')
+                    parts.append("(' ' || LOWER(name) || ' ') LIKE ?")
+                    params.append(f'% {w}s %')
+                elif op == 'gte':
+                    parts.append(f"{col} >= ?")
+                    params.append(int(val))
+                elif op == 'lt':
+                    parts.append(f"({col} IS NOT NULL AND {col} > 0 AND {col} < ?)")
+                    params.append(int(val))
             if not parts:
                 return set()
             # Query only the tag/condition filter against the whole library,
@@ -2973,51 +3006,25 @@ def create_app(template_folder=None, static_folder=None):
                 cid = str(entry['category']['id'])
                 verified_by_cat.setdefault(cid, {})[entry['game']['id']] = entry['game']['name']
 
-        MONTHS = {
-            'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
-            'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
-        }
-        WEEKDAYS = {
-            'sunday':0,'monday':1,'tuesday':2,'wednesday':3,'thursday':4,'friday':5,'saturday':6
-        }
-        month_pat    = re.compile(r'released?\s+in\s+(' + '|'.join(MONTHS) + r')\b', re.I)
-        year_pat     = re.compile(r'released?\s+in\s+(\d{4})\b', re.I)
-        day_pat      = re.compile(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', re.I)
-        weekday_pat  = re.compile(r'released?\s+on\s+(?:a\s+)?(' + '|'.join(WEEKDAYS) + r')\b', re.I)
-        letter_pat   = re.compile(r'\bstart(?:s|ing)\s+with\s+(?:the\s+letters?\s+)?([A-Za-z](?:\s*[,/]\s*[A-Za-z])*(?:\s*,?\s*or\s+[A-Za-z])?)', re.I)
-        steamid_pat1 = re.compile(r'steam\s+id\s+containing\s+(\w+)', re.I)
-        steamid_pat2 = re.compile(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', re.I)
-        title_pat    = re.compile(r'[“””]([^”””]+)[“””]\s+in\s+(?:the|their)\s+title', re.I)
-        tag_pat      = re.compile(r'^\s*tag\s+(.+)$', re.I)
+        _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = _load_pagywosg_supplements()
 
-        _supplement = {}
-        if _PAGYWOSG_SUPPLEMENT_PATH:
-            try:
-                with open(os.path.join(BASE_DIR, _PAGYWOSG_SUPPLEMENT_PATH), 'r', encoding='utf-8') as f:
-                    _supplement = json.load(f)
-            except Exception:
-                pass
-        _icaio_ga_dict  = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
-        _icaio_wl_dict  = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
-        _santa_gift_dict = {}
-        try:
-            with open(os.path.join(BASE_DIR, _SANTA_GIFTS_PATH), 'r', encoding='utf-8') as _sf:
-                _santa_gift_dict = {g['appid']: g['name'] for g in json.load(_sf)}
-        except Exception:
-            pass
+        _QUALS_OP = {
+            'month_is': 'STRFTIME_MONTH', 'year_is': 'STRFTIME_YEAR',
+            'day_is': 'STRFTIME_DAY', 'weekday_is': 'STRFTIME_WEEKDAY',
+            'starts_with_any': 'STARTS_WITH_ANY', 'contains': 'LIKE',
+            'title_word': 'TITLE_WORD', 'gte': '>=', 'lt': '<',
+        }
 
         conds    = []
         verified = {}
 
-        def _add_v(appid_name_dict, cat_label, pool, verifiers=None, auto=False):
+        def _add_v(appid_name_dict, cat_label, pool, auto=False):
             for appid, name in appid_name_dict.items():
                 key = str(appid)
                 if key not in verified:
                     verified[key] = []
                 if not any(e['cat'] == cat_label and e['pool'] == pool for e in verified[key]):
                     entry = {'cat': cat_label, 'pool': pool}
-                    if verifiers and str(appid) in verifiers:
-                        entry['verifier'] = verifiers[str(appid)]
                     if auto:
                         entry['auto'] = True
                     verified[key].append(entry)
@@ -3028,60 +3035,16 @@ def create_app(template_folder=None, static_folder=None):
             for cat in cats:
                 base_appids.update(verified_by_cat.get(str(cat['id']), {}))
 
-            m = tag_pat.match(base)
-            if m:
-                conds.append({'col': 'tags', 'op': 'LIKE', 'val': m.group(1).strip(), 'pool': pool})
-                continue
-            m = month_pat.search(base)
-            if m:
-                conds.append({'col': 'release_date', 'op': 'STRFTIME_MONTH',
-                               'val': str(MONTHS[m.group(1).lower()]), 'pool': pool})
-                continue
-            m = year_pat.search(base)
-            if m:
-                conds.append({'col': 'release_date', 'op': 'STRFTIME_YEAR',
-                               'val': m.group(1), 'pool': pool})
-                continue
-            m = day_pat.search(base)
-            if m:
-                conds.append({'col': 'release_date', 'op': 'STRFTIME_DAY',
-                               'val': m.group(1), 'pool': pool})
-                continue
-            m = weekday_pat.search(base)
-            if m:
-                conds.append({'col': 'release_date', 'op': 'STRFTIME_WEEKDAY',
-                               'val': str(WEEKDAYS[m.group(1).lower()]), 'pool': pool})
-                continue
-            m = letter_pat.search(base)
-            if m:
-                letters = [c.upper() for c in re.findall(r'\b[A-Za-z]\b', m.group(1))]
-                if letters:
-                    conds.append({'col': 'name', 'op': 'STARTS_WITH_ANY', 'val': letters, 'pool': pool})
-                    continue
-            m = steamid_pat1.search(base) or steamid_pat2.search(base)
-            if m:
-                conds.append({'col': 'appid', 'op': 'LIKE', 'val': m.group(1), 'pool': pool})
-                continue
-            m = title_pat.search(base)
-            if m:
-                conds.append({'col': 'name', 'op': 'LIKE', 'val': m.group(1).strip(), 'pool': pool})
-                continue
-            if re.search(r'gifter', base, re.I):
-                continue
-            if 'icaio has made a GA for' in base:
-                if _icaio_ga_dict:
-                    _add_v(_icaio_ga_dict, base, pool, auto=True)
-                continue
-            if 'icaio' in base and 'wishlist' in base.lower():
-                if _icaio_wl_dict:
-                    _add_v(_icaio_wl_dict, base, pool, auto=True)
-                continue
-            if re.search(r'snowball|secret.santa', base, re.I):
-                if _santa_gift_dict:
-                    _add_v(_santa_gift_dict, base, 'wins', auto=True)
-                continue
-            if base_appids:
-                _add_v(base_appids, base, pool)
+            for r in _classify_pagywosg_category(base, base_appids,
+                                                  _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
+                if r['type'] == 'tag':
+                    conds.append({'col': 'tags', 'op': 'LIKE', 'val': r['tag'], 'pool': pool})
+                elif r['type'] == 'cond':
+                    mapped_op = _QUALS_OP.get(r['op'], r['op'])
+                    conds.append({'col': r['col'], 'op': mapped_op, 'val': r['val'], 'pool': pool})
+                elif r['type'] == 'appids':
+                    _add_v(r['appids'], base, 'wins' if r['force_wins'] else pool, auto=r['auto'])
+                # skip: do nothing
 
         sg_group = _resolve_sg_group()
 
