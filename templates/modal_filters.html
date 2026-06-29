@@ -622,25 +622,11 @@ function openFilterModal() {
     }
 
     if (tree) {
-        // Strip any top-level name LIKE condition that was injected by the search bar,
-        // so it doesn't appear as an editable row in the modal. Unwrap a sole inner group.
-        function _stripSearch(t) {
-            if (!t || !t.items) return t;
-            const items = t.items.filter(i => !(i.type === 'condition' && i.column === 'name' && i.operator === 'LIKE'));
-            if (items.length === 1 && items[0].type === 'group') {
-                const inner = { ...items[0] };
-                if (t.pagywosg)          inner.pagywosg          = t.pagywosg;
-                if (t.pagywosg_event)    inner.pagywosg_event    = t.pagywosg_event;
-                if (t.pagywosg_verified) inner.pagywosg_verified = t.pagywosg_verified;
-                return inner;
-            }
-            return { ...t, items };
-        }
-        const displayTree = _stripSearch(tree);
+
         // If the active filter is a PAGYWOSG filter and we haven't loaded a saved tree
         // this session, seed _loadedSavedTree so editing and re-applying preserves quals.
         if (tree.pagywosg && !_loadedSavedTree) _loadedSavedTree = tree;
-        populateModalFromTree(displayTree);
+        populateModalFromTree(tree);
     } else {
         // No active filters — start clean, wait for user to add
         setFilterMode('simple');
@@ -1675,8 +1661,21 @@ function _stripPagMeta(tree) {
     return rest;
 }
 
+function _stripEmptyGroups(node) {
+    if (!node || node.type !== 'group') return node;
+    const items = (node.items || [])
+        .map(_stripEmptyGroups)
+        .filter(i => i.type !== 'group' || (i.items && i.items.length > 0));
+    if (items.length === 1 && items[0].type === 'group') {
+        const inner = items[0];
+        const { pagywosg, pagywosg_event, pagywosg_verified } = node;
+        return pagywosg ? { ...inner, pagywosg, pagywosg_event, pagywosg_verified } : inner;
+    }
+    return { ...node, items };
+}
+
 async function applyFilters() {
-    const collected = collectTree();
+    const collected = _stripEmptyGroups(collectTree());
     if (_loadedSavedTree && _loadedSavedTree.pagywosg) {
         collected.pagywosg = _loadedSavedTree.pagywosg;
         if (_loadedSavedTree.pagywosg_event) collected.pagywosg_event = _loadedSavedTree.pagywosg_event;
@@ -1692,21 +1691,6 @@ async function applyFilters() {
     }
 
     const _appliedName = filterToSave.saved_filter || null;
-
-    // Re-inject the search term so it survives apply. clearAllFilters() blanks the
-    // search bar first, so CLEAR ALL + APPLY correctly drops the search condition.
-    const _srchQuery = (document.getElementById('library-search')?.value || '').trim();
-    if (_srchQuery) {
-        const nameNode = { type: 'condition', column: 'name', operator: 'LIKE', value: _srchQuery };
-        const base = filterToSave.saved_filter ? _loadedSavedTree : filterToSave;
-        const hasBase = base && (base.custom_sql || (base.items && base.items.length > 0));
-        filterToSave = { type: 'group', logic: 'AND', items: hasBase ? [nameNode, base] : [nameNode] };
-        if (_loadedSavedTree && _loadedSavedTree.pagywosg) {
-            filterToSave.pagywosg = _loadedSavedTree.pagywosg;
-            if (_loadedSavedTree.pagywosg_event)    filterToSave.pagywosg_event    = _loadedSavedTree.pagywosg_event;
-            if (_loadedSavedTree.pagywosg_verified) filterToSave.pagywosg_verified = _loadedSavedTree.pagywosg_verified;
-        }
-    }
 
     await sendStateUpdate({ filter_tree: filterToSave, hidden_platforms: [..._fmHiddenPlatforms] });
     if (typeof window._onFiltersApplied === 'function') {

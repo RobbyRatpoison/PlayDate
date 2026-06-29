@@ -649,14 +649,16 @@
     {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_min': 'HLTB Time', 'total_reviews': 'Total Reviews', 'random': 'Random'} -%}
     {%- set _group_labels = {'installed': 'Installed', 'completion_status': 'Completion', 'release_date': 'Release Year', 'date_added': 'Year Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'platform': 'Platform'} -%}
     {%- set _plat_labels = platform_labels() -%}
-    {%- set ns = namespace(filter_label=none, has_real_filter=false) -%}
+    {%- set ns = namespace(filter_label=none, has_real_filter=false, search_term=none) -%}
     {%- if state.filter_tree -%}
         {%- set ft = state.filter_tree -%}
         {%- if ft.get('custom_sql') -%}
             {%- set ns.has_real_filter = true -%}
         {%- else -%}
             {%- for item in ft.get('items', []) -%}
-                {%- if not (item.get('type') == 'condition' and item.get('column') == 'name' and item.get('operator') == 'LIKE') -%}
+                {%- if item.get('type') == 'condition' and item.get('column') == 'name' and item.get('operator') == 'LIKE' -%}
+                    {%- set ns.search_term = item.get('value') -%}
+                {%- else -%}
                     {%- set ns.has_real_filter = true -%}
                 {%- endif -%}
             {%- endfor -%}
@@ -696,7 +698,7 @@
             {%- endif -%}
         {%- endif -%}
     {%- endif -%}
-    {%- set _is_filtered = ns.filter_label is not none or _has_plat_filter -%}
+    {%- set _is_filtered = ns.filter_label is not none or _has_plat_filter or ns.search_term is not none -%}
     <div class="search-nav-bar">
         <div class="search-container">
             <input type="text"
@@ -727,6 +729,7 @@
         <p>Showing
             {%- if _is_filtered %} {{ games|length }} of {{ total_games }}{% else %} {{ games|length }}{% endif %}
             games
+            {%- if ns.search_term is not none %} &middot; "{{ ns.search_term }}"{% endif %}
             {%- if ns.filter_label is not none %} &middot; {{ ns.filter_label }}{% endif %}
             {%- if _has_plat_filter %} &middot; {% for p in available_platforms if p not in hidden_platforms %}{{ _plat_labels.get(p, p) }}{% if not loop.last %}, {% endif %}{% endfor %} only{% endif %}
             {%- if _non_default_sort %} &middot; {{ _sort_labels.get(state.sort, state.sort) }}{% if state.sort != 'random' %} {{ '↑' if state.order == 'ASC' else '↓' }}{% endif %}{% endif %}
