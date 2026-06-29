@@ -580,9 +580,23 @@
                     if (blaeo.running) {
                         _showBlaeoRunningNotification();
                     } else if (blaeo.done) {
-                        _showBlaeoReadyNotification();
+                        const modalOpen = document.getElementById('community-modal').style.display !== 'none';
+                        if (modalOpen && typeof _loadBlaeoPreview === 'function') {
+                            _hideBlaeoNotification();
+                            _loadBlaeoPreview();
+                        } else {
+                            _showBlaeoReadyNotification();
+                        }
                     } else if (blaeo.error) {
-                        _showBlaeoErrorNotification();
+                        const modalOpen = document.getElementById('community-modal').style.display !== 'none';
+                        if (modalOpen) {
+                            _hideBlaeoNotification();
+                            const status = document.getElementById('blaeo-status');
+                            status.className = 'tool-status error';
+                            status.textContent = '✘ ' + blaeo.error;
+                        } else {
+                            _showBlaeoErrorNotification();
+                        }
                     }
                     if (!op.running && !dt.active && !blaeo.running) {
                         clearInterval(_bulkProgressPoller);

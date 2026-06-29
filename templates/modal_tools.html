@@ -1787,7 +1787,7 @@ async function runBlaeo() {
         const data = await res.json();
         if (data.status === 'started') {
             _hideBlaeoNotification();
-            status.textContent = 'Syncing in background — a notification will appear in the menu when done.';
+            status.textContent = 'Syncing in background — results will load here when done.';
             document.dispatchEvent(new CustomEvent('blaeo:started'));
         } else if (data.status === 'running') {
             status.textContent = 'BLAEO sync already in progress...';
