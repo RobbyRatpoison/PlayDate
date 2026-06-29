@@ -136,6 +136,12 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_playtime_forever  ON games(playtime_forever)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_platform          ON games(platform)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_name              ON games(name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_duplicate_of      ON games(duplicate_of)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_release_date      ON games(release_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_hltb_fetched      ON games(hltb_fetched)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_meta_fetched      ON games(meta_fetched)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_art_fetched       ON games(art_fetched)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_cheevos_fetched   ON games(cheevos_fetched)")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS blacklist (
