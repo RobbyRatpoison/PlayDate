@@ -385,14 +385,17 @@ def create_app(template_folder=None, static_folder=None):
     # ── Inject background timestamp and builtin filters into every template ──────
     @app.context_processor
     def inject_globals():
+        import time as _time
+        _t0 = _time.monotonic()
         from config import BUILTIN_FILTERS, load_theme
-        from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories, get_all_unique_platforms
+        from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories, get_all_unique_platforms, unique_cache_info
+        _cache_hit, _cache_age = unique_cache_info()
         from plugins import platform_labels as _platform_labels
         bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
         ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
         _plat_list = get_all_unique_platforms()
         _labels = _platform_labels()
-        return dict(
+        result = dict(
             background_ts=ts,
             builtin_filters=BUILTIN_FILTERS,
             theme_vars=load_theme(),
@@ -404,6 +407,11 @@ def create_app(template_folder=None, static_folder=None):
             available_platform_options={p: _labels.get(p, p) for p in _plat_list},
             is_windows=sys.platform == 'win32',
         )
+        log.info("inject_globals: %.1fms (%s, age=%.1fs)",
+                 (_time.monotonic() - _t0) * 1000,
+                 "hit" if _cache_hit else "miss",
+                 _cache_age)
+        return result
 
     # ── Cancellation + progress state for populate ───────────────────────────
     _populate_cancel = populate_cancel   # module-level event; main.py sets it on close
@@ -928,6 +936,8 @@ def create_app(template_folder=None, static_folder=None):
             _populate_state["last_result"] = result
         finally:
             _populate_state["running"] = False
+            from utils import invalidate_unique_cache
+            invalidate_unique_cache()
         return jsonify(result)
 
     @app.route('/api/cancel-populate', methods=['POST'])
@@ -2338,6 +2348,8 @@ def create_app(template_folder=None, static_folder=None):
             db.execute("DELETE FROM games WHERE appid = ?", (appid,))
             db.commit()
             db.close()
+            from utils import invalidate_unique_cache
+            invalidate_unique_cache()
 
             # Delete all cached images
             safe_id = str(int(appid))

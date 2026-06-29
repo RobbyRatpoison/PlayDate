@@ -3,6 +3,7 @@ import platform
 import re
 import struct
 import logging
+import time
 from database import get_db, update_game_data
 from datetime import datetime, timezone
 
@@ -479,15 +480,38 @@ def record_launch(appid):
     log.debug(f"Launch ignored for appid {appid}: not installed")
     return None
 
+_unique_cache: dict = {}
+_unique_cache_stamp: float = 0.0
+_UNIQUE_TTL: float = 30.0
+
+def invalidate_unique_cache():
+    global _unique_cache_stamp
+    _unique_cache_stamp = 0.0
+
+def _unique_cache_expired():
+    return time.monotonic() - _unique_cache_stamp > _UNIQUE_TTL
+
+def unique_cache_info():
+    """Return (hit, age_seconds) for the current cache state, sampled before a render."""
+    age = time.monotonic() - _unique_cache_stamp
+    hit = not _unique_cache_expired() and bool(_unique_cache)
+    return hit, age
+
 def _get_unique_csv_column(column):
-    db = get_db()
-    rows = db.execute(f"SELECT {column} FROM games WHERE {column} IS NOT NULL").fetchall()
-    db.close()
-    values = set()
-    for row in rows:
-        if row[column]:
-            values.update(v.strip() for v in row[column].split(',') if v.strip())
-    return sorted(values, key=str.casefold)
+    global _unique_cache, _unique_cache_stamp
+    if _unique_cache_expired():
+        _unique_cache.clear()
+        _unique_cache_stamp = time.monotonic()
+    if column not in _unique_cache:
+        db = get_db()
+        rows = db.execute(f"SELECT {column} FROM games WHERE {column} IS NOT NULL").fetchall()
+        db.close()
+        values = set()
+        for row in rows:
+            if row[column]:
+                values.update(v.strip() for v in row[column].split(',') if v.strip())
+        _unique_cache[column] = sorted(values, key=str.casefold)
+    return _unique_cache[column]
 
 def get_all_unique_groups():
     return _get_unique_csv_column('groups')
@@ -502,10 +526,16 @@ def get_all_unique_categories():
     return _get_unique_csv_column('categories')
 
 def get_all_unique_platforms():
-    db = get_db()
-    rows = db.execute("SELECT DISTINCT platform FROM games WHERE platform IS NOT NULL ORDER BY platform").fetchall()
-    db.close()
-    return [r['platform'] for r in rows]
+    global _unique_cache, _unique_cache_stamp
+    if _unique_cache_expired():
+        _unique_cache.clear()
+        _unique_cache_stamp = time.monotonic()
+    if 'platform' not in _unique_cache:
+        db = get_db()
+        rows = db.execute("SELECT DISTINCT platform FROM games WHERE platform IS NOT NULL ORDER BY platform").fetchall()
+        db.close()
+        _unique_cache['platform'] = [r['platform'] for r in rows]
+    return _unique_cache['platform']
 
 
 def parse_appinfo():
