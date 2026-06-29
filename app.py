@@ -2867,10 +2867,13 @@ def create_app(template_folder=None, static_folder=None):
                     params.append(f'{val}%')
                 elif op == 'title_word':
                     w = val.lower()
-                    parts.append("(' ' || LOWER(name) || ' ') LIKE ?")
+                    _norm = ("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+                             "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(name),"
+                             " ':', ' '), '!', ' '), '?', ' '), ',', ' '), '.', ' '),"
+                             " '''', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '),"
+                             " '{', ' '), '}', ' '), ';', ' '), '\"', ' ')")
+                    parts.append(f"(' ' || {_norm} || ' ') LIKE ?")
                     params.append(f'% {w} %')
-                    parts.append("(' ' || LOWER(name) || ' ') LIKE ?")
-                    params.append(f'% {w}s %')
                 elif op == 'gte':
                     parts.append(f"{col} >= ?")
                     params.append(int(val))
