@@ -1,7 +1,11 @@
+import logging
+import time
 from config import load_state, BUILTIN_FILTERS, resolve_outline_rule_where
 from database import get_db
 from utils import get_all_unique_groups, get_all_unique_tags
 from flask import Blueprint, jsonify, render_template, request, redirect, url_for
+
+log = logging.getLogger(__name__)
 
 library_bp = Blueprint('library', __name__)
 
@@ -30,25 +34,43 @@ def _compute_outline_colors(games, state):
     if not rules:
         return {}
 
+    _t0 = time.monotonic()
     saved_filters = state.get('saved_filters', {})
-    all_appids = {str(g['appid']) for g in games}
+    appid_ints = [g['appid'] for g in games]
+    if not appid_ints:
+        return {}
+    placeholders = ','.join('?' * len(appid_ints))
+
+    # Build a single CASE WHEN query -- one round-trip instead of one per rule.
+    # CASE evaluates in order so priority is preserved (first match wins).
+    case_whens = []
+    for rule in rules:
+        color = rule.get('color')
+        if not color:
+            continue
+        where = resolve_outline_rule_where(rule, saved_filters)
+        if not where or where == '1=0':
+            continue
+        case_whens.append((where, color.replace("'", "''")))
+
+    if not case_whens:
+        return {}
+
+    case_sql = 'CASE ' + ' '.join(f"WHEN ({w}) THEN '{c}'" for w, c in case_whens) + ' END'
     result = {}
     db = get_db()
     try:
-        for rule in rules:
-            color = rule.get('color')
-            if not color:
-                continue
-            where = resolve_outline_rule_where(rule, saved_filters)
-            if not where or where == '1=0':
-                continue
-            rows = db.execute(f"SELECT appid FROM games WHERE {where}").fetchall()
-            for row in rows:
-                aid = str(row[0])
-                if aid in all_appids and aid not in result:
-                    result[aid] = color
+        rows = db.execute(
+            f"SELECT appid, {case_sql} FROM games WHERE appid IN ({placeholders})",
+            appid_ints
+        ).fetchall()
+        for row in rows:
+            if row[1] is not None:
+                result[str(row[0])] = row[1]
     finally:
         db.close()
+    log.info("_compute_outline_colors: %.1fms (%d rules, %d games)",
+             (time.monotonic() - _t0) * 1000, len(rules), len(games))
     return result
 
 # ── SQL builder ─────────────────────────────────────────────────────────────
@@ -467,7 +489,7 @@ def update_game():
     for col in ('last_played', 'date_added', 'release_date'):
         if col in data:
             data[col] = date_to_ts(data[col]) if data[col] else None
-    from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories
+    from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories, invalidate_unique_cache
     try:
         old_groups_str = None
         if 'groups' in data:
@@ -476,6 +498,7 @@ def update_game():
             db.close()
             old_groups_str = (old_row['groups'] if old_row else None) or ''
         update_game_data(appid, **data)
+        invalidate_unique_cache()
         if 'groups' in data:
             _track_manual_groups(int(appid), old_groups_str, data['groups'] or '')
         db = get_db()
