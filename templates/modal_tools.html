@@ -1823,6 +1823,7 @@ async function _loadBlaeoPreview() {
             if (total === 0) {
                 status.className = 'tool-status success';
                 status.innerHTML = '<div>&#x2714; Nothing to update.</div>';
+                fetch('/api/blaeo-discard', { method: 'POST' }).catch(() => {});
             } else {
                 status.className = 'tool-status info';
                 let html = `<div style="margin-bottom:6px;">Review ${total} proposed change${total !== 1 ? 's' : ''}:</div>`;
@@ -5710,6 +5711,7 @@ async function openCommunityModal() {
         const state = await res.json();
         const status = document.getElementById('blaeo-status');
         if (state.done) {
+            _hideBlaeoNotification();
             status.className = 'tool-status info';
             status.textContent = 'Loading results...';
             await _loadBlaeoPreview();
