@@ -1680,6 +1680,18 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    @app.route('/api/preview-bg-from-path')
+    def preview_bg_from_path():
+        from flask import send_file
+        path = request.args.get('path', '')
+        if not path or not os.path.isfile(path):
+            return ('', 404)
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in ('.jpg', '.jpeg', '.png', '.webp'):
+            return ('', 400)
+        mime = 'image/webp' if ext == '.webp' else ('image/png' if ext == '.png' else 'image/jpeg')
+        return send_file(path, mimetype=mime)
+
     @app.route('/api/reset-background', methods=['POST'])
     def reset_background():
         try:

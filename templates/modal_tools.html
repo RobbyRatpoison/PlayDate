@@ -1024,6 +1024,10 @@
         </div>
         <input type="file" id="bg-file-input" accept=".jpg,.jpeg,.png,.webp" style="display:none" onchange="bgFileSelected(this)">
 
+        <div id="bg-preview-wrap" style="display:none; margin-bottom:12px; border-radius:6px; overflow:hidden; max-height:160px;">
+            <img id="bg-preview-img" src="" alt="" style="width:100%; height:160px; object-fit:cover; display:block;">
+        </div>
+
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px;">
             <label for="bg-opacity-slider" style="font-size:0.85rem; color:var(--text-secondary); white-space:nowrap;">Opacity</label>
             <input type="range" id="bg-opacity-slider" data-modal-row="1" min="0" max="1" step="0.05"
@@ -1682,6 +1686,7 @@ function closeBgModal() {
     const btn = document.getElementById('bg-upload-btn');
     btn.textContent = 'Save';
     document.getElementById('bg-file-input').value = '';
+    _hideBgPreview();
     _bgFile = null;
     _bgFilePath = null;
 }
@@ -3577,6 +3582,21 @@ async function runRestore() {
 // ── BACKGROUND CHANGER ──────────────────────────────────────────────────────
 let _bgFile = null;
 let _bgFilePath = null;
+let _bgObjectUrl = null;
+
+function _showBgPreview(url) {
+    const img  = document.getElementById('bg-preview-img');
+    const wrap = document.getElementById('bg-preview-wrap');
+    img.src = url;
+    wrap.style.display = 'block';
+}
+function _hideBgPreview() {
+    if (_bgObjectUrl) { URL.revokeObjectURL(_bgObjectUrl); _bgObjectUrl = null; }
+    const wrap = document.getElementById('bg-preview-wrap');
+    const img  = document.getElementById('bg-preview-img');
+    wrap.style.display = 'none';
+    img.src = '';
+}
 
 async function chooseBgFile() {
     if (_fileDlgBusy) return;
@@ -3595,6 +3615,8 @@ async function chooseBgFile() {
         label.textContent = `Selected: ${path.split(/[\\/]/).pop()}`;
         label.style.display = 'block';
         document.getElementById('bg-status').textContent = '';
+        _hideBgPreview();
+        _showBgPreview('/api/preview-bg-from-path?path=' + encodeURIComponent(path));
     } else {
         document.getElementById('bg-file-input').click();
     }
@@ -3638,6 +3660,9 @@ function setBgFile(file) {
     label.textContent = `Selected: ${file.name}  (${(file.size / 1024).toFixed(0)} KB)`;
     label.style.display = 'block';
     status.textContent = '';
+    if (_bgObjectUrl) { URL.revokeObjectURL(_bgObjectUrl); }
+    _bgObjectUrl = URL.createObjectURL(file);
+    _showBgPreview(_bgObjectUrl);
 }
 
 async function runSetBackground() {
