@@ -601,15 +601,18 @@ function drawCompletionPies() {
         if (!total) return;
 
         const cx = size / 2, cy = size / 2, r = size / 2 - 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#000';
+        ctx.fill();
         let angle = -Math.PI / 2;
-        const gap = 0.018;
         const slices = [];
 
         order.forEach(status => {
             const count = _completionCounts[status] || 0;
             if (!count) return;
-            const slice = (count / total) * (Math.PI * 2) - gap;
-            const start = angle + gap / 2;
+            const slice = (count / total) * (Math.PI * 2);
+            const start = angle;
             const end = start + slice;
             ctx.beginPath();
             ctx.moveTo(cx, cy);
@@ -618,8 +621,20 @@ function drawCompletionPies() {
             ctx.fillStyle = _PIE_COLORS[status] || '#555';
             ctx.fill();
             slices.push({ status, color: _PIE_COLORS[status] || '#555', start, end, count });
-            angle += slice + gap;
+            angle += slice;
         });
+
+        // Draw constant-width separators as stroked lines from centre to rim
+        if (slices.length > 1) {
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 1;
+            slices.forEach(s => {
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + r * Math.cos(s.start), cy + r * Math.sin(s.start));
+                ctx.stroke();
+            });
+        }
 
         _pieSliceMap.set(canvas, slices);
 
