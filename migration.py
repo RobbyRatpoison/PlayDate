@@ -452,16 +452,21 @@ def _m11_group_sources_json():
         stem = os.path.basename(db_path).replace('games_', '').replace('.db', '')
         gs_path = os.path.join(BASE_DIR, f'group_sources_{stem}.json')
 
-        if os.path.exists(gs_path):
-            log.info(f"_m11: {os.path.basename(gs_path)} already exists — skipping")
-            continue
-
         conn = sqlite3.connect(db_path, timeout=10)
         conn.row_factory = sqlite3.Row
         try:
             tables = {r[0] for r in conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()}
+
+            # Skip only if file exists AND old tables are gone (migration already ran).
+            # If old tables still exist (e.g. backup restore over an existing install),
+            # re-run to regenerate the file from the restored DB's data.
+            has_old_tables = bool({'blaeo_lists', 'blaeo_list_members',
+                                   'steam_collections', 'steam_collection_members'} & tables)
+            if os.path.exists(gs_path) and not has_old_tables:
+                log.info(f"_m11: {os.path.basename(gs_path)} already exists — skipping")
+                continue
 
             gs = {'version': 1, 'sources': {}, 'assignments': {}}
 
