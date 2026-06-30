@@ -1,6 +1,7 @@
 # Release Notes
 
 ## v1.5.20
+
 ### Improvements
 
 - Library grid scrolling is smoother, particularly on large libraries.
@@ -13,3 +14,5 @@
 - Completion chart now uses a consistent separator width and black background, with a subtle outline ring.
 - Gold star icon for achievement completion now displays correctly in the game card context menu.
 - Background image modal now shows a live preview of the selected image before saving.
+- Fixed a bug introduced in v1.5.14 where restoring a backup from an older version would leave group membership data incorrect.
+- Portable Windows builds no longer launch the installer when an update is available -- clicking the update button opens the GitHub releases page instead.
