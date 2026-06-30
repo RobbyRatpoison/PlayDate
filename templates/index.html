@@ -602,7 +602,7 @@ function drawCompletionPies() {
 
         const cx = size / 2, cy = size / 2, r = size / 2 - 2;
         ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
         ctx.fillStyle = '#000';
         ctx.fill();
         let angle = -Math.PI / 2;
