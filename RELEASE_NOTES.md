@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.5.20
-
+## v1.5.20 — 2026-06-30
 ### Improvements
 
 - Library grid scrolling is smoother, particularly on large libraries.
