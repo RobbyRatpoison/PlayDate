@@ -52,6 +52,9 @@ def run(cmd, **kwargs):
 
 
 def main():
+    import shutil
+    import zipfile
+
     version = read_version()
     print(f"PlayDate version: {version}")
 
@@ -60,8 +63,28 @@ def main():
     iscc = find_iscc()
     run([iscc, f"/DAppVersion={version}", "playdate.iss"])
 
+    # Add portable marker AFTER Inno Setup so the installer build doesn't include it
+    dist_dir = os.path.join(ROOT, "dist", "PlayDate")
+    portable_marker = os.path.join(dist_dir, "portable.txt")
+    with open(portable_marker, "w") as f:
+        f.write(f"PlayDate v{version} portable build\n")
+
+    # Zip the dist/PlayDate directory as the portable release asset
+    portable_zip = os.path.join(ROOT, "dist", f"PlayDate-Windows-Portable.zip")
+    print(f"\n>>> Creating portable zip: {portable_zip}\n")
+    with zipfile.ZipFile(portable_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        for dirpath, _, filenames in os.walk(dist_dir):
+            for fname in filenames:
+                full = os.path.join(dirpath, fname)
+                arcname = os.path.relpath(full, dist_dir)
+                zf.write(full, arcname)
+
+    size_mb = os.path.getsize(portable_zip) / 1_048_576
+    print(f"Portable zip: {portable_zip} ({size_mb:.1f} MB)")
+
     print(f"\nBuild complete: PlayDate v{version}")
-    print(f"Installer: {os.path.join(ROOT, 'installer', 'PlayDate-Setup.exe')}")
+    print(f"Installer:     {os.path.join(ROOT, 'installer', 'PlayDate-Setup.exe')}")
+    print(f"Portable zip:  {portable_zip}")
 
 
 if __name__ == "__main__":

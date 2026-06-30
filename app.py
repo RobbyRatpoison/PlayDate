@@ -3695,7 +3695,7 @@ def create_app(template_folder=None, static_folder=None):
     # ── Update checking endpoints ─────────────────────────────────────────────
     @app.route('/api/update-status')
     def update_status():
-        from config import load_state, __version__
+        from config import load_state, __version__, IS_PORTABLE
         state = load_state()
         return jsonify({
             'current_version': __version__,
@@ -3704,21 +3704,26 @@ def create_app(template_folder=None, static_folder=None):
             'latest_version': _update_cache.get('latest_version'),
             'checked': bool(_update_cache),
             'error': _update_cache.get('error'),
+            'is_portable': IS_PORTABLE,
         })
 
     @app.route('/api/check-update', methods=['POST'])
     def check_update():
-        from config import __version__
+        from config import __version__, IS_PORTABLE
         _do_update_check()
         return jsonify({
             'update_available': _update_cache.get('available', False),
             'latest_version': _update_cache.get('latest_version'),
             'current_version': __version__,
             'error': _update_cache.get('error'),
+            'is_portable': IS_PORTABLE,
         })
 
     @app.route('/api/perform-update', methods=['POST'])
     def perform_update():
+        from config import IS_PORTABLE
+        if IS_PORTABLE:
+            return jsonify({'status': 'error', 'message': 'Portable builds update manually — download the new zip from GitHub.'}), 400
         if not _update_cache.get('available'):
             return jsonify({'status': 'error', 'message': 'No update available'}), 400
 

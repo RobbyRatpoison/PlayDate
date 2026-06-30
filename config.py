@@ -24,6 +24,8 @@ else:
     BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
     _BUNDLE_DIR = BASE_DIR
 
+IS_PORTABLE = getattr(sys, 'frozen', False) and os.path.isfile(os.path.join(BASE_DIR, 'portable.txt'))
+
 CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
 STATE_PATH  = os.path.join(BASE_DIR, 'state.json')
 THEME_PATH  = os.path.join(BASE_DIR, 'theme.json')

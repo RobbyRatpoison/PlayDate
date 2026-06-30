@@ -775,13 +775,15 @@
         let _updateAvailable = false;
         let _latestVersion = null;
         let _autoCheckUpdates = true;
+        let _isPortable = false;
 
-        function _setUpdateAvailable(version) {
+        function _setUpdateAvailable(version, isPortable) {
             _updateAvailable = true;
             _latestVersion = version;
+            if (isPortable !== undefined) _isPortable = isPortable;
             document.getElementById('update-dot').classList.add('visible');
             document.getElementById('update-menu-dot').classList.add('visible');
-            document.getElementById('update-check-label').textContent = `Install Update (v${version})`;
+            document.getElementById('update-check-label').textContent = `${_isPortable ? 'Download' : 'Install'} Update (v${version})`;
         }
 
         function _updateAutoCheckLabel() {
@@ -812,6 +814,13 @@
         async function handleUpdateBtn() {
             if (_updateAvailable) {
                 closeHamburger();
+                if (_isPortable) {
+                    const a = document.createElement('a');
+                    a.href = 'https://github.com/RobbyRatpoison/PlayDate/releases/latest';
+                    a.target = '_blank'; a.rel = 'noopener noreferrer';
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    return;
+                }
                 document.getElementById('update-confirm-title').textContent = `Install PlayDate v${_latestVersion}?`;
                 document.getElementById('update-confirm-overlay').style.display = 'flex';
             } else {
@@ -824,7 +833,7 @@
                     const resp = await fetch('/api/check-update', { method: 'POST' });
                     const data = await resp.json();
                     if (data.update_available) {
-                        _setUpdateAvailable(data.latest_version);
+                        _setUpdateAvailable(data.latest_version, data.is_portable);
                     } else {
                         label.textContent = 'Check for Updates';
                         status.textContent = data.error ? 'Check failed.' : "You're up to date!";
@@ -880,7 +889,8 @@
                 const data = await resp.json();
                 _autoCheckUpdates = data.auto_check;
                 _updateAutoCheckLabel();
-                if (data.update_available) { _setUpdateAvailable(data.latest_version); return; }
+                if (data.is_portable) { _isPortable = true; }
+                if (data.update_available) { _setUpdateAvailable(data.latest_version, data.is_portable); return; }
                 // Startup check runs after 5s — poll until it completes
                 if (!data.checked) {
                     let polls = 0;
@@ -889,7 +899,7 @@
                         try {
                             const r = await fetch('/api/update-status');
                             const d = await r.json();
-                            if (d.update_available) { _setUpdateAvailable(d.latest_version); clearInterval(poller); }
+                            if (d.update_available) { _setUpdateAvailable(d.latest_version, d.is_portable); clearInterval(poller); }
                             else if (d.checked) clearInterval(poller);
                         } catch (e) { clearInterval(poller); }
                     }, 2000);
