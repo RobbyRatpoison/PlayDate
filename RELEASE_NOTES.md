@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.5.21
+## v1.5.21 — 2026-07-03
 ### Fixes
 
 - Fixed PAGYWOSG hover tooltips not showing a matching title-word condition for some games.
