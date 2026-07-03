@@ -1467,7 +1467,7 @@ const achLink = document.getElementById('achievements-link');
                 const swM = node.sql.match(/^(\w+) LIKE '([^']*)%'$/i);
                 if (swM) { conds.push({col: swM[1], op: 'STARTS_WITH', val: swM[2], pool}); }
                 else {
-                    const twM = node.sql.match(/\(' ' \|\| LOWER\(name\) \|\| ' '\) LIKE '% (\w+) %'/);
+                    const twM = node.sql.match(/\(' ' \|\| .*? \|\| ' '\) LIKE '% (\w+) %'/);
                     if (twM) conds.push({col: 'name', op: 'TITLE_WORD', val: twM[1], pool});
                 }
             } else if (node.type === 'group') {

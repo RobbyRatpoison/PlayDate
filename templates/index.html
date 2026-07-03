@@ -816,7 +816,7 @@ function buildEditBarHTML(shelf, containerEl) {
     const addColBtn = !atMax ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="addColumnToRow('${sid}')">＋ Column</button>` : '';
 
     const _platLabels = window._PLAT_LABELS;
-    const platHTML = (!isClock && _availablePlatforms.length > 1) ? `
+    const platHTML = (!isClock && _availablePlatforms.length > 0) ? `
         <div class="edit-sep"></div>
         ${_availablePlatforms.map(p => {
             const cls = (shelf.hidden_platforms || []).includes(p) ? 'plat-off' : 'plat-on';
