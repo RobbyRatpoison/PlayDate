@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.5.21 — 2026-07-03
-### Fixes
+## v1.6.0 — 2026-07-22
+### New
 
-- Fixed PAGYWOSG hover tooltips not showing a matching title-word condition for some games.
-- Fixed platform filter toggles (library page and home screen shelves) disappearing once only one platform remains in your library, which could leave a platform hidden with no way to show it again.
+- PlayDate is now available as a self-hosted Flatpak for Linux, built and published automatically on every release alongside the Windows installer. Runs on the GTK4/WebKit6 renderer, and supports GOG/Epic Wine-based installs and launches by running Wine/Proton on the host system rather than inside the sandbox.

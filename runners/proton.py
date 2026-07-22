@@ -7,6 +7,8 @@ import logging
 import os
 import subprocess
 
+from runners.sandbox import host_popen
+
 log = logging.getLogger(__name__)
 
 # Glob patterns for finding Proton installs.  Checked in order; first found wins
@@ -98,4 +100,4 @@ def launch_game(install_path, executable, wine_prefix, proton_path=None, env_ext
     exe_abs = os.path.join(install_path, executable)
     cmd     = [proton_path, 'run', exe_abs]
     log.info(f'Proton launch: {cmd[0]} run {executable}  (prefix={wine_prefix})')
-    return subprocess.Popen(cmd, env=env, cwd=install_path)
+    return host_popen(cmd, env=env, cwd=install_path)

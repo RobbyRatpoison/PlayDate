@@ -1,0 +1,75 @@
+id: io.github.robbyratpoison.PlayDate
+
+# GNOME runtime ships GTK4, WebKit 6.0, and PyGObject already, which is what
+# gtk4webview.py (main.py's Linux renderer fallback) targets — no separate
+# GTK/WebKit build step needed. Check for newer runtime releases before
+# building: `flatpak remote-ls flathub | grep org.gnome.Platform`
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+
+command: playdate
+
+finish-args:
+  # Steam/GOG/Epic libraries, Wine prefixes, and downloaded art/config can
+  # live anywhere under $HOME — this app's whole job is bridging into that,
+  # same as Lutris/Heroic/Bottles. Self-hosted distribution, not Flathub, so
+  # there's no review pressure to narrow this down; it's a known tradeoff and
+  # can be tightened later (see flatpak/README.md).
+  - --filesystem=home
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Required for flatpak-spawn --host, used by runners/sandbox.py to run
+  # Wine/Proton/winetricks/7z on the host instead of inside the sandbox.
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  - name: python3-requirements
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --no-build-isolation --prefix=/app -r requirements-flatpak.txt
+    sources:
+      - type: file
+        path: requirements-flatpak.txt
+
+  # Portal-forwarding xdg-open/xdg-email shims so the existing
+  # subprocess.Popen(['xdg-open', url]) calls in app.py (steam://, http(s)://)
+  # keep working unmodified from inside the sandbox.
+  # Check for a newer release tag before building.
+  - name: flatpak-xdg-utils
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/flatpak/flatpak-xdg-utils.git
+        tag: '1.0.6'
+
+  - name: playdate
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/playdate
+      - cp -r src/. /app/share/playdate/
+      - install -Dm755 playdate-wrapper.sh /app/bin/playdate
+      - install -Dm644 io.github.robbyratpoison.PlayDate.desktop /app/share/applications/io.github.robbyratpoison.PlayDate.desktop
+      - install -Dm644 io.github.robbyratpoison.PlayDate.metainfo.xml /app/share/metainfo/io.github.robbyratpoison.PlayDate.metainfo.xml
+      - install -Dm644 /app/share/playdate/static/img/favicon.png /app/share/icons/hicolor/256x256/apps/io.github.robbyratpoison.PlayDate.png
+    sources:
+      # Sourced from the git repo (not a raw directory copy of the working
+      # tree) so gitignored personal data — config.json, games*.db,
+      # state.json, cached art, tokens — can never end up bundled into the
+      # app shipped to other people. Bump the tag at each release.
+      - type: git
+        url: https://github.com/RobbyRatpoison/PlayDate.git
+        tag: v1.5.21
+        dest: src
+      - type: file
+        path: playdate-wrapper.sh
+      - type: file
+        path: io.github.robbyratpoison.PlayDate.desktop
+      - type: file
+        path: io.github.robbyratpoison.PlayDate.metainfo.xml

@@ -1,4 +1,4 @@
-name: Build Windows Installer
+name: Build Releases
 
 # Triggers:
 #   - Push a version tag like v1.0.0  → full build + GitHub Release
@@ -147,3 +147,116 @@ jobs:
           files: |
             installer/PlayDate-Setup.exe
             ${{ env.PORTABLE_ZIP }}
+
+  build-flatpak:
+    name: Build & Package (Linux Flatpak)
+    runs-on: ubuntu-latest
+    # Runs after build-windows so it's the one job creating the GitHub Release;
+    # this job just adds the .flatpak to the release that already exists.
+    needs: build-windows
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set version from tag ───────────────────────────────────────────────
+      - name: Set version from tag
+        shell: python
+        run: |
+          import os, re
+          tag = "${{ github.ref_name }}"
+          m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
+          ver = m.group(1) if m else "0.0.0"
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"PD_VERSION={ver}\n")
+          print(f"Version: {ver}")
+
+      # ── 3. Point the manifest at this checkout instead of a git tag ──────────
+      # The manifest normally clones RobbyRatpoison/PlayDate at a fixed tag (so
+      # local builds never pick up a developer's gitignored personal data). In
+      # CI, actions/checkout already gives us a clean tree at the exact ref
+      # being built (works for both tag pushes and manual workflow_dispatch
+      # runs on a branch), so swap the git source for a local dir source.
+      - name: Point manifest at the CI checkout
+        shell: python
+        run: |
+          path = "flatpak/io.github.robbyratpoison.PlayDate.yml"
+          old = (
+              "      - type: git\n"
+              "        url: https://github.com/RobbyRatpoison/PlayDate.git\n"
+              "        tag: v1.5.21\n"
+              "        dest: src"
+          )
+          new = (
+              "      - type: dir\n"
+              "        path: ..\n"
+              "        dest: src\n"
+              "        skip:\n"
+              "          - flatpak\n"
+              "          - .git\n"
+              "          - .venv\n"
+              "          - __pycache__\n"
+              "          - webview_storage"
+          )
+          with open(path) as f:
+              content = f.read()
+          assert content.count(old) == 1, "manifest git-source block not found or not unique — update this CI step"
+          content = content.replace(old, new)
+          with open(path, "w") as f:
+              f.write(content)
+          print("Patched manifest to build from the CI checkout")
+
+      # ── 4. Install flatpak + flatpak-builder ──────────────────────────────────
+      - name: Install flatpak tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      # ── 5. Install the GNOME runtime + SDK ────────────────────────────────────
+      - name: Install GNOME runtime and SDK
+        run: flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
+
+      # ── 6. Build and bundle ───────────────────────────────────────────────────
+      - name: Build with flatpak-builder
+        run: |
+          flatpak-builder --user --repo=flatpak/repo --force-clean \
+            flatpak/build-dir flatpak/io.github.robbyratpoison.PlayDate.yml
+
+      - name: Create .flatpak bundle
+        run: |
+          flatpak build-bundle flatpak/repo \
+            "PlayDate-${PD_VERSION}-Linux.flatpak" \
+            io.github.robbyratpoison.PlayDate
+
+      # ── 7. Verify the build ───────────────────────────────────────────────────
+      - name: Verify bundle output
+        run: |
+          f="PlayDate-${PD_VERSION}-Linux.flatpak"
+          if [ -f "$f" ]; then
+            echo "$f found"
+            du -h "$f"
+          else
+            echo "::error::$f not found"
+            exit 1
+          fi
+
+      # ── 8. Upload artifact (always) ───────────────────────────────────────────
+      - name: Upload flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayDate-Linux-Flatpak
+          path: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak
+          retention-days: 30
+
+      # ── 9. Attach to the GitHub Release (only on version tags) ────────────────
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          name: "PlayDate ${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          body_path: RELEASE_NOTES.md
+          files: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak

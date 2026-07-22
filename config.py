@@ -15,11 +15,21 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.5.21"
+__version__ = "1.6.0"
+
+IN_FLATPAK = os.path.exists('/.flatpak-info')
 
 if getattr(sys, 'frozen', False):
     BASE_DIR    = os.path.dirname(sys.executable)
     _BUNDLE_DIR = sys._MEIPASS
+elif IN_FLATPAK:
+    # /app is read-only at runtime; user data lives under XDG_DATA_HOME,
+    # which Flatpak already isolates to ~/.var/app/<id>/data per-app.
+    _BUNDLE_DIR = '/app/share/playdate'
+    BASE_DIR = os.path.join(
+        os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')),
+        'playdate')
+    os.makedirs(BASE_DIR, exist_ok=True)
 else:
     BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
     _BUNDLE_DIR = BASE_DIR

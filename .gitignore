@@ -44,6 +44,10 @@ build/
 # --- Inno Setup Output ---
 installer/
 
+# --- Flatpak Build Artifacts ---
+flatpak/.flatpak-builder/
+flatpak/build-dir/
+
 # --- Generated at Install Time ---
 playdate-launch.sh
 playdate-launch.bat

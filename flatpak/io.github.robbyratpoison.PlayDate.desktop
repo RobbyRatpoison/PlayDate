@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PlayDate
+Comment=Your personal Steam library manager
+Exec=playdate
+Icon=io.github.robbyratpoison.PlayDate
+Terminal=false
+Categories=Game;
+StartupWMClass=main.py

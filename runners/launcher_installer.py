@@ -20,6 +20,8 @@ import threading
 
 import requests
 
+from runners.sandbox import IN_FLATPAK, host_popen, host_run, host_which
+
 log = logging.getLogger(__name__)
 
 _states: dict = {}
@@ -135,14 +137,14 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     try:
         os.makedirs(prefix, exist_ok=True)
         env = {**os.environ, 'WINEPREFIX': prefix, 'WINEARCH': winearch, 'WINEDEBUG': '-all'}
-        r = subprocess.run(
+        r = host_run(
             [wb, 'wineboot', '--init'],
             env=env, check=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         log.info('Launcher install [%s]: wineboot exit=%d', platform_id, r.returncode)
         if win_version:
-            r2 = subprocess.run(
+            r2 = host_run(
                 [wb, 'reg', 'add', r'HKCU\Software\Wine', '/v', 'Version',
                  '/d', win_version, '/f'],
                 env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -154,8 +156,7 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
 
     # Step 2: Winetricks dependencies
     if winetricks_verbs:
-        import shutil as _shutil
-        wt = _shutil.which('winetricks')
+        wt = host_which('winetricks')
         if not wt:
             _fail(platform_id, 'winetricks is required but not found — install it (e.g. sudo dnf install winetricks)')
             return
@@ -164,7 +165,7 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
         # winetricks step — it can install DLLs into a Proton prefix just fine.
         wt_wine = wb
         if is_proton_wine(wb):
-            system_wine = _shutil.which('wine')
+            system_wine = host_which('wine')
             if system_wine:
                 log.info('Launcher install [%s]: Proton detected — using system wine (%s) for winetricks', platform_id, system_wine)
                 wt_wine = system_wine
@@ -175,7 +176,7 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
             env = {**os.environ, 'WINEPREFIX': prefix, 'WINEARCH': winearch,
                    'WINE': wt_wine, 'WINEDEBUG': '-all'}
             try:
-                r = subprocess.run(
+                r = host_run(
                     [wt, '--unattended', verb],
                     env=env,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -190,7 +191,15 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
 
     # Step 3: Download installer
     _set(platform_id, 'downloading', 'Downloading installer...')
-    tmp_dir = tempfile.mkdtemp(prefix=f'playdate_{platform_id}_')
+    # Under Flatpak, wine/7z run on the host via flatpak-spawn --host and can't
+    # see the sandbox's private /tmp — use a dir under $HOME instead, which is
+    # bind-mounted identically in both namespaces.
+    if IN_FLATPAK:
+        _tmp_base = os.path.join(os.path.expanduser('~/.cache/playdate/tmp'))
+        os.makedirs(_tmp_base, exist_ok=True)
+        tmp_dir = tempfile.mkdtemp(prefix=f'playdate_{platform_id}_', dir=_tmp_base)
+    else:
+        tmp_dir = tempfile.mkdtemp(prefix=f'playdate_{platform_id}_')
     ext = '.msi' if installer_type == 'msi' else '.exe'
     installer_path = os.path.join(tmp_dir, f'installer{ext}')
     try:
@@ -220,7 +229,7 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
         os.makedirs(dest, exist_ok=True)
         _set(platform_id, 'installing', 'Extracting files...')
         try:
-            r = subprocess.run(
+            r = host_run(
                 ['7z', 'e', installer_path, f'-o{dest}', '-y'],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
@@ -247,7 +256,7 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
             env = {**os.environ, 'WINEPREFIX': prefix, 'WINEDEBUG': '-all', **extra_env}
             cmd = [wb, 'msiexec', '/i', installer_path] if installer_type == 'msi' else [wb, installer_path]
             log.info('Launcher install [%s]: running %s', platform_id, cmd)
-            proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            proc = host_popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _out, _err = proc.communicate()
             log.info('Launcher install [%s]: installer exit code %d', platform_id, proc.returncode)
             if proc.returncode != 0:

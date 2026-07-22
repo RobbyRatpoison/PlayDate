@@ -8,8 +8,15 @@ import sys
 # ── Logging Setup — must be first so import errors are captured ───────────────
 # Use sys.executable dir when frozen so the log lands next to the .exe, not
 # inside the PyInstaller temp bundle (_MEIPASS) where it would be invisible.
+# Under Flatpak, /app is read-only at runtime, so the log goes to the same
+# writable data dir as everything else (see config.py's BASE_DIR).
 if getattr(sys, 'frozen', False):
     _LOG_DIR = os.path.dirname(sys.executable)
+elif os.path.exists('/.flatpak-info'):
+    _LOG_DIR = os.path.join(
+        os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')),
+        'playdate')
+    os.makedirs(_LOG_DIR, exist_ok=True)
 else:
     _LOG_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(_LOG_DIR, 'playdate.log')

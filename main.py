@@ -13,9 +13,19 @@ import time
 # When running as a bundled .exe, sys._MEIPASS points to the folder where
 # PyInstaller extracted everything. We need Flask to find templates and static
 # files from there, not from __file__ (which no longer exists meaningfully).
+_IN_FLATPAK = os.path.exists('/.flatpak-info')
+
 if getattr(sys, 'frozen', False):
     _BUNDLE_DIR = sys._MEIPASS
     _APP_DIR    = os.path.dirname(sys.executable)  # folder next to the .exe
+elif _IN_FLATPAK:
+    # /app is read-only at runtime; user data lives under XDG_DATA_HOME,
+    # which Flatpak already isolates to ~/.var/app/<id>/data per-app.
+    _BUNDLE_DIR = '/app/share/playdate'
+    _APP_DIR = os.path.join(
+        os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')),
+        'playdate')
+    os.makedirs(_APP_DIR, exist_ok=True)
 else:
     _BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
     _APP_DIR    = _BUNDLE_DIR
@@ -1029,6 +1039,19 @@ def _save_window_state(tracked):
         log.warning(f"Failed to save window state: {e}")
 
 
+def _seed_flatpak_data_files():
+    """Copy shipped reference data (not user data) into the writable data dir
+    on first run under Flatpak, since /app is read-only at runtime."""
+    import shutil
+    for fname in ('steam_hltb_map.json', 'pagywosg_supplement.json'):
+        dest = os.path.join(BASE_DIR, fname)
+        if not os.path.exists(dest):
+            src = os.path.join(_BUNDLE_DIR, fname)
+            if os.path.isfile(src):
+                shutil.copy2(src, dest)
+                log.info(f"Seeded {fname} into writable data dir")
+
+
 if __name__ == '__main__':
     # 1. Create Flask app — pass bundle dir so it finds templates/static
     #    when frozen; falls back to normal behaviour when running as script
@@ -1047,6 +1070,8 @@ if __name__ == '__main__':
 
     # 2. Initialise DB
     try:
+        if _IN_FLATPAK:
+            _seed_flatpak_data_files()
         migration.run()
         init_db()
     except Exception as e:

@@ -1,0 +1,31 @@
+# Derived from ../requirements.txt for the Flatpak build.
+# Excludes pythonnet (Windows-only) and aiounittest (unused at runtime).
+# Keep in sync with requirements.txt when dependencies change.
+
+Flask==3.1.3
+Werkzeug==3.1.6
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+itsdangerous==2.2.0
+click==8.3.1
+waitress==3.0.2
+
+pywebview==6.1
+
+requests==2.33.1
+beautifulsoup4==4.14.3
+howlongtobeatpy==1.0.21
+aiohttp==3.14.1
+fake-useragent==2.2.0
+soupsieve==2.8.3
+urllib3==2.7.0
+certifi==2026.2.25
+charset-normalizer==3.4.4
+idna==3.15
+
+Pillow==12.2.0
+
+RapidFuzz==3.14.3
+python-dotenv==1.2.2
+watchdog==6.0.0
+vdf==3.4

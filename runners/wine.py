@@ -7,6 +7,8 @@ import logging
 import os
 import subprocess
 
+from runners.sandbox import host_is_executable, host_popen, host_run, host_which
+
 log = logging.getLogger(__name__)
 
 _WINE_CANDIDATES = [
@@ -28,7 +30,16 @@ def find_wine_binary():
     """
     Return the absolute path to a wine binary, or None if not found.
     Prefers wine64; falls back to wine. Searches PATH first, then common distro paths.
+
+    Under Flatpak, this process's own PATH/filesystem view is the sandbox's,
+    not the host's, so binaries at e.g. /usr/bin/wine64 are checked against
+    the host via host_which()/host_is_executable() instead.
     """
+    for candidate in _WINE_CANDIDATES:
+        found = host_which(candidate)
+        if found:
+            return found
+
     search_dirs = []
     path_env = os.environ.get('PATH', '')
     if path_env:
@@ -40,7 +51,7 @@ def find_wine_binary():
     for candidate in _WINE_CANDIDATES:
         for d in search_dirs:
             full = os.path.join(d, candidate)
-            if os.path.isfile(full) and os.access(full, os.X_OK):
+            if host_is_executable(full):
                 return full
     return None
 
@@ -171,7 +182,7 @@ def install_dxvk(prefix_path, wine_bin):
     overrides = {'dxgi': 'native,builtin', 'd3d9': 'native,builtin',
                  'd3d10core': 'native,builtin', 'd3d11': 'native,builtin'}
     for dll, value in overrides.items():
-        subprocess.run(
+        host_run(
             [wine_bin, 'reg', 'add',
              r'HKEY_CURRENT_USER\Software\Wine\DllOverrides',
              '/v', dll, '/t', 'REG_SZ', '/d', value, '/f'],
@@ -217,7 +228,7 @@ def create_prefix(prefix_path, wine_bin=None):
     env['WINEDEBUG'] = '-all'
 
     log.info(f'Creating Wine prefix at {prefix_path} using {wine_bin}')
-    subprocess.run(
+    host_run(
         [wine_bin, 'wineboot', '--init'],
         env=env,
         check=True,
@@ -251,7 +262,7 @@ def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None):
 
     cmd = [wine_bin, exe] + (args or [])
     log.info(f'Wine launch: {wine_bin} {exe}  (prefix={prefix_path})')
-    return subprocess.Popen(cmd, env=env)
+    return host_popen(cmd, env=env)
 
 
 def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None):
@@ -272,4 +283,4 @@ def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None):
 
     cmd = [wine_bin, 'start', url]
     log.info(f'Wine protocol launch: {url}  (prefix={prefix_path})')
-    return subprocess.Popen(cmd, env=env)
+    return host_popen(cmd, env=env)
