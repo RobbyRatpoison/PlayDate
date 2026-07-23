@@ -15,7 +15,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.6.1"
+__version__ = "1.6.2"
 
 IN_FLATPAK = os.path.exists('/.flatpak-info')
 
