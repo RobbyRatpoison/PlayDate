@@ -1,19 +1,19 @@
 {% if needs_config %}
-<div id="config-modal" class="modal-overlay">
+<div id="config-modal" class="modal-overlay" style="display:flex;">
     <div class="modal-content" style="width: 30rem;">
         <h2 style="color: var(--accent); margin-top: 0;">Configuration</h2>
         <p style="font-size: 0.9rem; color: #8f98a0; margin-bottom: 20px;">Connect your Steam account to start syncing your library.</p>
 
         <form id="config-form">
             <label>Steam ID or Vanity Name <span style="color:#ff4d4d;">*</span></label>
-            <input type="text" id="conf-steam-id" name="steam_id" placeholder="e.g. 76561198... or your custom URL name" value="{{ existing_steam_id }}" required>
+            <input type="text" id="conf-steam-id" name="steam_id" placeholder="e.g. 76561198... or your custom URL name" value="{{ existing_steam_id }}" required data-modal-row="0">
             <div id="conf-account-picker" style="display:none; flex-direction:column; gap:4px; margin-top:6px;"></div>
             <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
                 Your vanity name is the custom part of your Steam profile URL. A numeric SteamID64 is required if you skip the API key below.
             </small>
 
             <label>Steam API Key <span style="color: #c89a3c; font-weight: normal;">(Recommended)</span></label>
-            <input type="password" id="conf-api-key" name="api_key" placeholder="Enables achievements, full library import, and vanity name lookup">
+            <input type="password" id="conf-api-key" name="api_key" placeholder="Enables achievements, full library import, and vanity name lookup" data-modal-row="1">
             <small style="display:block; color: #8f98a0; margin-bottom: 8px; font-size: 0.75rem;">
                 Get your free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color: var(--accent);">steamcommunity.com/dev/apikey</a> — takes about 2 minutes.
             </small>
@@ -23,20 +23,20 @@
             </div>
 
             <label>SteamGridDB API Key <span style="color: #8f98a0; font-weight: normal;">(Optional)</span></label>
-            <input type="password" id="conf-sgdb-key" name="sgdb_key" placeholder="Used for higher quality artwork when Steam's is missing" value="{{ existing_sgdb_key }}">
+            <input type="password" id="conf-sgdb-key" name="sgdb_key" placeholder="Used for higher quality artwork when Steam's is missing" value="{{ existing_sgdb_key }}" data-modal-row="2">
             <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
                 Get yours at <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" style="color: var(--accent);">steamgriddb.com/profile/preferences/api</a>
             </small>
 
             <div style="margin-top: 1.25rem;">
-                <button type="submit" id="save-config-btn" class="btn-save" style="width: 100%; margin: 0;">SAVE & CONNECT</button>
+                <button type="submit" id="save-config-btn" class="btn-save" data-modal-row="3" style="width: 100%; margin: 0;">SAVE & CONNECT</button>
             </div>
         </form>
 
         <div style="margin-top: 1.5rem; padding-top: 1.125rem; border-top: 1px solid var(--border);">
             <p style="font-size: 0.85rem; color: #8f98a0; margin: 0 0 10px;">Already have a backup? Restore it to skip setup entirely.</p>
             <div style="display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;">
-                <button type="button" class="nav-btn" onclick="chooseConfigRestoreFile()">Restore from Backup</button>
+                <button type="button" class="nav-btn" data-modal-row="4" onclick="chooseConfigRestoreFile()">Restore from Backup</button>
                 <input type="file" id="config-restore-input" accept=".zip" style="display:none" onchange="configRestoreFileSelected(this)">
                 <span id="config-restore-status" style="font-size:0.85rem; color: var(--text-secondary);"></span>
             </div>

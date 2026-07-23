@@ -26,6 +26,11 @@ datas = [
     # Plugin data files (plugin.json, assets, etc.) — Python code is bundled
     # separately but the directory must exist on disk for load_all() to scan it
     (os.path.join(ROOT, 'plugins'), 'plugins'),
+
+    # Read by _build_whats_new_html() in config.py for the in-app "What's New"
+    # popup — without these, it silently has nothing to show on Windows builds.
+    (os.path.join(ROOT, 'CHANGELOG.md'), '.'),
+    (os.path.join(ROOT, 'RELEASE_NOTES.md'), '.'),
 ]
 
 # Pull in any data files that flask, jinja2, waitress etc need

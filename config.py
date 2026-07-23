@@ -1167,13 +1167,8 @@ def _parse_version_tuple(v):
         return (0, 0, 0)
 
 
-def _build_whats_new_html(since_version=None):
-    notes_path = os.path.join(_BUNDLE_DIR, 'CHANGELOG.md')
-    if not os.path.exists(notes_path):
-        return ''
-    with open(notes_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-
+def _parse_changelog_sections(content, since_version=None):
+    """Parse CHANGELOG.md/RELEASE_NOTES.md-format markdown into a list of HTML fragments."""
     since_tuple = _parse_version_tuple(since_version) if since_version else None
     sections = re.split(r'\n(?=## v)', content)
     parts = []
@@ -1210,6 +1205,26 @@ def _build_whats_new_html(since_version=None):
 
         out += '</div>'
         parts.append(out)
+
+    return parts
+
+
+def _build_whats_new_html(since_version=None):
+    changelog_path = os.path.join(_BUNDLE_DIR, 'CHANGELOG.md')
+    parts = []
+    if os.path.exists(changelog_path):
+        with open(changelog_path, 'r', encoding='utf-8') as f:
+            parts = _parse_changelog_sections(f.read(), since_version)
+
+    if not parts:
+        # Beta builds share their base version number with the eventual
+        # stable release (CI strips the -beta.N suffix), so CHANGELOG.md
+        # won't have an entry for it yet — fall back to RELEASE_NOTES.md's
+        # current in-progress draft so beta testers still see what changed.
+        notes_path = os.path.join(_BUNDLE_DIR, 'RELEASE_NOTES.md')
+        if os.path.exists(notes_path):
+            with open(notes_path, 'r', encoding='utf-8') as f:
+                parts = _parse_changelog_sections(f.read(), since_version)
 
     return ''.join(parts)
 

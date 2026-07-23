@@ -53,6 +53,21 @@
             }
             // Close any other open modal (tools page, bulk edit, etc.)
             _closeAnyOpenModal();
+            return;
+        }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            // Steam Input's default Desktop Mode controller layout binds the
+            // D-pad (not the analog stick) to arrow keys, independent of the
+            // Gamepad API polling in _pollLoop() below — which already moves
+            // modal focus correctly per zone. Without this, the same D-pad
+            // press both navigates the modal (via Gamepad API) and scrolls/
+            // moves the page behind it (via the synthetic key's default
+            // action), since the browser has no idea a modal is covering it.
+            // Skipped while a text field has real focus so actual keyboard
+            // users can still move the text cursor normally with arrow keys.
+            if (_anyWatchedOpen() && !_isTextEntryFocused()) {
+                e.preventDefault();
+            }
         }
     });
 
@@ -163,6 +178,17 @@
 
     // Track whether a gamepad has ever been seen this session (persisted across page loads)
     let _gpEverSeen = safeSession.getItem('pd_gp_seen') === '1';
+
+    // Stamped whenever input.js focuses a text/number input via the gamepad A
+    // button. Steam Deck's on-screen keyboard binds its own confirm gesture to
+    // A and dismisses/confirms by synthesizing a real, trusted Enter keydown/
+    // keyup on the focused element — indistinguishable from the user actually
+    // pressing Enter. Any onkeyup="if (e.key==='Enter') ..." handler elsewhere
+    // in the app should check window._inputMgr.justGamepadFocusedInput() first
+    // so that gaining focus isn't immediately treated as also submitting.
+    let _gpTextFocusAt = 0;
+    function _stampGpTextFocus() { _gpTextFocusAt = Date.now(); }
+    window._inputMgr.justGamepadFocusedInput = () => (Date.now() - _gpTextFocusAt) < 400;
 
     // ── Game-running suppression ──────────────────────────────────────────────
     // Set when a game launches; persists across the page reload that follows.
@@ -627,6 +653,7 @@
     const _MODAL_IDS = [
         '_color-picker-popover', // playdate.js inline color picker — dynamically inserted
         'pd-dialog-overlay',   // base.html confirm/alert — shown via .visible class
+        'config-modal',        // first-run required setup (modal_edit.html, needs_config) — no close button, blocks everything else
         'editModal', 'filterModal', 'viewModal',
         // Data modal sub-modals
         'backup-modal', 'bg-modal', 'import-modal',
@@ -1632,12 +1659,14 @@
                     } else if (el.type === 'number') {
                         _state.activeInput = el;
                         _pushZone('number-input');
+                        _stampGpTextFocus();
                         el.focus();
                         el.select();
                         _syncFocus();
                     } else {
                         _state.activeInput = el;
                         _pushZone('text-input');
+                        _stampGpTextFocus();
                         el.focus();
                         _syncFocus();
                     }
@@ -1646,6 +1675,7 @@
                 } else if (el.tagName === 'TEXTAREA') {
                     _state.activeInput = el;
                     _pushZone('text-input');
+                    _stampGpTextFocus();
                     el.focus();
                     _syncFocus();
                 } else if (el.classList?.contains('pill-input-box')) {
@@ -1653,6 +1683,7 @@
                     if (inp) {
                         _state.activeInput = inp;
                         _pushZone('text-input');
+                        _stampGpTextFocus();
                         inp.focus();
                         _syncFocus();
                     }
@@ -1773,6 +1804,7 @@
                             } else if (cap.tagName === 'INPUT' && cap.type === 'number') {
                                 _state.activeInput = cap;
                                 _pushZone('number-input');
+                                _stampGpTextFocus();
                                 cap.focus();
                                 cap.select();
                                 _syncFocus();
@@ -1794,6 +1826,7 @@
                                 if (el.tagName === 'INPUT') {
                                     _state.activeInput = el;
                                     _pushZone('text-input');
+                                    _stampGpTextFocus();
                                     el.focus();
                                     _syncFocus();
                                 } else if (el.tagName === 'SELECT') {
@@ -1845,6 +1878,7 @@
                             if (inp) {
                                 _state.activeInput = inp;
                                 _pushZone(inp.type === 'number' ? 'number-input' : 'text-input');
+                                _stampGpTextFocus();
                                 inp.focus();
                                 inp.select();
                                 _syncFocus();
@@ -2419,6 +2453,17 @@
             _gp.prev[i] = pressed;
         });
 
+        // Sticks are suppressed while a text field has real focus — Steam Deck's
+        // on-screen keyboard also reads stick input for its own key navigation,
+        // and without this both the OSK and the page would move at once.
+        // Buttons are unaffected (per-button zone guards, e.g. B's exit-text-
+        // input handling, still need to fire normally), only continuous stick
+        // movement is skipped here.
+        if (_isTextEntryFocused()) {
+            _gp.stickDir = null;
+            return;
+        }
+
         // ── Right stick (scroll) ──────────────────────────────────────────────
         const rsy = gp.axes[AXIS_IDX.ry] || 0;
         if (Math.abs(rsy) > STICK_DEAD) {
@@ -2591,6 +2636,11 @@
 
         // pd-dialog-overlay (base.html confirm/alert — visibility via .visible class)
         _watchModalByClass('pd-dialog-overlay');
+
+        // First-run config modal (modal_edit.html, needs_config) — present
+        // already-visible via CSS (no JS open/close toggle), so register it
+        // even though its inline style never changes after load.
+        _watchModal('config-modal');
 
         // Edit / filter modals (base.html — present on every page)
         _watchModal('editModal');
