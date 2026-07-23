@@ -59,6 +59,7 @@ from index import index_bp
 from library import library_bp
 from utils import sync_local_install_status, record_launch
 from config import BASE_DIR
+from runners.sandbox import IN_FLATPAK, host_run, host_popen
 from imports import inspect_database, execute_import
 from scrapers import scrape_blaeo_games, get_blaeo_preview, apply_blaeo_changes, get_blaeo_cached_result, clear_blaeo_cache
 from database import get_db, init_db, update_game_data, add_to_blacklist, remove_from_blacklist, get_blacklist
@@ -177,15 +178,19 @@ def _do_update_check():
         available = _parse(latest) > _parse(__version__)
 
         installer_url = None
+        flatpak_url = None
         for asset in data.get('assets', []):
-            if asset.get('name', '').lower().endswith('.exe'):
+            name = asset.get('name', '').lower()
+            if name.endswith('.exe'):
                 installer_url = asset['browser_download_url']
-                break
+            elif name.endswith('.flatpak'):
+                flatpak_url = asset['browser_download_url']
 
         _update_cache.update({
             'available': available,
             'latest_version': latest,
             'installer_url': installer_url,
+            'flatpak_url': flatpak_url,
             'zipball_url': data.get('zipball_url'),
             'checked_at': time.time(),
             'error': None
@@ -3755,7 +3760,46 @@ def create_app(template_folder=None, static_folder=None):
             _update_dl_state['status'] = 'downloading'
             _update_dl_state['error'] = None
             try:
-                if getattr(sys, 'frozen', False):
+                if IN_FLATPAK:
+                    # Flatpak: download the new bundle under $HOME (a
+                    # flatpak-spawn --host process can't see the sandbox's
+                    # private /tmp), install it via the host's flatpak, then
+                    # relaunch. /app stays mounted to the old version for the
+                    # life of this process, so a fresh process is required.
+                    url = _update_cache.get('flatpak_url')
+                    if not url:
+                        log.error("perform-update: no flatpak URL cached")
+                        _update_dl_state.update({'status': 'error', 'error': 'No flatpak bundle URL cached', 'manual_url': None})
+                        return
+                    bundle_path = os.path.join(BASE_DIR, 'playdate-update.flatpak')
+                    log.info(f"Downloading flatpak bundle: {url}")
+                    _update_dl_state['manual_url'] = url
+                    _fetch(url, bundle_path)
+
+                    app_id = 'io.github.robbyratpoison.PlayDate'
+                    log.info(f"Installing flatpak bundle: {bundle_path}")
+                    result = host_run(
+                        ['flatpak', 'install', '--user', '-y', '--reinstall', bundle_path],
+                        capture_output=True, text=True
+                    )
+                    if result.returncode != 0:
+                        log.warning(f"--user flatpak install failed ({result.stderr.strip()}), retrying --system")
+                        result = host_run(
+                            ['flatpak', 'install', '--system', '-y', '--reinstall', bundle_path],
+                            capture_output=True, text=True
+                        )
+                    try:
+                        os.remove(bundle_path)
+                    except OSError:
+                        pass
+                    if result.returncode != 0:
+                        log.error(f"perform-update: flatpak install failed: {result.stderr.strip()}")
+                        _update_dl_state.update({'status': 'error', 'error': f'flatpak install failed: {result.stderr.strip()}'})
+                        return
+
+                    log.info("Relaunching via flatpak run")
+                    host_popen(['flatpak', 'run', app_id], start_new_session=True)
+                elif getattr(sys, 'frozen', False):
                     # Windows frozen exe: download installer and launch it
                     url = _update_cache.get('installer_url')
                     if not url:

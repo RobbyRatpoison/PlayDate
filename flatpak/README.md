@@ -45,6 +45,29 @@ then revert before committing — same swap the CI job does automatically.
 flatpak build-bundle repo PlayDate.flatpak io.github.robbyratpoison.PlayDate
 ```
 
+## Update mechanisms
+
+Two independent update paths ship together:
+
+1. **In-app "Perform Update" button.** `app.py`'s `perform_update()` detects
+   Flatpak via `runners.sandbox.IN_FLATPAK`, downloads the release's
+   `.flatpak` asset under `BASE_DIR` (not `/tmp` — a `flatpak-spawn --host`
+   process can't see the sandbox's private `/tmp`), installs it with
+   `flatpak install --user -y --reinstall` (falls back to `--system`), then
+   relaunches via `flatpak run` and exits. Works with zero extra setup.
+2. **Native `flatpak update` / GNOME Software / Shelly.** The CI job
+   publishes `flatpak/repo` to the `gh-pages` branch on every version tag,
+   served by GitHub Pages at `https://robbyratpoison.github.io/PlayDate/`.
+   `flatpak build-bundle` is given `--repo-url` pointing at that URL, so
+   installing the distributed `.flatpak` bundle auto-registers a real
+   remote — after that, any flatpak-aware update tool detects new releases
+   the normal way, no GitHub API involved. Each CI run restores the
+   previous `gh-pages` content into `flatpak/repo` first so the new build's
+   commit is appended to existing history rather than starting over.
+   **One-time manual step:** enable Settings → Pages → "Deploy from a
+   branch" → `gh-pages` on this repo; CI creates/updates the branch but
+   can't flip that setting on its own.
+
 ## Permissions
 
 Requests broad host access (`--filesystem=home`, `--talk-name=org.freedesktop.Flatpak`

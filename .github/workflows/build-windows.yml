@@ -218,17 +218,37 @@ jobs:
       - name: Install GNOME runtime and SDK
         run: flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
 
+      # ── 5b. Restore the published ostree repo so this build's commit is
+      # appended to existing history instead of starting a fresh repo each
+      # release — that history is what lets `flatpak update`/GNOME
+      # Software/Shelly detect and pull just the new commit later.
+      - name: Restore previous ostree repo from gh-pages
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
+            git clone --branch gh-pages --depth 1 "https://github.com/${{ github.repository }}.git" flatpak/repo
+            rm -rf flatpak/repo/.git
+          else
+            mkdir -p flatpak/repo
+          fi
+
       # ── 6. Build and bundle ───────────────────────────────────────────────────
       - name: Build with flatpak-builder
         run: |
           flatpak-builder --user --repo=flatpak/repo --force-clean \
             flatpak/build-dir flatpak/io.github.robbyratpoison.PlayDate.yml
 
+      # Refresh the repo summary so the newly appended commit is visible to
+      # remote update checks (flatpak-builder's own export can lag behind
+      # this on repos it didn't create fresh).
+      - name: Update ostree repo summary
+        run: flatpak build-update-repo flatpak/repo
+
       - name: Create .flatpak bundle
         run: |
           flatpak build-bundle flatpak/repo \
             "PlayDate-${PD_VERSION}-Linux.flatpak" \
-            io.github.robbyratpoison.PlayDate
+            io.github.robbyratpoison.PlayDate \
+            --repo-url=https://robbyratpoison.github.io/PlayDate/
 
       # ── 7. Verify the build ───────────────────────────────────────────────────
       - name: Verify bundle output
@@ -260,3 +280,19 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           body_path: RELEASE_NOTES.md
           files: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak
+
+      # ── 10. Publish the ostree repo (only on version tags) ────────────────────
+      # Serves flatpak/repo as a real remote via GitHub Pages, at the URL
+      # baked into the bundle's --repo-url above. Installing the .flatpak
+      # bundle then auto-registers this as the app's update remote, so
+      # `flatpak update` and GUI package managers (GNOME Software, Shelly)
+      # can detect new releases the normal flatpak way — no GitHub polling.
+      # Requires Settings > Pages > "Deploy from a branch" > gh-pages once.
+      - name: Publish ostree repo to GitHub Pages
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: flatpak/repo
+          keep_files: false
