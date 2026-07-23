@@ -199,12 +199,13 @@
     let _pgrepsDetected  = false; // true once pgrep returns a non-null result this session
 
     function _clearGamepadState() {
-        _gp.prev        = {};
-        _gp.heldSince   = {};
-        _gp.lastRepeat  = {};
-        _gp.stickDir    = null;
-        _gp.stickHeld   = 0;
-        _gp.stickRepeat = 0;
+        _gp.prev          = {};
+        _gp.heldSince     = {};
+        _gp.lastRepeat    = {};
+        _gp.stickDir      = null;
+        _gp.stickHeld     = 0;
+        _gp.stickRepeat   = 0;
+        _gp.rStickHeldSince = 0;
     }
 
     function _unsuppressGamepad(reason) {
@@ -272,11 +273,21 @@
         stickDir:    null, // current stick direction or null
         stickHeld:   0,
         stickRepeat: 0,
+        rStickHeldSince: 0, // timestamp the right stick (scroll) last crossed the dead zone, or 0 while released
     };
 
     const REPEAT_INITIAL  = 400;
     const REPEAT_RATE     = 150;
     const STICK_DEAD      = 0.35;
+
+    // Right-stick scroll ramp: full speed for the first second (matches the
+    // existing feel), then grows exponentially so crossing a 10k+ game
+    // library is actually achievable without waiting forever, capped so it
+    // never becomes totally uncontrollable.
+    const SCROLL_BASE_SPEED  = 20;    // px/frame at full deflection, before ramping
+    const SCROLL_RAMP_DELAY  = 1000;  // ms held before speed starts increasing
+    const SCROLL_RAMP_GROWTH = 1.8;   // multiplier growth per second of ramp
+    const SCROLL_RAMP_MAX    = 12;    // cap on the speed multiplier
 
     // ── Standard Xbox/standard-mapping button indices ─────────────────────────
     const BTN_IDX = { a:0, b:1, x:2, y:3, lb:4, rb:5, back:8, start:9, up:12, down:13, left:14, right:15 };
@@ -2461,13 +2472,29 @@
         // movement is skipped here.
         if (_isTextEntryFocused()) {
             _gp.stickDir = null;
+            if (_gp.rStickHeldSince && typeof window._scrollPreviewHide === 'function') window._scrollPreviewHide();
+            _gp.rStickHeldSince = 0;
             return;
         }
 
         // ── Right stick (scroll) ──────────────────────────────────────────────
         const rsy = gp.axes[AXIS_IDX.ry] || 0;
         if (Math.abs(rsy) > STICK_DEAD) {
-            window.scrollBy({ top: rsy * 20, behavior: 'auto' });
+            if (!_gp.rStickHeldSince) {
+                _gp.rStickHeldSince = now;
+                if (typeof window._scrollPreviewShow === 'function') window._scrollPreviewShow();
+            }
+            const heldMs = now - _gp.rStickHeldSince;
+            let speedMult = 1;
+            if (heldMs > SCROLL_RAMP_DELAY) {
+                const rampSeconds = (heldMs - SCROLL_RAMP_DELAY) / 1000;
+                speedMult = Math.min(SCROLL_RAMP_MAX, Math.pow(SCROLL_RAMP_GROWTH, rampSeconds));
+            }
+            window.scrollBy({ top: rsy * SCROLL_BASE_SPEED * speedMult, behavior: 'auto' });
+            if (typeof window._scrollPreviewUpdate === 'function') window._scrollPreviewUpdate();
+        } else {
+            if (_gp.rStickHeldSince && typeof window._scrollPreviewHide === 'function') window._scrollPreviewHide();
+            _gp.rStickHeldSince = 0;
         }
 
         // ── Left stick ────────────────────────────────────────────────────────

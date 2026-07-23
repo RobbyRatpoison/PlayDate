@@ -466,7 +466,7 @@ def inject_config_status():
         ui_scale=state.get('ui_scale', 100),
         auto_promote_unfinished=state.get('auto_promote_unfinished', True),
         platform_priority=_active_platform_priority(state),
-        app_version=__version__,
+        app_version=__build__,
     )
 
 def load_config():

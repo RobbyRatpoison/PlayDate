@@ -480,6 +480,28 @@
         }
         .clear-btn:hover { background: #5a2020 !important; color: white !important; }
 
+        /* Fast-scroll position preview (gamepad right stick) */
+        #scroll-preview {
+            position: fixed;
+            top: 50%;
+            right: 2.5rem;
+            transform: translateY(-50%);
+            background: rgba(20, 24, 30, 0.85);
+            color: var(--text-bright, #fff);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 0.5rem 1.25rem;
+            font-size: 2rem;
+            font-weight: bold;
+            letter-spacing: 0.02em;
+            pointer-events: none;
+            z-index: 500;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+            white-space: nowrap;
+        }
+        #scroll-preview.visible { opacity: 1; }
+
         .search-container {
             position: relative;
             flex-grow: 1;
@@ -717,6 +739,9 @@
         </button>
     </div>
 
+    <!-- Fast-scroll position preview — shown/updated by input.js during gamepad right-stick scrolling -->
+    <div id="scroll-preview"></div>
+
     <!-- Filter error banner (shown by playdate.js showFilterError, or server-side sql_error) -->
     <div id="filter-error-banner" style="display:{% if sql_error %}block{% else %}none{% endif %};
          background:#3d1a1a; border:1px solid #a32a2a; color:#ff8080;
@@ -903,6 +928,7 @@
     // ── All game data in one JS array — no per-card script tags ──
     const GAMES = {{ games | tojson }};
     const OUTLINE_COLORS = {{ outline_colors | tojson }};
+    const CURRENT_SORT = {{ state.sort | tojson }};
 
     // ── Artwork orientation + card size (restored from state) ────────────────
     const _imgV = Date.now(); // cache-buster: prevents stale 404s from browser negative cache
@@ -1098,6 +1124,108 @@
         CARD_HTML_CACHE.set(game.appid, html);
         return html;
     }
+
+    // ── Fast-scroll position preview (gamepad right stick) ───────────────────
+    // Shown/updated/hidden by input.js's right-stick scroll handling — the
+    // logic lives here since only this page has the sorted GAMES data needed
+    // to know what a given scroll position actually represents.
+    let _scrollPreviewHideTimer   = null;
+    let _scrollPreviewRandomTimer = null;
+    let _scrollPreviewLastUpdate  = 0;
+
+    function _scrollPreviewTopGame() {
+        const cards = document.querySelectorAll('.game-card[data-appid], .list-row[data-appid]');
+        for (const card of cards) {
+            if (card.getBoundingClientRect().bottom > 80) {
+                return _GAME_MAP.get(parseInt(card.dataset.appid)) || null;
+            }
+        }
+        return null;
+    }
+
+    const _SCROLL_PREVIEW_GLYPHS = '!@#$%^&*?<>{}[]~+=01XYZ¿∞§';
+    function _scrollPreviewRandomGlyph() {
+        let s = '';
+        for (let i = 0; i < 2; i++) {
+            s += _SCROLL_PREVIEW_GLYPHS[Math.floor(Math.random() * _SCROLL_PREVIEW_GLYPHS.length)];
+        }
+        return s;
+    }
+
+    function _scrollPreviewText() {
+        const game = _scrollPreviewTopGame();
+        if (!game) return '';
+        switch (CURRENT_SORT) {
+            case 'name': {
+                const ch = (game.name || '').trim().charAt(0).toUpperCase();
+                return /[A-Z0-9]/.test(ch) ? ch : '#';
+            }
+            case 'release_date':
+            case 'last_played':
+            case 'date_added': {
+                const ts = game[CURRENT_SORT];
+                if (!ts) return '—';
+                return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            }
+            case 'playtime_forever':
+                return fmtHours(game.playtime_forever);
+            case 'hltb_min':
+                return game.hltb_min ? fmtHours(game.hltb_min) : '—';
+            case 'review_percentage':
+            case 'weighted_percentage': {
+                const pct = game[CURRENT_SORT];
+                return (pct || pct === 0) ? `${pct}%` : '—';
+            }
+            case 'total_reviews': {
+                const n = game.total_reviews || 0;
+                return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`;
+            }
+            default:
+                return '';
+        }
+    }
+
+    function _scrollPreviewShow() {
+        const el = document.getElementById('scroll-preview');
+        if (!el) return;
+        clearTimeout(_scrollPreviewHideTimer);
+        el.classList.add('visible');
+        if (CURRENT_SORT === 'random' && !_scrollPreviewRandomTimer) {
+            // Cycles on its own clock rather than tracking real position — an
+            // honest wink that random order has no "position" to preview.
+            _scrollPreviewRandomTimer = setInterval(() => {
+                el.textContent = _scrollPreviewRandomGlyph();
+            }, 80);
+        }
+    }
+
+    function _scrollPreviewUpdate() {
+        if (CURRENT_SORT === 'random') return; // cycles on its own timer instead
+        const el = document.getElementById('scroll-preview');
+        if (!el) return;
+        const now = Date.now();
+        if (now - _scrollPreviewLastUpdate < 120) return; // throttle DOM scans on huge libraries
+        _scrollPreviewLastUpdate = now;
+        const text = _scrollPreviewText();
+        if (text) el.textContent = text;
+    }
+
+    function _scrollPreviewHide() {
+        const el = document.getElementById('scroll-preview');
+        if (!el) return;
+        clearTimeout(_scrollPreviewHideTimer);
+        _scrollPreviewHideTimer = setTimeout(() => {
+            el.classList.remove('visible');
+            if (_scrollPreviewRandomTimer) {
+                clearInterval(_scrollPreviewRandomTimer);
+                _scrollPreviewRandomTimer = null;
+            }
+        }, 500);
+    }
+
+    window._scrollPreviewShow   = _scrollPreviewShow;
+    window._scrollPreviewUpdate = _scrollPreviewUpdate;
+    window._scrollPreviewHide   = _scrollPreviewHide;
 
     // On initial page load images are loaded immediately; once the user scrolls,
     // a 100ms delay is applied so cards that pass through during fast scroll
