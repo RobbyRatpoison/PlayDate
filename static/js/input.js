@@ -15,6 +15,17 @@
 
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
+            // A focused text field takes priority over closing the modal
+            // underneath it — see the identical check in _handleB() for why:
+            // gamescope's on-screen keyboard (Steam Deck) dismisses itself on
+            // B, and the same press appears here as a synthesized Escape
+            // keydown while a text field has focus, not as a gamepad button
+            // press picked up by the RAF poll loop. Without this, that one
+            // press both closes the keyboard and the modal underneath it.
+            if (_isTextEntryFocused()) {
+                document.activeElement.blur();
+                return;
+            }
             // Close dropdown first — must precede modal checks since the modal is still visible underneath
             if (_state.zone === 'dropdown') {
                 _closeAnyOpenModal();
