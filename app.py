@@ -271,9 +271,39 @@ def _validate_user_path(path: str) -> str | None:
         return None
     return resolved
 
+def _parse_build_version(v):
+    """Parse 'X.Y.Z' or 'X.Y.Z-beta.N'/'X.Y.Z-rc.N' into (numeric_tuple, prerelease_num).
+    prerelease_num is None for a final release, which ranks above any
+    prerelease sharing the same numeric_tuple (so a real v1.6.5 beats
+    1.6.5-beta.9, but 1.6.5-beta.2 still beats 1.6.5-beta.1)."""
+    v = v.lstrip('v')
+    base, _, suffix = v.partition('-')
+    try:
+        numeric = tuple(int(x) for x in base.split('.'))
+    except ValueError:
+        numeric = (0, 0, 0)
+    if not suffix:
+        return (numeric, None)
+    m = re.search(r'(\d+)$', suffix)
+    return (numeric, int(m.group(1)) if m else 0)
+
+
+def _build_is_newer(a, b):
+    """True if version/tag string a is newer than b (prerelease-aware)."""
+    a_num, a_pre = _parse_build_version(a)
+    b_num, b_pre = _parse_build_version(b)
+    if a_num != b_num:
+        return a_num > b_num
+    if a_pre is None:
+        return b_pre is not None
+    if b_pre is None:
+        return False
+    return a_pre > b_pre
+
+
 def _do_update_check():
     """Hit the GitHub releases API and populate _update_cache. Thread-safe."""
-    from config import __version__, load_state
+    from config import __build__, load_state
     import time
     try:
         import requests as _req
@@ -297,17 +327,7 @@ def _do_update_check():
             data = resp.json()
         tag = data.get('tag_name', '')
         latest = tag.lstrip('v')
-        # Beta/rc tags (e.g. "1.6.4-beta.1") carry a suffix that CI strips
-        # before writing config.py's __version__, so comparison must use the
-        # bare X.Y.Z prefix too — the full string is kept in latest_version
-        # for display so beta testers can still see which build it is.
-        latest_numeric = latest.split('-', 1)[0]
-
-        def _parse(v):
-            try: return tuple(int(x) for x in v.split('.'))
-            except: return (0, 0, 0)
-
-        available = _parse(latest_numeric) > _parse(__version__)
+        available = _build_is_newer(latest, __build__)
 
         installer_url = None
         flatpak_url = None
@@ -327,7 +347,7 @@ def _do_update_check():
             'checked_at': time.time(),
             'error': None
         })
-        log.info(f"Update check: latest={latest}, current={__version__}, available={available}")
+        log.info(f"Update check: latest={latest}, current={__build__}, available={available}")
     except Exception as e:
         _update_cache.update({'available': False, 'checked_at': time.time(), 'error': str(e)})
         log.warning(f"Update check failed: {e}")

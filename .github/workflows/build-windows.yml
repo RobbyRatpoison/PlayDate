@@ -44,10 +44,12 @@ jobs:
           tag = "${{ github.ref_name }}"
           m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
           ver = m.group(1) if m else "0.0.0"
+          full = tag.lstrip('v')  # keeps any -beta.N/-rc.N suffix, unlike ver
           with open("config.py") as f: content = f.read()
           content = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{ver}"', content)
+          content = re.sub(r'__build__ = __version__', f'__build__ = "{full}"', content)
           with open("config.py", "w") as f: f.write(content)
-          print(f"Set __version__ = {ver}")
+          print(f"Set __version__ = {ver}, __build__ = {full}")
 
       # ── 5. Convert favicon.png → favicon.ico (Windows needs .ico) ────────────
       - name: Generate favicon.ico
@@ -161,6 +163,10 @@ jobs:
         uses: actions/checkout@v4
 
       # ── 2. Set version from tag ───────────────────────────────────────────────
+      # Also patches config.py in this checkout (not just the PD_VERSION env
+      # var used for the artifact filename) — the "Point manifest at the CI
+      # checkout" step below copies this same working tree into the bundle
+      # via `cp -r src/. ...`, so whatever's on disk here is what ships.
       - name: Set version from tag
         shell: python
         run: |
@@ -168,9 +174,14 @@ jobs:
           tag = "${{ github.ref_name }}"
           m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
           ver = m.group(1) if m else "0.0.0"
+          full = tag.lstrip('v')  # keeps any -beta.N/-rc.N suffix, unlike ver
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write(f"PD_VERSION={ver}\n")
-          print(f"Version: {ver}")
+          with open("config.py") as f: content = f.read()
+          content = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{ver}"', content)
+          content = re.sub(r'__build__ = __version__', f'__build__ = "{full}"', content)
+          with open("config.py", "w") as f: f.write(content)
+          print(f"Version: {ver}, __build__ = {full}")
 
       # ── 3. Point the manifest at this checkout instead of a git tag ──────────
       # The manifest normally clones RobbyRatpoison/PlayDate at a fixed tag (so
