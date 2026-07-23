@@ -273,24 +273,41 @@ def _validate_user_path(path: str) -> str | None:
 
 def _do_update_check():
     """Hit the GitHub releases API and populate _update_cache. Thread-safe."""
-    from config import __version__
+    from config import __version__, load_state
     import time
     try:
         import requests as _req
-        resp = _req.get(
-            'https://api.github.com/repos/RobbyRatpoison/PlayDate/releases/latest',
-            headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
-            timeout=10
-        )
-        data = resp.json()
+        if load_state().get('beta_updates', False):
+            # Opted into beta: the plain /releases/latest endpoint always
+            # excludes prereleases by GitHub's own definition, so beta/rc
+            # builds need the full list instead — newest entry first.
+            resp = _req.get(
+                'https://api.github.com/repos/RobbyRatpoison/PlayDate/releases',
+                headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
+                timeout=10
+            )
+            releases = resp.json()
+            data = releases[0] if isinstance(releases, list) and releases else {}
+        else:
+            resp = _req.get(
+                'https://api.github.com/repos/RobbyRatpoison/PlayDate/releases/latest',
+                headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
+                timeout=10
+            )
+            data = resp.json()
         tag = data.get('tag_name', '')
         latest = tag.lstrip('v')
+        # Beta/rc tags (e.g. "1.6.4-beta.1") carry a suffix that CI strips
+        # before writing config.py's __version__, so comparison must use the
+        # bare X.Y.Z prefix too — the full string is kept in latest_version
+        # for display so beta testers can still see which build it is.
+        latest_numeric = latest.split('-', 1)[0]
 
         def _parse(v):
             try: return tuple(int(x) for x in v.split('.'))
             except: return (0, 0, 0)
 
-        available = _parse(latest) > _parse(__version__)
+        available = _parse(latest_numeric) > _parse(__version__)
 
         installer_url = None
         flatpak_url = None
@@ -506,8 +523,10 @@ def create_app(template_folder=None, static_folder=None):
         bg_dir = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
         if os.path.exists(os.path.join(bg_dir, filename)):
             return send_from_directory(bg_dir, filename)
-        # Fall back to the bundled default
-        return app.send_static_file(f'img/backgrounds/{filename}')
+        # Fall back to the bundled default — a distinct filename from the
+        # user-override path above so the two never collide on source installs,
+        # where BASE_DIR and the bundle's static folder are the same directory.
+        return app.send_static_file('img/backgrounds/playdate_default_background.jpg')
 
     # ── Inject background timestamp and builtin filters into every template ──────
     @app.context_processor
@@ -519,7 +538,11 @@ def create_app(template_folder=None, static_folder=None):
         _cache_hit, _cache_age = unique_cache_info()
         from plugins import platform_labels as _platform_labels
         bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
-        ts = int(os.path.getmtime(bg_path)) if os.path.exists(bg_path) else None
+        if os.path.exists(bg_path):
+            ts = int(os.path.getmtime(bg_path))
+        else:
+            default_bg_path = os.path.join(app.static_folder, 'img', 'backgrounds', 'playdate_default_background.jpg')
+            ts = int(os.path.getmtime(default_bg_path)) if os.path.exists(default_bg_path) else None
         _plat_list = get_all_unique_platforms()
         _labels = _platform_labels()
         result = dict(
@@ -3708,6 +3731,7 @@ def create_app(template_folder=None, static_folder=None):
         return jsonify({
             'current_version': __version__,
             'auto_check': state.get('check_for_updates', True),
+            'beta_updates': state.get('beta_updates', False),
             'update_available': _update_cache.get('available', False),
             'latest_version': _update_cache.get('latest_version'),
             'checked': bool(_update_cache),

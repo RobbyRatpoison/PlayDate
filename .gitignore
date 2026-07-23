@@ -24,7 +24,8 @@ memory/
 
 # --- Media Assets ---
 /static/img/library/
-/static/img/backgrounds/
+/static/img/backgrounds/*
+!/static/img/backgrounds/playdate_default_background.jpg
 
 # --- User Theme ---
 theme.json

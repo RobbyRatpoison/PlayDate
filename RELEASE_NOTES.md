@@ -1,7 +1,11 @@
 # Release Notes
 
-## v1.6.3 — 2026-07-23
-### Fixes
+## v1.6.4 — 2026-07-23
+### New
 
-- Fixed restoring a backup from the first-run setup screen failing on large files (cover art included) — it now uses the same native file picker as the Settings restore flow instead of always uploading the whole file.
-- Fixed the Steam Deck on-screen keyboard's Back button also closing the modal underneath a focused text field, in cases the previous fix didn't cover.
+- PlayDate now ships with a default background image, used automatically until you set your own from the Appearance menu.
+- Added an opt-in "Beta updates" toggle (System settings) for testers who want early access to pre-release builds before they're promoted to a full release.
+
+### Improvements
+
+- The Flatpak build is now recommended as the primary way to install PlayDate on Steam Deck, with updated install/uninstall instructions in the README.

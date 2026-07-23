@@ -287,15 +287,22 @@ jobs:
           body_path: RELEASE_NOTES.md
           files: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak
 
-      # ── 10. Publish the ostree repo (only on version tags) ────────────────────
+      # ── 10. Publish the ostree repo (only on stable version tags) ─────────────
       # Serves flatpak/repo as a real remote via GitHub Pages, at the URL
       # baked into the bundle's --repo-url above. Installing the .flatpak
       # bundle then auto-registers this as the app's update remote, so
       # `flatpak update` and GUI package managers (GNOME Software, Shelly)
       # can detect new releases the normal flatpak way — no GitHub polling.
       # Requires Settings > Pages > "Deploy from a branch" > gh-pages once.
+      #
+      # Excludes -beta/-rc tags deliberately: this ostree repo is a single
+      # shared channel with no stable/beta separation, so publishing a beta
+      # build here would push it to every existing Flatpak install's native
+      # `flatpak update`, not just users who opted into beta updates in-app.
+      # Beta builds still get a GitHub Release with the .flatpak attached
+      # (see the previous step) — that's the only distribution path for them.
       - name: Publish ostree repo to GitHub Pages
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-rc')
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

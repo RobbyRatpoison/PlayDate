@@ -793,18 +793,19 @@
         <div class="hub-section">
             <div class="hub-section-label">Updates</div>
             <button id="autoupdate-toggle-btn" class="settings-item" data-modal-row="0" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
+            <button id="beta-updates-btn" class="settings-item" data-modal-row="1" onclick="toggleBetaUpdates()">Beta updates: OFF</button>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">Gamepad</div>
-            <button id="gamepad-enabled-btn" class="settings-item" data-modal-row="1" onclick="toggleGamepadEnabled()">Gamepad input (experimental): OFF</button>
-            <button id="gamepad-suppress-btn" class="settings-item" data-modal-row="2" onclick="toggleGamepadSuppress()">Pause gamepad on launch: ON</button>
-            <button class="settings-item" data-modal-row="3" onclick="openGamepadRemap()">Gamepad Controls</button>
-            <button class="settings-item" data-modal-row="4" onclick="openGamepadDiag()">Gamepad Diagnostics</button>
+            <button id="gamepad-enabled-btn" class="settings-item" data-modal-row="2" onclick="toggleGamepadEnabled()">Gamepad input (experimental): OFF</button>
+            <button id="gamepad-suppress-btn" class="settings-item" data-modal-row="3" onclick="toggleGamepadSuppress()">Pause gamepad on launch: ON</button>
+            <button class="settings-item" data-modal-row="4" onclick="openGamepadRemap()">Gamepad Controls</button>
+            <button class="settings-item" data-modal-row="5" onclick="openGamepadDiag()">Gamepad Diagnostics</button>
         </div>
         <div class="hub-section">
             <div class="hub-section-label">Testing</div>
             <div style="padding:8px 10px; display:flex; flex-direction:column; gap:8px;">
-                <button class="nav-btn" data-modal-row="5" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
+                <button class="nav-btn" data-modal-row="6" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
             </div>
         </div>
     </div>

@@ -775,6 +775,7 @@
         let _updateAvailable = false;
         let _latestVersion = null;
         let _autoCheckUpdates = true;
+        let _betaUpdates = false;
         let _isPortable = false;
 
         function _setUpdateAvailable(version, isPortable) {
@@ -789,6 +790,17 @@
         function _updateAutoCheckLabel() {
             document.getElementById('autoupdate-toggle-btn').textContent =
                 'Auto-check Updates: ' + (_autoCheckUpdates ? 'ON' : 'OFF');
+        }
+
+        function _updateBetaLabel() {
+            const btn = document.getElementById('beta-updates-btn');
+            if (btn) btn.textContent = 'Beta updates: ' + (_betaUpdates ? 'ON' : 'OFF');
+        }
+
+        function toggleBetaUpdates() {
+            _betaUpdates = !_betaUpdates;
+            _updateBetaLabel();
+            savePreference({ beta_updates: _betaUpdates });
         }
 
         function _closeUpdateConfirm() {
@@ -889,6 +901,8 @@
                 const data = await resp.json();
                 _autoCheckUpdates = data.auto_check;
                 _updateAutoCheckLabel();
+                _betaUpdates = data.beta_updates;
+                _updateBetaLabel();
                 if (data.is_portable) { _isPortable = true; }
                 if (data.update_available) { _setUpdateAvailable(data.latest_version, data.is_portable); return; }
                 // Startup check runs after 5s — poll until it completes
