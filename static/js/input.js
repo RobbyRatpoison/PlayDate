@@ -291,6 +291,7 @@
     const SCROLL_RAMP_DELAY  = 1000;  // ms held before speed starts increasing
     const SCROLL_RAMP_GROWTH = 1.8;   // multiplier growth per second of ramp
     const SCROLL_RAMP_MAX    = 12;    // cap on the speed multiplier
+    const SCROLL_PREVIEW_MIN = 3;     // only show the position preview once ramped to at least this multiple of base speed
 
     // ── Standard Xbox/standard-mapping button indices ─────────────────────────
     const BTN_IDX = { a:0, b:1, x:2, y:3, lb:4, rb:5, back:8, start:9, up:12, down:13, left:14, right:15 };
@@ -936,6 +937,16 @@
         _cursorHideStyle = null;
     }
 
+    // Hamburger menu / custom-select dropdowns aren't in the modal registry
+    // (_anyWatchedOpen()) at all — they're tracked as their own 'dropdown'
+    // zone via ad-hoc DOM checks instead. Shared here so both _activate() and
+    // the post-A-press check below stay in sync.
+    function _dropdownIsOpen() {
+        const hm = document.getElementById('hamburger-menu');
+        if (hm?.classList.contains('open')) return true;
+        return !!document.querySelector('.custom-select.open');
+    }
+
     // ── Activation ────────────────────────────────────────────────────────────
     function _activate() {
         if (_state.active) return;
@@ -947,6 +958,21 @@
         if (_anyWatchedOpen()) {
             _state.zone         = 'modal';
             _state.modalFocused = null;
+            _syncFocus();
+            return;
+        }
+        // Same idea for a dropdown/hamburger menu opened via mouse before the
+        // gamepad was ever activated this session — without this, the first
+        // direction press (which only silently activates, per _onButton())
+        // would leave zone defaulting to 'content' below, so a second press
+        // navigates the page behind the still-open menu instead of moving
+        // within it.
+        if (_dropdownIsOpen()) {
+            if (!_isTextEntryFocused() && document.activeElement && document.activeElement !== document.body) {
+                document.activeElement.blur();
+            }
+            _pushZone('dropdown');
+            _state.col = 0;
             _syncFocus();
             return;
         }
@@ -1925,15 +1951,18 @@
         // After any A press, enter dropdown zone if a dropdown just opened
         requestAnimationFrame(() => {
             if (_state.zone === 'dropdown' || !_state.active) return;
-            const hm = document.getElementById('hamburger-menu');
-            if (hm?.classList.contains('open')) {
-                _pushZone('dropdown');
-                _state.col = 0;
-                _syncFocus();
-                return;
+            // Dropdown/hamburger navigation only moves a CSS focus ring
+            // (_applyFocus never calls .focus() outside text/number-input
+            // zones), so if the menu was ever opened with a real mouse click
+            // the hamburger button itself keeps native DOM focus the whole
+            // time gamepad navigation runs. A synthesized Enter from Steam
+            // Input's A-button mapping would then hit that stale focus and
+            // natively re-trigger the hamburger button instead of whatever
+            // item the gamepad ring is actually highlighting.
+            if (!_isTextEntryFocused() && document.activeElement && document.activeElement !== document.body) {
+                document.activeElement.blur();
             }
-            const cs = document.querySelector('.custom-select.open');
-            if (cs) {
+            if (_dropdownIsOpen()) {
                 _pushZone('dropdown');
                 _state.col = 0;
                 _syncFocus();
@@ -2483,18 +2512,27 @@
         // ── Right stick (scroll) ──────────────────────────────────────────────
         const rsy = gp.axes[AXIS_IDX.ry] || 0;
         if (Math.abs(rsy) > STICK_DEAD) {
-            if (!_gp.rStickHeldSince) {
-                _gp.rStickHeldSince = now;
-                if (typeof window._scrollPreviewShow === 'function') window._scrollPreviewShow();
-            }
+            if (!_gp.rStickHeldSince) _gp.rStickHeldSince = now;
             const heldMs = now - _gp.rStickHeldSince;
             let speedMult = 1;
             if (heldMs > SCROLL_RAMP_DELAY) {
                 const rampSeconds = (heldMs - SCROLL_RAMP_DELAY) / 1000;
                 speedMult = Math.min(SCROLL_RAMP_MAX, Math.pow(SCROLL_RAMP_GROWTH, rampSeconds));
             }
+            const _scrollYBefore = window.scrollY;
             window.scrollBy({ top: rsy * SCROLL_BASE_SPEED * speedMult, behavior: 'auto' });
-            if (typeof window._scrollPreviewUpdate === 'function') window._scrollPreviewUpdate();
+            const atScrollBoundary = window.scrollY === _scrollYBefore;
+            // Only once actually ramped up — showing it immediately at base
+            // speed would clutter ordinary scrolling, which isn't fast enough
+            // to need a position preview at all. Also hidden once the page
+            // can't scroll any further (top/bottom reached), since holding
+            // the stick there no longer does anything worth previewing.
+            if (speedMult >= SCROLL_PREVIEW_MIN && !atScrollBoundary) {
+                if (typeof window._scrollPreviewShow === 'function') window._scrollPreviewShow();
+                if (typeof window._scrollPreviewUpdate === 'function') window._scrollPreviewUpdate();
+            } else if (typeof window._scrollPreviewHide === 'function') {
+                window._scrollPreviewHide();
+            }
         } else {
             if (_gp.rStickHeldSince && typeof window._scrollPreviewHide === 'function') window._scrollPreviewHide();
             _gp.rStickHeldSince = 0;
