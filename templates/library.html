@@ -929,6 +929,7 @@
     const GAMES = {{ games | tojson }};
     const OUTLINE_COLORS = {{ outline_colors | tojson }};
     const CURRENT_SORT = {{ state.sort | tojson }};
+    const CURRENT_ORDER = {{ state.order | tojson }};
 
     // ── Artwork orientation + card size (restored from state) ────────────────
     const _imgV = Date.now(); // cache-buster: prevents stale 404s from browser negative cache
@@ -1174,8 +1175,18 @@
             }
             case 'playtime_forever':
                 return fmtHours(game.playtime_forever);
-            case 'hltb_min':
-                return game.hltb_min ? fmtHours(game.hltb_min) : '—';
+            case 'hltb_min': {
+                // Not a real column — library.py's ORDER BY computes this on
+                // the fly from the three HLTB times (main/extras/completionist),
+                // MIN for ascending ("shortest") and MAX for descending
+                // ("most content"), treating 0/missing as no data. Mirror that
+                // exact logic here since the browser only has the raw fields.
+                const real = [game.hltb_main, game.hltb_extras, game.hltb_completionist]
+                    .filter(v => v > 0);
+                if (!real.length) return '—';
+                const mins = CURRENT_ORDER === 'DESC' ? Math.max(...real) : Math.min(...real);
+                return fmtHours(mins);
+            }
             case 'review_percentage':
             case 'weighted_percentage': {
                 const pct = game[CURRENT_SORT];

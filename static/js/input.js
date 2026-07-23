@@ -2538,9 +2538,16 @@
                 const rampSeconds = (heldMs - SCROLL_RAMP_DELAY) / 1000;
                 speedMult = Math.min(SCROLL_RAMP_MAX, Math.pow(SCROLL_RAMP_GROWTH, rampSeconds));
             }
-            const _scrollYBefore = window.scrollY;
             window.scrollBy({ top: rsy * SCROLL_BASE_SPEED * speedMult, behavior: 'auto' });
-            const atScrollBoundary = window.scrollY === _scrollYBefore;
+            // Checked against the actual document bounds rather than
+            // comparing scrollY before/after — WebKit's elastic overscroll
+            // bounce (and sub-pixel rounding near the edges) means scrollY
+            // can still wobble slightly even while visually stuck at the
+            // top/bottom, so a frame-to-frame equality check unreliably
+            // stayed "not at boundary" there.
+            const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+            const atScrollBoundary = (rsy < 0 && window.scrollY <= 0) ||
+                                      (rsy > 0 && window.scrollY >= maxScroll - 1);
             // Only once actually ramped up — showing it immediately at base
             // speed would clutter ordinary scrolling, which isn't fast enough
             // to need a position preview at all. Also hidden once the page

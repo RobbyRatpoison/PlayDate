@@ -15,7 +15,7 @@
             <label>Steam API Key <span style="color: #c89a3c; font-weight: normal;">(Recommended)</span></label>
             <input type="password" id="conf-api-key" name="api_key" placeholder="Enables achievements, full library import, and vanity name lookup" data-modal-row="1">
             <small style="display:block; color: #8f98a0; margin-bottom: 8px; font-size: 0.75rem;">
-                Get your free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color: var(--accent);">steamcommunity.com/dev/apikey</a> — takes about 2 minutes.
+                Get your free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" data-modal-row="2" style="color: var(--accent);">steamcommunity.com/dev/apikey</a> — takes about 2 minutes.
             </small>
             <div style="background: #1a2233; border: 1px solid #3a4a5c; border-radius: 0.375rem; padding: 0.625rem 0.875rem; margin-bottom: 0.9375rem; font-size: 0.8rem; color: #8f98a0; line-height: 1.5;">
                 <strong style="color: #c8d0d8;">With an API key:</strong> achievement tracking, accurate completion status, and games you own but have never launched are all included in your library import.<br>
@@ -23,20 +23,20 @@
             </div>
 
             <label>SteamGridDB API Key <span style="color: #8f98a0; font-weight: normal;">(Optional)</span></label>
-            <input type="password" id="conf-sgdb-key" name="sgdb_key" placeholder="Used for higher quality artwork when Steam's is missing" value="{{ existing_sgdb_key }}" data-modal-row="2">
+            <input type="password" id="conf-sgdb-key" name="sgdb_key" placeholder="Used for higher quality artwork when Steam's is missing" value="{{ existing_sgdb_key }}" data-modal-row="3">
             <small style="display:block; color: #8f98a0; margin-bottom: 15px; font-size: 0.75rem;">
-                Get yours at <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" style="color: var(--accent);">steamgriddb.com/profile/preferences/api</a>
+                Get yours at <a href="https://www.steamgriddb.com/profile/preferences/api" target="_blank" data-modal-row="4" style="color: var(--accent);">steamgriddb.com/profile/preferences/api</a>
             </small>
 
             <div style="margin-top: 1.25rem;">
-                <button type="submit" id="save-config-btn" class="btn-save" data-modal-row="3" style="width: 100%; margin: 0;">SAVE & CONNECT</button>
+                <button type="submit" id="save-config-btn" class="btn-save" data-modal-row="5" style="width: 100%; margin: 0;">SAVE & CONNECT</button>
             </div>
         </form>
 
         <div style="margin-top: 1.5rem; padding-top: 1.125rem; border-top: 1px solid var(--border);">
             <p style="font-size: 0.85rem; color: #8f98a0; margin: 0 0 10px;">Already have a backup? Restore it to skip setup entirely.</p>
             <div style="display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;">
-                <button type="button" class="nav-btn" data-modal-row="4" onclick="chooseConfigRestoreFile()">Restore from Backup</button>
+                <button type="button" class="nav-btn" data-modal-row="6" onclick="chooseConfigRestoreFile()">Restore from Backup</button>
                 <input type="file" id="config-restore-input" accept=".zip" style="display:none" onchange="configRestoreFileSelected(this)">
                 <span id="config-restore-status" style="font-size:0.85rem; color: var(--text-secondary);"></span>
             </div>
@@ -123,7 +123,10 @@
             const data = await res.json();
             if (data.status === 'success') {
                 field.value = data.steam_id;
-                field.style.borderColor = 'var(--accent)';
+                // Green (not the blue accent) so this permanent "auto-detected"
+                // indicator can't be mistaken for a stuck gamepad-focus ring,
+                // which uses --accent for its border too.
+                field.style.borderColor = 'var(--accent-positive)';
             } else if (data.status === 'multiple') {
                 picker.style.display = 'flex';
                 for (const acct of data.accounts) {
@@ -135,7 +138,7 @@
                     btn.onmouseout  = () => btn.style.borderColor = 'var(--border)';
                     btn.onclick = () => {
                         field.value = acct.steam_id;
-                        field.style.borderColor = 'var(--accent)';
+                        field.style.borderColor = 'var(--accent-positive)';
                         picker.style.display = 'none';
                         picker.innerHTML = '';
                     };
