@@ -1,6 +1,7 @@
 # Release Notes
 
-## v1.6.2 — 2026-07-23
+## v1.6.3 — 2026-07-23
 ### Fixes
 
-- Fixed installing the Flatpak failing with "runtime ... not found" on systems without the GNOME runtime already present (e.g. a stock Steam Deck) — it's now fetched automatically during install.
+- Fixed restoring a backup from the first-run setup screen failing on large files (cover art included) — it now uses the same native file picker as the Settings restore flow instead of always uploading the whole file.
+- Fixed the Steam Deck on-screen keyboard's Back button also closing the modal underneath a focused text field, in cases the previous fix didn't cover.
