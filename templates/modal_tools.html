@@ -1762,12 +1762,24 @@ async function runPlayniteImport() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ path }),
         });
-        const data = await res.json();
+        const started = await res.json();
+        if (started.status !== 'started') throw new Error(started.message || 'Import failed.');
+
+        // Parsing runs in a background thread server-side (Playnite backups
+        // can be several GB) — poll for completion.
+        let data;
+        while (true) {
+            await new Promise(r => setTimeout(r, 700));
+            const poll = await fetch('/api/import/playnite-dates-status');
+            data = await poll.json();
+            if (data.status !== 'running') break;
+        }
+
         if (data.status === 'success') {
             status.textContent = `Done — updated ${data.updated} game${data.updated !== 1 ? 's' : ''} (${data.found} Steam games found in backup).`;
             status.className = 'tool-status success';
         } else {
-            status.textContent = `Error: ${data.message}`;
+            status.textContent = `Error: ${data.error}`;
             status.className = 'tool-status error';
         }
     } catch (e) {
@@ -3562,9 +3574,21 @@ async function runRestore() {
             formData.append('backup_file', _restoreFile);
             res = await fetch('/api/restore', { method: 'POST', body: formData });
         }
-        const data = await res.json();
+        const started = await res.json();
+        if (started.status !== 'started') throw new Error(started.message || 'Restore failed.');
 
-        if (data.status !== 'success') throw new Error(data.message || 'Restore failed.');
+        // Extraction runs in a background thread on the server (a large backup
+        // can take a while, especially over a Flatpak portal-mounted path) —
+        // poll for completion instead of waiting on the original request.
+        let data;
+        while (true) {
+            await new Promise(r => setTimeout(r, 700));
+            const poll = await fetch('/api/restore-status');
+            data = await poll.json();
+            if (data.status !== 'running') break;
+        }
+
+        if (data.status !== 'success') throw new Error(data.error || 'Restore failed.');
 
         status.className = 'tool-status success';
         status.textContent = `✔ Restored: ${data.restored.join(', ')}. Reloading…`;

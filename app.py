@@ -147,6 +147,121 @@ _plugin_update_cache = {}  # keyed by plugin_id: {update_available, latest_versi
 _launcher_status_cache = {}  # keyed by platform: {available, detail, checked_at}
 _update_dl_state = {'status': 'idle', 'error': None, 'manual_url': None}  # idle|downloading|error
 
+# ── Restore from backup ────────────────────────────────────────────────────────
+_restore_lock  = threading.Lock()
+_restore_state = {'status': 'idle', 'error': None, 'restored': None, 'skipped': None}  # idle|running|success|error
+
+# ── Playnite date import ──────────────────────────────────────────────────────
+_playnite_import_lock  = threading.Lock()
+_playnite_import_state = {'status': 'idle', 'error': None, 'updated': None, 'found': None}  # idle|running|success|error
+
+
+def _extract_backup_zip(raw: bytes, logger):
+    """
+    Extract a PlayDate backup zip's contents into BASE_DIR / static/img/library.
+    Shared by the upload and path-based restore routes. Returns (restored, skipped)
+    lists of arcnames. Raises zipfile.BadZipFile or other exceptions on failure.
+    """
+    import zipfile, io
+
+    buf = io.BytesIO(raw)
+    with zipfile.ZipFile(buf, 'r') as zf:
+        names = zf.namelist()
+        logger.info(f"Restore: zip contains {len(names)} entries: {names[:20]}")
+
+        restored = []
+        skipped  = []
+        _base_real = os.path.realpath(BASE_DIR)
+
+        def _safe_dest(rel):
+            """Resolve a relative ZIP entry path and confirm it stays within BASE_DIR."""
+            dest = os.path.realpath(os.path.join(BASE_DIR, rel.replace('/', os.sep)))
+            return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
+
+        # Core files: restore to BASE_DIR
+        for arcname in ('config.json', 'state.json', 'theme.json',
+                        'emulators.json', 'santa_gifts.json'):
+            if arcname in names:
+                dest = _safe_dest(arcname)
+                if not dest:
+                    continue
+                with zf.open(arcname) as src:
+                    data = src.read()
+                with open(dest, 'wb') as dst:
+                    dst.write(data)
+                logger.info(f"Restore: wrote {len(data)} bytes -> {dest}")
+                restored.append(arcname)
+            else:
+                logger.warning(f"Restore: {arcname!r} not found in zip -- skipping")
+                skipped.append(arcname)
+
+        # Per-account databases: games_*.db
+        for arcname in [n for n in names if n.startswith('games_') and n.endswith('.db')]:
+            dest = _safe_dest(arcname)
+            if not dest:
+                continue
+            with zf.open(arcname) as src:
+                data = src.read()
+            with open(dest, 'wb') as dst:
+                dst.write(data)
+            logger.info(f"Restore: wrote {len(data)} bytes -> {dest}")
+            restored.append(arcname)
+
+        # Per-account group sources: group_sources_*.json
+        for arcname in [n for n in names if n.startswith('group_sources_') and n.endswith('.json')]:
+            dest = _safe_dest(arcname)
+            if not dest:
+                continue
+            with zf.open(arcname) as src:
+                data = src.read()
+            with open(dest, 'wb') as dst:
+                dst.write(data)
+            restored.append(arcname)
+
+        # Art files: restore to static/img/library/ (including subdirs)
+        art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
+        if art_files:
+            for arcname in art_files:
+                dest = _safe_dest(arcname)
+                if not dest:
+                    continue
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+                with zf.open(arcname) as src, open(dest, 'wb') as dst:
+                    dst.write(src.read())
+            logger.info(f"Restore: wrote {len(art_files)} cover image(s)")
+            restored.append(f"{len(art_files)} cover image(s)")
+
+    return restored, skipped
+
+
+def _run_restore_thread(raw: bytes, logger):
+    """Runs off the request thread: extract, migrate, and update _restore_state."""
+    import zipfile
+    try:
+        restored, skipped = _extract_backup_zip(raw, logger)
+    except zipfile.BadZipFile:
+        logger.exception("Restore: bad zip file")
+        _restore_state.update({'status': 'error', 'error': 'Invalid zip file. Make sure this is a PlayDate backup.'})
+        return
+    except Exception as e:
+        logger.exception(f"Restore: unexpected error -- {e}")
+        _restore_state.update({'status': 'error', 'error': f'Restore failed: {e}'})
+        return
+
+    logger.info(f"Restore: complete -- restored={restored}, skipped={skipped}")
+
+    # Run migrations and re-initialise the DB -- the restored data may be
+    # from an older version that predates recent schema changes.
+    try:
+        import migration as _migration
+        _migration.run()
+        init_db()
+    except Exception as e:
+        logger.warning(f"Restore: post-restore migration failed: {e}", exc_info=True)
+
+    _restore_state.update({'status': 'success', 'error': None, 'restored': restored, 'skipped': skipped})
+
+
 def _validate_user_path(path: str) -> str | None:
     """Return the resolved absolute path, or None if it looks malicious."""
     if not path or '\x00' in path:
@@ -2507,35 +2622,56 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/import/playnite-dates', methods=['POST'])
     def import_playnite_dates():
-        from imports import parse_playnite_dates
+        # Playnite backups can be several GB (see imports.py) — parsing runs in
+        # a background thread and is polled via /api/import/playnite-dates-status
+        # rather than blocking the request. Same fix as /api/restore-from-path:
+        # a long synchronous request over a Flatpak portal-mounted path can
+        # outlast the client's HTTP connection and surface as "Load failed"
+        # even though nothing actually errored.
         data = request.json or {}
         zip_path = _validate_user_path(data.get('path', '').strip())
         app.logger.info(f"Playnite import: request received, path={zip_path!r}")
         if not zip_path or not os.path.isfile(zip_path):
             app.logger.warning(f"Playnite import: file not found at {zip_path!r}")
             return jsonify({"status": "error", "message": "File not found."}), 400
-        try:
-            date_map = parse_playnite_dates(zip_path)
-            app.logger.info(f"Playnite import: parsed {len(date_map)} appid→date pairs")
-        except Exception as e:
-            app.logger.exception("Playnite import: parse failed")
-            return jsonify({"status": "error", "message": f"Failed to parse backup: {e}"}), 500
-        if not date_map:
-            app.logger.warning("Playnite import: no Steam games with dates found")
-            return jsonify({"status": "error", "message": "No Steam games with dates found in the backup."}), 400
-        from database import date_to_ts
-        db = get_db()
-        updated = 0
-        for appid, date_str in date_map.items():
-            cursor = db.execute(
-                "UPDATE games SET date_added = ? WHERE appid = ?",
-                (date_to_ts(date_str), appid)
-            )
-            updated += cursor.rowcount
-        db.commit()
-        db.close()
-        app.logger.info(f"Playnite import: updated {updated} games")
-        return jsonify({"status": "success", "updated": updated, "found": len(date_map)})
+
+        def _run_playnite_import():
+            from imports import parse_playnite_dates
+            from database import date_to_ts
+            try:
+                date_map = parse_playnite_dates(zip_path)
+                app.logger.info(f"Playnite import: parsed {len(date_map)} appid→date pairs")
+            except Exception as e:
+                app.logger.exception("Playnite import: parse failed")
+                _playnite_import_state.update({'status': 'error', 'error': f'Failed to parse backup: {e}'})
+                return
+            if not date_map:
+                app.logger.warning("Playnite import: no Steam games with dates found")
+                _playnite_import_state.update({'status': 'error', 'error': 'No Steam games with dates found in the backup.'})
+                return
+            db = get_db()
+            updated = 0
+            for appid, date_str in date_map.items():
+                cursor = db.execute(
+                    "UPDATE games SET date_added = ? WHERE appid = ?",
+                    (date_to_ts(date_str), appid)
+                )
+                updated += cursor.rowcount
+            db.commit()
+            db.close()
+            app.logger.info(f"Playnite import: updated {updated} games")
+            _playnite_import_state.update({'status': 'success', 'error': None, 'updated': updated, 'found': len(date_map)})
+
+        with _playnite_import_lock:
+            if _playnite_import_state['status'] == 'running':
+                return jsonify({"status": "error", "message": "An import is already in progress."}), 409
+            _playnite_import_state.update({'status': 'running', 'error': None, 'updated': None, 'found': None})
+            threading.Thread(target=_run_playnite_import, daemon=True).start()
+        return jsonify({"status": "started"})
+
+    @app.route('/api/import/playnite-dates-status')
+    def playnite_import_status():
+        return jsonify(_playnite_import_state)
 
     @app.route('/sync-blaeo')
     def sync_blaeo():
@@ -3509,200 +3645,60 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({"status": "error", "message": str(e)}), 500
 
     # ── RESTORE ───────────────────────────────────────────────────────────────
+    # Extraction runs in a background thread and is polled via /api/restore-status
+    # rather than blocking the request — a large backup (cover art included) can
+    # take long enough, especially reading through a Flatpak portal-mounted path,
+    # that the client's HTTP connection gives up before a synchronous response
+    # would ever be sent.
     @app.route('/api/restore', methods=['POST'])
     def restore():
-        import zipfile
-        import io
+        with _restore_lock:
+            if _restore_state['status'] == 'running':
+                return jsonify({"status": "error", "message": "A restore is already in progress."}), 409
 
-        app.logger.info("Restore: request received")
+            if 'backup_file' not in request.files:
+                app.logger.warning("Restore: no backup_file in request.files")
+                return jsonify({"status": "error", "message": "No file uploaded."}), 400
 
-        if 'backup_file' not in request.files:
-            app.logger.warning("Restore: no backup_file in request.files")
-            return jsonify({"status": "error", "message": "No file uploaded."}), 400
+            f = request.files['backup_file']
+            if not f.filename.endswith('.zip'):
+                return jsonify({"status": "error", "message": "File must be a .zip backup."}), 400
 
-        f = request.files['backup_file']
-        app.logger.info(f"Restore: file received — name={f.filename!r}, content_type={f.content_type!r}")
-
-        if not f.filename.endswith('.zip'):
-            return jsonify({"status": "error", "message": "File must be a .zip backup."}), 400
-
-        try:
             raw = f.read()
             app.logger.info(f"Restore: read {len(raw)} bytes from upload")
-            buf = io.BytesIO(raw)
-            with zipfile.ZipFile(buf, 'r') as zf:
-                names = zf.namelist()
-                app.logger.info(f"Restore: zip contains {len(names)} entries: {names[:20]}")
 
-                restored = []
-                skipped  = []
-                _base_real = os.path.realpath(BASE_DIR)
-
-                def _safe_dest(rel):
-                    """Resolve a relative ZIP entry path and confirm it stays within BASE_DIR."""
-                    dest = os.path.realpath(os.path.join(BASE_DIR, rel.replace('/', os.sep)))
-                    return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
-
-                # Core files: restore to BASE_DIR
-                for arcname in ('config.json', 'state.json', 'theme.json',
-                                'emulators.json', 'santa_gifts.json'):
-                    if arcname in names:
-                        dest = _safe_dest(arcname)
-                        if not dest:
-                            continue
-                        with zf.open(arcname) as src:
-                            data = src.read()
-                        with open(dest, 'wb') as dst:
-                            dst.write(data)
-                        app.logger.info(f"Restore: wrote {len(data)} bytes → {dest}")
-                        restored.append(arcname)
-                    else:
-                        app.logger.warning(f"Restore: {arcname!r} not found in zip — skipping")
-                        skipped.append(arcname)
-
-                # Per-account databases: games_*.db
-                db_entries = [n for n in names if n.startswith('games_') and n.endswith('.db')]
-                for arcname in db_entries:
-                    dest = _safe_dest(arcname)
-                    if not dest:
-                        continue
-                    with zf.open(arcname) as src:
-                        data = src.read()
-                    with open(dest, 'wb') as dst:
-                        dst.write(data)
-                    app.logger.info(f"Restore: wrote {len(data)} bytes → {dest}")
-                    restored.append(arcname)
-
-                # Per-account group sources: group_sources_*.json
-                for arcname in [n for n in names if n.startswith('group_sources_') and n.endswith('.json')]:
-                    dest = _safe_dest(arcname)
-                    if not dest:
-                        continue
-                    with zf.open(arcname) as src:
-                        data = src.read()
-                    with open(dest, 'wb') as dst:
-                        dst.write(data)
-                    restored.append(arcname)
-
-                # Art files: restore to static/img/library/ (including subdirs)
-                art_files = [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]
-                if art_files:
-                    for arcname in art_files:
-                        dest = _safe_dest(arcname)
-                        if not dest:
-                            continue
-                        os.makedirs(os.path.dirname(dest), exist_ok=True)
-                        with zf.open(arcname) as src, open(dest, 'wb') as dst:
-                            dst.write(src.read())
-                    app.logger.info(f"Restore: wrote {len(art_files)} cover image(s)")
-                    restored.append(f"{len(art_files)} cover image(s)")
-
-        except zipfile.BadZipFile:
-            app.logger.exception("Restore: bad zip file")
-            return jsonify({"status": "error", "message": "Invalid zip file. Make sure this is a PlayDate backup."}), 400
-        except Exception as e:
-            app.logger.exception(f"Restore: unexpected error — {e}")
-            return jsonify({"status": "error", "message": f"Restore failed: {str(e)}"}), 500
-
-        app.logger.info(f"Restore: complete — restored={restored}, skipped={skipped}")
-
-        # Run migrations and re-initialise the DB — the restored data may be
-        # from an older version that predates recent schema changes.
-        try:
-            import migration as _migration
-            _migration.run()
-            init_db()
-        except Exception as e:
-            app.logger.warning(f"Restore: post-restore migration failed: {e}", exc_info=True)
-
-        return jsonify({
-            "status":   "success",
-            "restored": restored,
-            "skipped":  skipped,
-        })
+            _restore_state.update({'status': 'running', 'error': None, 'restored': None, 'skipped': None})
+            threading.Thread(target=_run_restore_thread, args=(raw, app.logger), daemon=True).start()
+        return jsonify({"status": "started"})
 
     @app.route('/api/restore-from-path', methods=['POST'])
     def restore_from_path():
-        import zipfile
         path = _validate_user_path((request.json or {}).get('path', '').strip())
         if not path or not os.path.isfile(path):
             return jsonify({"status": "error", "message": "File not found."}), 400
         if not path.endswith('.zip'):
             return jsonify({"status": "error", "message": "File must be a .zip backup."}), 400
-        try:
-            with open(path, 'rb') as fh:
-                raw = fh.read()
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Could not read file: {e}"}), 400
-        # Reuse upload-based restore logic by injecting raw bytes
-        import io
-        try:
-            buf = io.BytesIO(raw)
-            with zipfile.ZipFile(buf, 'r') as zf:
-                names = zf.namelist()
-                restored = []
-                skipped  = []
-                _base_real = os.path.realpath(BASE_DIR)
 
-                def _safe_dest_r(rel):
-                    dest = os.path.realpath(os.path.join(BASE_DIR, rel.replace('/', os.sep)))
-                    return dest if dest.startswith(_base_real + os.sep) or dest == _base_real else None
+        def _read_then_restore():
+            try:
+                with open(path, 'rb') as fh:
+                    raw = fh.read()
+            except Exception as e:
+                app.logger.warning(f"Restore-from-path: could not read file: {e}")
+                _restore_state.update({'status': 'error', 'error': f'Could not read file: {e}'})
+                return
+            _run_restore_thread(raw, app.logger)
 
-                for arcname in ('config.json', 'state.json', 'theme.json',
-                                'emulators.json', 'santa_gifts.json'):
-                    if arcname in names:
-                        dest = _safe_dest_r(arcname)
-                        if dest:
-                            with zf.open(arcname) as src:
-                                data = src.read()
-                            with open(dest, 'wb') as dst:
-                                dst.write(data)
-                            restored.append(arcname)
-                    else:
-                        skipped.append(arcname)
+        with _restore_lock:
+            if _restore_state['status'] == 'running':
+                return jsonify({"status": "error", "message": "A restore is already in progress."}), 409
+            _restore_state.update({'status': 'running', 'error': None, 'restored': None, 'skipped': None})
+            threading.Thread(target=_read_then_restore, daemon=True).start()
+        return jsonify({"status": "started"})
 
-                for arcname in [n for n in names if n.startswith('games_') and n.endswith('.db')]:
-                    dest = _safe_dest_r(arcname)
-                    if dest:
-                        with zf.open(arcname) as src:
-                            data = src.read()
-                        with open(dest, 'wb') as dst:
-                            dst.write(data)
-                        restored.append(arcname)
-
-                for arcname in [n for n in names if n.startswith('group_sources_') and n.endswith('.json')]:
-                    dest = _safe_dest_r(arcname)
-                    if dest:
-                        with zf.open(arcname) as src:
-                            data = src.read()
-                        with open(dest, 'wb') as dst:
-                            dst.write(data)
-                        restored.append(arcname)
-
-                for arcname in [n for n in names if n.startswith('static/img/library/') and n.endswith('.jpg')]:
-                    dest = _safe_dest_r(arcname)
-                    if dest:
-                        os.makedirs(os.path.dirname(dest), exist_ok=True)
-                        with zf.open(arcname) as src, open(dest, 'wb') as dst:
-                            dst.write(src.read())
-                if any(n.startswith('static/img/library/') for n in names):
-                    count = sum(1 for n in names if n.startswith('static/img/library/') and n.endswith('.jpg'))
-                    if count:
-                        restored.append(f"{count} cover image(s)")
-
-        except zipfile.BadZipFile:
-            return jsonify({"status": "error", "message": "Invalid zip file."}), 400
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Restore failed: {e}"}), 500
-
-        try:
-            import migration as _migration
-            _migration.run()
-            init_db()
-        except Exception as e:
-            app.logger.warning(f"Restore-from-path: post-restore migration failed: {e}")
-
-        return jsonify({"status": "success", "restored": restored, "skipped": skipped})
+    @app.route('/api/restore-status')
+    def restore_status():
+        return jsonify(_restore_state)
 
     # ── Update checking endpoints ─────────────────────────────────────────────
     @app.route('/api/update-status')

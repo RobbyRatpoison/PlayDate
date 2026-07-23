@@ -55,8 +55,18 @@
         formData.append('backup_file', file);
         try {
             const res = await fetch('/api/restore', { method: 'POST', body: formData });
-            const data = await res.json();
-            if (data.status !== 'success') throw new Error(data.message || 'Restore failed.');
+            const started = await res.json();
+            if (started.status !== 'started') throw new Error(started.message || 'Restore failed.');
+
+            let data;
+            while (true) {
+                await new Promise(r => setTimeout(r, 700));
+                const poll = await fetch('/api/restore-status');
+                data = await poll.json();
+                if (data.status !== 'running') break;
+            }
+            if (data.status !== 'success') throw new Error(data.error || 'Restore failed.');
+
             status.style.color = 'var(--accent-positive)';
             status.textContent = '✔ Restored. Reloading…';
             setTimeout(() => window.location.reload(), 1200);
