@@ -1163,9 +1163,14 @@
             case 'release_date':
             case 'last_played':
             case 'date_added': {
+                // library.py already converts these to 'YYYY-MM-DD' strings
+                // before sending to the browser (ts_to_date()) — not raw
+                // Unix timestamps, unlike the DB columns themselves.
                 const ts = game[CURRENT_SORT];
                 if (!ts) return '—';
-                return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                const d = new Date(ts);
+                if (isNaN(d.getTime())) return '—';
+                return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
             }
             case 'playtime_forever':
                 return fmtHours(game.playtime_forever);

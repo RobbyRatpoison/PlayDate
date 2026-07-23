@@ -65,7 +65,10 @@
             // action), since the browser has no idea a modal is covering it.
             // Skipped while a text field has real focus so actual keyboard
             // users can still move the text cursor normally with arrow keys.
-            if (_anyWatchedOpen() && !_isTextEntryFocused()) {
+            // The hamburger menu isn't in _anyWatchedOpen()'s registry at all —
+            // it's tracked as its own 'dropdown' zone, not a registered modal —
+            // so it needs an explicit check here too.
+            if ((_anyWatchedOpen() || _state.zone === 'dropdown') && !_isTextEntryFocused()) {
                 e.preventDefault();
             }
         }
