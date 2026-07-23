@@ -15,3 +15,5 @@
 - Fixed the joystick navigating the page at the same time as the on-screen keyboard.
 - Fixed the D-pad simultaneously navigating the page behind an open modal or the hamburger menu, instead of just the modal/menu itself.
 - Fixed the update checker (for beta testers) not detecting newer beta builds of the same version.
+- Fixed gamepad focus jumping back to the page after using "Check for Updates" in the hamburger menu.
+- Fixed the install-update confirmation popup not supporting gamepad navigation.

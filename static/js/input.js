@@ -669,6 +669,7 @@
         '_color-picker-popover', // playdate.js inline color picker — dynamically inserted
         'pd-dialog-overlay',   // base.html confirm/alert — shown via .visible class
         'config-modal',        // first-run required setup (modal_edit.html, needs_config) — no close button, blocks everything else
+        'update-confirm-overlay', // base.html install-update confirmation
         'editModal', 'filterModal', 'viewModal',
         // Data modal sub-modals
         'backup-modal', 'bg-modal', 'import-modal',
@@ -1806,11 +1807,27 @@
                     if (el.classList.contains('custom-select-option')) {
                         // bubbles:false — prevents bubbling to document mousedown which would deactivate gamepad
                         el.dispatchEvent(new MouseEvent('mousedown', { bubbles: false, cancelable: true }));
+                        _popZone();
+                        _syncFocus();
                     } else {
                         el.click();
+                        // Not every hamburger item closes the menu (e.g. "Check
+                        // for Updates" just updates its own label in place) —
+                        // only pop back to the underlying page if the dropdown
+                        // actually closed as a result of the click, otherwise
+                        // stay put so focus doesn't jump to the page behind a
+                        // menu that's still open.
+                        requestAnimationFrame(() => {
+                            if (_dropdownIsOpen()) {
+                                const newItems = _dropdownItems();
+                                _state.col = Math.min(_state.col, Math.max(0, newItems.length - 1));
+                                _syncFocus();
+                            } else {
+                                _popZone();
+                                _syncFocus();
+                            }
+                        });
                     }
-                    _popZone();
-                    _syncFocus();
                 }
                 return; // skip post-A dropdown detection
             }
@@ -2027,6 +2044,8 @@
         const checks = [
             // color picker popover (dynamically created)
             ['_color-picker-popover', 'closeColorPicker'],
+            // install-update confirmation (base.html)
+            ['update-confirm-overlay', '_closeUpdateConfirm'],
             // library page bulk modals
             ['bulk-edit-modal',       'closeBulkEditModal'],
             ['bulk-rescrape-modal',   'closeBulkRescrapeModal'],
@@ -2709,6 +2728,9 @@
         // already-visible via CSS (no JS open/close toggle), so register it
         // even though its inline style never changes after load.
         _watchModal('config-modal');
+
+        // Install-update confirmation (base.html)
+        _watchModal('update-confirm-overlay');
 
         // Edit / filter modals (base.html — present on every page)
         _watchModal('editModal');
