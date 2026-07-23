@@ -42,8 +42,15 @@ then revert before committing — same swap the CI job does automatically.
 ## Bundle for distribution
 
 ```bash
-flatpak build-bundle repo PlayDate.flatpak io.github.robbyratpoison.PlayDate
+flatpak build-bundle repo PlayDate.flatpak io.github.robbyratpoison.PlayDate \
+  --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 ```
+
+`--runtime-repo` is what lets a plain `flatpak install PlayDate.flatpak` (or
+double-clicking it) fetch the missing `org.gnome.Platform//50` runtime from
+Flathub automatically on a system that doesn't have it yet — without it,
+install fails with "runtime ... not found" unless Flathub is already
+configured as a remote (e.g. a stock Steam Deck in Desktop Mode).
 
 ## Update mechanisms
 

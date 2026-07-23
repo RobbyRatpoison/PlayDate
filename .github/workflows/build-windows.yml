@@ -245,10 +245,16 @@ jobs:
 
       - name: Create .flatpak bundle
         run: |
+          # --runtime-repo points installers (flatpak CLI, GNOME Software,
+          # Discover) at Flathub so a missing org.gnome.Platform//50 runtime
+          # is offered/fetched automatically on install, instead of failing
+          # with "runtime not found" on a system that hasn't got Flathub
+          # configured (e.g. a stock Steam Deck).
           flatpak build-bundle flatpak/repo \
             "PlayDate-${PD_VERSION}-Linux.flatpak" \
             io.github.robbyratpoison.PlayDate \
-            --repo-url=https://robbyratpoison.github.io/PlayDate/
+            --repo-url=https://robbyratpoison.github.io/PlayDate/ \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       # ── 7. Verify the build ───────────────────────────────────────────────────
       - name: Verify bundle output
