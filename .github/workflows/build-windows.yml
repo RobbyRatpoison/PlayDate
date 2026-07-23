@@ -183,6 +183,37 @@ jobs:
           with open("config.py", "w") as f: f.write(content)
           print(f"Version: {ver}, __build__ = {full}")
 
+      # ── 2b. Update AppStream release metadata (stable releases only) ─────────
+      # Shelly/GNOME Software/Discover read this file for the version they
+      # display and update to — not the running app's own __version__, which
+      # is a separate, already-correct mechanism. Skipped for -beta/-rc tags
+      # since those never reach the ostree repo those tools pull from anyway
+      # (see the gh-pages publish step below), so there's nothing for them to
+      # show a beta version number for in the first place.
+      - name: Update AppStream release metadata
+        if: "!contains(github.ref_name, '-beta') && !contains(github.ref_name, '-rc')"
+        shell: python
+        run: |
+          import re
+          from datetime import date
+          tag = "${{ github.ref_name }}"
+          m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
+          ver = m.group(1) if m else "0.0.0"
+          today = date.today().isoformat()
+          path = "flatpak/io.github.robbyratpoison.PlayDate.metainfo.xml"
+          with open(path) as f:
+              content = f.read()
+          updated = re.sub(
+              r'<release version="[^"]+" date="[^"]+"\s*/>',
+              f'<release version="{ver}" date="{today}" />',
+              content,
+              count=1,
+          )
+          assert updated != content, "metainfo.xml <release> line not found — update this CI step"
+          with open(path, "w") as f:
+              f.write(updated)
+          print(f"Set metainfo release to {ver} ({today})")
+
       # ── 3. Point the manifest at this checkout instead of a git tag ──────────
       # The manifest normally clones RobbyRatpoison/PlayDate at a fixed tag (so
       # local builds never pick up a developer's gitignored personal data). In
