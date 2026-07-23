@@ -36,8 +36,8 @@
         <div style="margin-top: 1.5rem; padding-top: 1.125rem; border-top: 1px solid var(--border);">
             <p style="font-size: 0.85rem; color: #8f98a0; margin: 0 0 10px;">Already have a backup? Restore it to skip setup entirely.</p>
             <div style="display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;">
-                <button type="button" class="nav-btn" onclick="document.getElementById('config-restore-input').click()">Restore from Backup</button>
-                <input type="file" id="config-restore-input" accept=".zip" style="display:none" onchange="configRunRestore(this)">
+                <button type="button" class="nav-btn" onclick="chooseConfigRestoreFile()">Restore from Backup</button>
+                <input type="file" id="config-restore-input" accept=".zip" style="display:none" onchange="configRestoreFileSelected(this)">
                 <span id="config-restore-status" style="font-size:0.85rem; color: var(--text-secondary);"></span>
             </div>
         </div>
@@ -45,16 +45,53 @@
 </div>
 
 <script>
-    async function configRunRestore(input) {
+    // Prefer the native file picker (sends a path string, no upload needed) —
+    // the plain <input type=file> fallback below reads the whole backup into
+    // a JS File object and uploads it via FormData, which for a large backup
+    // (cover art included) can fail client-side within the WebKit networking
+    // stack before the request ever reaches the server. Only used when
+    // pywebview's API isn't available (e.g. running in a browser).
+    async function chooseConfigRestoreFile() {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+            let path;
+            try {
+                path = await window.pywebview.api.pick_open_path(['ZIP Files (*.zip)']);
+            } catch (e) {
+                const status = document.getElementById('config-restore-status');
+                status.style.color = 'var(--text-danger)';
+                status.textContent = '✘ ' + e.message;
+                return;
+            }
+            if (!path) return;
+            configRunRestore({ path });
+        } else {
+            document.getElementById('config-restore-input').click();
+        }
+    }
+
+    function configRestoreFileSelected(input) {
         const file = input.files[0];
-        if (!file) return;
+        input.value = '';
+        if (file) configRunRestore({ file });
+    }
+
+    async function configRunRestore(source) {
         const status = document.getElementById('config-restore-status');
         status.style.color = 'var(--text-secondary)';
         status.textContent = 'Restoring…';
-        const formData = new FormData();
-        formData.append('backup_file', file);
         try {
-            const res = await fetch('/api/restore', { method: 'POST', body: formData });
+            let res;
+            if (source.path) {
+                res = await fetch('/api/restore-from-path', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: source.path })
+                });
+            } else {
+                const formData = new FormData();
+                formData.append('backup_file', source.file);
+                res = await fetch('/api/restore', { method: 'POST', body: formData });
+            }
             const started = await res.json();
             if (started.status !== 'started') throw new Error(started.message || 'Restore failed.');
 
@@ -74,7 +111,6 @@
             status.style.color = 'var(--text-danger)';
             status.textContent = '✘ ' + e.message;
         }
-        input.value = '';
     }
 
     // Auto-detect SteamID if field is empty
