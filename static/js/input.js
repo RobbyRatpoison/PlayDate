@@ -1984,6 +1984,18 @@
         return false;
     }
 
+    function _isTextEntryFocused() {
+        const el = document.activeElement;
+        if (!el) return false;
+        if (el.tagName === 'TEXTAREA') return true;
+        if (el.tagName === 'INPUT') {
+            const t = (el.type || 'text').toLowerCase();
+            return t === 'text' || t === 'search' || t === 'number' ||
+                   t === 'password' || t === 'email' || t === 'url' || t === 'tel';
+        }
+        return false;
+    }
+
     function _handleB() {
         // Suppress B while the eyedropper subprocess owns the screen, and for a short
         // cooldown after it exits (the B press that dismissed the subprocess is still
@@ -2010,6 +2022,18 @@
             if (_state.activeInput) { _state.activeInput.blur(); _state.activeInput = null; }
             _popZone();
             _syncFocus();
+            return;
+        }
+
+        // A text field can end up focused without ever entering the text-input
+        // zone above — e.g. tapped directly via the Steam Deck touchscreen/
+        // trackpad instead of selected with A. Gamescope's on-screen keyboard
+        // also binds B to dismiss itself, and there's no web API to detect
+        // whether it's open, so the same B press both closes the keyboard and
+        // (without this check) falls through to close the modal underneath
+        // it. Blur the field first; a second B press then closes the modal.
+        if (_isTextEntryFocused()) {
+            document.activeElement.blur();
             return;
         }
 
