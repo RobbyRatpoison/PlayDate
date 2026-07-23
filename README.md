@@ -56,9 +56,23 @@ chmod +x launch.sh && ./launch.sh
 
 On first run, `launch.sh` sets up a virtual environment, installs Python dependencies, and registers a desktop entry so PlayDate appears in your app launcher. After that it just launches. Re-running it after moving the folder keeps the desktop entry up to date.
 
+### Linux (Flatpak)
+
+Download **PlayDate-\<version\>-Linux.flatpak** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest), then either double-click it in your file manager or install it from a terminal:
+
+```bash
+flatpak install PlayDate-<version>-Linux.flatpak
+```
+
+If your system doesn't already have Flathub configured as a remote, the bundle fetches the missing GNOME runtime from Flathub automatically. The Flatpak stays up to date on its own — updates ship via an in-app "Perform Update" button, and it's also compatible with `flatpak update` or GNOME Software once installed.
+
+Wine, Proton, winetricks, and 7z are not bundled — install them on the host if you plan to use non-Steam launcher plugins (GOG, Epic, etc.).
+
 ### Steam Deck
 
-Set a sudo password first if you haven't already:
+The Flatpak build above is the recommended way to install PlayDate on Steam Deck. In Desktop Mode, download the `.flatpak` file and double-click it to install via Discover, or use the terminal command above — no sudo password or system package setup required. It runs entirely sandboxed and updates like any other Flatpak app.
+
+If you'd rather run from source instead, set a sudo password first if you haven't already:
 
 ```bash
 passwd
@@ -90,4 +104,9 @@ Use **Add or Remove Programs** — PlayDate registers a standard uninstaller.
 ### Linux / macOS
 ```bash
 ./uninstall.sh
+```
+
+### Linux (Flatpak)
+```bash
+flatpak uninstall io.github.robbyratpoison.PlayDate
 ```
