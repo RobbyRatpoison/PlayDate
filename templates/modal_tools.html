@@ -777,6 +777,9 @@
             </div>
             <div id="csv-export-status" class="tool-status" style="margin-top:2px;"></div>
         </div>
+        <div class="hub-section">
+            <button class="settings-item" data-modal-row="14" onclick="openBaseDir()">Open Program Folder</button>
+        </div>
     </div>
 </div>
 
@@ -5782,6 +5785,13 @@ function openDataModal() {
 }
 function closeDataModal() {
     document.getElementById('data-modal').style.display = 'none';
+}
+let _openBaseDirBusy = false;
+function openBaseDir() {
+    if (_openBaseDirBusy) return;
+    _openBaseDirBusy = true;
+    fetch('/api/open-base-dir', { method: 'POST' }).catch(() => {});
+    setTimeout(() => { _openBaseDirBusy = false; }, 1000);
 }
 function openSystemModal() {
     document.getElementById('system-modal').style.display = 'flex';

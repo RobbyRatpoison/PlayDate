@@ -21,7 +21,16 @@ finish-args:
   - --share=ipc
   - --socket=wayland
   - --socket=fallback-x11
-  - --device=dri
+  # --device=all (not the narrower --device=input) is required for gamepad
+  # support, notably the Steam Deck's built-in controller: WebKitGTK's
+  # gamepad API goes through libmanette, which on Steam Deck has to open the
+  # raw hidraw device directly to disable "lizard mode" (the controller's
+  # default keyboard/mouse HID emulation) and keep re-disabling it every
+  # ~800ms since Valve's hid-steam driver keeps trying to re-enable it.
+  # --device=input covers /dev/input/event*|js* but explicitly dropped
+  # hidraw support when it was introduced, so it can't reach that path.
+  # Includes GPU (dri) access too, so this also replaces --device=dri.
+  - --device=all
   # Required for flatpak-spawn --host, used by runners/sandbox.py to run
   # Wine/Proton/winetricks/7z on the host instead of inside the sandbox.
   - --talk-name=org.freedesktop.Flatpak

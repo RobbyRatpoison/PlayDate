@@ -1188,6 +1188,20 @@ def create_app(template_folder=None, static_folder=None):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+    @app.route('/api/open-base-dir', methods=['POST'])
+    def open_base_dir():
+        try:
+            os_name = platform.system()
+            if os_name == 'Darwin':
+                subprocess.Popen(['open', BASE_DIR])
+            elif os_name == 'Linux':
+                subprocess.Popen(['xdg-open', BASE_DIR])
+            else:
+                subprocess.Popen(['explorer', BASE_DIR])
+            return jsonify({"status": "success", "path": BASE_DIR})
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
     @app.route('/api/launch/<appid>', methods=['POST'])
     def launch_game(appid):
         try:
