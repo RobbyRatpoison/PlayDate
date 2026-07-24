@@ -802,6 +802,20 @@
             _betaUpdates = !_betaUpdates;
             _updateBetaLabel();
             savePreference({ beta_updates: _betaUpdates });
+            if (_betaUpdates) {
+                _runUpdateCheck();  // opting in: run a real fresh check immediately
+            } else {
+                // opting out: clear stale notification without a network round-trip
+                fetch('/api/reset-update-cache', { method: 'POST' }).catch(() => {});
+                _updateAvailable = false;
+                _latestVersion = null;
+                document.getElementById('update-dot').classList.remove('visible');
+                document.getElementById('update-menu-dot').classList.remove('visible');
+                document.getElementById('update-check-label').textContent = 'Check for Updates';
+                const status = document.getElementById('update-menu-status');
+                status.textContent = '';
+                status.className = 'hamburger-status';
+            }
         }
 
         function _closeUpdateConfirm() {
@@ -824,6 +838,44 @@
             }, 1500);
         }
 
+        async function _runUpdateCheck() {
+            if (_updateCheckBusy) return;
+            _updateCheckBusy = true;
+            const label = document.getElementById('update-check-label');
+            const btn = document.getElementById('update-check-btn');
+            const status = document.getElementById('update-menu-status');
+            label.textContent = 'Checking\u2026';
+            // Not the disabled attribute \u2014 that excludes the button from
+            // gamepad navigation entirely (see input.js's _modalGrid()).
+            btn.style.opacity = '0.6';
+            btn.style.cursor = 'default';
+            try {
+                const resp = await fetch('/api/check-update', { method: 'POST' });
+                const data = await resp.json();
+                if (data.update_available) {
+                    _setUpdateAvailable(data.latest_version, data.is_portable);
+                    status.textContent = '';
+                    status.className = 'hamburger-status';
+                } else {
+                    label.textContent = 'Check for Updates';
+                    status.textContent = data.error ? `Check failed: ${data.error}` : "You're up to date!";
+                    status.className = 'hamburger-status ' + (data.error ? 'error' : 'success');
+                    // Errors stay visible until the next check attempt: a 4s auto-clear
+                    // made a real failure indistinguishable from nothing having happened.
+                    if (!data.error) {
+                        setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 4000);
+                    }
+                }
+            } catch (e) {
+                label.textContent = 'Check for Updates';
+                status.textContent = 'Check failed: could not reach server.';
+                status.className = 'hamburger-status error';
+            }
+            btn.style.opacity = '';
+            btn.style.cursor = '';
+            _updateCheckBusy = false;
+        }
+
         async function handleUpdateBtn() {
             if (_updateAvailable) {
                 closeHamburger();
@@ -837,33 +889,7 @@
                 document.getElementById('update-confirm-title').textContent = `Install PlayDate v${_latestVersion}?`;
                 document.getElementById('update-confirm-overlay').style.display = 'flex';
             } else {
-                if (_updateCheckBusy) return;
-                _updateCheckBusy = true;
-                const label = document.getElementById('update-check-label');
-                const btn = document.getElementById('update-check-btn');
-                const status = document.getElementById('update-menu-status');
-                label.textContent = 'Checking\u2026';
-                // Not the disabled attribute \u2014 that excludes the button from
-                // gamepad navigation entirely (see input.js's _modalGrid()).
-                btn.style.opacity = '0.6';
-                btn.style.cursor = 'default';
-                try {
-                    const resp = await fetch('/api/check-update', { method: 'POST' });
-                    const data = await resp.json();
-                    if (data.update_available) {
-                        _setUpdateAvailable(data.latest_version, data.is_portable);
-                    } else {
-                        label.textContent = 'Check for Updates';
-                        status.textContent = data.error ? 'Check failed.' : "You're up to date!";
-                        status.className = 'hamburger-status ' + (data.error ? 'error' : 'success');
-                        setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 4000);
-                    }
-                } catch (e) {
-                    label.textContent = 'Check for Updates';
-                }
-                btn.style.opacity = '';
-                btn.style.cursor = '';
-                _updateCheckBusy = false;
+                await _runUpdateCheck();
             }
         }
 

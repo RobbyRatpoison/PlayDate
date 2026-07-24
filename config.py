@@ -365,6 +365,7 @@ DEFAULT_STATE = {
     "group_by": None,
     "ui_scale": 100,
     "auto_promote_unfinished": True,
+    "startup_page": "home",
 }
 
 def validate_steam_creds(api_key, steam_id):
@@ -465,6 +466,7 @@ def inject_config_status():
         hide_duplicates=state.get('hide_duplicates', True),
         ui_scale=state.get('ui_scale', 100),
         auto_promote_unfinished=state.get('auto_promote_unfinished', True),
+        startup_page=state.get('startup_page', 'home'),
         platform_priority=_active_platform_priority(state),
         app_version=__build__,
     )
@@ -911,6 +913,9 @@ def save_state(updates):
             state["ui_scale"] = max(75, min(200, int(updates["ui_scale"])))
         if "auto_promote_unfinished" in updates:
             state["auto_promote_unfinished"] = bool(updates["auto_promote_unfinished"])
+        if "startup_page" in updates:
+            if updates["startup_page"] in ('home', 'library', 'pick'):
+                state["startup_page"] = updates["startup_page"]
         if "hide_duplicates" in updates:
             state["hide_duplicates"] = bool(updates["hide_duplicates"])
         if "platform_priority" in updates:

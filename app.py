@@ -3464,7 +3464,7 @@ def create_app(template_folder=None, static_folder=None):
                 'total': total,
                 'eligible': len(eligible),
                 'in_library': len(in_library),
-                'appids': [a for a in eligible if a in in_library],
+                'appids': eligible,
             }
             _miam_cache[0] = (now, data)
             return jsonify(data)
@@ -3787,6 +3787,11 @@ def create_app(template_folder=None, static_folder=None):
             'error': _update_cache.get('error'),
             'is_portable': IS_PORTABLE,
         })
+
+    @app.route('/api/reset-update-cache', methods=['POST'])
+    def reset_update_cache():
+        _update_cache.clear()
+        return jsonify({'status': 'ok'})
 
     @app.route('/api/perform-update', methods=['POST'])
     def perform_update():

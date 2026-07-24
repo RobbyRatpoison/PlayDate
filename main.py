@@ -1139,9 +1139,13 @@ if __name__ == '__main__':
     _ws = _load_window_state()
     _fullscreen = _ws.get('fullscreen', False)
 
+    from config import load_state
+    _startup_paths = {'home': '/', 'library': '/library', 'pick': '/pick'}
+    start_url = URL.rstrip('/') + _startup_paths.get(load_state().get('startup_page', 'home'), '/')
+
     window = webview.create_window(
         title            = "PlayDate",
-        url              = URL,
+        url              = start_url,
         min_size         = (1024, 600),
         js_api           = _api,
         background_color = '#1b2838',

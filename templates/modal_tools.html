@@ -561,6 +561,18 @@
             <button class="settings-item" data-modal-row="2" onclick="openThemeModal()">Theme Editor</button>
         </div>
         <div class="hub-section">
+            <div class="hub-section-label">Startup Page</div>
+            <div style="padding:8px 10px;">
+                <select id="startup-page-select" class="nav-dropdown" onchange="savePreference({startup_page: this.value})"
+                        data-modal-row="6" data-picker-title="Startup Page"
+                        style="width:100%; height:2.5rem;">
+                    <option value="home"    {{ 'selected' if startup_page == 'home' }}>Home</option>
+                    <option value="library" {{ 'selected' if startup_page == 'library' }}>Library</option>
+                    <option value="pick"    {{ 'selected' if startup_page == 'pick' }}>Pick 6</option>
+                </select>
+            </div>
+        </div>
+        <div class="hub-section">
             <div class="hub-section-label">UI Scale</div>
             <div style="padding:8px 10px;">
                 <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px;">Increase if text looks small on a high-DPI display.</div>
@@ -579,8 +591,8 @@
             <div class="hub-section-label">Card Outlines</div>
             <div style="padding:8px 10px;">
                 <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
-                    <button id="ap-outline-library" class="ap-outline-toggle" onclick="apToggleOutline('library')" data-modal-row="5">Library</button>
                     <button id="ap-outline-home"    class="ap-outline-toggle" onclick="apToggleOutline('home')"    data-modal-row="5">Home</button>
+                    <button id="ap-outline-library" class="ap-outline-toggle" onclick="apToggleOutline('library')" data-modal-row="5">Library</button>
                     <button id="ap-outline-pick6"   class="ap-outline-toggle" onclick="apToggleOutline('pick6')"   data-modal-row="5">Pick 6</button>
                     <button onclick="openCardOutlinesModal()" data-modal-row="5"
                             style="height:2.25rem; padding:0 0.875rem; font-size:0.82rem; border-radius:0.375rem; background:#2a3f55; border:1px solid #3a5f7a; color:#c7d5e0; cursor:pointer; white-space:nowrap;">
@@ -4506,6 +4518,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('source-table'));
     initCustomSelect(document.getElementById('appid-col'));
     initCustomSelect(document.getElementById('tools-filter-select'));
+    initCustomSelect(document.getElementById('startup-page-select'));
 });
 
 // ── ACCOUNT SETTINGS ─────────────────────────────────────────────────────────
