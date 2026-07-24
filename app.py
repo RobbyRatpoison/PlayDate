@@ -2939,7 +2939,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/pagywosg-auto')
     def pagywosg_auto():
-        import urllib.request
+        import requests
         from datetime import date
 
         # Anchor: event 83 = April 2026
@@ -2949,12 +2949,13 @@ def create_app(template_folder=None, static_folder=None):
             event_id += 1
 
         def _fetch_event(eid):
-            req = urllib.request.Request(
+            r = requests.get(
                 f'https://pagywosg.xyz/api/events/{eid}',
-                headers={'User-Agent': 'PlayDate/1.0'}
+                headers={'User-Agent': 'PlayDate/1.0'},
+                timeout=10
             )
-            with urllib.request.urlopen(req, timeout=10) as r:
-                return json.loads(r.read())['event']
+            r.raise_for_status()
+            return r.json()['event']
 
         try:
             event = _fetch_event(event_id)
@@ -3190,7 +3191,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/pagywosg-quals')
     def pagywosg_quals_data():
-        import urllib.request
+        import requests
         from datetime import date, datetime
 
         today     = date.today()
@@ -3203,12 +3204,13 @@ def create_app(template_folder=None, static_folder=None):
                 return jsonify({**data, 'sg_group': _resolve_sg_group()})
 
         def _fetch(eid):
-            req = urllib.request.Request(
+            r = requests.get(
                 f'https://pagywosg.xyz/api/events/{eid}',
-                headers={'User-Agent': 'PlayDate/1.0'}
+                headers={'User-Agent': 'PlayDate/1.0'},
+                timeout=10
             )
-            with urllib.request.urlopen(req, timeout=10) as r:
-                return json.loads(r.read())['event']
+            r.raise_for_status()
+            return r.json()['event']
 
         try:
             event = _fetch(event_id)
@@ -3421,15 +3423,16 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/miam-sheet')
     def miam_sheet_data():
-        import csv, io, urllib.request
+        import csv, io, requests
         from datetime import datetime
         cache = _miam_cache[0]
         now = datetime.now().timestamp()
         if cache and now - cache[0] < 3600:
             return jsonify(cache[1])
         try:
-            req = urllib.request.urlopen(_MIAM_SHEET_URL, timeout=15)
-            content = req.read().decode('utf-8')
+            resp = requests.get(_MIAM_SHEET_URL, timeout=15)
+            resp.raise_for_status()
+            content = resp.text
             reader = csv.DictReader(io.StringIO(content))
             eligible = []
             total = 0
@@ -4138,6 +4141,16 @@ def create_app(template_folder=None, static_folder=None):
             return jsonify({'status': 'ok', 'detected': count})
         except Exception as e:
             log.error(f"detect-duplicates failed: {e}", exc_info=True)
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    @app.route('/api/pop-sync', methods=['POST'])
+    def pop_sync():
+        try:
+            from pop_sync import sync_pop_picks
+            result = sync_pop_picks()
+            return jsonify(result)
+        except Exception as e:
+            log.error(f"pop-sync failed: {e}", exc_info=True)
             return jsonify({'status': 'error', 'message': str(e)}), 500
 
     # ── Background update check on startup ───────────────────────────────────

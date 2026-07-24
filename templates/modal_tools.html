@@ -674,6 +674,11 @@
                 <button id="blaeo-cancel-btn" class="settings-item" onclick="cancelBlaeo()" style="flex:0 0 auto;">Discard</button>
             </div>
         </div>
+        <div class="hub-section">
+            <div class="hub-section-label">Play or Pay</div>
+            <button id="pop-sync-btn" class="settings-item" data-modal-row="4" onclick="runPopSync()">Sync Play or Pay Picks</button>
+            <div id="pop-sync-status" class="tool-status" style="margin-top:4px;padding:0 10px;"></div>
+        </div>
     </div>
 </div>
 
@@ -5148,7 +5153,7 @@ window._authPopupDone = function(result) {
     window._authPopupPendingId = null;
     const st = document.getElementById(`${id}-manage-popup-status`);
     if (result.status === 'success') {
-        if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `Connected as ${escHtml(result.username || 'unknown')}`; }
+        if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `Connected as ${result.username || 'unknown'}`; }
         setTimeout(() => _manageRefreshAuth(id), 1000);
     } else {
         if (st) { st.style.color = 'var(--text-danger)'; st.textContent = result.message || 'Connection failed'; }
@@ -5258,7 +5263,7 @@ async function _manageOauthSubmit(id) {
         });
         const d = await r.json();
         if (d.status === 'success') {
-            if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `Connected as ${escHtml(d.username || 'unknown')}`; }
+            if (st) { st.style.color = 'var(--accent-positive, #5c7e10)'; st.textContent = `Connected as ${d.username || 'unknown'}`; }
             setTimeout(() => { _closeManageOauth(id); _manageRefreshAuth(id); }, 1200);
         } else {
             if (st) { st.style.color = 'var(--text-danger)'; st.textContent = d.message || 'Connection failed'; }
@@ -5758,6 +5763,21 @@ async function detectDuplicates() {
             if ((d.detected ?? 0) > 0) setTimeout(() => window.location.reload(), 1200);
         } else {
             status.textContent = '✘ Detection failed';
+        }
+    } catch (e) {
+        status.textContent = '✘ Error: ' + e.message;
+    }
+}
+async function runPopSync() {
+    const status = document.getElementById('pop-sync-status');
+    status.textContent = 'Syncing…';
+    try {
+        const r = await fetch('/api/pop-sync', { method: 'POST' });
+        const d = await r.json();
+        if (r.ok && d.status !== 'error') {
+            status.textContent = d.message || 'Done.';
+        } else {
+            status.textContent = '✘ ' + (d.message || 'Sync failed');
         }
     } catch (e) {
         status.textContent = '✘ Error: ' + e.message;
