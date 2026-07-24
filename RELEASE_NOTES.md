@@ -19,3 +19,4 @@
 - Fixed the install-update confirmation popup not supporting gamepad navigation.
 - Fixed the Flatpak build's window showing a generic icon in the titlebar and taskbar instead of PlayDate's own.
 - Fixed PlayDate's icon not showing up correctly in Flatpak-aware software centers (e.g. Shelly, GNOME Software), showing a placeholder instead.
+- Fixed the in-app updater always installing to the per-user Flatpak location even if PlayDate was originally installed system-wide, which could leave two separate copies installed side by side. It now always updates whichever copy is actually running.

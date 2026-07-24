@@ -3831,17 +3831,23 @@ def create_app(template_folder=None, static_folder=None):
                     _fetch(url, bundle_path)
 
                     app_id = 'io.github.robbyratpoison.PlayDate'
-                    log.info(f"Installing flatpak bundle: {bundle_path}")
+
+                    # Reinstall into whichever scope this install already
+                    # lives in, rather than always trying --user first. That
+                    # blind "--user, fall back to --system on failure" logic
+                    # could succeed at creating a brand new --user copy
+                    # alongside an existing --system one (or vice versa)
+                    # instead of updating the copy actually running — since
+                    # we're IN_FLATPAK right now, the app is guaranteed to be
+                    # installed in at least one of the two scopes already.
+                    user_check = host_run(['flatpak', 'info', '--user', app_id], capture_output=True, text=True)
+                    scope = '--user' if user_check.returncode == 0 else '--system'
+
+                    log.info(f"Installing flatpak bundle ({scope}): {bundle_path}")
                     result = host_run(
-                        ['flatpak', 'install', '--user', '-y', '--reinstall', bundle_path],
+                        ['flatpak', 'install', scope, '-y', '--reinstall', bundle_path],
                         capture_output=True, text=True
                     )
-                    if result.returncode != 0:
-                        log.warning(f"--user flatpak install failed ({result.stderr.strip()}), retrying --system")
-                        result = host_run(
-                            ['flatpak', 'install', '--system', '-y', '--reinstall', bundle_path],
-                            capture_output=True, text=True
-                        )
                     try:
                         os.remove(bundle_path)
                     except OSError:
