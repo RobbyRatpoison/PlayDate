@@ -15,6 +15,14 @@
 
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
+            // Gamepad Diagnostics suppresses every button, including B, down to
+            // a deliberate hold (see _pollLoop's gpDiagModal branch) so buttons
+            // can be tested without instantly closing it. Steam Input's default
+            // Desktop Mode layout synthesizes a real Escape keydown for some
+            // buttons (e.g. Start) independent of the Gamepad API polling that
+            // capture mode guards, so it needs its own check here too.
+            const gpDiagModal = document.getElementById('gamepad-diag-modal');
+            if (gpDiagModal && gpDiagModal.style.display !== 'none' && gpDiagModal.style.display !== '') return;
             // A focused text field takes priority over closing the modal
             // underneath it — see the identical check in _handleB() for why:
             // gamescope's on-screen keyboard (Steam Deck) dismisses itself on

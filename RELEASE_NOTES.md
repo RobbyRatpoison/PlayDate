@@ -5,7 +5,7 @@
 
 - Gamepad Diagnostics now shows PlayStation-style button glyphs (✕ ○ □ △) with matching brand colors when a PlayStation controller is detected, alongside the existing Xbox-style labels and colors.
 - Gamepad Diagnostics now shows the controller's detected mapping type and full raw axis values, useful for troubleshooting unusual controllers.
-- Holding B in Gamepad Diagnostics closes the panel; a quick tap no longer does, so every button can actually be tested without cutting the test short.
+- Holding B in Gamepad Diagnostics closes the panel; a quick tap (or any other button, including ones bound to a controller's system/menu buttons) no longer does, so every button can actually be tested without cutting the test short.
 
 ### Fixes
 
