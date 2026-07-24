@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.5
+## v1.6.5 — 2026-07-24
 ### New
 
 - Added an "Open Program Folder" button (Data settings) for quick access to PlayDate's data folder.
