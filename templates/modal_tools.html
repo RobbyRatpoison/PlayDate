@@ -841,13 +841,14 @@
     <div class="modal-content" style="width:440px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
             <h2 style="margin:0; color:var(--text-primary);">Gamepad Diagnostics</h2>
-            <button onclick="closeGamepadDiag()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
+            <button data-gp-diag-close onclick="closeGamepadDiag()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
         </div>
 
         <!-- Gamepad detected -->
         <div style="margin-bottom:14px;">
             <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.05em;">Controller</div>
             <div id="gpd-controller" style="font-size:0.9rem; color:var(--text-primary);">Checking...</div>
+            <div id="gpd-mapping" style="font-size:0.78rem; color:var(--text-secondary); margin-top:2px; font-family:monospace;"></div>
         </div>
 
         <!-- Suppression state -->
@@ -879,10 +880,16 @@
                     <div id="gpd-rstick" style="font-size:0.85rem; font-family:monospace; color:var(--text-primary);">x: 0.00  y: 0.00</div>
                 </div>
             </div>
+            <div style="margin-top:8px;">
+                <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:3px;">All axes (raw)</div>
+                <div id="gpd-axes-raw" style="font-size:0.8rem; font-family:monospace; color:var(--text-primary); line-height:1.4;">--</div>
+            </div>
         </div>
 
         <div style="margin-top:14px; font-size:0.78rem; color:var(--text-secondary); line-height:1.5;">
             If no controller appears: press any button on the controller to activate the Gamepad API. On Steam Deck desktop mode, add PlayDate as a non-Steam game in Steam — this applies a gamepad layout instead of the default keyboard/mouse desktop layout.
+            <br><br>
+            While this panel is open, gamepad buttons only report here — they don't navigate or activate anything. Hold B for a moment to close.
         </div>
     </div>
 </div>
@@ -5828,14 +5835,55 @@ function resizeToSteamDeck() {
 
 // ── Gamepad Diagnostics ────────────────────────────────────────────────────
 
+// Indices 2/3 are swapped relative to the W3C Standard Gamepad spec (buttons[2]
+// should be X, buttons[3] should be Y) to match what's actually reported for
+// the physical X/Y buttons — see the matching note on BTN_IDX in input.js.
 const BTN_LABELS = {
-    0:'A', 1:'B', 2:'X', 3:'Y',
+    0:'A', 1:'B', 2:'Y', 3:'X',
     4:'LB', 5:'RB', 6:'LT', 7:'RT',
     8:'Back', 9:'Start',
     10:'L3', 11:'R3',
     12:'Up', 13:'Down', 14:'Left', 15:'Right',
     16:'Guide',
 };
+
+// Same physical button positions, PlayStation naming/glyphs — used instead of
+// BTN_LABELS when a PlayStation-family pad is detected (see _isPlayStationPad).
+const BTN_LABELS_PS = {
+    0:'✕', 1:'○', 2:'△', 3:'□', // Cross, Circle, Triangle, Square
+    4:'L1', 5:'R1', 6:'L2', 7:'R2',
+    8:'Share', 9:'Options',
+    10:'L3', 11:'R3',
+    12:'Up', 13:'Down', 14:'Left', 15:'Right',
+    16:'PS',
+};
+
+// Sony's USB vendor ID (054c) appears in gp.id on every browser/platform this
+// app runs on; name substrings cover cases where the id string omits it.
+function _isPlayStationPad(id) {
+    return /054c|dualshock|dualsense|playstation/i.test(id || '');
+}
+
+function _activeBtnLabels(gpId) {
+    return _isPlayStationPad(gpId) ? BTN_LABELS_PS : BTN_LABELS;
+}
+
+// Standard face-button brand colors, keyed by the same swapped raw indices as
+// BTN_LABELS/BTN_LABELS_PS. Applied as a border, not a fill, so it doesn't
+// compete with the pressed/unpressed background that's the primary signal.
+const FACE_BTN_COLORS_XBOX = { 0:'#3bb143', 1:'#e0393e', 2:'#f4c20d', 3:'#3a7bd5' }; // A green, B red, Y yellow, X blue
+const FACE_BTN_COLORS_PS   = { 0:'#3a7bd5', 1:'#e0393e', 2:'#3bb143', 3:'#e05fa0' }; // Cross blue, Circle red, Triangle green, Square pink
+
+function _faceButtonColor(physIdx, gpId) {
+    const colors = _isPlayStationPad(gpId) ? FACE_BTN_COLORS_PS : FACE_BTN_COLORS_XBOX;
+    return colors[physIdx] || null;
+}
+
+function _firstConnectedGamepadId() {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const g of gamepads) { if (g) return g.id; }
+    return '';
+}
 
 let _gpdRafId = null;
 
@@ -5893,22 +5941,41 @@ function _gpdStartPoll() {
         activeEl.textContent = isActive ? 'Ready' : 'Suppressed or unavailable';
         activeEl.style.color = isActive ? 'var(--accent-positive)' : 'var(--text-danger)';
 
+        // Mapping
+        const mapEl = document.getElementById('gpd-mapping');
+        if (gp) {
+            const mapping = gp.mapping || '(none)';
+            mapEl.textContent = `mapping: ${mapping}`;
+            mapEl.style.color = gp.mapping === 'standard' ? 'var(--text-secondary)' : 'var(--text-danger)';
+        } else {
+            mapEl.textContent = '';
+        }
+
         if (!gp) {
             document.getElementById('gpd-buttons').innerHTML = '';
             document.getElementById('gpd-lstick').textContent = 'x: --  y: --';
             document.getElementById('gpd-rstick').textContent = 'x: --  y: --';
+            document.getElementById('gpd-axes-raw').textContent = '--';
             return;
         }
 
-        // Buttons
+        // Buttons — face buttons render in reading order (A B X Y) rather than
+        // raw index order (0,1,2,3 = A,B,Y,X after the index swap); everything
+        // else follows in natural ascending order, so nothing raw is hidden.
         const btnEl = document.getElementById('gpd-buttons');
+        const labels = _activeBtnLabels(gp.id);
+        const displayOrder = [0, 1, 3, 2, ...gp.buttons.map((_, i) => i).filter(i => i > 3)];
         let btnHtml = '';
-        gp.buttons.forEach((btn, i) => {
+        displayOrder.forEach(i => {
+            const btn = gp.buttons[i];
+            if (!btn) return;
             const pressed = btn.pressed || btn.value > 0.5;
-            const label = BTN_LABELS[i] || i;
+            const label = labels[i] || i;
             const bg = pressed ? 'var(--accent)' : 'rgba(255,255,255,0.07)';
             const color = pressed ? 'var(--on-accent)' : 'var(--text-secondary)';
-            btnHtml += `<span style="padding:3px 8px;border-radius:4px;font-size:0.78rem;background:${bg};color:${color};transition:background 0.08s;">${label}</span>`;
+            const faceColor = _faceButtonColor(i, gp.id);
+            const border = faceColor ? `2px solid ${faceColor}` : '2px solid transparent';
+            btnHtml += `<span style="box-sizing:border-box;padding:1px 7px;border-radius:4px;font-size:0.78rem;background:${bg};color:${color};border:${border};transition:background 0.08s;">${label}</span>`;
         });
         btnEl.innerHTML = btnHtml;
 
@@ -5918,6 +5985,11 @@ function _gpdStartPoll() {
             `x: ${fmt(gp.axes[0] || 0)}  y: ${fmt(gp.axes[1] || 0)}`;
         document.getElementById('gpd-rstick').textContent =
             `x: ${fmt(gp.axes[2] || 0)}  y: ${fmt(gp.axes[3] || 0)}`;
+
+        // Full raw axes array — a leaked hat switch (unmapped D-pad) shows up here
+        // as extra axes beyond the two known sticks (indices 0-3).
+        document.getElementById('gpd-axes-raw').textContent =
+            gp.axes.map((v, i) => `[${i}] ${fmt(v)}`).join('   ');
     }
     _gpdRafId = requestAnimationFrame(poll);
 }
@@ -5930,8 +6002,8 @@ function _gpdStopPoll() {
 const _REMAP_ACTIONS = [
     { action: 'a',     defaultBtn: 0,  label: 'Confirm / Select' },
     { action: 'b',     defaultBtn: 1,  label: 'Back / Cancel' },
-    { action: 'x',     defaultBtn: 2,  label: 'Context Menu' },
-    { action: 'y',     defaultBtn: 3,  label: 'Filter / Search' },
+    { action: 'x',     defaultBtn: 3,  label: 'Context Menu' },
+    { action: 'y',     defaultBtn: 2,  label: 'Filter / Search' },
     { action: 'lb',    defaultBtn: 4,  label: 'Previous Page' },
     { action: 'rb',    defaultBtn: 5,  label: 'Next Page' },
     { action: 'back',  defaultBtn: 8,  label: 'Open Menu' },
@@ -5949,7 +6021,8 @@ let _grmRafId = null;
 let _grmPrevBtns = {};
 
 function _grmBtnLabel(physIdx) {
-    return BTN_LABELS[physIdx] !== undefined ? BTN_LABELS[physIdx] : String(physIdx);
+    const labels = _activeBtnLabels(_firstConnectedGamepadId());
+    return labels[physIdx] !== undefined ? labels[physIdx] : String(physIdx);
 }
 
 function _grmBuildState() {
@@ -5976,16 +6049,19 @@ function _grmRenderRows() {
     const container = document.getElementById('grm-rows');
     if (!container) return;
     let html = '';
+    const gpId = _firstConnectedGamepadId();
     for (const { action, label } of _REMAP_ACTIONS) {
         const physIdx = _remapState.get(action);
         const btnLabel = _grmBtnLabel(physIdx);
+        const faceColor = _faceButtonColor(physIdx, gpId);
+        const badgeBorder = faceColor ? `2px solid ${faceColor}` : '2px solid transparent';
         const isCapturing = _captureAction === action;
         html += `<div style="display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius:6px; background:rgba(255,255,255,0.04);">
             <div style="flex:1; font-size:0.88rem; color:var(--text-primary);">${escHtml(label)}</div>
             ${isCapturing
                 ? `<span style="font-size:0.8rem; color:var(--accent); font-style:italic;">Press any button...</span>
                    <button class="nav-btn" data-modal-row="${_REMAP_ACTIONS.findIndex(a=>a.action===action)}" onclick="grmCancelCapture()" style="font-size:0.78rem; padding:3px 10px;">Cancel</button>`
-                : `<span style="display:inline-block; min-width:38px; text-align:center; padding:3px 8px; border-radius:4px; background:rgba(255,255,255,0.1); font-size:0.8rem; color:var(--text-primary);">${escHtml(btnLabel)}</span>
+                : `<span style="box-sizing:border-box; display:inline-block; min-width:38px; text-align:center; padding:1px 7px; border-radius:4px; background:rgba(255,255,255,0.1); font-size:0.8rem; color:var(--text-primary); border:${badgeBorder};">${escHtml(btnLabel)}</span>
                    <button class="nav-btn" data-modal-row="${_REMAP_ACTIONS.findIndex(a=>a.action===action)}" onclick="grmStartCapture('${action}')" style="font-size:0.78rem; padding:3px 10px;">Change</button>`
             }
         </div>`;

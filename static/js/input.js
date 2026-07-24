@@ -209,6 +209,9 @@
         _gp.stickHeld     = 0;
         _gp.stickRepeat   = 0;
         _gp.rStickHeldSince = 0;
+        _gp.hatDir        = null;
+        _gp.hatHeld       = 0;
+        _gp.hatRepeat     = 0;
     }
 
     function _unsuppressGamepad(reason) {
@@ -277,11 +280,31 @@
         stickHeld:   0,
         stickRepeat: 0,
         rStickHeldSince: 0, // timestamp the right stick (scroll) last crossed the dead zone, or 0 while released
+        hatDir:      null, // current raw-axis hat-switch D-pad direction or null (see _pollHatFallback)
+        hatHeld:     0,
+        hatRepeat:   0,
     };
 
     const REPEAT_INITIAL  = 400;
     const REPEAT_RATE     = 150;
     const STICK_DEAD      = 0.35;
+    // Gamepad Diagnostics exists to show raw button/axis state, so normal
+    // app-level dispatch (A clicking the focused element, B closing modals)
+    // is suppressed entirely while it's open — otherwise neither button
+    // could ever be observed pressed for more than a single frame before
+    // closing the modal out from under the test. B still closes it, but
+    // only via a hold past this threshold, so a tap is safely just a tap.
+    const GP_DIAG_CLOSE_HOLD_MS = 1500;
+    // Hat-switch axes (evdev ABS_HAT0X/Y) report discrete -1/0/1, not a
+    // continuous range, so a coarser threshold than STICK_DEAD is fine and
+    // stays well clear of noise on genuinely analog axes.
+    const HAT_DEAD         = 0.5;
+    // A pair of axes is only treated as a leaked D-pad hat switch if both
+    // values sit within this tolerance of a whole number (-1, 0, or 1) —
+    // real analog stick/trigger axes essentially never idle or move through
+    // exact integers on both axes at once, so this stays quiet on normal
+    // controllers even though it runs unconditionally.
+    const HAT_INT_TOLERANCE = 0.05;
 
     // Right-stick scroll ramp: full speed for the first second (matches the
     // existing feel), then grows exponentially so crossing a 10k+ game
@@ -294,7 +317,12 @@
     const SCROLL_PREVIEW_MIN = 3;     // only show the position preview once ramped to at least this multiple of base speed
 
     // ── Standard Xbox/standard-mapping button indices ─────────────────────────
-    const BTN_IDX = { a:0, b:1, x:2, y:3, lb:4, rb:5, back:8, start:9, up:12, down:13, left:14, right:15 };
+    // x/y are swapped relative to the W3C Standard Gamepad spec (which defines
+    // buttons[2]=X, buttons[3]=Y) — confirmed backwards across two unrelated
+    // controllers (a wired Xbox Elite 2 and the Steam Deck's built-in pad),
+    // both on Linux/WebKitGTK/libmanette. Applied unconditionally (not gated
+    // to Linux) per user decision, without Windows/WebView2 verification.
+    const BTN_IDX = { a:0, b:1, x:3, y:2, lb:4, rb:5, back:8, start:9, up:12, down:13, left:14, right:15 };
     const AXIS_IDX = { lx:0, ly:1, rx:2, ry:3 };
 
     // ── Platform-specific button overrides ────────────────────────────────────
@@ -689,10 +717,12 @@
         'account-modal',
         'appearance-modal',
         'library-modal',
+        'emulators-modal',
         'plugins-modal',
         'community-modal',
         'data-modal',
         'system-modal',
+        'store-names-modal',
         // Home page edit mode panels (use style.display)
         'shelf-edit-modal', 'dedup-panel', 'split-picker',
         // List mode detail pane (lowest priority — only active when in list view)
@@ -719,6 +749,11 @@
                 return [...el.querySelectorAll(
                     'button:not(:disabled), a.nav-btn, a.btn-save, a[data-modal-row], input[data-modal-row], textarea[data-modal-row], select[data-modal-row], .custom-select[data-modal-row], div[data-modal-row], li[data-modal-row], span[data-modal-row], label[data-modal-row]'
                 )].filter(e => e.offsetParent !== null && !e.disabled && !e.closest('.pill'))
+                  // Gamepad Diagnostics suppresses all button dispatch while open (see
+                  // _pollLoop's gpDiagModal branch), so its own close button is excluded
+                  // here too — otherwise the focus ring would land on a button that A no
+                  // longer does anything to, implying an action that can't happen.
+                  .filter(e => id !== 'gamepad-diag-modal' || !e.hasAttribute('data-gp-diag-close'))
                   .sort((a, b) => {
                       const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
                       const ay = ar.top + ar.height / 2, by = br.top + br.height / 2;
@@ -1818,6 +1853,13 @@
                         // stay put so focus doesn't jump to the page behind a
                         // menu that's still open.
                         requestAnimationFrame(() => {
+                            // If the click opened a watched modal, its MutationObserver
+                            // microtask already fired by now (microtasks drain before
+                            // the next animation frame) and moved the zone to 'modal'
+                            // via _onModalOpen(), which pops 'dropdown' itself. Popping
+                            // again here would undo that and strand focus back on the
+                            // page behind the modal, so only act if still in 'dropdown'.
+                            if (_state.zone !== 'dropdown') return;
                             if (_dropdownIsOpen()) {
                                 const newItems = _dropdownItems();
                                 _state.col = Math.min(_state.col, Math.max(0, newItems.length - 1));
@@ -2067,11 +2109,13 @@
             ['account-modal',         'closeAccountModal'],
             ['appearance-modal',      'closeAppearanceModal'],
             ['library-modal',         'closeLibraryModal'],
+            ['emulators-modal',       'closeEmulatorsModal'],
             ['plugins-modal',         'closePluginsModal'],
             ['community-modal',       'closeCommunityModal'],
             ['data-modal',            'closeDataModal'],
             ['system-modal',          'closeSystemModal'],
             ['blacklist-modal',       'closeBlacklistModal'],
+            ['store-names-modal',     'closeStoreNamesModal'],
             // home page edit mode panels
             ['shelf-edit-modal',      'semClose'],
             ['dedup-panel',           'closeDedupPanel'],
@@ -2494,6 +2538,23 @@
             }
         }
 
+        const gpDiagModal = document.getElementById('gamepad-diag-modal');
+        if (gpDiagModal && gpDiagModal.style.display !== 'none' && gpDiagModal.style.display !== '') {
+            gp.buttons.forEach((btn, i) => {
+                const pressed    = btn.pressed || btn.value > 0.5;
+                const wasPressed = !!_gp.prev[i];
+                if (pressed && !wasPressed) _gp.heldSince[i] = now;
+                else if (!pressed && wasPressed) delete _gp.heldSince[i];
+                _gp.prev[i] = pressed;
+            });
+            const bHeld = _gp.heldSince[BTN_IDX.b];
+            if (bHeld && now - bHeld > GP_DIAG_CLOSE_HOLD_MS) {
+                delete _gp.heldSince[BTN_IDX.b];
+                if (typeof closeGamepadDiag === 'function') closeGamepadDiag();
+            }
+            return;
+        }
+
         gp.buttons.forEach((btn, i) => {
             const pressed    = btn.pressed || btn.value > 0.5;
             const wasPressed = !!_gp.prev[i];
@@ -2592,6 +2653,63 @@
                 now - _gp.stickRepeat > REPEAT_RATE) {
                 _gp.stickRepeat = now;
                 _fireStick(stickDir);
+            }
+        }
+
+        // ── Raw-axis D-pad fallback ──────────────────────────────────────────
+        // Some controllers (confirmed: Xbox Elite 2, `045e:0b00`) report the
+        // D-pad at the kernel level as a hat switch (ABS_HAT0X/Y — a pair of
+        // axes), not four digital buttons. The W3C Standard Gamepad mapping
+        // requires libmanette to translate that into buttons[12-15]; when its
+        // bundled mapping table has no entry for a given vendor:product, that
+        // translation silently never happens and the D-pad produces nothing
+        // in gp.buttons at all. Only run this when gp.mapping isn't
+        // 'standard' — a standard-mapped pad already has a working D-pad via
+        // buttons[12-15], and scanning its axes here risks false triggers.
+        if (gp.mapping !== 'standard') _pollHatFallback(gp, now);
+    }
+
+    // Scans axes beyond the known stick indices (0-3) for a leaked hat
+    // switch and fires D-pad handlers directly, mirroring the left-stick
+    // block above (including its repeat timing) so behavior is consistent
+    // whether the D-pad arrives as buttons, a stick-style axis pair, or this
+    // fallback. Axis position isn't assumed (varies by device/driver): pairs
+    // are checked from the *last* axes backward, since evdev reports the hat
+    // switch (ABS_HAT0X/Y) as the highest-numbered axis bits, after sticks
+    // and any trigger axes (e.g. Xbox-family: LX,LY,LT,RX,RY,RT,HATX,HATY) —
+    // checking last-first means the real hat pair is found before an
+    // at-rest trigger axis (which can also idle on an exact -1/0/1 value)
+    // gets a chance to false-match.
+    function _pollHatFallback(gp, now) {
+        let hatDir = null;
+        let start = gp.axes.length - 2;
+        if (start % 2 !== 0) start -= 1; // keep pairs aligned to the (4,5),(6,7)... grid
+        for (let i = start; i >= 4 && !hatDir; i -= 2) {
+            const hx = gp.axes[i];
+            const hy = gp.axes[i + 1];
+            const hxWhole = Math.abs(hx - Math.round(hx)) < HAT_INT_TOLERANCE;
+            const hyWhole = Math.abs(hy - Math.round(hy)) < HAT_INT_TOLERANCE;
+            if (!hxWhole || !hyWhole) continue; // not hat-switch-shaped this frame
+            if      (hy < -HAT_DEAD) hatDir = 'up';
+            else if (hy >  HAT_DEAD) hatDir = 'down';
+            else if (hx < -HAT_DEAD) hatDir = 'left';
+            else if (hx >  HAT_DEAD) hatDir = 'right';
+            else break; // centered whole-number pair — this is the hat, just idle; stop here
+        }
+
+        if (hatDir !== _gp.hatDir) {
+            _gp.hatDir    = hatDir;
+            _gp.hatHeld   = now;
+            _gp.hatRepeat = now;
+            if (hatDir) {
+                if (!_state.active) _activate();
+                else _fireStick(hatDir);
+            }
+        } else if (hatDir && _state.active) {
+            if (now - _gp.hatHeld   > REPEAT_INITIAL &&
+                now - _gp.hatRepeat > REPEAT_RATE) {
+                _gp.hatRepeat = now;
+                _fireStick(hatDir);
             }
         }
     }
@@ -2759,11 +2877,13 @@
         _watchModal('account-modal');
         _watchModal('appearance-modal');
         _watchModal('library-modal');
+        _watchModal('emulators-modal');
         _watchModal('plugins-modal');
         _watchModal('community-modal');
         _watchModal('data-modal');
         _watchModal('system-modal');
         _watchModal('blacklist-modal');
+        _watchModal('store-names-modal');
 
         // Sub-modals (also registered so _anyWatchedOpen works correctly for nesting)
         _watchModal('gamepad-remap-modal');
