@@ -1239,9 +1239,25 @@
         }, 500);
     }
 
-    window._scrollPreviewShow   = _scrollPreviewShow;
-    window._scrollPreviewUpdate = _scrollPreviewUpdate;
-    window._scrollPreviewHide   = _scrollPreviewHide;
+    // Used while the stick is still held at a scroll boundary — _scrollPreviewHide()'s
+    // 500ms delayed fade is meant for a one-time call on release, but input.js calls
+    // the boundary check every frame, which kept re-scheduling that timer indefinitely
+    // (clearTimeout + setTimeout every ~16ms) so it never actually fired.
+    function _scrollPreviewHideImmediate() {
+        const el = document.getElementById('scroll-preview');
+        if (!el) return;
+        clearTimeout(_scrollPreviewHideTimer);
+        el.classList.remove('visible');
+        if (_scrollPreviewRandomTimer) {
+            clearInterval(_scrollPreviewRandomTimer);
+            _scrollPreviewRandomTimer = null;
+        }
+    }
+
+    window._scrollPreviewShow          = _scrollPreviewShow;
+    window._scrollPreviewUpdate        = _scrollPreviewUpdate;
+    window._scrollPreviewHideImmediate = _scrollPreviewHideImmediate;
+    window._scrollPreviewHide          = _scrollPreviewHide;
 
     // On initial page load images are loaded immediately; once the user scrolls,
     // a 100ms delay is applied so cards that pass through during fast scroll

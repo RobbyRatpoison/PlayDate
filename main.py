@@ -161,11 +161,19 @@ os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
 
 if sys.platform == "linux":
     # Set the GLib program name before the GTK window is created so GTK uses
-    # "playdate" as the Wayland xdg_toplevel app-id. KDE then matches it to
-    # playdate.desktop and shows the correct icon in the titlebar and taskbar.
+    # this as the Wayland xdg_toplevel app-id. KDE then matches it to the
+    # corresponding .desktop file and shows the correct icon in the titlebar
+    # and taskbar. Must be the full Flatpak app ID when sandboxed — Flatpak
+    # requires the app to self-identify with that exact ID for the Wayland
+    # compositor to resolve it to io.github.robbyratpoison.PlayDate.desktop;
+    # the plain "playdate" name only matches the native source install's
+    # launch.sh-generated playdate.desktop, so using it inside the sandbox
+    # left the app-id unmatched and window managers fell back to a generic
+    # icon instead of ever finding PlayDate's.
     try:
         from gi.repository import GLib
-        GLib.set_prgname("playdate")
+        _wm_app_id = "io.github.robbyratpoison.PlayDate" if os.path.exists('/.flatpak-info') else "playdate"
+        GLib.set_prgname(_wm_app_id)
     except Exception:
         pass
 

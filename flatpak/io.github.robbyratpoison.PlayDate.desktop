@@ -6,4 +6,4 @@ Exec=playdate
 Icon=io.github.robbyratpoison.PlayDate
 Terminal=false
 Categories=Game;
-StartupWMClass=main.py
+StartupWMClass=io.github.robbyratpoison.PlayDate

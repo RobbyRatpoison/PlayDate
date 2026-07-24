@@ -22,7 +22,7 @@ Exec=$DIR/launch.sh
 Icon=$DIR/static/img/favicon.png
 Terminal=false
 Categories=Game;
-StartupWMClass=main.py
+StartupWMClass=playdate
 EOF
     chmod +x "$DESKTOP_DIR/playdate.desktop"
     update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true

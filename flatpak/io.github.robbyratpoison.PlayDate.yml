@@ -66,7 +66,17 @@ modules:
       - install -Dm755 playdate-wrapper.sh /app/bin/playdate
       - install -Dm644 io.github.robbyratpoison.PlayDate.desktop /app/share/applications/io.github.robbyratpoison.PlayDate.desktop
       - install -Dm644 io.github.robbyratpoison.PlayDate.metainfo.xml /app/share/metainfo/io.github.robbyratpoison.PlayDate.metainfo.xml
-      - install -Dm644 /app/share/playdate/static/img/favicon.png /app/share/icons/hicolor/256x256/apps/io.github.robbyratpoison.PlayDate.png
+      # Generated at multiple exact hicolor sizes (source favicon.png is only
+      # 250x250) — store frontends like Shelly/GNOME Software build their own
+      # icon cache from the repo's appstream metadata and can silently drop
+      # an icon that doesn't match its declared size folder, showing a
+      # placeholder instead even though the running app's own window icon
+      # (a separate, more forgiving GTK theme lookup) looks fine.
+      - python3 -c "from PIL import Image; img = Image.open('/app/share/playdate/static/img/favicon.png').convert('RGBA'); [img.resize((s, s), Image.LANCZOS).save(f'/tmp/icon-{s}.png') for s in (64, 128, 256, 512)]"
+      - install -Dm644 /tmp/icon-64.png  /app/share/icons/hicolor/64x64/apps/io.github.robbyratpoison.PlayDate.png
+      - install -Dm644 /tmp/icon-128.png /app/share/icons/hicolor/128x128/apps/io.github.robbyratpoison.PlayDate.png
+      - install -Dm644 /tmp/icon-256.png /app/share/icons/hicolor/256x256/apps/io.github.robbyratpoison.PlayDate.png
+      - install -Dm644 /tmp/icon-512.png /app/share/icons/hicolor/512x512/apps/io.github.robbyratpoison.PlayDate.png
     sources:
       # Sourced from the git repo (not a raw directory copy of the working
       # tree) so gitignored personal data — config.json, games*.db,

@@ -2546,8 +2546,8 @@
             // top/bottom, so a frame-to-frame equality check unreliably
             // stayed "not at boundary" there.
             const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-            const atScrollBoundary = (rsy < 0 && window.scrollY <= 0) ||
-                                      (rsy > 0 && window.scrollY >= maxScroll - 1);
+            const atScrollBoundary = (rsy < 0 && window.scrollY <= 2) ||
+                                      (rsy > 0 && window.scrollY >= maxScroll - 2);
             // Only once actually ramped up — showing it immediately at base
             // speed would clutter ordinary scrolling, which isn't fast enough
             // to need a position preview at all. Also hidden once the page
@@ -2556,6 +2556,12 @@
             if (speedMult >= SCROLL_PREVIEW_MIN && !atScrollBoundary) {
                 if (typeof window._scrollPreviewShow === 'function') window._scrollPreviewShow();
                 if (typeof window._scrollPreviewUpdate === 'function') window._scrollPreviewUpdate();
+            } else if (atScrollBoundary) {
+                // Called every frame while stuck here (still held past the
+                // boundary), so this must hide immediately rather than via
+                // _scrollPreviewHide()'s delayed fade — that reschedules its
+                // timer on every call and would never actually fire.
+                if (typeof window._scrollPreviewHideImmediate === 'function') window._scrollPreviewHideImmediate();
             } else if (typeof window._scrollPreviewHide === 'function') {
                 window._scrollPreviewHide();
             }

@@ -17,3 +17,5 @@
 - Fixed the update checker (for beta testers) not detecting newer beta builds of the same version.
 - Fixed gamepad focus jumping back to the page after using "Check for Updates" in the hamburger menu.
 - Fixed the install-update confirmation popup not supporting gamepad navigation.
+- Fixed the Flatpak build's window showing a generic icon in the titlebar and taskbar instead of PlayDate's own.
+- Fixed PlayDate's icon not showing up correctly in Flatpak-aware software centers (e.g. Shelly, GNOME Software), showing a placeholder instead.
