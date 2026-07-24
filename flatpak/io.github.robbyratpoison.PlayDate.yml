@@ -72,11 +72,12 @@ modules:
       # an icon that doesn't match its declared size folder, showing a
       # placeholder instead even though the running app's own window icon
       # (a separate, more forgiving GTK theme lookup) looks fine.
-      - python3 -c "from PIL import Image; img = Image.open('/app/share/playdate/static/img/favicon.png').convert('RGBA'); [img.resize((s, s), Image.LANCZOS).save(f'/tmp/icon-{s}.png') for s in (64, 128, 256, 512)]"
-      - install -Dm644 /tmp/icon-64.png  /app/share/icons/hicolor/64x64/apps/io.github.robbyratpoison.PlayDate.png
-      - install -Dm644 /tmp/icon-128.png /app/share/icons/hicolor/128x128/apps/io.github.robbyratpoison.PlayDate.png
-      - install -Dm644 /tmp/icon-256.png /app/share/icons/hicolor/256x256/apps/io.github.robbyratpoison.PlayDate.png
-      - install -Dm644 /tmp/icon-512.png /app/share/icons/hicolor/512x512/apps/io.github.robbyratpoison.PlayDate.png
+      # Written straight into /app rather than staging through /tmp first —
+      # flatpak-builder gives each build-commands line its own ephemeral
+      # sandbox, and unlike /app (the accumulating install tree, persisted
+      # across commands), /tmp isn't shared between them, so a file saved to
+      # /tmp here was already gone by the next line's install call.
+      - python3 -c "from PIL import Image; import os; img = Image.open('/app/share/playdate/static/img/favicon.png').convert('RGBA'); [(os.makedirs(f'/app/share/icons/hicolor/{s}x{s}/apps', exist_ok=True), img.resize((s, s), Image.LANCZOS).save(f'/app/share/icons/hicolor/{s}x{s}/apps/io.github.robbyratpoison.PlayDate.png')) for s in (64, 128, 256, 512)]"
     sources:
       # Sourced from the git repo (not a raw directory copy of the working
       # tree) so gitignored personal data — config.json, games*.db,
