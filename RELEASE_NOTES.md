@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.6
+## v1.6.6 — 2026-07-25
 ### New
 
 - Gamepad Diagnostics now shows PlayStation-style button glyphs (✕ ○ □ △) with matching brand colors when a PlayStation controller is detected, alongside the existing Xbox-style labels and colors.
