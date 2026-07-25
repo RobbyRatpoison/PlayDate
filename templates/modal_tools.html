@@ -3642,6 +3642,20 @@ function _showBgPreview(url) {
     img.src = url;
     wrap.style.display = 'block';
 }
+async function _showBgPreviewFromPath(path) {
+    try {
+        const resp = await fetch('/api/preview-bg-from-path?path=' + encodeURIComponent(path), {
+            headers: { 'X-PlayDate-Internal': '1' }
+        });
+        if (!resp.ok) throw new Error('preview failed');
+        const blob = await resp.blob();
+        if (_bgObjectUrl) URL.revokeObjectURL(_bgObjectUrl);
+        _bgObjectUrl = URL.createObjectURL(blob);
+        _showBgPreview(_bgObjectUrl);
+    } catch (e) {
+        _hideBgPreview();
+    }
+}
 function _hideBgPreview() {
     if (_bgObjectUrl) { URL.revokeObjectURL(_bgObjectUrl); _bgObjectUrl = null; }
     const wrap = document.getElementById('bg-preview-wrap');
@@ -3668,7 +3682,7 @@ async function chooseBgFile() {
         label.style.display = 'block';
         document.getElementById('bg-status').textContent = '';
         _hideBgPreview();
-        _showBgPreview('/api/preview-bg-from-path?path=' + encodeURIComponent(path));
+        _showBgPreviewFromPath(path);
     } else {
         document.getElementById('bg-file-input').click();
     }

@@ -18,3 +18,4 @@
 - Fixed Monthly in a Month's saved filter only including games already in your library at save time, so newly eligible games you added later never showed up until you rebuilt the filter.
 - Fixed the update checker getting stuck on a stale result (most noticeable after switching Beta Updates on or off) until the app was restarted. Switching Beta Updates on now also checks for a new build right away.
 - Fixed a failed update check's error message disappearing after a few seconds, making a real failure look like nothing had happened.
+- Fixed the background image preview endpoint being reachable from any other page open in your browser while PlayDate is running, not just PlayDate itself.

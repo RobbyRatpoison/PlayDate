@@ -1867,6 +1867,12 @@ def create_app(template_folder=None, static_folder=None):
     @app.route('/api/preview-bg-from-path')
     def preview_bg_from_path():
         from flask import send_file
+        # This serves back an arbitrary local file (whatever path the user picked via
+        # the native file dialog), so it must not be reachable by a plain cross-origin
+        # <img>/GET request from some other page open in the browser while PlayDate's
+        # localhost server is running. A simple request can't set custom headers.
+        if request.headers.get('X-PlayDate-Internal') != '1':
+            return ('', 403)
         path = request.args.get('path', '')
         if not path or not os.path.isfile(path):
             return ('', 404)
