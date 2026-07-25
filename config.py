@@ -1171,7 +1171,10 @@ def launcher_uninstall_route(platform_id):
 # ── What's New ────────────────────────────────────────────────────────────────
 
 def _parse_version_tuple(v):
-    v = v.lstrip('v')
+    # Strip any -beta.N/-rc.N suffix so a beta build's version compares as its
+    # base version here — the changelog itself only has entries per base
+    # version, not per beta build.
+    v = v.lstrip('v').split('-')[0]
     try:
         return tuple(int(x) for x in v.split('.'))
     except ValueError:
@@ -1181,6 +1184,7 @@ def _parse_version_tuple(v):
 def _parse_changelog_sections(content, since_version=None):
     """Parse CHANGELOG.md/RELEASE_NOTES.md-format markdown into a list of HTML fragments."""
     since_tuple = _parse_version_tuple(since_version) if since_version else None
+    current_tuple = _parse_version_tuple(__version__)
     sections = re.split(r'\n(?=## v)', content)
     parts = []
 
@@ -1190,7 +1194,12 @@ def _parse_changelog_sections(content, since_version=None):
             continue
         ver_str, date = m.group(1), (m.group(2) or '').strip()
         ver_tuple = _parse_version_tuple(ver_str)
-        if since_tuple and ver_tuple <= since_tuple:
+        # The section for the currently running version is always shown once we
+        # get here, even if since_version is an earlier beta of the same base
+        # version (last_seen tracks the full build string, e.g. "1.6.6-beta.2",
+        # so it can share a base version with the current build without being
+        # something the user has actually already seen).
+        if ver_tuple != current_tuple and since_tuple and ver_tuple <= since_tuple:
             continue
 
         out = (f'<div class="wn-version">'
@@ -1246,7 +1255,7 @@ def get_whats_new():
         return jsonify({'show': False})
     config_data = load_config() or {}
     last_seen = config_data.get('last_seen_version')
-    if last_seen == __version__:
+    if last_seen == __build__:
         return jsonify({'show': False})
     notes_html = _build_whats_new_html(since_version=last_seen)
     if not notes_html:
@@ -1259,6 +1268,6 @@ def dismiss_whats_new():
     if not is_configured():
         return jsonify({'status': 'ok'})
     config_data = load_config() or {}
-    config_data['last_seen_version'] = __version__
+    config_data['last_seen_version'] = __build__
     _save_config_data(config_data)
     return jsonify({'status': 'ok'})
