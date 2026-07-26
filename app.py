@@ -3837,6 +3837,12 @@ def create_app(template_folder=None, static_folder=None):
                     url = _update_cache.get('flatpak_url')
                     if not url:
                         log.error("perform-update: no flatpak URL cached")
+                        # Invalidate the cache — a missing asset URL usually means CI
+                        # hadn't finished building it when we checked. Without this,
+                        # "Go Back" (a page reload) re-reads the same stale cache and
+                        # lands right back on "Install Update", replaying the same
+                        # failure even after the asset shows up on GitHub.
+                        _update_cache.clear()
                         _update_dl_state.update({'status': 'error', 'error': 'No flatpak bundle URL cached', 'manual_url': None})
                         return
                     bundle_path = os.path.join(BASE_DIR, 'playdate-update.flatpak')
@@ -3878,6 +3884,7 @@ def create_app(template_folder=None, static_folder=None):
                     url = _update_cache.get('installer_url')
                     if not url:
                         log.error("perform-update: no installer URL cached")
+                        _update_cache.clear()  # see flatpak branch above for why
                         _update_dl_state.update({'status': 'error', 'error': 'No installer URL cached', 'manual_url': None})
                         return
                     tmp = os.path.join(tempfile.gettempdir(), 'PlayDate-Setup.exe')
@@ -3895,6 +3902,7 @@ def create_app(template_folder=None, static_folder=None):
                     url = _update_cache.get('zipball_url')
                     if not url:
                         log.error("perform-update: no zipball URL cached")
+                        _update_cache.clear()  # see flatpak branch above for why
                         _update_dl_state.update({'status': 'error', 'error': 'No zipball URL cached', 'manual_url': None})
                         return
                     tmp_zip = os.path.join(tempfile.gettempdir(), 'playdate-update.zip')
