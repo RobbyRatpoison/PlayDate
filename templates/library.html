@@ -733,11 +733,10 @@
             <input type="text"
                 id="library-search"
                 placeholder="Search games..."
-                oninput="applyLiveSearch(this.value)"
+                oninput="applyLiveSearch(this.value); _syncSearchToState(this.value)"
                 onkeyup="handleSearch(event, this.value)"
                 value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% endif %}">
         </div>
-        <button onclick="triggerSearch()" data-tooltip="Search" style="padding:0 0.75rem;">🔍</button>
         <button onclick="openViewModal()" data-tooltip="View options">VIEW</button>
         {% if _is_filtered %}<button onclick="clearAndReload()" class="clear-btn">✕ CLEAR</button>{% endif %}
         <button onclick="openFilterModal()">FILTERS</button>
@@ -1084,19 +1083,30 @@
         }
     }
 
+    // Persists the search into state.json in the background as you type, so
+    // it survives navigation/restart without an explicit commit step — and so
+    // the FILTERS modal (which reads state.filter_tree) stays accurate. No
+    // reload: the visible grid is already kept in sync live by applyLiveSearch.
+    let _searchSyncTimeout = null;
+    function _syncSearchToState(query) {
+        clearTimeout(_searchSyncTimeout);
+        _searchSyncTimeout = setTimeout(() => {
+            sendStateUpdate({ filter_tree: buildSearchTree(query) }, false);
+        }, 400);
+    }
+
     function handleSearch(event, query) {
         if (event.key !== 'Enter') return;
         // Steam Deck's on-screen keyboard synthesizes a real Enter keyup when A
         // dismisses/confirms it — without this guard, pressing A to focus the
         // search box (via gamepad) immediately looks like the user hit Enter
-        // and reloads the page before they've typed anything.
+        // and dismisses the keyboard before they've typed anything.
         if (window._inputMgr && window._inputMgr.justGamepadFocusedInput()) return;
-        sendStateUpdate({ filter_tree: buildSearchTree(query) });
-    }
-
-    function triggerSearch() {
-        const query = document.getElementById('library-search').value;
-        sendStateUpdate({ filter_tree: buildSearchTree(query) });
+        // Flush immediately rather than waiting out the debounce, and dismiss
+        // the (on-screen or gamepad) keyboard now that the user is done typing.
+        clearTimeout(_searchSyncTimeout);
+        sendStateUpdate({ filter_tree: buildSearchTree(query) }, false);
+        event.target.blur();
     }
 
     const _sortDefaultOrder = {

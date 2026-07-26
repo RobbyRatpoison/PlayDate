@@ -614,7 +614,14 @@ function openFilterModal() {
     _fmHiddenPlatforms = new Set(typeof _hiddenPlatforms !== 'undefined' ? _hiddenPlatforms : []);
     _fmSyncPlatformButtons();
 
-    const tree = {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
+    // On the library page, the search bar can hold an uncommitted edit that's
+    // ahead of what got persisted to state.json — rebuild the combined tree
+    // live from it instead of trusting the page-load snapshot below, which
+    // would otherwise misrepresent whatever's actually on screen right now.
+    const _fmSearchInput = document.getElementById('library-search');
+    const tree = (_fmSearchInput && typeof buildSearchTree === 'function')
+        ? buildSearchTree(_fmSearchInput.value)
+        : {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
 
     // Seed _loadedSavedFilterName from the active named filter on first open this session
     if (typeof _activeFilterName !== 'undefined' && _activeFilterName && !_loadedSavedFilterName) {
