@@ -13,149 +13,17 @@ permissions:
   contents: write   # needed to create GitHub Releases
 
 jobs:
-  build-windows:
-    name: Build & Package (Windows)
-    runs-on: windows-latest
-
-    steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ── 2. Set up Python ─────────────────────────────────────────────────────
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-
-      # ── 3. Install dependencies ───────────────────────────────────────────────
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      # ── 4. Set version from tag ───────────────────────────────────────────────
-      - name: Set version from tag
-        shell: python
-        run: |
-          import re
-          tag = "${{ github.ref_name }}"
-          m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
-          ver = m.group(1) if m else "0.0.0"
-          full = tag.lstrip('v')  # keeps any -beta.N/-rc.N suffix, unlike ver
-          with open("config.py") as f: content = f.read()
-          content = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{ver}"', content)
-          content = re.sub(r'__build__ = __version__', f'__build__ = "{full}"', content)
-          with open("config.py", "w") as f: f.write(content)
-          print(f"Set __version__ = {ver}, __build__ = {full}")
-
-      # ── 5. Convert favicon.png → favicon.ico (Windows needs .ico) ────────────
-      - name: Generate favicon.ico
-        shell: python
-        run: |
-          from PIL import Image
-          import os
-          src = os.path.join("static", "img", "favicon.png")
-          dst = os.path.join("static", "img", "favicon.ico")
-          if os.path.exists(src):
-              img = Image.open(src)
-              img.save(dst, format="ICO", sizes=[(16,16),(32,32),(48,48),(256,256)])
-              print(f"Created {dst}")
-          else:
-              print("favicon.png not found — skipping ico generation")
-
-      # ── 6. Build with PyInstaller ─────────────────────────────────────────────
-      - name: Build with PyInstaller
-        run: pyinstaller playdate.spec
-
-      # ── 6. Verify the build ───────────────────────────────────────────────────
-      - name: Verify build output
-        run: |
-          if (Test-Path "dist\PlayDate\PlayDate.exe") {
-            Write-Host "PlayDate.exe found"
-            $size = (Get-Item "dist\PlayDate\PlayDate.exe").Length / 1MB
-            Write-Host "  Size: $([math]::Round($size, 1)) MB"
-          } else {
-            Write-Error "PlayDate.exe not found in dist\PlayDate\"
-            exit 1
-          }
-
-      # ── 7. Create portable zip ────────────────────────────────────────────────
-      - name: Create portable zip
-        shell: powershell
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $ver = if ($tag -match '^v?(\d+\.\d+\.\d+)') { $matches[1] } else { "0.0.0" }
-          $zip = "PlayDate-$ver-Windows-Portable.zip"
-          Compress-Archive -Path "dist\PlayDate\*" -DestinationPath $zip
-          $sizeMB = [math]::Round((Get-Item $zip).Length / 1MB, 1)
-          Write-Host "Created $zip ($sizeMB MB)"
-          echo "PORTABLE_ZIP=$zip" >> $env:GITHUB_ENV
-
-      # ── 8. Install Inno Setup ─────────────────────────────────────────────────
-      - name: Install Inno Setup 6
-        run: |
-          choco install innosetup --yes --no-progress
-        shell: powershell
-
-      # ── 9. Build installer with Inno Setup ────────────────────────────────────
-      - name: Build installer with Inno Setup
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $ver = if ($tag -match '^v?(\d+\.\d+\.\d+)') { $matches[1] } else { "0.0.0" }
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          & $iscc /DAppVersion="$ver" playdate.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        shell: powershell
-
-      # ── 10. Verify installer ───────────────────────────────────────────────────
-      - name: Verify installer output
-        run: |
-          if (Test-Path "installer\PlayDate-Setup.exe") {
-            Write-Host "PlayDate-Setup.exe found"
-            $size = (Get-Item "installer\PlayDate-Setup.exe").Length / 1MB
-            Write-Host "  Size: $([math]::Round($size, 1)) MB"
-          } else {
-            Write-Error "PlayDate-Setup.exe not found"
-            exit 1
-          }
-
-      # ── 11. Upload artifacts (always) ─────────────────────────────────────────
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PlayDate-Setup-Windows
-          path: installer/PlayDate-Setup.exe
-          retention-days: 30
-
-      - name: Upload portable zip artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PlayDate-Windows-Portable
-          path: ${{ env.PORTABLE_ZIP }}
-          retention-days: 30
-
-      # ── 12. Create GitHub Release (only on version tags) ──────────────────────
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v3
-        with:
-          name: "PlayDate ${{ github.ref_name }}"
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          body_path: RELEASE_NOTES.md
-          files: |
-            installer/PlayDate-Setup.exe
-            ${{ env.PORTABLE_ZIP }}
-
   build-flatpak:
     name: Build & Package (Linux Flatpak)
     runs-on: ubuntu-latest
-    # Runs after build-windows so it's the one job creating the GitHub Release;
-    # this job just adds the .flatpak to the release that already exists.
-    needs: build-windows
+    # Runs before build-windows so it's the one job creating the GitHub
+    # Release, with the .flatpak already attached — Windows attaches its own
+    # assets to that release afterward. Flatpak intentionally builds first:
+    # its job has much more setup (runtime/SDK install, flatpak-builder) and
+    # used to finish well after Windows, leaving a window where a release
+    # existed with no .flatpak asset yet — "Check for Updates" could find the
+    # release and fail with "no flatpak bundle URL cached" until the Flatpak
+    # job caught up.
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
@@ -318,8 +186,8 @@ jobs:
           path: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak
           retention-days: 30
 
-      # ── 9. Attach to the GitHub Release (only on version tags) ────────────────
-      - name: Attach to GitHub Release
+      # ── 9. Create the GitHub Release (only on version tags) ───────────────────
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
@@ -351,3 +219,144 @@ jobs:
           publish_branch: gh-pages
           publish_dir: flatpak/repo
           keep_files: false
+
+  build-windows:
+    name: Build & Package (Windows)
+    runs-on: windows-latest
+    # Runs after build-flatpak so the Flatpak job is the one creating the
+    # GitHub Release (with the .flatpak already attached); this job just adds
+    # the Windows assets to the release that already exists.
+    needs: build-flatpak
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ─────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. Install dependencies ───────────────────────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── 4. Set version from tag ───────────────────────────────────────────────
+      - name: Set version from tag
+        shell: python
+        run: |
+          import re
+          tag = "${{ github.ref_name }}"
+          m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
+          ver = m.group(1) if m else "0.0.0"
+          full = tag.lstrip('v')  # keeps any -beta.N/-rc.N suffix, unlike ver
+          with open("config.py") as f: content = f.read()
+          content = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{ver}"', content)
+          content = re.sub(r'__build__ = __version__', f'__build__ = "{full}"', content)
+          with open("config.py", "w") as f: f.write(content)
+          print(f"Set __version__ = {ver}, __build__ = {full}")
+
+      # ── 5. Convert favicon.png → favicon.ico (Windows needs .ico) ────────────
+      - name: Generate favicon.ico
+        shell: python
+        run: |
+          from PIL import Image
+          import os
+          src = os.path.join("static", "img", "favicon.png")
+          dst = os.path.join("static", "img", "favicon.ico")
+          if os.path.exists(src):
+              img = Image.open(src)
+              img.save(dst, format="ICO", sizes=[(16,16),(32,32),(48,48),(256,256)])
+              print(f"Created {dst}")
+          else:
+              print("favicon.png not found — skipping ico generation")
+
+      # ── 6. Build with PyInstaller ─────────────────────────────────────────────
+      - name: Build with PyInstaller
+        run: pyinstaller playdate.spec
+
+      # ── 6. Verify the build ───────────────────────────────────────────────────
+      - name: Verify build output
+        run: |
+          if (Test-Path "dist\PlayDate\PlayDate.exe") {
+            Write-Host "PlayDate.exe found"
+            $size = (Get-Item "dist\PlayDate\PlayDate.exe").Length / 1MB
+            Write-Host "  Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "PlayDate.exe not found in dist\PlayDate\"
+            exit 1
+          }
+
+      # ── 7. Create portable zip ────────────────────────────────────────────────
+      - name: Create portable zip
+        shell: powershell
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = if ($tag -match '^v?(\d+\.\d+\.\d+)') { $matches[1] } else { "0.0.0" }
+          $zip = "PlayDate-$ver-Windows-Portable.zip"
+          Compress-Archive -Path "dist\PlayDate\*" -DestinationPath $zip
+          $sizeMB = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+          Write-Host "Created $zip ($sizeMB MB)"
+          echo "PORTABLE_ZIP=$zip" >> $env:GITHUB_ENV
+
+      # ── 8. Install Inno Setup ─────────────────────────────────────────────────
+      - name: Install Inno Setup 6
+        run: |
+          choco install innosetup --yes --no-progress
+        shell: powershell
+
+      # ── 9. Build installer with Inno Setup ────────────────────────────────────
+      - name: Build installer with Inno Setup
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = if ($tag -match '^v?(\d+\.\d+\.\d+)') { $matches[1] } else { "0.0.0" }
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc /DAppVersion="$ver" playdate.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: powershell
+
+      # ── 10. Verify installer ───────────────────────────────────────────────────
+      - name: Verify installer output
+        run: |
+          if (Test-Path "installer\PlayDate-Setup.exe") {
+            Write-Host "PlayDate-Setup.exe found"
+            $size = (Get-Item "installer\PlayDate-Setup.exe").Length / 1MB
+            Write-Host "  Size: $([math]::Round($size, 1)) MB"
+          } else {
+            Write-Error "PlayDate-Setup.exe not found"
+            exit 1
+          }
+
+      # ── 11. Upload artifacts (always) ─────────────────────────────────────────
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayDate-Setup-Windows
+          path: installer/PlayDate-Setup.exe
+          retention-days: 30
+
+      - name: Upload portable zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayDate-Windows-Portable
+          path: ${{ env.PORTABLE_ZIP }}
+          retention-days: 30
+
+      # ── 12. Attach to the GitHub Release (only on version tags) ───────────────
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          name: "PlayDate ${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            installer/PlayDate-Setup.exe
+            ${{ env.PORTABLE_ZIP }}
