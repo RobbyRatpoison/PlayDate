@@ -518,12 +518,14 @@
         });
     }
 
-    // Library: returns flat array of .game-card elements (or .list-row in list mode)
+    // Library: returns flat array of .game-card elements (or .list-row in list mode).
+    // Excludes cards/rows hidden by the live search filter (applyLiveSearch in
+    // library.html toggles display:none rather than removing nodes).
     function _libraryCards() {
         if (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') {
-            return [...document.querySelectorAll('#game-list .list-row')];
+            return [...document.querySelectorAll('#game-list .list-row')].filter(el => el.style.display !== 'none');
         }
-        return [...document.querySelectorAll('.game-card')];
+        return [...document.querySelectorAll('.game-card')].filter(el => el.style.display !== 'none');
     }
 
     // In grouped mode, returns headers and visible cards interleaved in DOM order.
@@ -535,7 +537,10 @@
         if (typeof _groupBy !== 'undefined' && _groupBy) {
             return [...document.querySelectorAll('#game-grid .group-label, #game-grid .game-card')]
                 .filter(el => {
+                    const section = el.closest('.group-section');
+                    if (section && section.style.display === 'none') return false;
                     if (el.classList.contains('game-card')) {
+                        if (el.style.display === 'none') return false;
                         const inner = el.closest('.group-inner-grid');
                         return !inner || inner.style.display !== 'none';
                     }
@@ -562,7 +567,7 @@
     function _libraryGroupColCount(card) {
         const innerGrid = card.closest?.('.group-inner-grid');
         return _libraryColCount(innerGrid
-            ? [...innerGrid.querySelectorAll('.game-card')]
+            ? [...innerGrid.querySelectorAll('.game-card')].filter(el => el.style.display !== 'none')
             : _libraryCards());
     }
 

@@ -518,6 +518,14 @@
             border-color: #66c0e8 !important;
         }
 
+        #search-empty-msg {
+            display: none;
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
         select.nav-dropdown, .order-btn {
             height: 3rem;
             width: auto;
@@ -725,6 +733,7 @@
             <input type="text"
                 id="library-search"
                 placeholder="Search games..."
+                oninput="applyLiveSearch(this.value)"
                 onkeyup="handleSearch(event, this.value)"
                 value="{% set _ft = state.get('filter_tree') %}{% if _ft and _ft.get('items') %}{% for _item in _ft['items'] %}{% if _item.get('type') == 'condition' and _item.get('column') == 'name' and _item.get('operator') == 'LIKE' %}{{ _item['value'] }}{% endif %}{% endfor %}{% endif %}">
         </div>
@@ -738,6 +747,8 @@
             <span id="select-badge-count">0</span> selected ✕
         </button>
     </div>
+
+    <div id="search-empty-msg">No games match your search.</div>
 
     <!-- Fast-scroll position preview — shown/updated by input.js during gamepad right-stick scrolling -->
     <div id="scroll-preview"></div>
@@ -1028,6 +1039,49 @@
             };
         }
         return result;
+    }
+
+    // ── Live incremental search (client-side, no reload) ───────────────────
+    // Narrows/widens the already-rendered card set on every keystroke by
+    // toggling display — GAMES already holds every game matching the
+    // committed server-side filter, so no network round trip is needed.
+    let _liveSearchQuery = '';
+
+    function applyLiveSearch(rawQuery) {
+        _liveSearchQuery = (rawQuery || '').trim().toLowerCase();
+
+        document.querySelectorAll('.game-card[data-appid], .list-row[data-appid]').forEach(el => {
+            const game = _GAME_MAP.get(parseInt(el.dataset.appid, 10));
+            const matches = !_liveSearchQuery || (game && (game.name || '').toLowerCase().includes(_liveSearchQuery));
+            el.style.display = matches ? '' : 'none';
+        });
+
+        // Grid grouped mode: hide groups left with zero matches, update their counts
+        document.querySelectorAll('#game-grid .group-section').forEach(section => {
+            const cards = [...section.querySelectorAll('.game-card')];
+            const visible = cards.filter(c => c.style.display !== 'none').length;
+            section.style.display = visible === 0 ? 'none' : '';
+            const countEl = section.querySelector('.group-count');
+            if (countEl) countEl.textContent = visible;
+        });
+
+        // List grouped mode: hide headers whose rows are all filtered out
+        document.querySelectorAll('#game-list .list-group-header').forEach(header => {
+            let sib = header.nextElementSibling;
+            let visible = false;
+            while (sib && !sib.classList.contains('list-group-header')) {
+                if (sib.classList.contains('list-row') && sib.style.display !== 'none') { visible = true; break; }
+                sib = sib.nextElementSibling;
+            }
+            header.style.display = visible ? '' : 'none';
+        });
+
+        const msg = document.getElementById('search-empty-msg');
+        if (msg) {
+            const anyVisible = !_liveSearchQuery || [...document.querySelectorAll('.game-card[data-appid], .list-row[data-appid]')]
+                .some(el => el.style.display !== 'none');
+            msg.style.display = anyVisible ? 'none' : 'block';
+        }
     }
 
     function handleSearch(event, query) {
@@ -1470,6 +1524,7 @@
         }
 
         observeCards();
+        if (_liveSearchQuery) applyLiveSearch(_liveSearchQuery);
     }
 
     let _observer = null;
@@ -3009,6 +3064,7 @@ function pickRandomGame() {
 
         listEl.appendChild(fragment);
         observeListRows();
+        if (_liveSearchQuery) applyLiveSearch(_liveSearchQuery);
 
         // Show last-selected (from safeSession), in-memory current, or first visible row
         const _firstVisibleGame = () => {

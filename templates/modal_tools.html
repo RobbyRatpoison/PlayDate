@@ -1237,8 +1237,8 @@
             <div id="pagywosg-loading" style="color:var(--text-secondary); font-size:0.88rem; margin-bottom:8px;">Loading tags…</div>
             <div id="pag-auto-controls" style="display:none;">
                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
-                    <button id="pag-auto-btn" class="nav-btn" data-modal-row="pag-auto" onclick="pagAutoFill(false)">Auto-fill from Current Event</button>
-                    <button id="pag-auto-next-btn" class="nav-btn" data-modal-row="pag-auto" onclick="pagAutoFill(true)" style="opacity:0.7;">Auto-fill from Upcoming Event</button>
+                    <button id="pag-auto-btn" class="nav-btn" data-modal-row="pag-auto" onclick="pagAutoFill(false)">Auto-fill Current Event</button>
+                    <button id="pag-auto-next-btn" class="nav-btn" data-modal-row="pag-auto" onclick="pagAutoFill(true)" style="opacity:0.7;">Auto-fill Upcoming Event</button>
                     <span id="pag-auto-event-name" style="color:var(--text-secondary); font-size:0.82rem; font-style:italic;"></span>
                     <span id="pag-auto-status" style="color:var(--accent-positive); font-size:0.82rem;"></span>
                 </div>
@@ -3109,8 +3109,8 @@ async function pagAutoFill(next = false) {
         document.getElementById('pag-auto-status').style.color = 'var(--accent-negative)';
     } finally {
         btn.disabled = nextBtn.disabled = false;
-        btn.textContent     = 'Auto-fill from Current Event';
-        nextBtn.textContent = 'Auto-fill from Upcoming Event';
+        btn.textContent     = 'Auto-fill Current Event';
+        nextBtn.textContent = 'Auto-fill Upcoming Event';
     }
 }
 
