@@ -75,6 +75,12 @@
         background: transparent !important;
         color: transparent !important;
         caret-color: #c2c8cc;
+        /* Must wrap identically to .sql-hl-pre, or the invisible textarea's
+           native selection highlight (and what actually gets copied) drifts
+           out of alignment with the colored text once a long unbroken token
+           (e.g. nested REPLACE() chains) makes the two layers wrap differently. */
+        white-space: pre-wrap;
+        word-break: break-all;
     }
     .sql-hl-kw    { color: #c586c0; } /* keywords */
     .sql-hl-col   { color: #9cdcfe; } /* column names */
