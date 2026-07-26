@@ -184,6 +184,22 @@ def _strip_sql_wrapper(sql):
         sql = sql[:order_idx]
     return sql.strip()
 
+def _strip_search_condition(node):
+    """Remove a top-level 'name LIKE' condition (the quick-search bar) from a
+    filter tree before building SQL, so the games sent to the client always
+    cover the full active filter — the live search bar in library.html then
+    narrows/widens client-side against that full set instead of being capped
+    by whatever a previously-committed search already excluded server-side.
+    Mirrors _baseTree() in library.html exactly."""
+    if not isinstance(node, dict) or not node.get('items'):
+        return node
+    items = [item for item in node['items']
+             if not (item.get('type') == 'condition' and item.get('column') == 'name' and item.get('operator') == 'LIKE')]
+    if len(items) == 1 and items[0].get('type') == 'group':
+        return items[0]
+    return {**node, 'items': items}
+
+
 DATE_COLUMNS = {'release_date', 'date_added', 'last_played'}
 
 def build_condition_sql(cond, params):
@@ -383,7 +399,7 @@ def library():
             else:
                 where = _auto_cast_int_division(custom_sql)
         else:
-            tree_sql = build_tree_sql(filter_tree, params)
+            tree_sql = build_tree_sql(_strip_search_condition(filter_tree), params)
             if tree_sql and tree_sql != '1=1':
                 where = tree_sql
 

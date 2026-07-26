@@ -1577,6 +1577,13 @@
 
     // Build on load — deferred so the browser can paint the page chrome first
     document.addEventListener('DOMContentLoaded', function() {
+        // GAMES always covers the full active filter now (search is no longer
+        // baked into the server-side SQL) — restore a previously-committed
+        // search's narrowed view client-side once cards exist. buildGrid()/
+        // buildListView() reapply _liveSearchQuery themselves once it's set.
+        const _initialSearchVal = document.getElementById('library-search')?.value || '';
+        if (_initialSearchVal) applyLiveSearch(_initialSearchVal);
+
         if (_artOrientation === 'list') {
             _adjustListHeight();
             _initListDivider();
