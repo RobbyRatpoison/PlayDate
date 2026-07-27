@@ -230,6 +230,27 @@ function sqlHighlightPre(preEl, sql) {
     if (preEl) preEl.innerHTML = _sqlHighlightHtml(sql);
 }
 
+/**
+ * Recognizes a couple of auto-generated custom_expr SQL shapes (PAGYWOSG's
+ * title-word and starts-with name matchers — see pagCondToTree/pagBuildTree
+ * in modal_tools.html) and returns a short human-readable description, or
+ * null if the SQL doesn't match a known pattern. Mirrors the regexes in
+ * _pagExtractConds (modal_edit.html), which extracts the same shapes for the
+ * "why does this game qualify" tooltip — kept separate since that function
+ * returns structured {col,op,val} data for further evaluation, not a string.
+ */
+function describeCustomExprSql(sql) {
+    if (!sql) return null;
+    const titleWordMatch = sql.match(/\(' ' \|\| .*? \|\| ' '\) LIKE '% (.+?) %'$/);
+    if (titleWordMatch) return `Title contains the word "${titleWordMatch[1]}"`;
+    const startsWithMatch = sql.match(/^(\w+) LIKE '([^']*)%'$/i);
+    if (startsWithMatch) {
+        const col = startsWithMatch[1] === 'name' ? 'Title' : startsWithMatch[1];
+        return `${col} starts with "${startsWithMatch[2]}"`;
+    }
+    return null;
+}
+
 // Fire-and-forget preference save — keepalive survives page navigation
 function savePreference(payload) {
     fetch('/api/update_state', {

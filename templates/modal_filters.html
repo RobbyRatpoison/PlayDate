@@ -1345,9 +1345,22 @@ function addAdvancedExprRow(groupEl, data = null) {
     ta.style.cssText = _EXPR_STYLE;
     ta.placeholder = 'e.g. unlocked_achievements < total_achievements';
     ta.value = (data && data.sql) || '';
-    ta.addEventListener('input', updateSqlPreview);
+    ta.addEventListener('input', () => { refreshExprView(); updateSqlPreview(); });
     ta.addEventListener('focus', () => ta.style.borderColor = 'var(--accent)');
     ta.addEventListener('blur',  () => ta.style.borderColor = '#2a3f55');
+
+    // Friendly, read-only description shown in place of the raw SQL when it
+    // matches a known auto-generated pattern (e.g. PAGYWOSG's title-word
+    // matcher) — that SQL is a long nested REPLACE() chain, unreadable and
+    // easy to mis-select when trying to copy it. A toggle reveals the raw
+    // SQL for direct editing when that's actually needed.
+    const desc = document.createElement('div');
+    desc.className = 'fm-expr-desc';
+    desc.style.cssText = 'flex:1;align-self:center;font-size:0.85rem;color:#c2c8cc;';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.style.cssText = 'flex-shrink:0;align-self:flex-start;background:none;border:1px solid #2a3f55;color:#8f98a0;border-radius:0.25rem;padding:0.1875rem 0.5rem;font-size:0.72rem;cursor:pointer;margin-top:1px;';
 
     const removeBtn = document.createElement('button');
     removeBtn.className = 'fm-remove';
@@ -1361,12 +1374,37 @@ function addAdvancedExprRow(groupEl, data = null) {
     };
 
     row.appendChild(badge);
+    row.appendChild(desc);
     row.appendChild(ta);
+    row.appendChild(toggleBtn);
     row.appendChild(removeBtn);
     rowsEl.appendChild(row);
 
-    // Init syntax highlighting on the expression textarea
+    // Init syntax highlighting, then locate the overlay wrapper it inserted —
+    // friendly mode needs to hide that too, since hiding just the (already
+    // transparent) textarea would leave the colored SQL text still showing.
     sqlHighlightInit(ta);
+    const taWrap = ta.closest('.sql-hl-wrap') || ta;
+
+    let showRaw = !describeCustomExprSql(ta.value);
+    function refreshExprView() {
+        const description = describeCustomExprSql(ta.value);
+        if (description && !showRaw) {
+            desc.textContent = description;
+            desc.style.display = '';
+            taWrap.style.display = 'none';
+            toggleBtn.textContent = 'Edit SQL';
+            toggleBtn.style.display = '';
+        } else {
+            desc.style.display = 'none';
+            taWrap.style.display = '';
+            toggleBtn.textContent = 'Done';
+            toggleBtn.style.display = description ? '' : 'none';
+        }
+    }
+    toggleBtn.onclick = () => { showRaw = !showRaw; refreshExprView(); };
+    refreshExprView();
+
     updateSqlPreview();
     return row;
 }
