@@ -32,6 +32,7 @@ Flask + pywebview hybrid. Waitress WSGI (8 threads). `main.py` starts Flask in a
 | `utils.py` | Steam path detection, install sync, filesystem watcher, VDF parsing |
 | `images.py` | Cover art: Steam manifest → CDN → SteamGridDB fallback chain |
 | `imports.py` | Playnite backup import, generic SQLite column mapping |
+| `pagywosg.py` | PAGYWOSG category classification (`classify_category`, `OP_REGISTRY`), per-user verified-appid tracking, bundled supplement/personal-defaults loaders |
 | `plugins/` | Optional non-Steam integrations; see `PLUGINS.md` |
 | `plugins/gog/` | GOG plugin — OAuth2, library sync, metadata/achievements, install/launch |
 | `plugins/epic_games/` | Epic Games plugin — OAuth2, library sync, metadata, art, Wine/native launch |
@@ -40,6 +41,7 @@ Flask + pywebview hybrid. Waitress WSGI (8 threads). `main.py` starts Flask in a
 | `runners/launcher_installer.py` | Generic Wine-based launcher installer for plugins; reads `launcher.installer` from `plugin.json`; phases: creating_prefix → downloading → installing → verifying → done; saves launcher config on success |
 | `uninstall.py` | Standalone tkinter GUI uninstaller (no pip deps beyond stdlib) |
 | `steam_date_import.user.js` | Tampermonkey — scrapes activation dates from Steam Help + GOG orders |
+| `tools/pagywosg_category_scan.py` | Dev-only CLI (not part of the shipped app), scans PAGYWOSG events for unautomated categories, `--triage` workflow |
 
 **Frontend:** Vanilla JS + CSS3, Jinja2 templates. No build step, no framework.
 
@@ -190,7 +192,9 @@ Times stored in minutes. `hltb_fetched` states: `NULL`/`'0'` = never fetched; `'
 
 ## PAGYWOSG Filter Builder
 
-The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the monthly PAGYWOSG event on SteamGifts.
+The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the monthly PAGYWOSG event on SteamGifts. Categories are fetched live from `pagywosg.xyz`: there's no static catalog of category names.
+
+**`pagywosg.py`** is the single source of truth for category classification and the operator vocabulary. `classify_category(base, base_appids, icaio_ga, icaio_wl, santa)` pattern-matches a live category name into a neutral op (`OP_REGISTRY` key: `month_is`, `contains`, `title_word`, `digit_count_gte`, `has_special_char`, `range_incl`, `nth_weekday`, `contains_all`, etc.) or falls through to the mod-verified appid list (`reason: 'verified_fallback'`/`'unhandled'` mark this as *not* automated; see the category scanner below). Each `OP_REGISTRY` entry carries: the SQL "kind" (dispatches `redundant_where_sql()`'s redundant-appid pre-check, and the JS `pagCondToTree`/`pagCondToSql`/`_pagCheckCond` in modal_tools.html/modal_edit.html), the saved-tree `tree_op` token, and the manual condition-builder dropdown label. `window._PAG_OPS` injects the whole registry into every page (same pattern as `window._PLAT_LABELS`/`_PLUGIN_API`, see Plugin System) so the frontend never hardcodes op behavior. Adding a category that reuses an existing op is one new regex branch in `classify_category()`; a genuinely new op needs an `OP_REGISTRY` entry plus all three SQL/JS consumers.
 
 **Event ID formula:** event 83 = April 2026; `event_id = 83 + (year - 2026) * 12 + (month - 4)`
 
@@ -202,13 +206,17 @@ The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the mo
 
 **Supplement file** (`pagywosg_supplement.json`): top-level keys `icaio_giveaways` (list of `{appid, name}`) and `icaio_wishlist` (dict of `{appid_str: name}`).
 
-**Saved filter keys:** PAGYWOSG filters carry `pagywosg: true`, `pagywosg_event: {id, name}`, `pagywosg_verified: {appid: [{cat, pool, verifier?, auto?}]}`. These must be preserved when re-applying — `modal_filters.html` copies them from `_loadedSavedTree` onto the rebuilt tree. `openFilterModal()` also seeds `_loadedSavedTree` from the server tree when `pagywosg: true` and it isn't already set, so editing an active filter preserves these keys.
+**Personal categories & per-user verification:** every verified PAGYWOSG entry carries the verifying player's `sgProfileName` (`pagywosg.build_verified_by_cat()`). A category checked "personal" in the builder only includes appids verified for the current `sg_username` (config.json setting, set via the settings modal): `/api/pagywosg-auto`'s `appid_sources` carries both the full `appids` list and a `personal_appids` subset per label (computed server-side regardless of which categories are marked personal client-side; the client picks which to use). `pagywosg_personal_defaults.json` (repo-tracked, *not* gitignored, ships with releases unlike the other PAGYWOSG state files) holds `{event_id: [base_category_name, ...]}`: maintainer-curated categories that default to personal for every install. `pagAutoFill()` pre-checks these but they stay individually toggle-able. `/api/pagywosg-quals` (the live pre-save preview) has no per-user toggle state, so it applies the bundled default-personal list directly instead of a client-side checkbox.
+
+**Saved filter keys:** PAGYWOSG filters carry `pagywosg: true`, `pagywosg_event: {id, name}`, `pagywosg_verified: {appid: [{cat, pool, verifiers?, auto?}]}` (`verifiers` is a list of SG usernames, since a category can be independently verified for multiple players, not a single name). These must be preserved when re-applying — `modal_filters.html` copies them from `_loadedSavedTree` onto the rebuilt tree. `openFilterModal()` also seeds `_loadedSavedTree` from the server tree when `pagywosg: true` and it isn't already set, so editing an active filter preserves these keys.
 
 **SG wins group:** `_pagSgGroup` in `modal_tools.html` is `string` = chosen group, `null` = no SG wins, `undefined` = not yet loaded. Stored as `pagywosg_sg_group` in `state.json`. On init, if unset and no default, a warning prompts the user to configure.
 
 **Quals panel:** shown in `modal_edit.html` when `_serverFilterTree.pagywosg` is true. Wins branch detected by presence of a `groups` condition in any AND group.
 
 **Hover tooltip:** IIFE in `library.html`, activates only when `_serverFilterTree?.pagywosg` is true, uses event delegation on `#game-grid`.
+
+**Category gap scanner** (`tools/pagywosg_category_scan.py`, dev-only: not imported by the app or packaged): `python tools/pagywosg_category_scan.py [--event N | --events A-B | --next] [--all] [--triage]` fetches live/historical events and buckets each category as automated vs not-automated (fell through to the verified-appid fallback). `--triage` walks the not-automated list interactively: `[n]` marks non-automatable (local, `pagywosg_scan_decisions.json`, gitignored), `[p]` marks always-personal (repo-tracked, writes `pagywosg_personal_defaults.json`, needs committing to actually ship), `[s]` skips.
 
 ## Release Workflow
 

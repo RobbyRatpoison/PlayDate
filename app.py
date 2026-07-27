@@ -63,6 +63,7 @@ from runners.sandbox import IN_FLATPAK, host_run, host_popen
 from imports import inspect_database, execute_import
 from scrapers import scrape_blaeo_games, get_blaeo_preview, apply_blaeo_changes, get_blaeo_cached_result, clear_blaeo_cache
 from database import get_db, init_db, update_game_data, add_to_blacklist, remove_from_blacklist, get_blacklist
+import pagywosg
 import re
 import scrapers
 import threading
@@ -2814,138 +2815,8 @@ def create_app(template_folder=None, static_folder=None):
         return jsonify({'status': 'ok'})
 
 
-    # Path to local supplement JSON file, relative to BASE_DIR.
-    # Leave empty to skip supplement loading.
-    _PAGYWOSG_SUPPLEMENT_PATH = 'pagywosg_supplement.json'
-    _SANTA_GIFTS_PATH = 'santa_gifts.json'
-
-    def _load_pagywosg_supplements():
-        _supplement = {}
-        if _PAGYWOSG_SUPPLEMENT_PATH:
-            try:
-                with open(os.path.join(BASE_DIR, _PAGYWOSG_SUPPLEMENT_PATH), 'r', encoding='utf-8') as f:
-                    _supplement = json.load(f)
-            except Exception:
-                pass
-        icaio_ga = {g['appid']: g['name'] for g in _supplement.get('icaio_giveaways', [])}
-        icaio_wl = {int(k): v for k, v in _supplement.get('icaio_wishlist', {}).items()}
-        santa = {}
-        try:
-            with open(os.path.join(BASE_DIR, _SANTA_GIFTS_PATH), 'r', encoding='utf-8') as f:
-                santa = {g['appid']: g['name'] for g in json.load(f)}
-        except Exception:
-            pass
-        return icaio_ga, icaio_wl, santa
-
-    def _classify_pagywosg_category(base, base_appids, icaio_ga_dict, icaio_wl_dict, santa_gift_dict):
-        """Classify one PAGYWOSG category name into action dicts.
-
-        Returns a list (usually one item; title-word categories return one per word):
-          {'type': 'tag',   'tag': str}
-          {'type': 'cond',  'col': str, 'op': str, 'val': str | list}
-          {'type': 'appids','appids': {appid: name}, 'auto': bool, 'force_wins': bool}
-          {'type': 'skip'}
-
-        op neutral names:
-          month_is / year_is / day_is / weekday_is /
-          starts_with_any / contains / title_word / gte / lt
-        """
-        _MONTHS = {
-            'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
-            'july':7,'august':8,'september':9,'october':10,'november':11,'december':12
-        }
-        _WEEKDAYS = {
-            'sunday':0,'monday':1,'tuesday':2,'wednesday':3,'thursday':4,'friday':5,'saturday':6
-        }
-        def _cond(col, op, val):
-            return [{'type': 'cond', 'col': col, 'op': op, 'val': val}]
-
-        m = re.match(r'^\s*tag\s+(.+)$', base, re.I)
-        if m:
-            return [{'type': 'tag', 'tag': m.group(1).strip()}]
-
-        m = re.search(r'released?\s+in\s+(' + '|'.join(_MONTHS) + r')\b', base, re.I)
-        if m:
-            return _cond('release_date', 'month_is', str(_MONTHS[m.group(1).lower()]))
-
-        m = re.search(r'released?\s+in\s+(\d{4})\b', base, re.I)
-        if m:
-            return _cond('release_date', 'year_is', m.group(1))
-
-        m = re.search(r'released?\s+on\s+(?:the\s+)?(\d+)(?:st|nd|rd|th)?\s*day', base, re.I)
-        if m:
-            return _cond('release_date', 'day_is', m.group(1))
-
-        m = re.search(r'released?\s+on\s+(?:a\s+)?(' + '|'.join(_WEEKDAYS) + r')\b', base, re.I)
-        if m:
-            return _cond('release_date', 'weekday_is', str(_WEEKDAYS[m.group(1).lower()]))
-
-        m = re.search(
-            r'\bstart(?:s|ing)\s+with\s+(?:the\s+letters?\s+)?'
-            r'([A-Za-z](?:\s*[,/]\s*[A-Za-z])*(?:\s*,?\s*or\s+[A-Za-z])?)',
-            base, re.I,
-        )
-        if m:
-            letters = [c.upper() for c in re.findall(r'\b[A-Za-z]\b', m.group(1))]
-            if letters:
-                return [{'type': 'cond', 'col': 'name', 'op': 'starts_with_any', 'val': letters}]
-
-        m = (re.search(r'steam\s+id\s+containing\s+(\w+)', base, re.I) or
-             re.search(r'\b(\w+)\s+in\s+their\s+steam\s+(?:app\s+)?id', base, re.I))
-        if m:
-            return _cond('appid', 'contains', m.group(1))
-
-        m = re.search(r'["“”]([^"“”]+)["“”]\s+in\s+(?:the|their)\s+title', base, re.I)
-        if m:
-            return _cond('name', 'contains', m.group(1).strip())
-
-        m = re.match(r'^game\s+title\s+with\s+(.+)$', base, re.I)
-        if m:
-            words = [w.strip() for w in re.split(r',|\bor\b', m.group(1), flags=re.I) if w.strip()]
-            return [{'type': 'cond', 'col': 'name', 'op': 'title_word', 'val': w} for w in words]
-
-        m = re.search(
-            r'(?:'
-            r'(?:under|less\s+than|at\s+most|shorter\s+than|below)\s+(?P<h_lt>\d+)\s*h\b'
-            r'|(?:over|more\s+than|at\s+least|longer\s+than|above)\s+(?P<h_gt>\d+)\s*h\b'
-            r'|(?P<h_plus>\d+)\s*h\+'
-            r').*?hltb\s*'
-            r'(?P<field>completionist\b|(?:main\s*\+\s*)?extras?\b|main\b)',
-            base, re.I,
-        )
-        if m:
-            hours = int(m.group('h_lt') or m.group('h_gt') or m.group('h_plus'))
-            f = (m.group('field') or '').lower()
-            col = ('hltb_completionist' if 'completionist' in f
-                   else 'hltb_extras' if 'extra' in f
-                   else 'hltb_main')
-            return _cond(col, 'lt' if m.group('h_lt') else 'gte', str(hours * 60))
-
-        if re.search(r'gifter', base, re.I):
-            return [{'type': 'skip'}]
-
-        if 'icaio has made a GA for' in base:
-            if icaio_ga_dict:
-                return [{'type': 'appids', 'appids': icaio_ga_dict, 'auto': True, 'force_wins': False}]
-            return [{'type': 'skip'}]
-
-        if 'icaio' in base and 'wishlist' in base.lower():
-            if icaio_wl_dict:
-                return [{'type': 'appids', 'appids': icaio_wl_dict, 'auto': True, 'force_wins': False}]
-            return [{'type': 'skip'}]
-
-        if re.search(r'snowball|secret.santa', base, re.I):
-            if santa_gift_dict:
-                return [{'type': 'appids', 'appids': santa_gift_dict, 'auto': True, 'force_wins': True}]
-            return [{'type': 'skip'}]
-
-        if base_appids:
-            return [{'type': 'appids', 'appids': base_appids, 'auto': False, 'force_wins': False}]
-        return [{'type': 'skip'}]
-
     @app.route('/api/pagywosg-auto')
     def pagywosg_auto():
-        import requests
         from datetime import date
 
         # Anchor: event 83 = April 2026
@@ -2954,17 +2825,8 @@ def create_app(template_folder=None, static_folder=None):
         if request.args.get('next'):
             event_id += 1
 
-        def _fetch_event(eid):
-            r = requests.get(
-                f'https://pagywosg.xyz/api/events/{eid}',
-                headers={'User-Agent': 'PlayDate/1.0'},
-                timeout=10
-            )
-            r.raise_for_status()
-            return r.json()['event']
-
         try:
-            event = _fetch_event(event_id)
+            event = pagywosg.fetch_event(event_id)
         except Exception as e:
             return jsonify({"status": "error", "message": f"Could not fetch event: {e}"}), 502
 
@@ -2975,7 +2837,7 @@ def create_app(template_folder=None, static_folder=None):
             if started and ended and not (started <= today_str < ended):
                 adj = event_id + 1 if today_str >= ended else event_id - 1
                 try:
-                    adj_event = _fetch_event(adj)
+                    adj_event = pagywosg.fetch_event(adj)
                     s2, e2 = adj_event.get('startedAt', ''), adj_event.get('endedAt', '')
                     if s2 <= today_str < e2:
                         event = adj_event
@@ -3000,26 +2862,25 @@ def create_app(template_folder=None, static_folder=None):
             if any('(win)' in n for n in names_lc) and any('(backlog)' in n for n in names_lc):
                 all_pool_bases.add(base)
 
-        # --- Verified appids per category ID: {cat_id: {appid: game_name}} ---
-        verified_by_cat = {}
-        for entry in entries:
-            if entry.get('verified'):
-                cid = str(entry['category']['id'])
-                verified_by_cat.setdefault(cid, {})[entry['game']['id']] = entry['game']['name']
+        # --- Verified appids per category ID, with per-appid verifier attribution ---
+        verified_by_cat = pagywosg.build_verified_by_cat(entries)
 
         tags_wins, tags_all   = [], []
         conds_wins, conds_all = [], []
         appids_wins, appids_all = {}, {}
         skipped = []
 
-        _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = _load_pagywosg_supplements()
+        _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = pagywosg.load_supplements()
 
         for base, cats in base_to_cats.items():
             pool = 'all' if base in all_pool_bases else 'wins'
 
-            base_appids = {}
+            base_appids = {}      # {appid: name} — feeds classify_category as before
+            base_verifiers = {}   # {appid: set(sgProfileName)} — SG-verified-fallback only
             for cat in cats:
-                base_appids.update(verified_by_cat.get(str(cat['id']), {}))
+                for aid, info in verified_by_cat.get(str(cat['id']), {}).items():
+                    base_appids[aid] = info['name']
+                    base_verifiers.setdefault(aid, set()).update(info['verifiers'])
 
             def _add_tag(tag):
                 (tags_all if pool == 'all' else tags_wins).append(tag)
@@ -3027,7 +2888,7 @@ def create_app(template_folder=None, static_folder=None):
             def _add_cond(col, op, val):
                 (conds_all if pool == 'all' else conds_wins).append({'col': col, 'op': op, 'val': val})
 
-            def _add_appids(appid_name_dict, category_name, auto=False):
+            def _add_appids(appid_name_dict, category_name, auto=False, verifiers_by_appid=None):
                 target = appids_all if pool == 'all' else appids_wins
                 for appid, name in appid_name_dict.items():
                     if appid not in target:
@@ -3036,10 +2897,12 @@ def create_app(template_folder=None, static_folder=None):
                         entry = {"cat": category_name}
                         if auto:
                             entry["auto"] = True
+                        if verifiers_by_appid and appid in verifiers_by_appid:
+                            entry["verifiers"] = sorted(verifiers_by_appid[appid])
                         target[appid]["categories"].append(entry)
 
-            for r in _classify_pagywosg_category(base, base_appids,
-                                                  _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
+            for r in pagywosg.classify_category(base, base_appids,
+                                                 _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
                 if r['type'] == 'tag':
                     _add_tag(r['tag'])
                 elif r['type'] == 'cond':
@@ -3049,13 +2912,17 @@ def create_app(template_folder=None, static_folder=None):
                     else:
                         _add_cond(r['col'], r['op'], r['val'])
                 elif r['type'] == 'appids':
+                    # Only the genuine SG-verified-fallback case (auto=False) has
+                    # real per-user verifier attribution — icaio/santa appids come
+                    # from bundled supplement files, not mod-verified SG entries.
+                    vbi = None if r['auto'] else base_verifiers
                     if r['force_wins']:
                         _real_pool = pool
                         pool = 'wins'
-                        _add_appids(r['appids'], base, auto=r['auto'])
+                        _add_appids(r['appids'], base, auto=r['auto'], verifiers_by_appid=vbi)
                         pool = _real_pool
                     else:
-                        _add_appids(r['appids'], base, auto=r['auto'])
+                        _add_appids(r['appids'], base, auto=r['auto'], verifiers_by_appid=vbi)
                 elif r['type'] == 'skip':
                     skipped.append(base)
 
@@ -3066,61 +2933,16 @@ def create_app(template_folder=None, static_folder=None):
         all_appids_combined = set(appids_wins.keys()) | set(appids_all.keys())
         in_library_set = _all_library_appids & all_appids_combined
 
-        _COMMA_SEP_COLS = {'tags', 'groups', 'genres', 'categories', 'developers', 'publishers'}
-
         def _redundant_set(pool_dict, tags, conds):
             """Return appids already matched by the pool's tag/condition criteria (not needing the explicit appid list)."""
             owned = {aid for aid in pool_dict if aid in in_library_set}
             if not owned:
                 return set()
-            parts, params = [], []
-            for tag in tags:
-                parts.append("(',' || tags || ',') LIKE ?")
-                params.append(f'%,{tag},%')
-            for c in conds:
-                col, op, val = c['col'], c['op'], c['val']
-                if op == 'contains':
-                    if col in _COMMA_SEP_COLS:
-                        parts.append(f"(',' || {col} || ',') LIKE ?")
-                        params.append(f'%,{val},%')
-                    elif col == 'name':
-                        parts.append("name LIKE ?")
-                        params.append(f'%{val}%')
-                elif op == 'month_is':
-                    parts.append(f"strftime('%m', {col}) = ?")
-                    params.append(str(int(val)).zfill(2))
-                elif op == 'year_is':
-                    parts.append(f"strftime('%Y', {col}) = ?")
-                    params.append(str(val))
-                elif op == 'day_is':
-                    parts.append(f"strftime('%d', {col}) = ?")
-                    params.append(str(int(val)).zfill(2))
-                elif op == 'weekday_is':
-                    parts.append(f"({col} IS NOT NULL AND {col} != 0 AND strftime('%w', datetime({col}, 'unixepoch')) = ?)")
-                    params.append(str(val))
-                elif op == 'starts_with':
-                    parts.append(f"{col} LIKE ?")
-                    params.append(f'{val}%')
-                elif op == 'title_word':
-                    w = val.lower()
-                    _norm = ("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
-                             "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(name),"
-                             " ':', ' '), '!', ' '), '?', ' '), ',', ' '), '.', ' '),"
-                             " '''', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '),"
-                             " '{', ' '), '}', ' '), ';', ' '), '\"', ' ')")
-                    parts.append(f"(' ' || {_norm} || ' ') LIKE ?")
-                    params.append(f'% {w} %')
-                elif op == 'gte':
-                    parts.append(f"{col} >= ?")
-                    params.append(int(val))
-                elif op == 'lt':
-                    parts.append(f"({col} IS NOT NULL AND {col} > 0 AND {col} < ?)")
-                    params.append(int(val))
-            if not parts:
+            where, params = pagywosg.redundant_where_sql(conds, tags)
+            if not where:
                 return set()
             # Query only the tag/condition filter against the whole library,
             # then intersect with owned in Python — no large IN clause needed.
-            where = ' OR '.join(parts)
             rows = _lib_db.execute(
                 f'SELECT appid FROM games WHERE ({where})',
                 params
@@ -3129,10 +2951,12 @@ def create_app(template_folder=None, static_folder=None):
 
         def _serialise_pool(pool_dict, tags, conds):
             redundant = _redundant_set(pool_dict, tags, conds)
+            from config import load_config
+            sg_username = (load_config() or {}).get('sg_username', '').strip().lower()
             # Group appids by contributing category label for labeled appid_list nodes.
             # Only include appids present in the user's library — no point embedding
             # thousands of unowned game IDs in the saved filter.
-            source_map = {}   # {cat_label: {"appids": [...], "auto": bool}}
+            source_map = {}   # {cat_label: {"appids": [...], "auto": bool, "personal_appids": [...]}}
             for aid, v in pool_dict.items():
                 if aid not in in_library_set:
                     continue
@@ -3141,9 +2965,13 @@ def create_app(template_folder=None, static_folder=None):
                     if not label:
                         continue
                     if label not in source_map:
-                        source_map[label] = {"appids": [], "auto": bool(cat_entry.get("auto"))}
+                        source_map[label] = {"appids": [], "auto": bool(cat_entry.get("auto")), "personal_appids": []}
                     source_map[label]["appids"].append(aid)
-            appid_sources = [{"label": lbl, "appids": sorted(v["appids"]), "auto": v["auto"]}
+                    verifiers = cat_entry.get("verifiers") or []
+                    if sg_username and any(vf.lower() == sg_username for vf in verifiers):
+                        source_map[label]["personal_appids"].append(aid)
+            appid_sources = [{"label": lbl, "appids": sorted(v["appids"]), "auto": v["auto"],
+                              "personal_appids": sorted(v["personal_appids"])}
                              for lbl, v in source_map.items() if v["appids"]]
             return {
                 "appids": sorted(aid for aid in pool_dict if aid in in_library_set),
@@ -3165,6 +2993,7 @@ def create_app(template_folder=None, static_folder=None):
             "wins":   _serialise_pool(appids_wins, tags_wins, conds_wins),
             "all":    _serialise_pool(appids_all,  tags_all,  conds_all),
             "skipped": skipped,
+            "default_personal": pagywosg.load_personal_defaults(event_id),
         }
         _lib_db.close()
         return jsonify(result)
@@ -3197,7 +3026,6 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/pagywosg-quals')
     def pagywosg_quals_data():
-        import requests
         from datetime import date, datetime
 
         today     = date.today()
@@ -3209,17 +3037,8 @@ def create_app(template_folder=None, static_folder=None):
             if datetime.now().timestamp() - ts < 3600:
                 return jsonify({**data, 'sg_group': _resolve_sg_group()})
 
-        def _fetch(eid):
-            r = requests.get(
-                f'https://pagywosg.xyz/api/events/{eid}',
-                headers={'User-Agent': 'PlayDate/1.0'},
-                timeout=10
-            )
-            r.raise_for_status()
-            return r.json()['event']
-
         try:
-            event = _fetch(event_id)
+            event = pagywosg.fetch_event(event_id)
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)}), 502
 
@@ -3240,26 +3059,26 @@ def create_app(template_folder=None, static_folder=None):
             if any('(win)' in n for n in names_lc) and any('(backlog)' in n for n in names_lc):
                 all_pool_bases.add(base)
 
-        verified_by_cat = {}
-        for entry in entries:
-            if entry.get('verified'):
-                cid = str(entry['category']['id'])
-                verified_by_cat.setdefault(cid, {})[entry['game']['id']] = entry['game']['name']
+        verified_by_cat = pagywosg.build_verified_by_cat(entries)
 
-        _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = _load_pagywosg_supplements()
-
-        _QUALS_OP = {
-            'month_is': 'STRFTIME_MONTH', 'year_is': 'STRFTIME_YEAR',
-            'day_is': 'STRFTIME_DAY', 'weekday_is': 'STRFTIME_WEEKDAY',
-            'starts_with_any': 'STARTS_WITH_ANY', 'contains': 'LIKE',
-            'title_word': 'TITLE_WORD', 'gte': '>=', 'lt': '<',
-        }
+        _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = pagywosg.load_supplements()
+        _default_personal = set(pagywosg.load_personal_defaults(event_id))
+        from config import load_config
+        sg_username = (load_config() or {}).get('sg_username', '').strip().lower()
 
         conds    = []
         verified = {}
 
-        def _add_v(appid_name_dict, cat_label, pool, auto=False):
+        def _add_v(appid_name_dict, cat_label, pool, auto=False, verifiers_by_appid=None):
+            # This endpoint has no per-user toggle state (it's the live preview
+            # before any filter is saved) — personal categories are scoped by
+            # the dev-curated bundled list instead of a client-side checkbox.
+            is_personal = cat_label in _default_personal
             for appid, name in appid_name_dict.items():
+                if is_personal:
+                    verifiers = (verifiers_by_appid or {}).get(appid, set())
+                    if not (sg_username and any(vf.lower() == sg_username for vf in verifiers)):
+                        continue
                 key = str(appid)
                 if key not in verified:
                     verified[key] = []
@@ -3267,23 +3086,29 @@ def create_app(template_folder=None, static_folder=None):
                     entry = {'cat': cat_label, 'pool': pool}
                     if auto:
                         entry['auto'] = True
+                    if verifiers_by_appid and appid in verifiers_by_appid:
+                        entry['verifiers'] = sorted(verifiers_by_appid[appid])
                     verified[key].append(entry)
 
         for base, cats in base_to_cats.items():
             pool = 'all' if base in all_pool_bases else 'wins'
             base_appids = {}
+            base_verifiers = {}
             for cat in cats:
-                base_appids.update(verified_by_cat.get(str(cat['id']), {}))
+                for aid, info in verified_by_cat.get(str(cat['id']), {}).items():
+                    base_appids[aid] = info['name']
+                    base_verifiers.setdefault(aid, set()).update(info['verifiers'])
 
-            for r in _classify_pagywosg_category(base, base_appids,
-                                                  _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
+            for r in pagywosg.classify_category(base, base_appids,
+                                                 _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
                 if r['type'] == 'tag':
                     conds.append({'col': 'tags', 'op': 'LIKE', 'val': r['tag'], 'pool': pool})
                 elif r['type'] == 'cond':
-                    mapped_op = _QUALS_OP.get(r['op'], r['op'])
+                    mapped_op = pagywosg.OP_REGISTRY.get(r['op'], {}).get('tree_op', r['op'])
                     conds.append({'col': r['col'], 'op': mapped_op, 'val': r['val'], 'pool': pool})
                 elif r['type'] == 'appids':
-                    _add_v(r['appids'], base, 'wins' if r['force_wins'] else pool, auto=r['auto'])
+                    vbi = None if r['auto'] else base_verifiers
+                    _add_v(r['appids'], base, 'wins' if r['force_wins'] else pool, auto=r['auto'], verifiers_by_appid=vbi)
                 # skip: do nothing
 
         sg_group = _resolve_sg_group()
@@ -3334,7 +3159,7 @@ def create_app(template_folder=None, static_folder=None):
 
     @app.route('/api/santa-gifts', methods=['GET', 'POST'])
     def santa_gifts():
-        path = os.path.join(BASE_DIR, _SANTA_GIFTS_PATH)
+        path = os.path.join(BASE_DIR, pagywosg.SANTA_GIFTS_PATH)
         if request.method == 'POST':
             data = request.json or {}
             gifts = data.get('gifts', [])
@@ -4212,6 +4037,7 @@ def create_app(template_folder=None, static_folder=None):
     app.jinja_env.globals['plugin_fragment_js'] = _plugins.fragment_js
     app.jinja_env.globals['platform_labels']   = _plugins.platform_labels
     app.jinja_env.globals['plugin_js_api']     = _plugins.plugin_js_api
+    app.jinja_env.globals['pagywosg_op_table'] = pagywosg.js_op_table
 
     return app
 

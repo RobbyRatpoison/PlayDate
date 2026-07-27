@@ -2050,32 +2050,20 @@ const PAG_COLUMNS = [
     { value: 'review_score',    label: 'Review Score' },
     { value: 'review_percentage', label: 'Review %' },
     { value: 'groups',          label: 'Groups' },
+    { value: 'tags',            label: 'Tags' },
     { value: 'hltb_main',          label: 'HLTB Main (mins)' },
     { value: 'hltb_extras',        label: 'HLTB Main+Extras (mins)' },
     { value: 'hltb_completionist', label: 'HLTB Completionist (mins)' },
 ];
-const PAG_OPS = [
-    { value: 'contains',     label: 'contains' },
-    { value: 'not_contains', label: 'does not contain' },
-    { value: 'equals',       label: 'equals' },
-    { value: 'starts_with',  label: 'starts with' },
-    { value: 'ends_with',    label: 'ends with' },
-    { value: 'gt',           label: '>' },
-    { value: 'lt',           label: '<' },
-    { value: 'gte',          label: '>=' },
-    { value: 'title_word',   label: 'title word' },
-];
+// Op vocabulary (tree tokens, SQL "kind", dropdown labels) is defined once in
+// pagywosg.py's OP_REGISTRY and injected as window._PAG_OPS — these two lists
+// just fix the display order for each dropdown context.
+const _PAG_OPS_ORDER      = ['contains', 'not_contains', 'equals', 'starts_with', 'ends_with', 'gt', 'lt', 'gte', 'title_word', 'length_eq', 'digit_count_gte', 'consecutive_repeat', 'has_special_char', 'range_incl', 'all_caps', 'contains_all', 'tag_substring', 'tag_count_eq', 'single_word'];
+const _PAG_DATE_OPS_ORDER = ['month_is', 'day_is', 'year_is', 'weekday_is', 'gt', 'lt', 'equals', 'nth_weekday'];
+const PAG_OPS = _PAG_OPS_ORDER.map(v => ({ value: v, label: window._PAG_OPS[v].manual_ui.general.label }));
 // Normalises punctuation to spaces so word-boundary LIKE matches work across subtitles, etc.
 const _PAG_TITLE_NORM = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(name), ':', ' '), '!', ' '), '?', ' '), ',', ' '), '.', ' '), '''', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' '), '{', ' '), '}', ' '), ';', ' '), '\"', ' ')";
-const PAG_DATE_OPS = [
-    { value: 'month_is',   label: 'month is (1–12)' },
-    { value: 'day_is',     label: 'day is (1–31)' },
-    { value: 'year_is',    label: 'year is (YYYY)' },
-    { value: 'weekday_is', label: 'weekday is (0=Sun…6=Sat)' },
-    { value: 'gt',         label: 'after' },
-    { value: 'lt',         label: 'before' },
-    { value: 'equals',     label: 'on (exact)' },
-];
+const PAG_DATE_OPS = _PAG_DATE_OPS_ORDER.map(v => ({ value: v, label: window._PAG_OPS[v].manual_ui.date.label }));
 const PAG_DATE_COLUMNS = new Set(['release_date', 'date_added', 'last_played']);
 
 function openPagModal() {
@@ -2713,6 +2701,22 @@ function pagAddCond(pool, opts) {
     _pagRenumberRows();
 }
 
+// "N identical digits in a row": OR of replace(col, 'DDD..', '') != col for each digit 0-9.
+function _pagConsecutiveRepeatSql(col, n) {
+    const clauses = [];
+    for (let d = 0; d <= 9; d++) clauses.push(`replace(${col}, '${String(d).repeat(n)}', '') != ${col}`);
+    return `(${clauses.join(' OR ')})`;
+}
+
+// Mirrors pagywosg.py's _strip_alnum_sql — nested replace() chain stripping
+// a-z/0-9/space so leftover length > 0 means a "special" character exists.
+const _PAG_ALNUM_SPACE_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789 '.split('');
+function _pagStripAlnumSql(col) {
+    let sql = `lower(${col})`;
+    for (const c of _PAG_ALNUM_SPACE_CHARS) sql = `replace(${sql}, '${c}', '')`;
+    return sql;
+}
+
 function pagCondToSql(row) {
     const col = row.children[0].value;
     const op  = row.children[1].value;
@@ -2728,11 +2732,41 @@ function pagCondToSql(row) {
         case 'lt':           return `${col} < '${val}'`;
         case 'gte':          return `${col} >= ${val}`;
         case 'title_word': { const wl = val.toLowerCase().replace(/'/g,"''"); return `(' ' || ${_PAG_TITLE_NORM} || ' ') LIKE '% ${wl} %'`; }
-        case 'month_is':     return `strftime('%m', ${col}) = '${String(val).padStart(2,'0')}'`;
-        case 'day_is':       return `strftime('%d', ${col}) = '${String(val).padStart(2,'0')}'`;
-        case 'year_is':      return `strftime('%Y', ${col}) = '${val}'`;
-        case 'weekday_is':   return `strftime('%w', datetime(${col}, 'unixepoch')) = '${val}'`;
-        default:             return null;
+        default: {
+            const kind = window._PAG_OPS[op]?.kind;
+            if (kind === 'strftime') {
+                const fmt = window._PAG_OPS[op].fmt;
+                const v = fmt === '%Y' ? val : String(val).padStart(2, '0');
+                return `strftime('${fmt}', ${col}) = '${v}'`;
+            }
+            if (kind === 'strftime_weekday') return `strftime('%w', datetime(${col}, 'unixepoch')) = '${val}'`;
+            if (kind === 'title_length') return `length(${col}) = ${parseInt(val, 10)}`;
+            if (kind === 'digit_count') {
+                const [digit, count] = val.split(':');
+                return `(length(${col}) - length(replace(${col}, '${digit}', ''))) >= ${parseInt(count, 10)}`;
+            }
+            if (kind === 'consecutive_repeat') return _pagConsecutiveRepeatSql(col, parseInt(val, 10));
+            if (kind === 'has_special_char') return `length(${_pagStripAlnumSql(col)}) > 0`;
+            if (kind === 'numeric_range') {
+                const [lo, hi] = val.split(':');
+                return `(${col} >= ${parseInt(lo, 10)} AND ${col} <= ${parseInt(hi, 10)})`;
+            }
+            if (kind === 'tag_substring') return `${col} LIKE '%${val}%'`;
+            if (kind === 'nth_weekday') {
+                const [n, w] = val.split(':').map(x => parseInt(x, 10));
+                const lo = String((n - 1) * 7 + 1).padStart(2, '0'), hi = String(n * 7).padStart(2, '0');
+                return `(strftime('%w', datetime(${col}, 'unixepoch')) = '${w}' AND strftime('%d', ${col}, 'unixepoch') BETWEEN '${lo}' AND '${hi}')`;
+            }
+            if (kind === 'all_caps') return `upper(${col}) = ${col}`;
+            if (kind === 'contains_all') {
+                return `(${val.split('').map(l => `${col} LIKE '%${l}%'`).join(' AND ')})`;
+            }
+            if (kind === 'tag_count') {
+                return `(CASE WHEN ${col} = '' OR ${col} IS NULL THEN 0 ELSE length(${col}) - length(replace(${col}, ',', '')) + 1 END) = ${parseInt(val, 10)}`;
+            }
+            if (kind === 'single_word') return `replace(trim(${col}), ' ', '') = trim(${col})`;
+            return null;
+        }
     }
 }
 
@@ -2742,22 +2776,42 @@ function pagCondToTree(row) {
     const val = row.children[2].value.trim();
     if (!val) return null;
     const esc = val.replace(/'/g, "''");
-    if (op === 'starts_with')  return { type: 'custom_expr', sql: `${col} LIKE '${esc}%'` };
-    if (op === 'ends_with')    return { type: 'custom_expr', sql: `${col} LIKE '%${esc}'` };
-    if (op === 'title_word') { const wl = esc.toLowerCase(); return { type: 'custom_expr', sql: `(' ' || ${_PAG_TITLE_NORM} || ' ') LIKE '% ${wl} %'` }; }
-    const opMap = {
-        'contains':     'LIKE',
-        'not_contains': 'NOT LIKE',
-        'equals':       '=',
-        'gt':           '>',
-        'lt':           '<',
-        'gte':          '>=',
-        'month_is':     'STRFTIME_MONTH',
-        'day_is':       'STRFTIME_DAY',
-        'year_is':      'STRFTIME_YEAR',
-        'weekday_is':   'STRFTIME_WEEKDAY',
-    };
-    return { type: 'condition', column: col, operator: opMap[op] || '=', value: val };
+    const kind = window._PAG_OPS[op]?.kind;
+    if (kind === 'starts_with')  return { type: 'custom_expr', sql: `${col} LIKE '${esc}%'` };
+    if (kind === 'ends_with')    return { type: 'custom_expr', sql: `${col} LIKE '%${esc}'` };
+    if (kind === 'title_word') { const wl = esc.toLowerCase(); return { type: 'custom_expr', sql: `(' ' || ${_PAG_TITLE_NORM} || ' ') LIKE '% ${wl} %'` }; }
+    if (kind === 'title_length') return { type: 'custom_expr', sql: `length(${col}) = ${parseInt(val, 10)}` };
+    if (kind === 'digit_count') {
+        const [digit, count] = val.split(':');
+        return { type: 'custom_expr', sql: `(length(${col}) - length(replace(${col}, '${digit}', ''))) >= ${parseInt(count, 10)}` };
+    }
+    if (kind === 'consecutive_repeat') {
+        return { type: 'custom_expr', sql: _pagConsecutiveRepeatSql(col, parseInt(val, 10)) };
+    }
+    if (kind === 'has_special_char') {
+        return { type: 'custom_expr', sql: `length(${_pagStripAlnumSql(col)}) > 0` };
+    }
+    if (kind === 'numeric_range') {
+        const [lo, hi] = val.split(':');
+        return { type: 'custom_expr', sql: `(${col} >= ${parseInt(lo, 10)} AND ${col} <= ${parseInt(hi, 10)})` };
+    }
+    if (kind === 'tag_substring') return { type: 'custom_expr', sql: `${col} LIKE '%${esc}%'` };
+    if (kind === 'nth_weekday') {
+        const [n, w] = val.split(':').map(x => parseInt(x, 10));
+        const lo = String((n - 1) * 7 + 1).padStart(2, '0'), hi = String(n * 7).padStart(2, '0');
+        return { type: 'custom_expr', sql: `(strftime('%w', datetime(${col}, 'unixepoch')) = '${w}' AND strftime('%d', ${col}, 'unixepoch') BETWEEN '${lo}' AND '${hi}')` };
+    }
+    if (kind === 'all_caps') return { type: 'custom_expr', sql: `upper(${col}) = ${col}` };
+    if (kind === 'contains_all') {
+        return { type: 'custom_expr', sql: `(${esc.split('').map(l => `${col} LIKE '%${l}%'`).join(' AND ')})` };
+    }
+    if (kind === 'tag_count') {
+        return { type: 'custom_expr', sql: `(CASE WHEN ${col} = '' OR ${col} IS NULL THEN 0 ELSE length(${col}) - length(replace(${col}, ',', '')) + 1 END) = ${parseInt(val, 10)}` };
+    }
+    if (kind === 'single_word') {
+        return { type: 'custom_expr', sql: `replace(trim(${col}), ' ', '') = trim(${col})` };
+    }
+    return { type: 'condition', column: col, operator: window._PAG_OPS[op]?.tree_op || '=', value: val };
 }
 
 function pagBuildTree() {
@@ -2767,8 +2821,14 @@ function pagBuildTree() {
     const _toAppidListNodes = (sources, fallbackAppids) => {
         if (sources.length) {
             return sources
-                .filter(s => !_pagPersonalCats.has(s.label))
-                .map(s => ({ type: 'appid_list', appids: s.appids, label: s.label, auto: s.auto }));
+                .map(s => {
+                    // Personal: verified-for-someone-else entries don't apply to
+                    // you, so only the subset verified specifically for your own
+                    // sg_username counts, not the whole category's appid list.
+                    const appids = _pagPersonalCats.has(s.label) ? (s.personal_appids || []) : s.appids;
+                    return appids.length ? { type: 'appid_list', appids, label: s.label, auto: s.auto } : null;
+                })
+                .filter(Boolean);
         }
         return fallbackAppids.length ? [{ type: 'appid_list', appids: fallbackAppids }] : [];
     };
@@ -2937,6 +2997,7 @@ async function pagConfirmSave() {
     tree.pagywosg = true;
     if (_pagEventId) tree.pagywosg_event = {id: _pagEventId, name: _pagEventName};
     // Build verified lookup: {appid_str: [{cat, pool}]}
+    const _sgUsername = (_serverSgUsername || '').toLowerCase();
     const verifiedLookup = {};
     [
         ..._pagWinsGames.filter(g => g.in_library).map(g => ({...g, pool: 'wins'})),
@@ -2944,11 +3005,15 @@ async function pagConfirmSave() {
     ].forEach(({appid, categories, pool}) => {
         const key = String(appid);
         if (!verifiedLookup[key]) verifiedLookup[key] = [];
-        categories.forEach(({cat, verifier, auto}) => {
-            if (_pagPersonalCats.has(cat)) return;
+        categories.forEach(({cat, verifiers, auto}) => {
+            if (_pagPersonalCats.has(cat)) {
+                // Personal: a verified entry only counts if it was verified
+                // specifically for the current sg_username, not just anyone.
+                if (!_sgUsername || !(verifiers || []).some(v => v.toLowerCase() === _sgUsername)) return;
+            }
             if (!verifiedLookup[key].some(e => e.cat === cat && e.pool === pool)) {
                 const entry = {cat, pool};
-                if (verifier) entry.verifier = verifier;
+                if (verifiers && verifiers.length) entry.verifiers = verifiers;
                 if (auto) entry.auto = true;
                 verifiedLookup[key].push(entry);
             }
@@ -3013,7 +3078,7 @@ function pagUpdateAppidsInfo(pool) {
         <div id="${listId}" style="display:none; margin-top:4px; padding-left:12px; font-size:0.76rem; color:var(--text-secondary); max-height:120px; overflow-y:auto;">
             ${games.map(g =>
                 `<div style="padding:1px 0;">${g.name} <span style="opacity:0.6;">— ${g.categories.map(c =>
-                    c.verifier ? `${c.cat} <span style="opacity:0.7;">(via ${c.verifier})</span>` : c.cat
+                    (c.verifiers && c.verifiers.length) ? `${c.cat} <span style="opacity:0.7;">(via ${c.verifiers.join(', ')})</span>` : c.cat
                 ).join(', ')}</span></div>`
             ).join('')}
         </div>`;
@@ -3033,7 +3098,7 @@ function pagRenderPersonalCats() {
     pagRenderPersonalCats._list = sorted;
     let html = `<div style="border-top:1px solid var(--border); padding-top:14px; margin-bottom:16px;">
         <div style="font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:4px;">Personal categories</div>
-        <div style="font-size:0.76rem; color:var(--text-secondary); margin-bottom:8px; line-height:1.4;">Categories where eligibility depends on your own history. Checking one excludes its games from the filter and qualifications panel entirely — verified entries for another user don&rsquo;t apply to you.</div>`;
+        <div style="font-size:0.76rem; color:var(--text-secondary); margin-bottom:8px; line-height:1.4;">Categories where eligibility depends on your own history. Checking one restricts its games to entries verified specifically for your own SG username (set in Settings) — a verified entry for someone else doesn&rsquo;t apply to you.</div>`;
     sorted.forEach((cat, i) => {
         const checked = _pagPersonalCats.has(cat) ? ' checked' : '';
         html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;" onclick="pagTogglePersonalCat(${i})">
@@ -3072,6 +3137,10 @@ async function pagAutoFill(next = false) {
         }
 
         pagClearAll();
+
+        // Pre-check categories the maintainer has curated as always-personal
+        // for this event — still individually toggle-able from here.
+        (data.default_personal || []).forEach(cat => _pagPersonalCats.add(cat));
 
         // Select tags (case-insensitive match against local tag list)
         data.tags.wins.forEach(tag => {

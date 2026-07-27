@@ -2646,10 +2646,10 @@ async function stopBulkDateImport() {
                 results.push({ desc, label, verified: false });
             }
         });
-        (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).forEach(({ cat, pool, verifier, auto }) => {
+        (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).forEach(({ cat, pool, verifiers, auto }) => {
             if (auto && pool === 'wins') return;
             if (pool === 'wins' && !isWin) return;
-            results.push({ desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifier: verifier || null });
+            results.push({ desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifiers: verifiers || [] });
         });
 
         const hltbMin = _hltbMin(game);
@@ -2657,7 +2657,7 @@ async function stopBulkDateImport() {
 
         let html = results.map(r => {
             const verifPart = r.verified
-                ? ` <span style="color:var(--text-secondary);">— mod verified${r.verifier ? ` (${r.verifier})` : ''}</span>`
+                ? ` <span style="color:var(--text-secondary);">— mod verified${r.verifiers.length ? ` (${r.verifiers.join(', ')})` : ''}</span>`
                 : '';
             return `<div><span style="color:var(--accent-positive);">✓</span> ${r.desc} <span style="color:var(--text-secondary);">${r.label}${verifPart}</span></div>`;
         }).join('');

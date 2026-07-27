@@ -1548,45 +1548,168 @@ const achLink = document.getElementById('achievements-link');
         return conds;
     }
 
+    // op tokens (STRFTIME_MONTH, LIKE, ...) trace back to a "kind" via
+    // window._PAG_OPS (single source: pagywosg.py's OP_REGISTRY) — build the
+    // reverse lookup once so the checks below dispatch on kind, not on a
+    // hand-maintained column x op literal map.
+    const _PAG_KIND_BY_TREE_OP = Object.fromEntries(
+        Object.values(window._PAG_OPS || {}).map(m => [m.tree_op, m.kind])
+    );
+    const _PAG_NUMERIC_COLS = {
+        hltb_main:          { label: 'HLTB main',          fmt: v => `${Math.round(v/60)}h` },
+        hltb_extras:        { label: 'HLTB main+extras',   fmt: v => `${Math.round(v/60)}h` },
+        hltb_completionist: { label: 'HLTB completionist', fmt: v => `${Math.round(v/60)}h` },
+        total_achievements: { label: 'Achievements',       fmt: v => `${v}` },
+    };
+    const _PAG_FIELD_LABELS = { name: 'Title', developers: 'Developer', publishers: 'Publisher' };
+
     function _pagCheckCond(cond, game) {
         const MONTHS = ['','January','February','March','April','May','June',
                         'July','August','September','October','November','December'];
-        const {col, op, val} = cond;
-        const rd = game.release_date || '';
         const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-        const map = {
-            tags:        { LIKE:           [`Tags includes ${Array.isArray(val) ? val.join(' or ') : val}`,
-                                             g => (Array.isArray(val) ? val : [val]).some(v => _pagCsvContains(g.tags, v))] },
-            name:        { LIKE:           [`Title contains "${val}"`,                 g => (g.name||'').toLowerCase().includes(val.toLowerCase())],
-                           STARTS_WITH:   [`Title starts with "${val}"`,              g => (g.name||'').toLowerCase().startsWith(val.toLowerCase())],
-                           STARTS_WITH_ANY: [`Title starts with ${Array.isArray(val) ? val.join(', ') : val}`, g => { const f = (g.name||'')[0]?.toUpperCase() || ''; return (Array.isArray(val) ? val : [val]).some(l => l.toUpperCase() === f); }],
-                           TITLE_WORD:    [`Title word "${val}"`,                     g => { const n = ' ' + (g.name||'').toLowerCase().replace(/[:!?,.'()\[\]{};"]/g, ' ') + ' '; const w = val.toLowerCase(); return n.includes(` ${w} `); }] },
-            appid:       { LIKE:           [`AppID contains ${val}`,                   g => String(g.appid).includes(val)] },
-            developers:  { LIKE:           [`Developer includes ${val}`,               g => _pagCsvContains(g.developers, val)] },
-            publishers:  { LIKE:           [`Publisher includes ${val}`,               g => _pagCsvContains(g.publishers, val)] },
-            release_date: {
-                STRFTIME_MONTH:   [`Released in ${MONTHS[+val]||val}`,                 g => _rdStr(g).slice(5,7) === String(val).padStart(2,'0')],
-                STRFTIME_DAY:     [`Released on the ${val}${_ordSuffix(+val)}`,        g => _rdStr(g).slice(8,10) === String(val).padStart(2,'0')],
-                STRFTIME_YEAR:    [`Released in ${val}`,                               g => _rdStr(g).slice(0,4) === String(val)],
-                STRFTIME_WEEKDAY: [`Released on a ${WEEKDAYS[+val]||val}`,             g => { const s = _rdStr(g); return s ? new Date(s + 'T00:00:00Z').getUTCDay() === +val : false; }],
-            },
-            hltb_main: {
-                '>=': [`HLTB main ≥ ${Math.round(+val/60)}h`,         g => (+g.hltb_main || 0) >= +val],
-                '<':  [`HLTB main < ${Math.round(+val/60)}h`,          g => +g.hltb_main > 0 && +g.hltb_main < +val],
-            },
-            hltb_extras: {
-                '>=': [`HLTB main+extras ≥ ${Math.round(+val/60)}h`,  g => (+g.hltb_extras || 0) >= +val],
-                '<':  [`HLTB main+extras < ${Math.round(+val/60)}h`,   g => +g.hltb_extras > 0 && +g.hltb_extras < +val],
-            },
-            hltb_completionist: {
-                '>=': [`HLTB completionist ≥ ${Math.round(+val/60)}h`, g => (+g.hltb_completionist || 0) >= +val],
-                '<':  [`HLTB completionist < ${Math.round(+val/60)}h`,  g => +g.hltb_completionist > 0 && +g.hltb_completionist < +val],
-            },
-        };
-        const entry = map[col]?.[op];
-        if (!entry) return null;
-        const [desc, matchFn] = entry;
-        return matchFn(game) ? desc : null;
+        const {col, op, val} = cond;
+        const kind = _PAG_KIND_BY_TREE_OP[op];
+
+        if (kind === 'strftime' || kind === 'strftime_weekday') {
+            if (col !== 'release_date') return null;
+            const rd = _rdStr(game);
+            if (op === 'STRFTIME_MONTH')
+                return rd.slice(5,7) === String(val).padStart(2,'0') ? `Released in ${MONTHS[+val]||val}` : null;
+            if (op === 'STRFTIME_DAY')
+                return rd.slice(8,10) === String(val).padStart(2,'0') ? `Released on the ${val}${_ordSuffix(+val)}` : null;
+            if (op === 'STRFTIME_YEAR')
+                return rd.slice(0,4) === String(val) ? `Released in ${val}` : null;
+            if (op === 'STRFTIME_WEEKDAY')
+                return (rd && new Date(rd + 'T00:00:00Z').getUTCDay() === +val) ? `Released on a ${WEEKDAYS[+val]||val}` : null;
+            return null;
+        }
+
+        if (kind === 'numeric_gte' || kind === 'numeric_lt' || kind === 'numeric_gt') {
+            const meta = _PAG_NUMERIC_COLS[col];
+            if (!meta) return null;
+            const v = +game[col] || 0;
+            if (kind === 'numeric_gte') return v >= +val ? `${meta.label} ≥ ${meta.fmt(+val)}` : null;
+            if (kind === 'numeric_gt')  return v > +val ? `${meta.label} > ${meta.fmt(+val)}` : null;
+            return (v > 0 && v < +val) ? `${meta.label} < ${meta.fmt(+val)}` : null;
+        }
+
+        if (kind === 'contains') {
+            if (col === 'tags')
+                return (Array.isArray(val) ? val : [val]).some(v => _pagCsvContains(game.tags, v))
+                    ? `Tags includes ${Array.isArray(val) ? val.join(' or ') : val}` : null;
+            if (col === 'developers') return _pagCsvContains(game.developers, val) ? `Developer includes ${val}` : null;
+            if (col === 'publishers') return _pagCsvContains(game.publishers, val) ? `Publisher includes ${val}` : null;
+            if (col === 'name')       return (game.name||'').toLowerCase().includes(val.toLowerCase()) ? `Title contains "${val}"` : null;
+            if (col === 'appid')      return String(game.appid).includes(val) ? `AppID contains ${val}` : null;
+            return null;
+        }
+
+        if (kind === 'starts_with' && col === 'name')
+            return (game.name||'').toLowerCase().startsWith(val.toLowerCase()) ? `Title starts with "${val}"` : null;
+
+        if (kind === 'ends_with') {
+            const label = col === 'appid' ? 'AppID' : _PAG_FIELD_LABELS[col];
+            if (!label) return null;
+            const v = String(game[col] ?? '');
+            return v.toLowerCase().endsWith(val.toLowerCase()) ? `${label} ends with "${val}"` : null;
+        }
+
+        if (kind === 'starts_with_any' && col === 'name') {
+            const letters = Array.isArray(val) ? val : [val];
+            const f = (game.name||'')[0]?.toUpperCase() || '';
+            return letters.some(l => l.toUpperCase() === f) ? `Title starts with ${letters.join(', ')}` : null;
+        }
+
+        if (kind === 'title_word' && col === 'name') {
+            const n = ' ' + (game.name||'').toLowerCase().replace(/[:!?,.'()\[\]{};"]/g, ' ') + ' ';
+            const w = val.toLowerCase();
+            return n.includes(` ${w} `) ? `Title word "${val}"` : null;
+        }
+
+        if (kind === 'title_length' && col === 'name')
+            return (game.name||'').length === +val ? `Title is ${val} characters` : null;
+
+        if (kind === 'digit_count' && col === 'appid') {
+            const [digit, count] = val.split(':');
+            const occurrences = String(game.appid ?? '').split(digit).length - 1;
+            return occurrences >= +count ? `AppID has ${count}+ "${digit}"s` : null;
+        }
+
+        if (kind === 'consecutive_repeat' && col === 'appid') {
+            const n = +val;
+            const s = String(game.appid ?? '');
+            let found = false;
+            for (let i = 0; i + n <= s.length; i++) {
+                if (new Set(s.slice(i, i + n)).size === 1) { found = true; break; }
+            }
+            return found ? `AppID has ${n} identical digits in a row` : null;
+        }
+
+        if (kind === 'has_special_char' && col === 'name') {
+            const stripped = (game.name || '').toLowerCase().replace(/[a-z0-9 ]/g, '');
+            return stripped.length > 0 ? 'Title has a special character' : null;
+        }
+
+        if (kind === 'numeric_range') {
+            const meta = _PAG_NUMERIC_COLS[col];
+            if (!meta) return null;
+            const [lo, hi] = val.split(':');
+            const v = +game[col] || 0;
+            return (v >= +lo && v <= +hi) ? `${meta.label} between ${meta.fmt(+lo)} and ${meta.fmt(+hi)}` : null;
+        }
+
+        if (kind === 'equals') {
+            const meta = _PAG_NUMERIC_COLS[col];
+            if (!meta) return null;
+            return (+game[col] || 0) === +val ? `${meta.label} = ${meta.fmt(+val)}` : null;
+        }
+
+        if (kind === 'tag_substring') {
+            const tags = (game.tags || '').toLowerCase();
+            return tags.includes(val.toLowerCase()) ? `Tags include one containing "${val}"` : null;
+        }
+
+        if (kind === 'nth_weekday' && col === 'release_date') {
+            const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+            const [n, w] = val.split(':').map(Number);
+            const rd = _rdStr(game);
+            if (!rd) return null;
+            const d = new Date(rd + 'T00:00:00Z');
+            const occurrence = Math.ceil(d.getUTCDate() / 7);
+            return (d.getUTCDay() === w && occurrence === n)
+                ? `Released on the ${n}${_ordSuffix(n)} ${WEEKDAYS[w]} of the month` : null;
+        }
+
+        if (kind === 'all_caps') {
+            const label = _PAG_FIELD_LABELS[col];
+            if (!label) return null;
+            const v = game[col] || '';
+            return v.toUpperCase() === v ? `${label} is all uppercase` : null;
+        }
+
+        if (kind === 'contains_all') {
+            const label = _PAG_FIELD_LABELS[col];
+            if (!label) return null;
+            const letters = val.split('');
+            const upper = (game[col] || '').toUpperCase();
+            return letters.every(l => upper.includes(l)) ? `${label} includes letters ${letters.join(', ')}` : null;
+        }
+
+        if (kind === 'not_contains' && col === 'appid')
+            return !String(game.appid ?? '').includes(val) ? `AppID does not contain ${val}` : null;
+
+        if (kind === 'tag_count') {
+            const tagsStr = (game.tags || '').trim();
+            const count = tagsStr ? tagsStr.split(',').length : 0;
+            return count === +val ? `Has exactly ${val} tags` : null;
+        }
+
+        if (kind === 'single_word' && col === 'name') {
+            const n = (game.name || '').trim();
+            return n.length && !n.includes(' ') ? 'Title is a single word' : null;
+        }
+
+        return null;
     }
 
     function _ordSuffix(n) {
@@ -1914,10 +2037,10 @@ const achLink = document.getElementById('achievements-link');
             }
         });
 
-        (verified?.[String(game.appid)] || []).forEach(({cat, pool, verifier, auto}) => {
+        (verified?.[String(game.appid)] || []).forEach(({cat, pool, verifiers, auto}) => {
             if (auto && pool === 'wins') return;
             if (pool === 'wins' && !isWin) return;
-            results.push({desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifier: verifier || null});
+            results.push({desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifiers: verifiers || []});
         });
 
         return results;
@@ -1926,10 +2049,10 @@ const achLink = document.getElementById('achievements-link');
     function _pagQualResultsHtml(results) {
         return results.length
             ? results.map(r => {
-                const isSelf = r.verifier && _serverSgUsername &&
-                    r.verifier.toLowerCase() === _serverSgUsername.toLowerCase();
+                const sgu = (_serverSgUsername || '').toLowerCase();
+                const isSelf = sgu && r.verifiers.some(v => v.toLowerCase() === sgu);
                 const verifText = r.verified
-                    ? ` — mod verified${r.verifier ? (isSelf ? ' — already submitted' : ` — see ${escHtml(r.verifier)}'s entry`) : ''}`
+                    ? ` — mod verified${r.verifiers.length ? (isSelf ? ' — already submitted' : ` — see ${escHtml(r.verifiers[0])}'s entry`) : ''}`
                     : '';
                 return `<div style="color:var(--text-primary);">
                     <span style="color:var(--accent-positive);">&#x2713;</span>
