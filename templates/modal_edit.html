@@ -1555,7 +1555,8 @@ const achLink = document.getElementById('achievements-link');
         const rd = game.release_date || '';
         const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         const map = {
-            tags:        { LIKE:           [`Tags includes ${val}`,                    g => _pagCsvContains(g.tags, val)] },
+            tags:        { LIKE:           [`Tags includes ${Array.isArray(val) ? val.join(' or ') : val}`,
+                                             g => (Array.isArray(val) ? val : [val]).some(v => _pagCsvContains(g.tags, v))] },
             name:        { LIKE:           [`Title contains "${val}"`,                 g => (g.name||'').toLowerCase().includes(val.toLowerCase())],
                            STARTS_WITH:   [`Title starts with "${val}"`,              g => (g.name||'').toLowerCase().startsWith(val.toLowerCase())],
                            STARTS_WITH_ANY: [`Title starts with ${Array.isArray(val) ? val.join(', ') : val}`, g => { const f = (g.name||'')[0]?.toUpperCase() || ''; return (Array.isArray(val) ? val : [val]).some(l => l.toUpperCase() === f); }],

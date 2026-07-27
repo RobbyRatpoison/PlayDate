@@ -2781,8 +2781,16 @@ function pagBuildTree() {
         ..._toAppidListNodes(_pagWinsAppidSources, _pagWinsAppids)
     ];
 
-    const allTagItems  = allTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
-    const winsTagItems = winsTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
+    // More than one tag collapses into a single list-valued condition node
+    // (one condition compiling to a parenthesized OR) instead of N separate
+    // OR'd nodes — keeps saved PAGYWOSG trees from ballooning with dozens of
+    // near-identical tag conditions.
+    const allTagItems  = allTags.length > 1
+        ? [{ type: 'condition', column: 'tags', operator: 'LIKE', value: allTags }]
+        : allTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
+    const winsTagItems = winsTags.length > 1
+        ? [{ type: 'condition', column: 'tags', operator: 'LIKE', value: winsTags }]
+        : winsTags.map(t => ({ type: 'condition', column: 'tags', operator: 'LIKE', value: t }));
 
     const compVals = Array.from(document.querySelectorAll('#pag-completion-btns .pag-comp-btn.active')).map(b => b.dataset.val);
 

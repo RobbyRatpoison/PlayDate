@@ -256,6 +256,19 @@ select.nav-dropdown:hover {
     outline: none;
     border-color: var(--accent);
 }
+/* .fm-row input targets the pill widget's inner text field too (it's an
+   <input> inside .fm-val-input) — override back to its own transparent,
+   borderless look so it doesn't render as a second boxed input inside the
+   pill box. */
+.fm-row .pill-text-input {
+    background: transparent;
+    border: none;
+    padding: 2px 0;
+    width: auto;
+}
+.fm-row .pill-text-input:focus {
+    border-color: transparent;
+}
 .fm-remove {
     background: none;
     border: none;
@@ -439,7 +452,7 @@ select.nav-dropdown:hover {
 // ═══════════════════════════════════════════════════════════════
 
 const FM_FILTER_CONFIG = {
-    'tags':               { label: 'Tag',                  type: 'select', comparisons: {'LIKE':'includes','NOT LIKE':'excludes','IS NULL':'not set','IS NOT NULL':'is set'},
+    'tags':               { label: 'Tag',                  type: 'select', multiValue: true, comparisons: {'LIKE':'includes','NOT LIKE':'excludes','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_tags | tojson if unique_tags is defined else '[]' }} },
     'completion_status':  { label: 'Completion Status',    type: 'select', comparisons: {'=':'is','!=':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: ['Never Played','Unfinished','Beaten','Completed',"Won't Play"] },
@@ -447,7 +460,7 @@ const FM_FILTER_CONFIG = {
                             options: {'1':'Yes','0':'No'}, default: '1' },
     'name':               { label: 'Game Title',           type: 'text',   comparisons: {'LIKE':'contains','NOT LIKE':'does not contain','=':'exactly matches','STARTS_WITH':'starts with','IS NULL':'not set','IS NOT NULL':'is set'} },
     'appid':              { label: 'AppID',                type: 'text',   comparisons: {'LIKE':'contains','=':'exactly matches'} },
-    'groups':             { label: 'Group',                type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+    'groups':             { label: 'Group',                type: 'select', multiValue: true, comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_groups | tojson if unique_groups is defined else '[]' }} },
     'release_date':       { label: 'Release Date',         type: 'date_text',
                             comparisons: {'=':'on (exact)','>':'after','<':'before','STRFTIME_MONTH':'month is','STRFTIME_DAY':'day is','STRFTIME_YEAR':'year is','STRFTIME_WEEKDAY':'weekday is','LIKE':'matches pattern','IS NULL':'not set','IS NOT NULL':'is set'} },
@@ -466,9 +479,9 @@ const FM_FILTER_CONFIG = {
     'total_achievements':    { label: 'Total Achievements',    type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'total_reviews':         { label: 'Total Reviews',         type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
     'positive_reviews':      { label: 'Positive Reviews',      type: 'number', comparisons: {'>':'more than','<':'less than','=':'exactly','IS NULL':'not set','IS NOT NULL':'is set'} },
-    'genres':             { label: 'Genre',                 type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+    'genres':             { label: 'Genre',                 type: 'select', multiValue: true, comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_genres | tojson if unique_genres is defined else '[]' }} },
-    'categories':         { label: 'Category',              type: 'select', comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
+    'categories':         { label: 'Category',              type: 'select', multiValue: true, comparisons: {'LIKE':'is','NOT LIKE':'is not','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {{ unique_categories | tojson if unique_categories is defined else '[]' }} },
     'is_free':            { label: 'Free to Play',          type: 'select', comparisons: {'=':'is','IS NULL':'not set','IS NOT NULL':'is set'},
                             options: {'1':'Yes','0':'No'}, default: '1' },
@@ -530,7 +543,50 @@ function setFilterMode(mode) {
 
 // ── Open / close ────────────────────────────────────────────────
 
+// Normalizes legacy OR-groups of single-value tag/group/genre/category
+// conditions (the pre-chip-input saved shape — one condition node per value)
+// into the new compact list-valued condition form, so old saved filters
+// render through the same chip-input UI as newly-generated ones instead of
+// showing as N separate rows. Applied whenever a tree is loaded for editing;
+// re-saving from the UI then naturally persists the upgraded, compact shape.
+const _MULTI_VALUE_COLS = new Set(['tags', 'groups', 'genres', 'categories']);
+function _consolidateMultiValueConditions(node) {
+    if (!node || node.type !== 'group' || !Array.isArray(node.items)) return node;
+    let items = node.items.map(_consolidateMultiValueConditions);
+
+    if (node.logic === 'OR') {
+        // Only LIKE/'=' — NOT LIKE has different OR-vs-list semantics
+        // ("doesn't have A OR doesn't have B" vs "has neither A nor B"), so
+        // leave any NOT LIKE conditions exactly as they were rather than
+        // risk silently changing what the filter matches.
+        const buckets = new Map();
+        const rest = [];
+        for (const item of items) {
+            if (item.type === 'condition' && _MULTI_VALUE_COLS.has(item.column) &&
+                (item.operator === 'LIKE' || item.operator === '=') &&
+                !item.value_col && !Array.isArray(item.value)) {
+                const key = item.column + '|' + item.operator;
+                if (!buckets.has(key)) buckets.set(key, []);
+                buckets.get(key).push(item.value);
+            } else {
+                rest.push(item);
+            }
+        }
+        const collapsed = [];
+        for (const [key, values] of buckets) {
+            const [col, op] = key.split('|');
+            collapsed.push(values.length === 1
+                ? { type: 'condition', column: col, operator: op, value: values[0] }
+                : { type: 'condition', column: col, operator: op, value: values });
+        }
+        items = [...collapsed, ...rest];
+    }
+
+    return { ...node, items };
+}
+
 function populateModalFromTree(tree) {
+    tree = _consolidateMultiValueConditions(tree);
     if (tree && tree.items && tree.items.length > 0) {
         if (tree.custom_sql) {
             setFilterMode('advanced');
@@ -619,9 +675,9 @@ function openFilterModal() {
     // live from it instead of trusting the page-load snapshot below, which
     // would otherwise misrepresent whatever's actually on screen right now.
     const _fmSearchInput = document.getElementById('library-search');
-    const tree = (_fmSearchInput && typeof buildSearchTree === 'function')
+    const tree = _consolidateMultiValueConditions((_fmSearchInput && typeof buildSearchTree === 'function')
         ? buildSearchTree(_fmSearchInput.value)
-        : {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }};
+        : {{ (state.filter_tree | tojson) if (state is defined and state.filter_tree) else 'null' }});
 
     // Seed _loadedSavedFilterName from the active named filter on first open this session
     if (typeof _activeFilterName !== 'undefined' && _activeFilterName && !_loadedSavedFilterName) {
@@ -716,6 +772,15 @@ function treeToSql(node) {
             return op === 'IS NULL'
                 ? `(${col} IS NULL OR ${col} = '')`
                 : `(${col} IS NOT NULL AND ${col} != '')`;
+        }
+        if (Array.isArray(val)) {
+            if (!(col === 'tags' || col === 'groups' || col === 'genres' || col === 'categories')) return '';
+            const items = val.map(v => String(v).trim()).filter(Boolean);
+            if (!items.length) return '';
+            const likeOp = (op === 'LIKE' || op === '=') ? 'LIKE' : 'NOT LIKE';
+            const joinOp = likeOp === 'LIKE' ? 'OR' : 'AND';
+            const parts  = items.map(v => `',' || ${col} || ',' ${likeOp} '%,${v},%'`);
+            return parts.length === 1 ? parts[0] : `(${parts.join(` ${joinOp} `)})`;
         }
         if (!val && val !== 0) return '';
         if (col === 'tags' || col === 'groups' || col === 'genres' || col === 'categories') {
@@ -843,9 +908,53 @@ function _buildColSelect(container, compatCols, initValCol) {
     container.appendChild(sel);
 }
 
+// Chip/pill input for multi-value LIKE/NOT LIKE conditions on comma-list
+// columns (tags/groups/genres/categories) — reuses the edit modal's pill
+// widget (_pillRender/_pillAdd/PILL_SUGGESTIONS) so one condition row can
+// hold several values instead of requiring a separate OR'd row per value.
+let _fmPillCounter = 0;
+function _buildChipInput(container, cfg, initVal) {
+    const id       = 'fm-pill-' + (_fmPillCounter++);
+    const hiddenId = id + '-hidden';
+    const boxId    = id + '-box';
+    PILL_SUGGESTIONS[hiddenId] = Array.isArray(cfg.options) ? cfg.options : [];
+
+    const wrap = document.createElement('div');
+    wrap.className = 'fm-val-input fm-pill-wrap';
+    wrap.dataset.pillHidden = hiddenId;
+
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.id = hiddenId;
+
+    const box = document.createElement('div');
+    box.className = 'pill-input-box';
+    box.id = boxId;
+
+    wrap.appendChild(hidden);
+    wrap.appendChild(box);
+    // pillInputSet()/_pillRender() look the box up via document.getElementById,
+    // so it must already be attached to the live document — appending here,
+    // before populating, not after (the caller used to append the returned
+    // element itself, which left the lookup finding nothing and the box
+    // permanently empty and non-typeable).
+    container.appendChild(wrap);
+
+    const csv = Array.isArray(initVal) ? initVal.join(',') : (initVal || '');
+    pillInputSet(hiddenId, boxId, csv);
+
+    // _pillAdd/the pill × buttons rebuild the box's children rather than
+    // firing a change event — observe for that instead of threading a
+    // callback through the shared widget.
+    new MutationObserver(() => updateSqlPreview()).observe(box, { childList: true });
+}
+
 function _buildLiteralInput(container, cfg, op, initVal) {
     let el;
-    if (cfg.type === 'select') {
+    if (cfg.multiValue && (op === 'LIKE' || op === 'NOT LIKE')) {
+        _buildChipInput(container, cfg, initVal);
+        return;
+    } else if (cfg.type === 'select') {
         const effectiveVal = (initVal !== null && initVal !== undefined && initVal !== '')
             ? initVal
             : (cfg.default !== undefined ? cfg.default : initVal);
@@ -1602,6 +1711,11 @@ function collectRowData(rowEl) {
     if (valColEl) {
         return { type: 'condition', column: col, operator: op, value_col: valColEl.value };
     }
+    const pillWrap = rowEl.querySelector('.fm-pill-wrap');
+    if (pillWrap) {
+        const values = _pillValues(pillWrap.dataset.pillHidden);
+        return { type: 'condition', column: col, operator: op, value: values.length === 1 ? values[0] : values };
+    }
     const valEl = rowEl.querySelector('.fm-val-input');
     const val = valEl ? valEl.value : '';
     return { type: 'condition', column: col, operator: op, value: val };
@@ -1756,7 +1870,7 @@ function loadSavedFilterFromModal(selectEl) {
     const name = selectEl.value;
     if (!name) { _loadedSavedFilterName = null; return; }
     const entry = _savedFilters[name];
-    const tree = (entry && typeof entry === 'object' && 'tree' in entry) ? entry.tree : entry;
+    const tree = _consolidateMultiValueConditions((entry && typeof entry === 'object' && 'tree' in entry) ? entry.tree : entry);
     if (tree) {
         _loadedSavedTree = tree;
         _loadedSavedFilterName = name;

@@ -220,6 +220,28 @@ def build_condition_sql(cond, params):
             return f"{col} {op} {val_col}"
         return '1=1'
 
+    # Multi-value condition (chip input) — one condition node standing in for
+    # what used to be N separate OR'd (or NOT-LIKE AND'd) condition nodes.
+    # Only meaningful for the comma-list columns' item-match operators.
+    if isinstance(val, list):
+        if col not in ('tags', 'groups', 'genres', 'categories') or op not in ('LIKE', 'NOT LIKE', '=', '!='):
+            return '1=1'
+        items = [str(v).strip() for v in val if str(v).strip()]
+        if not items:
+            return '1=1'
+        if op in ('LIKE', '='):
+            parts = []
+            for item in items:
+                params.append(f"%,{item},%")
+                parts.append(f"',' || {col} || ',' LIKE ?")
+            return parts[0] if len(parts) == 1 else f"({' OR '.join(parts)})"
+        else:  # NOT LIKE, != — excludes the game if it has ANY of the listed values
+            parts = []
+            for item in items:
+                params.append(f"%,{item},%")
+                parts.append(f"',' || {col} || ',' NOT LIKE ?")
+            return parts[0] if len(parts) == 1 else f"({' AND '.join(parts)})"
+
     if val == '' and op not in ('IS NULL', 'IS NOT NULL'):
         return '1=1'
 
