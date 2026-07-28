@@ -1,0 +1,2 @@
+# Development/test dependencies — not shipped with the app.
+pytest==9.1.1

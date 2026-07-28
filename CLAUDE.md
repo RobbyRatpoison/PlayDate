@@ -15,7 +15,7 @@ pyinstaller playdate.spec   # Windows exe; then Inno Setup 6 for installer
 python install.py           # Linux/macOS GUI installer
 ```
 
-No automated tests or linting configs.
+**Tests:** `pytest tests/` (deps in `requirements-dev.txt`; CI runs them via `.github/workflows/tests.yml` on push/PR to main/dev). The suite covers pure logic only — filter tree → SQL (`build_tree_sql`, `is_safe_sql`), PAGYWOSG category classification (`classify_category`), binary `appinfo.vdf` parsing (`parse_appinfo`, via a synthetic file), review confidence weighting, `review_score_label`, and the PAGYWOSG event-id formula. No Flask routes, DB, or UI are exercised. When touching any of those functions, run the suite; when adding a `classify_category` branch or `OP_REGISTRY` op, add a test case. No linting configs.
 
 ## Architecture
 
