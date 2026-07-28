@@ -10,6 +10,11 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Steam Collections sync only picking up Favorites (21 of 31 games)
 - Suggested syncing Steam Collections into groups, merged with BLAEO lists by name
 
+**Blue™**
+- Couldn't find where to view/filter games synced from Play or Pay - led to Play or Pay generating a saved filter automatically, matching how PAGYWOSG does it
+- PAGYWOSG tags showing as one combined line in the tooltip/game-edit panel instead of one line per tag
+- Edit Game popup silently failing to open for some games (PAGYWOSG-qualifying games with an SG username set)
+
 **bluemoon55127**
 - Suggested type-ahead jump-to-letter navigation in filter dropdowns
 

@@ -1,13 +1,22 @@
+import json
 import logging
+import os
+import threading
 import time
-from config import load_state, BUILTIN_FILTERS, resolve_outline_rule_where
-from database import get_db
-from utils import get_all_unique_groups, get_all_unique_tags
+from config import load_state, BASE_DIR, BUILTIN_FILTERS, resolve_outline_rule_where
+from database import get_db, add_to_blacklist, remove_from_blacklist, get_blacklist
+from utils import get_all_unique_groups, get_all_unique_tags, validate_user_path
 from flask import Blueprint, jsonify, render_template, request, redirect, url_for
 
 log = logging.getLogger(__name__)
 
 library_bp = Blueprint('library', __name__)
+
+# ── Cancellation + progress state for bulk operations (rescrape/art/protondb/hltb) ──
+_bulk_op_state  = {'running': False, 'op': None, 'total': 0, 'done': 0,
+                   'failed': 0, 'rate_limit_hit': False, 'aborted': False, 'result': None}
+_bulk_op_lock   = threading.Lock()
+_bulk_op_cancel = threading.Event()
 
 
 def _track_manual_groups(appid: int, old_groups_str: str, new_groups_str: str):
@@ -756,3 +765,573 @@ def bulk_distinct_values(data):
         return jsonify({"values": sorted(seen, key=str.lower)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ── Additional routes ────────────────────────────────────────────────────────
+
+@library_bp.route('/api/scrape_single/<int:appid>', methods=['GET', 'POST'])
+def scrape_single(appid):
+    from scrapers import fetch_store_data, fetch_tag_data, fetch_player_data, fetch_review_data, fetch_cheevo_data
+    from utils import fetch_local_library, get_acf_names, parse_appinfo
+    from config import load_config as _load_config, get_active_account as _get_active_account
+    _cfg     = _load_config() or {}
+    _account = _get_active_account() or {}
+
+    player_data = fetch_player_data(appid) or {}
+    store_data  = fetch_store_data(appid) or {}
+    review_data = fetch_review_data(appid) or {}
+    cheevo_data = fetch_cheevo_data(appid) or {} if _account.get('api_key') else {}
+    tag_data    = fetch_tag_data(appid) or {}
+
+    data_out = {
+        "developers":             store_data.get('developers', ''),
+        "publishers":             store_data.get('publishers', ''),
+        "release_date":           store_data.get('release_date', ''),
+        "genres":                 store_data.get('genres', ''),
+        "categories":             store_data.get('categories', ''),
+        "is_free":                store_data.get('is_free', 0),
+        "review_score":           review_data.get('review_score', ''),
+        "review_percentage":      review_data.get('review_percentage', ''),
+        "weighted_percentage":    review_data.get('weighted_percentage', ''),
+        "total_reviews":          review_data.get('total_reviews', ''),
+        "positive_reviews":       review_data.get('positive_reviews', ''),
+        "total_achievements":     cheevo_data.get('total_achievements', 0),
+        "unlocked_achievements":  cheevo_data.get('unlocked_achievements', 0),
+        "tags":                   tag_data.get('tags', '')
+    }
+
+    # Playtime, last_played, name: prefer API, fall back to local Steam files
+    local_entry = next((g for g in fetch_local_library(_cfg.get('steam_id')) if g['appid'] == appid), None)
+
+    playtime   = player_data.get('playtime_forever')
+    last_played = player_data.get('last_played') or None
+    name        = player_data.get('name') or None
+
+    if playtime is None and local_entry:
+        playtime = local_entry.get('playtime_forever')
+    if not last_played and local_entry:
+        lp = local_entry.get('last_played', '0')
+        last_played = lp if lp and lp != '0' else None
+    if not name:
+        name = get_acf_names().get(appid) or parse_appinfo().get(appid, {}).get('name') or None
+
+    if playtime is not None:
+        data_out['playtime_forever'] = playtime
+    if last_played:
+        data_out['last_played'] = last_played
+    if name:
+        data_out['name'] = name
+
+    # Convert timestamps to date strings for the frontend form
+    from database import ts_to_date
+    for col in ('last_played', 'release_date'):
+        if data_out.get(col) is not None:
+            data_out[col] = ts_to_date(data_out[col]) or ''
+
+    return jsonify({"status": "success", "data": data_out})
+
+@library_bp.route('/api/games/search')
+def search_games():
+    q        = request.args.get('q', '').strip()
+    platform = request.args.get('platform', '')
+    if not q:
+        return jsonify([])
+    try:
+        db = get_db()
+        if platform:
+            rows = db.execute(
+                "SELECT appid, name, platform FROM games WHERE name LIKE ? AND platform = ? "
+                "ORDER BY name LIMIT 20",
+                (f'%{q}%', platform)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT appid, name, platform FROM games WHERE name LIKE ? ORDER BY name LIMIT 20",
+                (f'%{q}%',)
+            ).fetchall()
+        db.close()
+        return jsonify([dict(r) for r in rows])
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@library_bp.route('/api/game/<int:appid>/set-duplicate', methods=['POST'])
+def set_duplicate(appid):
+    """Set or clear the duplicate_of field for a game."""
+    from database import update_game_data, invalidate_dup_cache
+    data         = request.json or {}
+    duplicate_of = data.get('duplicate_of')   # appid string, or null/'' to clear
+    try:
+        db = get_db()
+        db.execute(
+            "UPDATE games SET duplicate_of = ?, duplicate_auto = 0 WHERE appid = ?",
+            (str(duplicate_of) if duplicate_of else None, appid)
+        )
+        db.commit()
+        if duplicate_of:
+            canonical = db.execute(
+                "SELECT hltb_fetched, hltb_id, hltb_matched_name, hltb_match_score, "
+                "hltb_main, hltb_extras, hltb_completionist FROM games WHERE appid=?",
+                (str(duplicate_of),)
+            ).fetchone()
+            if canonical and canonical['hltb_fetched'] not in (None, '0', 'unconfirmed', 'no_match'):
+                hltb_data = {k: canonical[k] for k in
+                             ('hltb_fetched', 'hltb_id', 'hltb_matched_name', 'hltb_match_score',
+                              'hltb_main', 'hltb_extras', 'hltb_completionist')}
+                update_game_data(appid, **hltb_data)
+        db.close()
+        invalidate_dup_cache()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@library_bp.route('/api/game/<int:appid>')
+def get_game(appid):
+    try:
+        from database import ts_to_date
+        db  = get_db()
+        row = db.execute("SELECT * FROM games WHERE appid = ?", (appid,)).fetchone()
+        db.close()
+        if row:
+            game = dict(row)
+            for col in ('last_played', 'date_added', 'release_date'):
+                if game.get(col):
+                    game[col] = ts_to_date(game[col])
+            return jsonify({"status": "success", "game": game})
+        return jsonify({"status": "error", "message": "Game not found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/game-description/<int:appid>')
+def game_description(appid):
+    import plugins as _plugins
+    import requests as _r
+    db = get_db()
+    row = db.execute("SELECT platform, platform_id FROM games WHERE appid = ?", (appid,)).fetchone()
+    db.close()
+    if not row:
+        return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+    platform = row['platform'] or 'steam'
+    try:
+        plugin = _plugins.get(platform)
+        if plugin is not None and hasattr(plugin, 'fetch_description'):
+            desc = plugin.fetch_description(appid, row['platform_id'])
+            if desc:
+                return jsonify({'status': 'success', 'description': desc})
+        elif platform == 'steam':
+            resp = _r.get(
+                f'https://store.steampowered.com/api/appdetails?appids={appid}',
+                timeout=10
+            )
+            if resp.ok:
+                d = resp.json()
+                app_data = d.get(str(appid), {})
+                if app_data.get('success'):
+                    desc = app_data.get('data', {}).get('short_description', '')
+                    return jsonify({'status': 'success', 'description': desc})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    return jsonify({'status': 'error', 'message': 'No description available'})
+
+@library_bp.route('/api/set-completion/<int:appid>', methods=['POST'])
+def set_completion(appid):
+    from database import update_game_data
+    status = (request.json or {}).get('status', '').strip()
+    allowed = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
+    if status not in allowed:
+        return jsonify({"status": "error", "message": f"Invalid status: {status!r}"}), 400
+    try:
+        update_game_data(appid, completion_status=status)
+        return jsonify({"status": "success", "completion_status": status})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/bulk-op/start', methods=['POST'])
+def bulk_op_start():
+    if _bulk_op_state['running']:
+        return jsonify({'status': 'error', 'message': 'Already running'}), 400
+
+    data   = request.json or {}
+    op     = data.get('op')            # 'rescrape' or 'art'
+    scope  = data.get('scope', 'filtered')
+    appids = data.get('appids', [])
+    types  = data.get('types', ['vertical', 'horizontal', 'icon'])
+    source = data.get('source', 'auto')
+
+    if op not in ('rescrape', 'art', 'protondb', 'hltb'):
+        return jsonify({'status': 'error', 'message': 'Invalid op'}), 400
+
+    if scope == 'all':
+        db     = get_db()
+        rows   = db.execute("SELECT appid FROM games").fetchall()
+        db.close()
+        appids = [r['appid'] for r in rows]
+    elif scope == 'no_match' and op == 'hltb':
+        db     = get_db()
+        rows   = db.execute("SELECT appid FROM games WHERE hltb_fetched = 'no_match'").fetchall()
+        db.close()
+        appids = [r['appid'] for r in rows]
+
+    appids = [int(a) for a in appids]
+    if not appids:
+        return jsonify({'status': 'error', 'message': 'No games to process'}), 400
+
+    _bulk_op_cancel.clear()
+    with _bulk_op_lock:
+        _bulk_op_state.update(running=True, op=op, total=len(appids),
+                              done=0, failed=0, rate_limit_hit=False,
+                              aborted=False, result=None)
+
+    def _progress(event, _data, _total):
+        with _bulk_op_lock:
+            if event == 'done':
+                _bulk_op_state['done'] += 1
+            elif event == 'failed':
+                _bulk_op_state['failed'] += 1
+            elif event == 'rate_limit':
+                _bulk_op_state['rate_limit_hit'] = True
+
+    def _run():
+        from scrapers import bulk_rescrape_games, bulk_art_scrape_games, bulk_protondb_scrape_games, bulk_hltb_scrape_games
+        try:
+            if op == 'rescrape':
+                result = bulk_rescrape_games(appids, _bulk_op_cancel, _progress)
+            elif op == 'art':
+                result = bulk_art_scrape_games(appids, types, source, _bulk_op_cancel, _progress)
+            elif op == 'protondb':
+                result = bulk_protondb_scrape_games(appids, _bulk_op_cancel, _progress)
+            else:
+                result = bulk_hltb_scrape_games(appids, _bulk_op_cancel, _progress)
+            with _bulk_op_lock:
+                _bulk_op_state['result']  = result
+                _bulk_op_state['aborted'] = result.get('aborted', False)
+        except Exception as e:
+            log.exception(f"bulk_op_start ({op}): {e}")
+            with _bulk_op_lock:
+                _bulk_op_state['result'] = {'error': str(e)}
+        finally:
+            with _bulk_op_lock:
+                _bulk_op_state['running'] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'status': 'success', 'total': len(appids)})
+
+@library_bp.route('/api/bulk-op/status', methods=['GET'])
+def bulk_op_status():
+    with _bulk_op_lock:
+        return jsonify(dict(_bulk_op_state))
+
+@library_bp.route('/api/bulk-op/cancel', methods=['POST'])
+def bulk_op_cancel_route():
+    _bulk_op_cancel.set()
+    return jsonify({'status': 'success'})
+
+@library_bp.route('/api/bulk-edit', methods=['POST'])
+def bulk_edit():
+    return bulk_edit_games(request.json)
+
+@library_bp.route('/api/bulk-edit/distinct-values', methods=['POST'])
+def bulk_edit_distinct_values():
+    return bulk_distinct_values(request.json)
+
+@library_bp.route('/api/save-filter', methods=['POST'])
+def save_filter():
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic, _compact_tree_pv, _compact_appid_list_refs, _compact_shared_ids
+    data = request.json
+    name = (data.get('name') or '').strip()
+    tree = data.get('filter_tree')
+    if not name:
+        return jsonify({"status": "error", "message": "Name cannot be empty."}), 400
+    if not tree:
+        return jsonify({"status": "error", "message": "No filter to save."}), 400
+    tree = _compact_tree_pv(_compact_appid_list_refs(tree))
+    with _state_lock:
+        state = _load_state_unlocked()
+        if 'saved_filters' not in state:
+            state['saved_filters'] = {}
+        existing = state['saved_filters'].get(name, {})
+        existing_id = existing.get('id') if isinstance(existing, dict) else None
+        import uuid as _uuid
+        state['saved_filters'][name] = {
+            'id': existing_id or str(_uuid.uuid4()),
+            'tree': tree,
+        }
+        _compact_shared_ids(state)
+        _write_state_atomic(state)
+    return jsonify({"status": "success"})
+
+@library_bp.route('/api/delete-filter', methods=['POST'])
+def delete_filter():
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    name = (request.json.get('name') or '').strip()
+    if not name:
+        return jsonify({"status": "error", "message": "Name required."}), 400
+    with _state_lock:
+        state = _load_state_unlocked()
+        state.get('saved_filters', {}).pop(name, None)
+        ft = state.get('filter_tree')
+        if isinstance(ft, dict) and ft.get('saved_filter') == name:
+            state['filter_tree'] = None
+        _write_state_atomic(state)
+    return jsonify({"status": "success"})
+
+@library_bp.route('/api/rename-filter', methods=['POST'])
+def rename_filter():
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    old_name = (request.json.get('old_name') or '').strip()
+    new_name = (request.json.get('new_name') or '').strip()
+    if not old_name or not new_name:
+        return jsonify({"status": "error", "message": "Both names required."}), 400
+    with _state_lock:
+        state = _load_state_unlocked()
+        filters = state.get('saved_filters', {})
+        if old_name not in filters:
+            return jsonify({"status": "error", "message": "Filter not found."}), 404
+        if new_name in filters:
+            return jsonify({"status": "error", "message": f'A filter named "{new_name}" already exists.'}), 400
+        filters[new_name] = filters.pop(old_name)
+        state['saved_filters'] = filters
+        ft = state.get('filter_tree')
+        if isinstance(ft, dict) and ft.get('saved_filter') == old_name:
+            state['filter_tree'] = {'saved_filter': new_name}
+        _write_state_atomic(state)
+    return jsonify({"status": "success"})
+
+@library_bp.route('/api/card-outlines', methods=['GET'])
+def get_card_outlines():
+    state = load_state()
+    outlines = state.get('card_outlines', {})
+    saved_filters = state.get('saved_filters', {})
+    saved_list = [
+        {'id': v['id'], 'name': k}
+        for k, v in saved_filters.items()
+        if isinstance(v, dict) and v.get('id')
+    ]
+    return jsonify({'status': 'success', 'card_outlines': outlines, 'saved_filters': saved_list})
+
+@library_bp.route('/api/card-outlines', methods=['POST'])
+def save_card_outlines():
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    import uuid as _uuid
+    data = request.json or {}
+    outlines = data.get('card_outlines')
+    if outlines is None:
+        return jsonify({'status': 'error', 'message': 'Missing card_outlines'}), 400
+    # Assign UUIDs to any new rules missing them
+    for rule in outlines.get('rules', []):
+        if not rule.get('id'):
+            rule['id'] = str(_uuid.uuid4())
+    with _state_lock:
+        state = _load_state_unlocked()
+        state['card_outlines'] = outlines
+        _write_state_atomic(state)
+    return jsonify({'status': 'success'})
+
+@library_bp.route('/api/pick-screen-color')
+def pick_screen_color():
+    """Fullscreen eyedropper overlay. Spawns color_picker.py as a subprocess
+    so each invocation gets a clean Tk instance."""
+    import subprocess, sys
+    if getattr(sys, 'frozen', False):
+        script = os.path.join(sys._MEIPASS, 'color_picker.py')
+    else:
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'color_picker.py')
+    log.info('pick_screen_color: launching %s', script)
+    try:
+        r = subprocess.run([sys.executable, script],
+                           capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        log.warning('pick_screen_color: timed out')
+        return jsonify({'cancelled': True})
+    except Exception:
+        log.exception('pick_screen_color: subprocess error')
+        return jsonify({'error': 'picker failed'}), 500
+    log.info('pick_screen_color: exit=%d stdout=%r stderr=%r',
+                    r.returncode, r.stdout.strip(), r.stderr.strip()[:200])
+    color = r.stdout.strip()
+    if r.returncode == 0 and color:
+        return jsonify({'color': color})
+    return jsonify({'cancelled': True})
+
+@library_bp.route('/api/export-filter', methods=['POST'])
+def export_filter_file():
+    data = request.json
+    path = validate_user_path((data.get('path') or '').strip())
+    name = (data.get('name') or '').strip()
+    tree = data.get('tree')
+    if not path or not name or not tree:
+        return jsonify({'status': 'error', 'message': 'Missing fields.'}), 400
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump({'playdate_filter': {'name': name, 'tree': tree}}, f, indent=2)
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@library_bp.route('/api/read-filter-file', methods=['POST'])
+def read_filter_file():
+    path = validate_user_path((request.json.get('path') or '').strip())
+    if not path or not os.path.exists(path):
+        return jsonify({'status': 'error', 'message': 'File not found.'}), 400
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        pf   = data.get('playdate_filter', {})
+        name = (pf.get('name') or '').strip()
+        tree = pf.get('tree')
+        if not name or not tree:
+            return jsonify({'status': 'error', 'message': 'Invalid filter file.'}), 400
+        return jsonify({'status': 'success', 'name': name, 'tree': tree})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Could not read file: {e}'}), 500
+
+@library_bp.route('/api/delete-game/<int:appid>', methods=['DELETE'])
+def delete_game(appid):
+    data      = request.json or {}
+    blacklist = data.get('blacklist', False)
+    name      = data.get('name', '')
+    try:
+        # Look up platform_id before deleting (needed for non-Steam blacklist)
+        db = get_db()
+        row = db.execute(
+            "SELECT platform_id FROM games WHERE appid = ?", (appid,)
+        ).fetchone()
+        platform_id = row['platform_id'] if row else None
+
+        # Delete DB entry
+        db.execute("DELETE FROM games WHERE appid = ?", (appid,))
+        db.commit()
+        db.close()
+        from utils import invalidate_unique_cache
+        invalidate_unique_cache()
+
+        # Delete all cached images
+        safe_id = str(int(appid))
+        for subdir in ('vertical', 'horizontal', 'icons'):
+            img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, safe_id + '.jpg')
+            if os.path.exists(img_path):
+                os.remove(img_path)
+
+        # Optionally blacklist
+        if blacklist:
+            add_to_blacklist(appid, name, platform_id=platform_id)
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/bulk-delete', methods=['POST'])
+def bulk_delete():
+    data    = request.json or {}
+    appids  = data.get('appids', [])
+    if not appids:
+        return jsonify({"status": "error", "message": "No appids provided."}), 400
+    try:
+        placeholders = ','.join('?' * len(appids))
+        db = get_db()
+        db.execute(f"DELETE FROM games WHERE appid IN ({placeholders})", appids)
+        db.commit()
+        db.close()
+
+        # Delete all cached images
+        deleted_imgs = 0
+        for appid in appids:
+            safe_id = str(int(appid))
+            for subdir in ('vertical', 'horizontal', 'icons'):
+                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, safe_id + '.jpg')
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+                    deleted_imgs += 1
+
+        return jsonify({"status": "success", "deleted": len(appids), "images_removed": deleted_imgs})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/store-names-pending', methods=['GET'])
+def store_names_pending():
+    pending_path = os.path.join(BASE_DIR, 'store_names_pending.json')
+    if not os.path.exists(pending_path):
+        return jsonify({'items': []})
+    try:
+        with open(pending_path) as f:
+            data = json.load(f)
+        return jsonify(data)
+    except Exception as e:
+        log.error(f"store_names_pending: {e}")
+        return jsonify({'items': []})
+
+@library_bp.route('/api/store-names-apply', methods=['POST'])
+def store_names_apply():
+    from database import update_game_data
+    body = request.get_json(silent=True) or {}
+    appids_to_apply = {int(a) for a in body.get('appids', [])}
+    dismiss_all = body.get('dismiss', False)
+    pending_path = os.path.join(BASE_DIR, 'store_names_pending.json')
+    try:
+        if not os.path.exists(pending_path):
+            return jsonify({'ok': True, 'remaining': 0})
+        with open(pending_path) as f:
+            data = json.load(f)
+        items = data.get('items', [])
+        for item in items:
+            if item['appid'] in appids_to_apply:
+                update_game_data(item['appid'], name=item['new_name'])
+        if dismiss_all:
+            os.remove(pending_path)
+            return jsonify({'ok': True, 'remaining': 0})
+        remaining = [item for item in items if item['appid'] not in appids_to_apply]
+        if remaining:
+            with open(pending_path, 'w') as f:
+                json.dump({'items': remaining}, f, indent=2)
+        else:
+            os.remove(pending_path)
+        return jsonify({'ok': True, 'remaining': len(remaining)})
+    except Exception as e:
+        log.error(f"store_names_apply: {e}")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+@library_bp.route('/api/blacklist', methods=['GET'])
+def blacklist_get():
+    try:
+        return jsonify({"status": "success", "entries": get_blacklist()})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/blacklist/add', methods=['POST'])
+def blacklist_add():
+    data  = request.json or {}
+    appid = data.get('appid')
+    name  = data.get('name', '')
+    if not appid:
+        return jsonify({"status": "error", "message": "No appid provided."}), 400
+    try:
+        add_to_blacklist(appid, name)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/blacklist/remove', methods=['POST'])
+def blacklist_remove():
+    data  = request.json or {}
+    appid = data.get('appid')
+    if not appid:
+        return jsonify({"status": "error", "message": "No appid provided."}), 400
+    try:
+        remove_from_blacklist(appid)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/detect-duplicates', methods=['POST'])
+def detect_duplicates():
+    try:
+        from database import auto_detect_duplicates, invalidate_dup_cache
+        from plugins import get_platform_priority
+        saved    = load_state().get('platform_priority') or []
+        dynamic  = get_platform_priority()
+        priority = saved + [p for p in dynamic if p not in saved]
+        count = auto_detect_duplicates(platform_priority=priority)
+        invalidate_dup_cache()
+        return jsonify({'status': 'ok', 'detected': count})
+    except Exception as e:
+        log.error(f"detect-duplicates failed: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500

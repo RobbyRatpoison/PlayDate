@@ -57,6 +57,33 @@ def get_db():
         conn = _open_conn(db_file)
     return conn
 
+
+# Cache of appid (int) -> duplicate_of appid string, used to redirect art requests
+# for a duplicate game to its canonical version's cached image. Avoids a DB
+# round-trip on every image request for games without local art files.
+_dup_cache: dict = {}
+_dup_cache_loaded = False
+
+
+def get_dup_cache():
+    global _dup_cache_loaded
+    if not _dup_cache_loaded:
+        try:
+            db = get_db()
+            rows = db.execute("SELECT appid, duplicate_of FROM games WHERE duplicate_of IS NOT NULL AND duplicate_of != ''").fetchall()
+            db.close()
+            _dup_cache.update({row['appid']: row['duplicate_of'] for row in rows})
+        except Exception:
+            pass
+        _dup_cache_loaded = True
+    return _dup_cache
+
+
+def invalidate_dup_cache():
+    global _dup_cache_loaded
+    _dup_cache.clear()
+    _dup_cache_loaded = False
+
 def init_db():
     """Initializes the database and ensures all columns exist."""
     db_file = _db()

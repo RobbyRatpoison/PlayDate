@@ -747,3 +747,15 @@ def review_score_label(percent, total):
     if total >= 50:
         return 'Very Negative'
     return 'Negative'
+
+
+def validate_user_path(path: str) -> str | None:
+    """Return the resolved absolute path, or None if it looks malicious.
+    Shared by any route that accepts a native-file-dialog path from the client
+    (backup/restore, CSV/filter/theme export-import, Playnite import, etc.)."""
+    if not path or '\x00' in path:
+        return None
+    resolved = os.path.realpath(path)
+    if not os.path.isabs(resolved):
+        return None
+    return resolved

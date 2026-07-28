@@ -1,16 +1,27 @@
 import bisect
+import logging
 import os
 import re
 import struct
 import sqlite3
 import tempfile
+import threading
 import zipfile
 from datetime import datetime, timezone
-from flask import jsonify, request
+from flask import Blueprint, jsonify, request
 from database import get_db
 from config import BASE_DIR
+from utils import validate_user_path
+
+log = logging.getLogger(__name__)
+
+imports_bp = Blueprint('imports', __name__)
 
 TEMP_DB_PATH = os.path.join(BASE_DIR, "temp_import.db")
+
+# ── Playnite date import ──────────────────────────────────────────────────────
+_playnite_import_lock  = threading.Lock()
+_playnite_import_state = {'status': 'idle', 'error': None, 'updated': None, 'found': None}  # idle|running|success|error
 
 # ── Step 1: Upload DB and return its tables + columns ──
 def _inspect_temp_db():
@@ -332,3 +343,71 @@ def parse_playnite_dates(zip_path):
             results[appid] = added_map[best_pos]
 
     return results
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
+@imports_bp.route('/api/import-inspect', methods=['POST'])
+def import_inspect():
+    return inspect_database(request.files)
+
+@imports_bp.route('/api/import-inspect-path', methods=['POST'])
+def import_inspect_path():
+    path = validate_user_path((request.json or {}).get('path', '').strip())
+    return inspect_database_from_path(path)
+
+@imports_bp.route('/api/import-execute', methods=['POST'])
+def import_execute():
+    return execute_import(request.json)
+
+@imports_bp.route('/api/import/playnite-dates', methods=['POST'])
+def import_playnite_dates():
+    # Playnite backups can be several GB (see imports.py) — parsing runs in
+    # a background thread and is polled via /api/import/playnite-dates-status
+    # rather than blocking the request. Same fix as /api/restore-from-path:
+    # a long synchronous request over a Flatpak portal-mounted path can
+    # outlast the client's HTTP connection and surface as "Load failed"
+    # even though nothing actually errored.
+    data = request.json or {}
+    zip_path = validate_user_path(data.get('path', '').strip())
+    log.info(f"Playnite import: request received, path={zip_path!r}")
+    if not zip_path or not os.path.isfile(zip_path):
+        log.warning(f"Playnite import: file not found at {zip_path!r}")
+        return jsonify({"status": "error", "message": "File not found."}), 400
+
+    def _run_playnite_import():
+        from database import date_to_ts
+        try:
+            date_map = parse_playnite_dates(zip_path)
+            log.info(f"Playnite import: parsed {len(date_map)} appid→date pairs")
+        except Exception as e:
+            log.exception("Playnite import: parse failed")
+            _playnite_import_state.update({'status': 'error', 'error': f'Failed to parse backup: {e}'})
+            return
+        if not date_map:
+            log.warning("Playnite import: no Steam games with dates found")
+            _playnite_import_state.update({'status': 'error', 'error': 'No Steam games with dates found in the backup.'})
+            return
+        db = get_db()
+        updated = 0
+        for appid, date_str in date_map.items():
+            cursor = db.execute(
+                "UPDATE games SET date_added = ? WHERE appid = ?",
+                (date_to_ts(date_str), appid)
+            )
+            updated += cursor.rowcount
+        db.commit()
+        db.close()
+        log.info(f"Playnite import: updated {updated} games")
+        _playnite_import_state.update({'status': 'success', 'error': None, 'updated': updated, 'found': len(date_map)})
+
+    with _playnite_import_lock:
+        if _playnite_import_state['status'] == 'running':
+            return jsonify({"status": "error", "message": "An import is already in progress."}), 409
+        _playnite_import_state.update({'status': 'running', 'error': None, 'updated': None, 'found': None})
+        threading.Thread(target=_run_playnite_import, daemon=True).start()
+    return jsonify({"status": "started"})
+
+@imports_bp.route('/api/import/playnite-dates-status')
+def playnite_import_status():
+    return jsonify(_playnite_import_state)

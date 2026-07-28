@@ -5,6 +5,7 @@ import threading
 from datetime import datetime, timezone
 
 import requests
+from flask import Blueprint, jsonify, request
 
 from config import BASE_DIR, get_active_account
 from database import get_db
@@ -12,7 +13,10 @@ from library import bulk_edit_games
 
 log = logging.getLogger(__name__)
 
+pop_bp = Blueprint('pop', __name__)
+
 POP_API_BASE = "https://playorpaysg.com/api"
+POP_FILTER_NAME = "Play or Pay"
 
 _sync_lock = threading.Lock()
 
@@ -115,7 +119,39 @@ def _existing_appids(appids):
     return {row['appid'] for row in rows}
 
 
-def sync_pop_picks():
+def _sync_pop_filter(tags):
+    """Keep a single evergreen "Play or Pay" saved filter matching the union of
+    every tag currently tracked in sync_state, rather than one filter per event
+    cycle. tags=[] removes the filter (nothing currently tracked)."""
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic, _compact_shared_ids
+    import uuid as _uuid
+    with _state_lock:
+        state = _load_state_unlocked()
+        saved = state.setdefault('saved_filters', {})
+        if not tags:
+            saved.pop(POP_FILTER_NAME, None)
+        else:
+            existing = saved.get(POP_FILTER_NAME, {})
+            existing_id = existing.get('id') if isinstance(existing, dict) else None
+            saved[POP_FILTER_NAME] = {
+                'id': existing_id or str(_uuid.uuid4()),
+                'tree': {
+                    'type': 'group',
+                    'logic': 'AND',
+                    'items': [
+                        {'type': 'condition', 'column': 'groups', 'operator': 'LIKE', 'value': sorted(tags)},
+                    ],
+                },
+            }
+        _compact_shared_ids(state)
+        _write_state_atomic(state)
+
+
+def sync_pop_picks(confirm_cleanup=None):
+    """confirm_cleanup: None = ask if a cleanup decision is needed (returns
+    status 'confirm_cleanup' without changing anything); True = remove groups
+    for cycles the user is no longer part of; False = leave old groups in
+    place for this run (caller already asked and the user declined)."""
     account = get_active_account()
     steam_id = (account or {}).get('steam_id', '').strip()
     if not steam_id:
@@ -137,6 +173,22 @@ def sync_pop_picks():
 
     if not participating_events:
         return {'status': 'info', 'message': "You're not signed up for the current PoP cycle."}
+
+    known_uuids = set(sync_state['events'].keys())
+    current_uuids = {detail['uuid'] for detail, _, _ in participating_events}
+    newly_seen = current_uuids - known_uuids
+    stale_uuids = known_uuids - current_uuids
+
+    if newly_seen and stale_uuids and confirm_cleanup is None:
+        stale_tags = [sync_state['events'][u].get('tag') for u in stale_uuids if sync_state['events'][u].get('tag')]
+        return {'status': 'confirm_cleanup', 'stale_tags': stale_tags}
+
+    if confirm_cleanup and stale_uuids:
+        for u in stale_uuids:
+            old = sync_state['events'].pop(u, {})
+            old_tag, old_appids = old.get('tag'), old.get('appids') or []
+            if old_tag and old_appids:
+                bulk_edit_games({'column': 'groups', 'mode': 'remove', 'value': old_tag, 'appids': old_appids})
 
     summaries = []
     for detail, appids, name_map in participating_events:
@@ -173,6 +225,7 @@ def sync_pop_picks():
         })
 
     _save_sync_state(steam_id, sync_state)
+    _sync_pop_filter({v['tag'] for v in sync_state['events'].values() if v.get('tag')})
 
     parts = []
     for s in summaries:
@@ -182,3 +235,15 @@ def sync_pop_picks():
         parts.append(part)
 
     return {'status': 'ok', 'message': '; '.join(parts), 'events': summaries}
+
+
+@pop_bp.route('/api/pop-sync', methods=['POST'])
+def pop_sync():
+    try:
+        data = request.get_json(silent=True) or {}
+        confirm_cleanup = data.get('confirm_cleanup')
+        result = sync_pop_picks(confirm_cleanup=confirm_cleanup)
+        return jsonify(result)
+    except Exception as e:
+        log.error(f"pop-sync failed: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500

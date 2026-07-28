@@ -1594,9 +1594,14 @@ const achLink = document.getElementById('achievements-link');
         }
 
         if (kind === 'contains') {
-            if (col === 'tags')
-                return (Array.isArray(val) ? val : [val]).some(v => _pagCsvContains(game.tags, v))
-                    ? `Tags includes ${Array.isArray(val) ? val.join(' or ') : val}` : null;
+            if (col === 'tags') {
+                // Each matched tag gets its own description (not joined into one
+                // line) even though the filter tree stores them as a single
+                // multi-value chip condition — they're independently qualifying
+                // PAGYWOSG categories, so callers should list them separately.
+                const matched = (Array.isArray(val) ? val : [val]).filter(v => _pagCsvContains(game.tags, v));
+                return matched.length ? matched.map(v => `Tags includes ${v}`) : null;
+            }
             if (col === 'developers') return _pagCsvContains(game.developers, val) ? `Developer includes ${val}` : null;
             if (col === 'publishers') return _pagCsvContains(game.publishers, val) ? `Publisher includes ${val}` : null;
             if (col === 'name')       return (game.name||'').toLowerCase().includes(val.toLowerCase()) ? `Title contains "${val}"` : null;
@@ -2033,7 +2038,7 @@ const achLink = document.getElementById('achievements-link');
             if (desc) {
                 const label = (cond.pool === 'wins' && !isWin && isSantaGift)
                     ? '(santa/snowball)' : _pagLabel(cond.pool, game, sgGroup);
-                results.push({desc, label, verified: false});
+                (Array.isArray(desc) ? desc : [desc]).forEach(d => results.push({desc: d, label, verified: false}));
             }
         });
 
@@ -2050,7 +2055,9 @@ const achLink = document.getElementById('achievements-link');
         return results.length
             ? results.map(r => {
                 const sgu = (_serverSgUsername || '').toLowerCase();
-                const isSelf = sgu && r.verifiers.some(v => v.toLowerCase() === sgu);
+                // verifiers is only ever set on mod-verified entries — gate on r.verified
+                // so auto-classified (non-verified) results don't crash on undefined.
+                const isSelf = r.verified && sgu && r.verifiers.some(v => v.toLowerCase() === sgu);
                 const verifText = r.verified
                     ? ` — mod verified${r.verifiers.length ? (isSelf ? ' — already submitted' : ` — see ${escHtml(r.verifiers[0])}'s entry`) : ''}`
                     : '';

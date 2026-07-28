@@ -21,19 +21,28 @@ python install.py           # Linux/macOS GUI installer
 
 Flask + pywebview hybrid. Waitress WSGI (8 threads). `main.py` starts Flask in a background thread, opens the pywebview window, then starts filesystem watcher and playtime sync threads.
 
+**Routes live as Flask Blueprints, one per domain module** — each `_bp` is a module-level `Blueprint(...)` defined and registered directly in that domain's own file (not nested in a factory function), following the pattern `config_bp`/`index_bp`/`library_bp` established first. `app.py` itself only holds the app factory (`create_app()`), blueprint registration, static file serving, the CORS/context-processor hooks, and the populate/scrape-new-games routes (kept here because `main.py` imports the shared `populate_cancel` event directly from `app`). When adding a new route, add it to the blueprint whose file already owns that domain's logic; only create a new blueprint module for a genuinely new domain.
+
 | File | Role |
 |------|------|
-| `app.py` | Flask routes and API endpoints |
-| `config.py` | Persistent state: credentials, filters, shelves, theme |
-| `database.py` | SQLite CRUD, schema init, auto-migration |
-| `library.py` | Filter tree → SQL, grid rendering, bulk ops |
-| `index.py` | Home page shelves — queries, deduplication, presets |
-| `scrapers.py` | Steam API + HTML scraping; BLAEO sync (Selenium/Chrome) |
-| `utils.py` | Steam path detection, install sync, filesystem watcher, VDF parsing |
-| `images.py` | Cover art: Steam manifest → CDN → SteamGridDB fallback chain |
-| `imports.py` | Playnite backup import, generic SQLite column mapping |
-| `pagywosg.py` | PAGYWOSG category classification (`classify_category`, `OP_REGISTRY`), per-user verified-appid tracking, bundled supplement/personal-defaults loaders |
-| `plugins/` | Optional non-Steam integrations; see `PLUGINS.md` |
+| `app.py` | App factory, blueprint registration, static file serving, populate/scrape-new-games routes |
+| `config.py` | `config_bp` — persistent state: credentials, filters, shelves, theme, background image, account switching |
+| `database.py` | SQLite CRUD, schema init, auto-migration, duplicate-game image cache (`get_dup_cache`/`invalidate_dup_cache`) |
+| `library.py` | `library_bp` — filter tree → SQL, grid rendering, bulk ops/edit, saved filters, game CRUD, blacklist, bulk rescrape/art/protondb/hltb jobs |
+| `index.py` | `index_bp` — home page shelves: queries, deduplication, presets, shuffle/refill |
+| `pick.py` | `pick_bp` — Pick 6: `/pick` page and the six-signal scoring engine |
+| `scrapers.py` | Steam API + HTML scraping; `blaeo_bp` — BLAEO sync (Selenium/Chrome) |
+| `utils.py` | Steam path detection, install sync, filesystem watcher, VDF parsing, `validate_user_path()` |
+| `images.py` | `images_bp` — cover art: Steam manifest → CDN → SteamGridDB fallback chain |
+| `hltb.py` | `hltb_bp` — HowLongToBeat match/select/confirm routes (scraping itself lives in `scrapers.py`) |
+| `date_import.py` | `date_import_bp` — pending-date polling + bulk date import queue for `steam_date_import.user.js` |
+| `system.py` | `system_bp` — launch games, open paths in the OS file manager, process-running checks |
+| `backup.py` | `backup_bp` — full backup/restore zip, CSV export |
+| `updater.py` | `updater_bp` — GitHub release polling and self-update (installer/Flatpak/source zip) |
+| `imports.py` | `imports_bp` — Playnite backup import, generic SQLite column mapping |
+| `pagywosg.py` | `pagywosg_bp` — PAGYWOSG category classification (`classify_category`, `OP_REGISTRY`), per-user verified-appid tracking, Monthly in a Month sheet check |
+| `pop_sync.py` | `pop_bp` — Play or Pay pick sync, evergreen saved filter, stale-cycle group cleanup |
+| `plugins/` | Optional non-Steam integrations; `plugins_bp` — install/uninstall/update-check/launcher-status routes; see `PLUGINS.md` |
 | `plugins/gog/` | GOG plugin — OAuth2, library sync, metadata/achievements, install/launch |
 | `plugins/epic_games/` | Epic Games plugin — OAuth2, library sync, metadata, art, Wine/native launch |
 | `runners/proton.py` | GE-Proton/official Proton detection, `proton run` launch |

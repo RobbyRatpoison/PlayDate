@@ -2643,7 +2643,7 @@ async function stopBulkDateImport() {
             if (desc) {
                 const label = (cond.pool === 'wins' && !isWin && isSantaGift)
                     ? '(santa/snowball)' : _pagLabel(cond.pool, game, sgGroup);
-                results.push({ desc, label, verified: false });
+                (Array.isArray(desc) ? desc : [desc]).forEach(d => results.push({ desc: d, label, verified: false }));
             }
         });
         (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).forEach(({ cat, pool, verifiers, auto }) => {

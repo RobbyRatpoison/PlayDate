@@ -3045,6 +3045,7 @@ async function pagConfirmSave() {
             _savedFilters[name] = {id: existingId, tree};
             const selectEl = document.getElementById('saved-filters-select');
             if (selectEl && selectEl._addOption && !existingEntry) selectEl._addOption(name, name);
+            await _pagOfferOldFilterCleanup(name, selectEl, saveStatus);
         } else {
             saveStatus.className = 'tool-status error';
             saveStatus.textContent = '✘ Could not save: ' + data.message;
@@ -3052,6 +3053,43 @@ async function pagConfirmSave() {
     } catch (e) {
         saveStatus.className = 'tool-status error';
         saveStatus.textContent = '✘ Network error.';
+    }
+}
+
+async function _pagOfferOldFilterCleanup(justSavedName, selectEl, saveStatus) {
+    // Only offer cleanup when we know which event this save belongs to — without
+    // that we can't tell "old" from "current" and would risk deleting the wrong one.
+    if (!_pagEventId) return;
+    const oldNames = Object.keys(_savedFilters).filter(n => {
+        if (n === justSavedName) return false;
+        const t = _savedFilters[n]?.tree;
+        return t?.pagywosg === true && t?.pagywosg_event?.id && t.pagywosg_event.id !== _pagEventId;
+    });
+    if (!oldNames.length) return;
+
+    const label = oldNames.length === 1 ? `"${oldNames[0]}"` : `these filters: ${oldNames.map(n => `"${n}"`).join(', ')}`;
+    const remove = await confirmCustom(`Delete ${label} from previous PAGYWOSG events?`, 'Delete', 'Keep');
+    if (!remove) return;
+
+    let removed = 0;
+    for (const n of oldNames) {
+        try {
+            const r = await fetch('/api/delete-filter', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: n })
+            });
+            const d = await r.json();
+            if (d.status === 'success') {
+                delete _savedFilters[n];
+                const opt = selectEl && selectEl._getOption ? selectEl._getOption(n) : null;
+                if (opt) opt.remove();
+                removed++;
+            }
+        } catch (e) {}
+    }
+    if (removed) {
+        saveStatus.textContent = `✔ Saved as "${justSavedName}" — removed ${removed} old filter${removed !== 1 ? 's' : ''}.`;
     }
 }
 
@@ -5872,12 +5910,26 @@ async function detectDuplicates() {
         status.textContent = '✘ Error: ' + e.message;
     }
 }
-async function runPopSync() {
+async function runPopSync(confirmCleanup) {
     const status = document.getElementById('pop-sync-status');
-    status.textContent = 'Syncing…';
+    status.textContent = confirmCleanup === undefined ? 'Syncing…' : 'Updating…';
     try {
-        const r = await fetch('/api/pop-sync', { method: 'POST' });
+        const body = confirmCleanup === undefined ? {} : { confirm_cleanup: confirmCleanup };
+        const r = await fetch('/api/pop-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
         const d = await r.json();
+        if (d.status === 'confirm_cleanup') {
+            const tags = d.stale_tags || [];
+            const label = tags.length === 1 ? `the "${tags[0]}" group` : `these groups: ${tags.join(', ')}`;
+            const remove = await confirmCustom(
+                `New Play or Pay cycle detected.\n\nRemove ${label} from previously picked games?`,
+                'Remove', 'Keep'
+            );
+            return runPopSync(remove);
+        }
         if (r.ok && d.status !== 'error') {
             status.textContent = d.message || 'Done.';
         } else {

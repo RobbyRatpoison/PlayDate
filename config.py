@@ -1271,3 +1271,116 @@ def dismiss_whats_new():
     config_data['last_seen_version'] = __build__
     _save_config_data(config_data)
     return jsonify({'status': 'ok'})
+
+
+# ── Background image ──────────────────────────────────────────────────────
+
+@config_bp.route('/api/set-background', methods=['POST'])
+def set_background():
+    if 'background' not in request.files:
+        return jsonify({"status": "error", "message": "No file uploaded."}), 400
+    f = request.files['background']
+    if not f.filename:
+        return jsonify({"status": "error", "message": "Empty filename."}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ('.jpg', '.jpeg', '.png', '.webp'):
+        return jsonify({"status": "error", "message": "Unsupported format. Use JPG, PNG, or WebP."}), 400
+    try:
+        bg_dir  = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
+        os.makedirs(bg_dir, exist_ok=True)
+        bg_path = os.path.join(bg_dir, 'background.jpg')
+        # Convert/copy via Pillow so we always write a JPEG regardless of input format
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(f.read())).convert('RGB')
+        img.save(bg_path, 'JPEG', quality=92)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@config_bp.route('/api/set-background-from-path', methods=['POST'])
+def set_background_from_path():
+    data = request.get_json(force=True)
+    path = (data or {}).get('path', '')
+    if not path or not os.path.isfile(path):
+        return jsonify({"status": "error", "message": "File not found."}), 400
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in ('.jpg', '.jpeg', '.png', '.webp'):
+        return jsonify({"status": "error", "message": "Unsupported format. Use JPG, PNG, or WebP."}), 400
+    try:
+        bg_dir  = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
+        os.makedirs(bg_dir, exist_ok=True)
+        bg_path = os.path.join(bg_dir, 'background.jpg')
+        from PIL import Image
+        img = Image.open(path).convert('RGB')
+        img.save(bg_path, 'JPEG', quality=92)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@config_bp.route('/api/preview-bg-from-path')
+def preview_bg_from_path():
+    from flask import send_file
+    # This serves back an arbitrary local file (whatever path the user picked via
+    # the native file dialog), so it must not be reachable by a plain cross-origin
+    # <img>/GET request from some other page open in the browser while PlayDate's
+    # localhost server is running. A simple request can't set custom headers.
+    if request.headers.get('X-PlayDate-Internal') != '1':
+        return ('', 403)
+    path = request.args.get('path', '')
+    if not path or not os.path.isfile(path):
+        return ('', 404)
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in ('.jpg', '.jpeg', '.png', '.webp'):
+        return ('', 400)
+    mime = 'image/webp' if ext == '.webp' else ('image/png' if ext == '.png' else 'image/jpeg')
+    return send_file(path, mimetype=mime)
+
+@config_bp.route('/api/reset-background', methods=['POST'])
+def reset_background():
+    try:
+        os.remove(os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg'))
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+# ── Theme import/export ───────────────────────────────────────────────────
+
+@config_bp.route('/api/theme-to-path', methods=['POST'])
+def theme_to_path():
+    """Write a theme JSON directly to a user-chosen path."""
+    from utils import validate_user_path
+    data      = request.json or {}
+    save_path = validate_user_path(data.get('path', '').strip())
+    theme     = data.get('theme', {})
+    if not save_path:
+        return jsonify({"status": "error", "message": "No path provided."}), 400
+    clean = {k: v for k, v in theme.items() if k in DEFAULT_THEME}
+    if not clean:
+        return jsonify({"status": "error", "message": "No valid theme data."}), 400
+    try:
+        with open(save_path, 'w', encoding='utf-8') as f:
+            json.dump({"playdate_theme": clean}, f, indent=2)
+        return jsonify({"status": "success", "path": save_path})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@config_bp.route('/api/read-theme-file', methods=['POST'])
+def read_theme_file():
+    from utils import validate_user_path
+    path = validate_user_path((request.json.get('path') or '').strip())
+    if not path or not os.path.exists(path):
+        return jsonify({'status': 'error', 'message': 'File not found.'}), 400
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            text = f.read()
+        return jsonify({'status': 'success', 'text': text})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': f'Could not read file: {e}'}), 500
+
+@config_bp.route('/api/active-steam-id')
+def active_steam_id():
+    account = get_active_account() or {}
+    return jsonify({'steam_id': account.get('steam_id', '')})

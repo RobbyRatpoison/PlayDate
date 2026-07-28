@@ -62,7 +62,7 @@ _UNAUTOMATED_REASONS = {'verified_fallback', 'unhandled'}
 
 
 def _current_event_id():
-    # Same anchor as app.py's pagywosg_auto(): event 83 = April 2026.
+    # Same anchor as pagywosg.py's pagywosg_auto(): event 83 = April 2026.
     today = date.today()
     return 83 + (today.year - 2026) * 12 + (today.month - 4)
 

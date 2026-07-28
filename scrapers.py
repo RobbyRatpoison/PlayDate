@@ -11,11 +11,18 @@ from concurrent.futures import ThreadPoolExecutor, wait as futures_wait
 
 log = logging.getLogger(__name__)
 from bs4 import BeautifulSoup
+from flask import Blueprint, jsonify, request
 from images import download_vertical, download_horizontal, download_icon, _get_steam_assets, _sgdb_search_game_id, VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR
 from datetime import datetime, timezone
 from config import load_config, get_active_account
 from database import add_new_game, batch_insert_placeholder_games, update_game_data, get_db, add_to_blacklist
 from utils import get_locally_installed_appids, sync_local_install_status, fetch_local_library, get_acf_names, parse_appinfo
+
+blaeo_bp = Blueprint('blaeo', __name__)
+
+# ── BLAEO background sync state ───────────────────────────────────────────────
+_blaeo_sync_state = {'running': False, 'done': False, 'error': None}
+_blaeo_sync_lock  = threading.Lock()
 
 
 class RateLimitedError(Exception):
@@ -2494,4 +2501,84 @@ def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
         futures_wait([pool.submit(worker) for _ in range(2)])
 
     return counts
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
+@blaeo_bp.route('/sync-blaeo')
+def sync_blaeo():
+    try:
+        result = scrape_blaeo_games()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@blaeo_bp.route('/api/blaeo-start', methods=['POST'])
+def blaeo_start():
+    with _blaeo_sync_lock:
+        if _blaeo_sync_state['running']:
+            return jsonify({'status': 'running', 'message': 'Sync already in progress'})
+        if _blaeo_sync_state['done']:
+            return jsonify({'status': 'pending'})
+        _blaeo_sync_state['running'] = True
+        _blaeo_sync_state['done']    = False
+        _blaeo_sync_state['error']   = None
+
+    def _run():
+        try:
+            result = get_blaeo_preview()
+            with _blaeo_sync_lock:
+                if result.get('status') == 'success':
+                    _blaeo_sync_state['running'] = False
+                    _blaeo_sync_state['done']    = True
+                    _blaeo_sync_state['error']   = None
+                else:
+                    _blaeo_sync_state['running'] = False
+                    _blaeo_sync_state['done']    = False
+                    _blaeo_sync_state['error']   = result.get('message', 'Sync failed')
+        except Exception as e:
+            with _blaeo_sync_lock:
+                _blaeo_sync_state['running'] = False
+                _blaeo_sync_state['done']    = False
+                _blaeo_sync_state['error']   = str(e)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'status': 'started'})
+
+@blaeo_bp.route('/api/blaeo-status')
+def blaeo_status_route():
+    return jsonify(dict(_blaeo_sync_state))
+
+@blaeo_bp.route('/api/blaeo-preview')
+def blaeo_preview():
+    if _blaeo_sync_state.get('done'):
+        cached = get_blaeo_cached_result()
+        if cached:
+            return jsonify(cached)
+    try:
+        result = get_blaeo_preview()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@blaeo_bp.route('/api/blaeo-apply', methods=['POST'])
+def blaeo_apply():
+    try:
+        selections = request.get_json() or {}
+        result = apply_blaeo_changes(selections)
+        if result.get('status') == 'success':
+            with _blaeo_sync_lock:
+                _blaeo_sync_state['done'] = False
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@blaeo_bp.route('/api/blaeo-discard', methods=['POST'])
+def blaeo_discard():
+    with _blaeo_sync_lock:
+        _blaeo_sync_state['running'] = False
+        _blaeo_sync_state['done']    = False
+        _blaeo_sync_state['error']   = None
+    clear_blaeo_cache()
+    return jsonify({'status': 'ok'})
 

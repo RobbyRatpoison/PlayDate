@@ -1,8 +1,11 @@
+import logging
 import re
 import sqlite3
-from flask import Blueprint, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 from config import load_state, get_default_shelves, BUILTIN_FILTERS
 from database import get_db
+
+log = logging.getLogger(__name__)
 
 index_bp = Blueprint('index', __name__)
 
@@ -217,3 +220,103 @@ def index():
         available_platforms=available_platforms,
         outline_colors=outline_colors,
     )
+
+
+@index_bp.route('/api/shuffle-shelf/<shelf_id>')
+def shuffle_shelf(shelf_id):
+    try:
+        state = load_state()
+        shelves = state.get('shelves', [])
+        shelf = next((s for s in shelves if s['id'] == shelf_id), None)
+        if not shelf:
+            return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
+
+        saved_filters = state.get('saved_filters', {})
+        where, _ = _build_shelf_query(shelf, saved_filters)
+        if where is None:
+            return jsonify({'status': 'error', 'message': 'Widget shelf'}), 400
+
+        limit = shelf.get('limit', 10)
+        db = get_db()
+        rows = db.execute(
+            f"SELECT appid, name, installed, completion_status FROM games "
+            f"WHERE {where} ORDER BY RANDOM() LIMIT ?",
+            (limit,)
+        ).fetchall()
+        db.close()
+        games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or ''} for r in rows]
+        from library import _compute_outline_colors
+        _outlines_cfg = state.get('card_outlines', {})
+        outline_map = (
+            _compute_outline_colors(games, state)
+            if _outlines_cfg.get('enabled', {}).get('home', True)
+            else {}
+        )
+        for g in games:
+            g['outline_color'] = outline_map.get(str(g['appid']))
+        return jsonify({'status': 'success', 'games': games})
+    except Exception as e:
+        log.exception(f"shuffle_shelf error for {shelf_id}: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@index_bp.route('/api/refill-shelf/<shelf_id>', methods=['POST'])
+def refill_shelf(shelf_id):
+    try:
+        data = request.json or {}
+        exclude_appids = [int(a) for a in data.get('exclude_appids', [])]
+
+        state = load_state()
+        shelves = state.get('shelves', [])
+        shelf = next((s for s in shelves if s['id'] == shelf_id), None)
+        if not shelf:
+            return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
+
+        saved_filters = state.get('saved_filters', {})
+        where, order = _build_shelf_query(shelf, saved_filters)
+        if where is None:
+            return jsonify({'status': 'success', 'games': []})
+
+        limit = int(shelf.get('limit', 10))
+        db = get_db()
+        if exclude_appids:
+            placeholders = ','.join('?' * len(exclude_appids))
+            rows = db.execute(
+                f"SELECT appid, name, installed, completion_status, platform FROM games "
+                f"WHERE ({where}) AND appid NOT IN ({placeholders}) ORDER BY {order} LIMIT ?",
+                (*exclude_appids, limit)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                f"SELECT appid, name, installed, completion_status, platform FROM games "
+                f"WHERE {where} ORDER BY {order} LIMIT ?",
+                (limit,)
+            ).fetchall()
+        db.close()
+        games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or '', 'platform': r[4] or 'steam'} for r in rows]
+        return jsonify({'status': 'success', 'games': games})
+    except Exception as e:
+        log.exception(f"refill_shelf error for {shelf_id}: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@index_bp.route('/api/shelves', methods=['POST'])
+def save_shelves():
+    from config import save_state
+    try:
+        shelves = request.json.get('shelves')
+        if not isinstance(shelves, list):
+            return jsonify({"status": "error", "message": "Invalid shelves data."}), 400
+        save_state({"shelves": shelves})
+        return jsonify({"status": "success"})
+    except Exception as e:
+        log.exception("Failed to save shelves")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@index_bp.route('/api/shelves/reset', methods=['POST'])
+def reset_shelves():
+    from config import save_state, get_default_shelves as _get_default_shelves
+    try:
+        save_state({"shelves": _get_default_shelves()})
+        return jsonify({"status": "success"})
+    except Exception as e:
+        log.exception("Failed to reset shelves")
+        return jsonify({"status": "error", "message": str(e)}), 500

@@ -1,5 +1,5 @@
 """PAGYWOSG event id formula (event 83 = April 2026), via the category scanner's
-_current_event_id() — the same anchor app.py uses inline."""
+_current_event_id() — the same anchor pagywosg.py's pagywosg_auto() uses inline."""
 import importlib.util
 import os
 from datetime import date

@@ -11,11 +11,24 @@ needs to translate an op should go through this table instead of maintaining
 its own copy.
 """
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
 
+from flask import Blueprint, jsonify, request
+
 from config import BASE_DIR
+
+log = logging.getLogger(__name__)
+
+pagywosg_bp = Blueprint('pagywosg', __name__)
+
+_pagywosg_quals_cache = {}  # {event_id: (timestamp, data)}
+
+_MIAM_SHEET_URL = ('https://docs.google.com/spreadsheets/d/'
+                   '1xBd5rltp8WxQSnG2BVKPzr7quTLJCvCt2MaGCxzs-d8/export?format=csv')
+_miam_cache = [None]  # [(timestamp, data)]
 
 SUPPLEMENT_PATH = 'pagywosg_supplement.json'
 SANTA_GIFTS_PATH = 'santa_gifts.json'
@@ -648,3 +661,494 @@ def redundant_where_sql(conds, tags):
     if not parts:
         return None, None
     return ' OR '.join(parts), params
+
+
+def _resolve_sg_group():
+    from config import load_state
+    _state = load_state()
+    sg = _state.get('pagywosg_sg_group') or None
+    if sg:
+        return sg
+    def _find(node):
+        if not node: return None
+        if node.get('type') == 'condition' and node.get('column') == 'groups':
+            return node.get('value')
+        for child in node.get('items', []):
+            r = _find(child)
+            if r: return r
+        return None
+    for _candidate in [_state.get('filter_tree')] + [
+        v.get('tree') if isinstance(v, dict) and 'tree' in v else v
+        for v in _state.get('saved_filters', {}).values()
+    ]:
+        if isinstance(_candidate, dict) and _candidate.get('pagywosg'):
+            sg = _find(_candidate)
+            if sg:
+                return sg
+    return None
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
+@pagywosg_bp.route('/api/pagywosg-auto')
+def pagywosg_auto():
+    from database import get_db
+    from datetime import date
+
+    # Anchor: event 83 = April 2026
+    today = date.today()
+    event_id = 83 + (today.year - 2026) * 12 + (today.month - 4)
+    if request.args.get('next'):
+        event_id += 1
+
+    try:
+        event = fetch_event(event_id)
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Could not fetch event: {e}"}), 502
+
+    # Validate date range; try adjacent event on boundary days (skip for upcoming)
+    today_str = today.isoformat()
+    if not request.args.get('next'):
+        started, ended = event.get('startedAt', ''), event.get('endedAt', '')
+        if started and ended and not (started <= today_str < ended):
+            adj = event_id + 1 if today_str >= ended else event_id - 1
+            try:
+                adj_event = fetch_event(adj)
+                s2, e2 = adj_event.get('startedAt', ''), adj_event.get('endedAt', '')
+                if s2 <= today_str < e2:
+                    event = adj_event
+                    event_id = adj
+            except Exception:
+                pass
+
+    categories = event.get('gameCategories', [])
+    entries    = event.get('entries', [])
+
+    # --- Pool determination via (win)/(backlog) suffix ---
+    suffix_re = re.compile(r'\s*\((win|backlog)\)\s*$', re.IGNORECASE)
+
+    base_to_cats = {}
+    for cat in categories:
+        base = suffix_re.sub('', cat['name']).strip()
+        base_to_cats.setdefault(base, []).append(cat)
+
+    all_pool_bases = set()
+    for base, cats in base_to_cats.items():
+        names_lc = [c['name'].lower() for c in cats]
+        if any('(win)' in n for n in names_lc) and any('(backlog)' in n for n in names_lc):
+            all_pool_bases.add(base)
+
+    # --- Verified appids per category ID, with per-appid verifier attribution ---
+    verified_by_cat = build_verified_by_cat(entries)
+
+    tags_wins, tags_all   = [], []
+    conds_wins, conds_all = [], []
+    appids_wins, appids_all = {}, {}
+    skipped = []
+
+    _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = load_supplements()
+
+    for base, cats in base_to_cats.items():
+        pool = 'all' if base in all_pool_bases else 'wins'
+
+        base_appids = {}      # {appid: name} — feeds classify_category as before
+        base_verifiers = {}   # {appid: set(sgProfileName)} — SG-verified-fallback only
+        for cat in cats:
+            for aid, info in verified_by_cat.get(str(cat['id']), {}).items():
+                base_appids[aid] = info['name']
+                base_verifiers.setdefault(aid, set()).update(info['verifiers'])
+
+        def _add_tag(tag):
+            (tags_all if pool == 'all' else tags_wins).append(tag)
+
+        def _add_cond(col, op, val):
+            (conds_all if pool == 'all' else conds_wins).append({'col': col, 'op': op, 'val': val})
+
+        def _add_appids(appid_name_dict, category_name, auto=False, verifiers_by_appid=None):
+            target = appids_all if pool == 'all' else appids_wins
+            for appid, name in appid_name_dict.items():
+                if appid not in target:
+                    target[appid] = {"name": name, "categories": []}
+                if not any(c["cat"] == category_name for c in target[appid]["categories"]):
+                    entry = {"cat": category_name}
+                    if auto:
+                        entry["auto"] = True
+                    if verifiers_by_appid and appid in verifiers_by_appid:
+                        entry["verifiers"] = sorted(verifiers_by_appid[appid])
+                    target[appid]["categories"].append(entry)
+
+        for r in classify_category(base, base_appids,
+                                    _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
+            if r['type'] == 'tag':
+                _add_tag(r['tag'])
+            elif r['type'] == 'cond':
+                if r['op'] == 'starts_with_any':
+                    for letter in r['val']:
+                        _add_cond('name', 'starts_with', letter)
+                else:
+                    _add_cond(r['col'], r['op'], r['val'])
+            elif r['type'] == 'appids':
+                # Only the genuine SG-verified-fallback case (auto=False) has
+                # real per-user verifier attribution — icaio/santa appids come
+                # from bundled supplement files, not mod-verified SG entries.
+                vbi = None if r['auto'] else base_verifiers
+                if r['force_wins']:
+                    _real_pool = pool
+                    pool = 'wins'
+                    _add_appids(r['appids'], base, auto=r['auto'], verifiers_by_appid=vbi)
+                    pool = _real_pool
+                else:
+                    _add_appids(r['appids'], base, auto=r['auto'], verifiers_by_appid=vbi)
+            elif r['type'] == 'skip':
+                skipped.append(base)
+
+    # Scan the whole games table once (fast — user's library is small) and
+    # intersect in Python, avoiding a huge IN (?, ?, ...) with 5000+ params.
+    _lib_db = get_db()
+    _all_library_appids = {r['appid'] for r in _lib_db.execute('SELECT appid FROM games').fetchall()}
+    all_appids_combined = set(appids_wins.keys()) | set(appids_all.keys())
+    in_library_set = _all_library_appids & all_appids_combined
+
+    def _redundant_set(pool_dict, tags, conds):
+        """Return appids already matched by the pool's tag/condition criteria (not needing the explicit appid list)."""
+        owned = {aid for aid in pool_dict if aid in in_library_set}
+        if not owned:
+            return set()
+        where, params = redundant_where_sql(conds, tags)
+        if not where:
+            return set()
+        # Query only the tag/condition filter against the whole library,
+        # then intersect with owned in Python — no large IN clause needed.
+        rows = _lib_db.execute(
+            f'SELECT appid FROM games WHERE ({where})',
+            params
+        ).fetchall()
+        return {r['appid'] for r in rows} & owned
+
+    def _serialise_pool(pool_dict, tags, conds):
+        redundant = _redundant_set(pool_dict, tags, conds)
+        from config import load_config
+        sg_username = (load_config() or {}).get('sg_username', '').strip().lower()
+        # Group appids by contributing category label for labeled appid_list nodes.
+        # Only include appids present in the user's library — no point embedding
+        # thousands of unowned game IDs in the saved filter.
+        source_map = {}   # {cat_label: {"appids": [...], "auto": bool, "personal_appids": [...]}}
+        for aid, v in pool_dict.items():
+            if aid not in in_library_set:
+                continue
+            for cat_entry in v.get("categories", []):
+                label = cat_entry.get("cat", "")
+                if not label:
+                    continue
+                if label not in source_map:
+                    source_map[label] = {"appids": [], "auto": bool(cat_entry.get("auto")), "personal_appids": []}
+                source_map[label]["appids"].append(aid)
+                verifiers = cat_entry.get("verifiers") or []
+                if sg_username and any(vf.lower() == sg_username for vf in verifiers):
+                    source_map[label]["personal_appids"].append(aid)
+        appid_sources = [{"label": lbl, "appids": sorted(v["appids"]), "auto": v["auto"],
+                          "personal_appids": sorted(v["personal_appids"])}
+                         for lbl, v in source_map.items() if v["appids"]]
+        return {
+            "appids": sorted(aid for aid in pool_dict if aid in in_library_set),
+            "appid_sources": appid_sources,
+            "games":  sorted(
+                [{"appid": aid, "name": v["name"], "categories": v["categories"],
+                  "in_library": aid in in_library_set,
+                  "redundant":  aid in redundant}
+                 for aid, v in pool_dict.items()],
+                key=lambda g: g["name"].lower()
+            ),
+        }
+
+    result = {
+        "status": "success",
+        "event": {"id": event_id, "name": event.get('name', '')},
+        "tags":   {"wins": tags_wins, "all": tags_all},
+        "conds":  {"wins": conds_wins, "all": conds_all},
+        "wins":   _serialise_pool(appids_wins, tags_wins, conds_wins),
+        "all":    _serialise_pool(appids_all,  tags_all,  conds_all),
+        "skipped": skipped,
+        "default_personal": load_personal_defaults(event_id),
+    }
+    _lib_db.close()
+    return jsonify(result)
+
+@pagywosg_bp.route('/api/pagywosg-quals')
+def pagywosg_quals_data():
+    from datetime import date, datetime as _datetime
+
+    today     = date.today()
+    event_id  = 83 + (today.year - 2026) * 12 + (today.month - 4)
+
+    cached = _pagywosg_quals_cache.get(event_id)
+    if cached:
+        ts, data = cached
+        if _datetime.now().timestamp() - ts < 3600:
+            return jsonify({**data, 'sg_group': _resolve_sg_group()})
+
+    try:
+        event = fetch_event(event_id)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 502
+
+    month_label = today.strftime('%B %Y')
+
+    categories = event.get('gameCategories', [])
+    entries    = event.get('entries', [])
+
+    suffix_re = re.compile(r'\s*\((win|backlog)\)\s*$', re.IGNORECASE)
+    base_to_cats = {}
+    for cat in categories:
+        base = suffix_re.sub('', cat['name']).strip()
+        base_to_cats.setdefault(base, []).append(cat)
+
+    all_pool_bases = set()
+    for base, cats in base_to_cats.items():
+        names_lc = [c['name'].lower() for c in cats]
+        if any('(win)' in n for n in names_lc) and any('(backlog)' in n for n in names_lc):
+            all_pool_bases.add(base)
+
+    verified_by_cat = build_verified_by_cat(entries)
+
+    _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = load_supplements()
+    _default_personal = set(load_personal_defaults(event_id))
+    from config import load_config
+    sg_username = (load_config() or {}).get('sg_username', '').strip().lower()
+
+    conds    = []
+    verified = {}
+
+    def _add_v(appid_name_dict, cat_label, pool, auto=False, verifiers_by_appid=None):
+        # This endpoint has no per-user toggle state (it's the live preview
+        # before any filter is saved) — personal categories are scoped by
+        # the dev-curated bundled list instead of a client-side checkbox.
+        is_personal = cat_label in _default_personal
+        for appid, name in appid_name_dict.items():
+            if is_personal:
+                verifiers = (verifiers_by_appid or {}).get(appid, set())
+                if not (sg_username and any(vf.lower() == sg_username for vf in verifiers)):
+                    continue
+            key = str(appid)
+            if key not in verified:
+                verified[key] = []
+            if not any(e['cat'] == cat_label and e['pool'] == pool for e in verified[key]):
+                entry = {'cat': cat_label, 'pool': pool}
+                if auto:
+                    entry['auto'] = True
+                if verifiers_by_appid and appid in verifiers_by_appid:
+                    entry['verifiers'] = sorted(verifiers_by_appid[appid])
+                verified[key].append(entry)
+
+    for base, cats in base_to_cats.items():
+        pool = 'all' if base in all_pool_bases else 'wins'
+        base_appids = {}
+        base_verifiers = {}
+        for cat in cats:
+            for aid, info in verified_by_cat.get(str(cat['id']), {}).items():
+                base_appids[aid] = info['name']
+                base_verifiers.setdefault(aid, set()).update(info['verifiers'])
+
+        for r in classify_category(base, base_appids,
+                                    _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict):
+            if r['type'] == 'tag':
+                conds.append({'col': 'tags', 'op': 'LIKE', 'val': r['tag'], 'pool': pool})
+            elif r['type'] == 'cond':
+                mapped_op = OP_REGISTRY.get(r['op'], {}).get('tree_op', r['op'])
+                conds.append({'col': r['col'], 'op': mapped_op, 'val': r['val'], 'pool': pool})
+            elif r['type'] == 'appids':
+                vbi = None if r['auto'] else base_verifiers
+                _add_v(r['appids'], base, 'wins' if r['force_wins'] else pool, auto=r['auto'], verifiers_by_appid=vbi)
+            # skip: do nothing
+
+    sg_group = _resolve_sg_group()
+
+    result = {
+        'status':   'success',
+        'event':    {'id': event_id, 'name': event.get('name', ''), 'month_label': month_label},
+        'conds':    conds,
+        'verified': verified,
+    }
+    _pagywosg_quals_cache[event_id] = (_datetime.now().timestamp(), result)
+    return jsonify({**result, 'sg_group': sg_group})
+
+@pagywosg_bp.route('/api/pagywosg-sg-group', methods=['GET', 'POST'])
+def pagywosg_sg_group():
+    from config import load_state, save_state
+    from utils import get_all_unique_groups
+    if request.method == 'POST':
+        data = request.json or {}
+        # 'group' may be a non-empty string (chosen group) or None (no SG wins)
+        grp = data.get('group')
+        save_state({'pagywosg_sg_group': grp})
+        return jsonify({'status': 'success'})
+    # GET
+    state = load_state()
+    saved = state.get('pagywosg_sg_group', '__unset__')
+    groups = get_all_unique_groups()
+    default_group = next((g for g in groups if g.lower() == 'won on steamgifts'), None)
+    return jsonify({
+        'saved': None if saved == '__unset__' else saved,
+        'unset': saved == '__unset__',
+        'default_group': default_group,
+        'groups': groups,
+    })
+
+@pagywosg_bp.route('/api/pagywosg-comp-defaults', methods=['GET', 'POST'])
+def pagywosg_comp_defaults():
+    from config import load_state, save_state
+    _valid = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
+    if request.method == 'POST':
+        data = request.json or {}
+        statuses = [s for s in (data.get('statuses') or []) if s in _valid]
+        save_state({'pagywosg_comp_defaults': statuses})
+        return jsonify({'status': 'success'})
+    state = load_state()
+    saved = state.get('pagywosg_comp_defaults')
+    return jsonify({'statuses': saved if saved else ['Never Played', 'Unfinished']})
+
+@pagywosg_bp.route('/api/santa-gifts', methods=['GET', 'POST'])
+def santa_gifts():
+    path = os.path.join(BASE_DIR, SANTA_GIFTS_PATH)
+    if request.method == 'POST':
+        data = request.json or {}
+        gifts = data.get('gifts', [])
+        if not isinstance(gifts, list):
+            return jsonify({'status': 'error', 'message': 'Invalid data.'}), 400
+        validated = [
+            {'appid': int(g['appid']), 'name': str(g['name'])}
+            for g in gifts
+            if isinstance(g, dict) and 'appid' in g and 'name' in g
+        ]
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(validated, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            log.error('Failed to save gifts: %s', e)
+            return jsonify({'status': 'error', 'message': 'Failed to save gifts'}), 500
+        return jsonify({'status': 'success'})
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            gifts = json.load(f)
+    except Exception:
+        gifts = []
+    return jsonify({'status': 'success', 'gifts': gifts})
+
+@pagywosg_bp.route('/api/games/by-group')
+def games_by_group():
+    from database import get_db
+    group = request.args.get('group', '').strip()
+    if not group:
+        return jsonify([])
+    try:
+        db = get_db()
+        rows = db.execute(
+            "SELECT appid, name FROM games "
+            "WHERE platform = 'steam' AND duplicate_of IS NULL "
+            "AND ',' || groups || ',' LIKE ? ORDER BY name",
+            (f'%,{group},%',)
+        ).fetchall()
+        db.close()
+        return jsonify([dict(r) for r in rows])
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@pagywosg_bp.route('/api/games/groups')
+def games_groups():
+    try:
+        from utils import get_all_unique_groups
+        return jsonify(get_all_unique_groups())
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@pagywosg_bp.route('/api/pagywosg-tags')
+def pagywosg_tags():
+    from database import get_db
+    try:
+        db = get_db()
+        rows = db.execute("SELECT tags FROM games WHERE tags IS NOT NULL AND tags != ''").fetchall()
+        db.close()
+        tag_set = set()
+        for row in rows:
+            for tag in [t.strip() for t in row['tags'].split(',') if t.strip()]:
+                tag_set.add(tag)
+        return jsonify({"status": "success", "tags": sorted(tag_set, key=str.lower)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@pagywosg_bp.route('/api/pagywosg-pick', methods=['POST'])
+def pagywosg_pick():
+    import random
+    from database import get_db
+    from library import is_safe_sql
+    data = request.json or {}
+    where = (data.get('where') or '').strip()
+    if not where or where == '1=1':
+        return jsonify({"status": "error", "message": "No criteria selected — please pick at least one tag or condition."})
+    if not is_safe_sql(where):
+        return jsonify({"status": "error", "message": "Invalid SQL in filter."}), 400
+    try:
+        db = get_db()
+        rows = db.execute(f"SELECT appid, name FROM games WHERE {where}").fetchall()
+        db.close()
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Query error: {e}"}), 400
+    games = [dict(r) for r in rows]
+    if not games:
+        return jsonify({"status": "error", "message": "No games matched the selected criteria."})
+    picks = random.sample(games, min(6, len(games)))
+    return jsonify({"status": "success", "picks": picks, "pool_size": len(games)})
+
+# ── Monthly in a Month ────────────────────────────────────────────────────
+
+@pagywosg_bp.route('/api/miam-sheet')
+def miam_sheet_data():
+    import csv, io, requests
+    from database import get_db
+    from datetime import datetime as _datetime2
+    cache = _miam_cache[0]
+    now = _datetime2.now().timestamp()
+    if cache and now - cache[0] < 3600:
+        return jsonify(cache[1])
+    try:
+        resp = requests.get(_MIAM_SHEET_URL, timeout=15)
+        resp.raise_for_status()
+        content = resp.text
+        reader = csv.DictReader(io.StringIO(content))
+        eligible = []
+        total = 0
+        for row in reader:
+            app_id_raw = (row.get('App ID') or '').strip()
+            can_do = (row.get('Can do? (Y/N)') or '').strip()
+            if not app_id_raw or not app_id_raw.startswith('app/'):
+                continue
+            try:
+                appid = int(app_id_raw[4:])
+            except ValueError:
+                continue
+            total += 1
+            if can_do in ('N', 'N?'):
+                continue
+            eligible.append(appid)
+        db = get_db()
+        in_library = set()
+        if eligible:
+            rows = db.execute(
+                f"SELECT appid FROM games "
+                f"WHERE appid IN ({','.join('?'*len(eligible))}) AND platform = 'steam'",
+                eligible
+            ).fetchall()
+            in_library = {r['appid'] for r in rows}
+        db.close()
+        data = {
+            'status': 'success',
+            'total': total,
+            'eligible': len(eligible),
+            'in_library': len(in_library),
+            'appids': eligible,
+        }
+        _miam_cache[0] = (now, data)
+        return jsonify(data)
+    except Exception as e:
+        log.exception('MiaM sheet fetch failed')
+        return jsonify({'status': 'error', 'message': str(e)}), 500

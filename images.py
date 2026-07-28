@@ -2,10 +2,10 @@ import logging
 import os
 import io
 import requests
-from urllib.parse import quote as url_quote
+from urllib.parse import quote as url_quote, urlparse
 from PIL import Image
 from config import BASE_DIR, load_config
-from flask import Blueprint
+from flask import Blueprint, jsonify, request
 
 log = logging.getLogger(__name__)
 
@@ -468,3 +468,147 @@ def fetch_sgdb_options_by_id(sgdb_id, artwork_type):
             'height': item.get('height', 0),
         })
     return results
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
+@images_bp.route('/api/download-artwork/<int:appid>', methods=['POST'])
+def download_artwork(appid):
+    from database import update_game_data
+    data        = request.json or {}
+    url         = data.get('url', '').strip()
+    orientation = data.get('orientation', 'vertical')
+    if not url:
+        return jsonify({"status": "error", "message": "No URL provided"}), 400
+    if orientation not in ('vertical', 'horizontal', 'icon'):
+        return jsonify({"status": "error", "message": "Invalid orientation"}), 400
+    result = download_from_url(appid, url, orientation)
+    if result == 'custom':
+        col_map = {
+            'vertical':   'vertical_art_source',
+            'horizontal': 'horizontal_art_source',
+            'icon':       'icon_source',
+        }
+        sgdb_source_map = {
+            'vertical':   'sgdb_grid',
+            'horizontal': 'sgdb_grid_wide',
+            'icon':       'sgdb_icon',
+        }
+        _u = urlparse(url)
+        source = sgdb_source_map[orientation] if (_u.hostname and (_u.hostname == 'steamgriddb.com' or _u.hostname.endswith('.steamgriddb.com'))) else 'custom'
+        update_game_data(appid, **{col_map[orientation]: source})
+        return jsonify({"status": "success", "source": source})
+    return jsonify({"status": "error", "message": "Failed to download image. Check the URL and try again."}), 500
+
+@images_bp.route('/api/sgdb-options/<int:appid>/<artwork_type>')
+def sgdb_options(appid, artwork_type):
+    if artwork_type not in ('vertical', 'horizontal', 'icon'):
+        return jsonify({"status": "error", "message": "Invalid artwork type"}), 400
+    options = fetch_sgdb_options(appid, artwork_type)
+    return jsonify({"status": "success", "options": options})
+
+@images_bp.route('/api/sgdb-search')
+def sgdb_search():
+    term = request.args.get('term', '').strip()
+    if not term:
+        return jsonify({"status": "error", "message": "No search term"}), 400
+    results = search_sgdb_games(term)
+    return jsonify({"status": "success", "results": results})
+
+@images_bp.route('/api/sgdb-options-by-id/<int:sgdb_id>/<artwork_type>')
+def sgdb_options_by_id(sgdb_id, artwork_type):
+    if artwork_type not in ('vertical', 'horizontal', 'icon'):
+        return jsonify({"status": "error", "message": "Invalid artwork type"}), 400
+    options = fetch_sgdb_options_by_id(sgdb_id, artwork_type)
+    return jsonify({"status": "success", "options": options})
+
+@images_bp.route('/api/artwork/save-sgdb', methods=['POST'])
+def save_sgdb_artwork(appid=None):
+    from database import update_game_data
+    data        = request.json or {}
+    appid       = data.get('appid')
+    url         = data.get('url', '').strip()
+    orientation = data.get('orientation')
+    if not appid or not url or orientation not in ('vertical', 'horizontal', 'icon'):
+        return jsonify({"status": "error", "message": "Missing or invalid parameters"}), 400
+    col_map = {
+        'vertical':   'vertical_art_source',
+        'horizontal': 'horizontal_art_source',
+        'icon':       'icon_source',
+    }
+    source_map = {
+        'vertical':   'sgdb_grid',
+        'horizontal': 'sgdb_grid_wide',
+        'icon':       'sgdb_icon',
+    }
+    result = download_from_url(int(appid), url, orientation)
+    if result == 'custom':
+        update_game_data(int(appid), **{col_map[orientation]: source_map[orientation]})
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Failed to download image."}), 500
+
+@images_bp.route('/api/artwork/clear', methods=['POST'])
+def clear_artwork():
+    from database import update_game_data
+    data        = request.json or {}
+    appid       = data.get('appid')
+    orientation = data.get('orientation')
+    if not appid or orientation not in ('vertical', 'horizontal', 'icon'):
+        return jsonify({'status': 'error', 'message': 'Missing or invalid parameters'}), 400
+    appid   = int(appid)
+    dir_map = {'vertical': 'vertical', 'horizontal': 'horizontal', 'icon': 'icons'}
+    path    = os.path.join(BASE_DIR, 'static', 'img', 'library', dir_map[orientation], f'{appid}.jpg')
+    try:
+        if os.path.exists(path):
+            os.unlink(path)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    src_col = {'vertical': 'vertical_art_source', 'horizontal': 'horizontal_art_source', 'icon': 'icon_source'}
+    update_game_data(appid, **{src_col[orientation]: None})
+    return jsonify({'status': 'success'})
+
+@images_bp.route('/api/artwork/rescrape', methods=['POST'])
+def rescrape_artwork():
+    from database import update_game_data, get_db
+    from datetime import datetime
+    data        = request.json or {}
+    appid       = data.get('appid')
+    orientation = data.get('orientation')
+    if not appid or orientation not in ('vertical', 'horizontal', 'icon'):
+        return jsonify({"status": "error", "message": "Missing or invalid parameters"}), 400
+    appid = int(appid)
+    today = datetime.now().strftime('%Y-%m-%d')
+    db    = get_db()
+    row   = db.execute("SELECT name, icon_hash FROM games WHERE appid = ?", (appid,)).fetchone()
+    db.close()
+    is_non_steam = appid < 0
+    game_name    = (row['name'] if row else None) if is_non_steam else None
+    sgdb_id      = _sgdb_search_game_id(game_name) if game_name else None
+    if orientation == 'vertical':
+        source = download_vertical(appid, sgdb_id=sgdb_id, game_name=game_name)
+        update_game_data(appid, vertical_art_source=source, art_fetched=today)
+    elif orientation == 'horizontal':
+        source = download_horizontal(appid, sgdb_id=sgdb_id, game_name=game_name)
+        update_game_data(appid, horizontal_art_source=source, art_fetched=today)
+    else:
+        icon_hash = row['icon_hash'] if row else None
+        source = download_icon(appid, icon_hash, sgdb_id=sgdb_id, game_name=game_name)
+        update_game_data(appid, icon_source=source, art_fetched=today)
+    return jsonify({"status": "success", "source": source})
+
+@images_bp.route('/api/protondb/<int:appid>', methods=['POST'])
+def rescrape_protondb(appid):
+    from database import update_game_data
+    from scrapers import fetch_protondb_data
+    from datetime import datetime
+    today = datetime.now().strftime('%Y-%m-%d')
+    info  = fetch_protondb_data(appid)
+    game_data = {'protondb_fetched': today}
+    if info:
+        game_data.update(info)
+    else:
+        game_data['protondb_tier']       = None
+        game_data['protondb_confidence'] = None
+    update_game_data(appid, **game_data)
+    return jsonify({'status': 'success', 'tier': info.get('protondb_tier') if info else None,
+                    'confidence': info.get('protondb_confidence') if info else None})
