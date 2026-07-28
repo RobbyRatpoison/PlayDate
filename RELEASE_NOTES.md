@@ -3,17 +3,17 @@
 ## v1.6.7
 ### New
 
-- The library search bar now narrows results live as you type, and widens back as you delete - no more waiting for the page to reload.
-- Tag, Group, Genre, and Category filter conditions can now hold multiple values in a single row - type to add or remove values as chips instead of adding a separate row for each one. Filters saved with the old one-row-per-value format are automatically converted when opened for editing.
-- Auto-generated title-word filter conditions (used by PAGYWOSG filters) now show a plain description instead of raw SQL in the filter editor.
-- PAGYWOSG auto-fill recognizes many more category types now, including release dates, achievement counts and ranges, title patterns, AppID digit patterns, and review ratings, so fewer categories need manual review each month.
-- "Personal categories" in the PAGYWOSG builder now include games verified specifically for your own SteamGifts username (set in Settings) instead of excluding the category's verified games entirely. Categories that are inherently personal can also come pre-checked automatically based on maintainer review.
-- Added a `CONTRIBUTORS.md` file crediting everyone who's helped shape PlayDate through bug reports, feature suggestions, and other feedback.
+- The library search bar now narrows results live as you type instead of waiting for Enter.
+- Tag, Group, Genre, and Category filter conditions now hold multiple values in one row as chips, instead of a separate row per value. Older filters convert automatically.
+- Auto-generated title-word filter conditions now show a plain description instead of raw SQL.
+- PAGYWOSG auto-fill recognizes more category types (release dates, achievement counts/ranges, title patterns, AppID digits, review ratings), so fewer need manual review.
+- "Personal categories" in the PAGYWOSG builder now include your own verified games instead of excluding the category entirely, and inherently personal categories can come pre-checked automatically.
+- Added a `CONTRIBUTORS.md` crediting everyone who's helped shape PlayDate through bug reports and feedback.
 
 ### Fixes
 
-- Fixed the "✕ CLEAR" button staying visible on the library page whenever a platform source was hidden, even with no active filter or search.
-- Fixed the update checker getting stuck showing "Install Update" with the same broken download link after a release wasn't fully published yet - going back and retrying now checks for updates again instead of reusing the stale result.
-- Fixed text selection not lining up with the visible text when copying SQL from the filter editor's preview box.
-- Fixed the hamburger menu looking lopsided when focused with a gamepad - the update, store-name, and BLAEO notification dots are now combined into a single indicator instead of three, so the menu button is properly centered.
-- Fixed the Linux/macOS installer showing a "Done" button instead of "Launch PlayDate", and not actually launching PlayDate when run on its own instead of through `launch.sh`.
+- Fixed the "✕ CLEAR" button staying visible with a hidden platform source even when no filter or search was active.
+- Fixed the update checker getting stuck on a broken download link if a release wasn't fully published yet.
+- Fixed text selection not lining up with visible text in the filter editor's SQL preview.
+- Fixed the hamburger menu looking lopsided when focused with a gamepad by combining its three notification dots into one.
+- Fixed the Linux/macOS installer showing "Done" instead of launching PlayDate when setup finished - it now launches automatically like on Windows.
