@@ -2508,10 +2508,29 @@
     // ── Gamepad polling ───────────────────────────────────────────────────────
     let _pollCount = 0;
     let _rafId = null;
+    let _wasUnfocused = false;
 
     function _pollLoop() {
         _rafId = requestAnimationFrame(_pollLoop);
         _pollCount++;
+
+        // Steam Deck/gamescope: switching to the Deck's own home/library UI
+        // doesn't reliably dispatch a window 'blur' event to an embedded
+        // WebKitGTK view the way a normal desktop window manager does, so the
+        // blur/focus listeners below can't be trusted alone to stop input
+        // while backgrounded. This self-checks every frame instead — cheap,
+        // and immune to any particular event not firing — so a still-connected
+        // controller can't keep driving PlayDate's UI once the Deck's home
+        // screen (or any other window) actually has focus.
+        const unfocused = document.hidden || !document.hasFocus();
+        if (unfocused) {
+            if (!_wasUnfocused) {
+                _wasUnfocused = true;
+                _clearGamepadState();
+            }
+            return;
+        }
+        _wasUnfocused = false;
 
         if (!_gamepadEnabled) return;
 
