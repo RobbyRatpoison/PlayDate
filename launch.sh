@@ -60,7 +60,7 @@ fi
 # ── Run setup if venv is missing ───────────────────────────────────────────────
 
 if [ ! -f "$VENV_PYTHON" ]; then
-    python3 "$DIR/install.py"
+    PLAYDATE_LAUNCH_PENDING=1 python3 "$DIR/install.py"
     if [ ! -f "$VENV_PYTHON" ]; then
         echo "Setup did not complete. Re-run launch.sh to try again."
         exit 1

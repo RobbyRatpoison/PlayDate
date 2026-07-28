@@ -161,7 +161,7 @@ class InstallerApp(tk.Tk):
         btn_row.pack(pady=8)
 
         self._btn_launch = tk.Button(
-            btn_row, text="Launch PlayDate" if SYSTEM == "Windows" else "Done",
+            btn_row, text="Launch PlayDate",
             bg=SUCCESS, fg=BTN_FG,
             font=("Segoe UI", 10, "bold"),
             relief="flat", cursor="arrow",
@@ -210,6 +210,12 @@ class InstallerApp(tk.Tk):
         self._maybe_create_shortcut()
         if SYSTEM == "Windows":
             subprocess.Popen([VENV_PYTHON, MAIN_PY])
+        elif not os.environ.get("PLAYDATE_LAUNCH_PENDING"):
+            # Standalone install.sh run — no wrapper script will launch it for us.
+            # (When invoked from launch.sh's auto-setup path, that script already
+            # execs main.py right after this window closes, so skip here to avoid
+            # starting PlayDate twice.)
+            subprocess.Popen([LAUNCHER_SH])
         self.destroy()
 
     def _finish_close(self):
