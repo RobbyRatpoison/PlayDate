@@ -711,6 +711,7 @@
         'pd-dialog-overlay',   // base.html confirm/alert — shown via .visible class
         'config-modal',        // first-run required setup (modal_edit.html, needs_config) — no close button, blocks everything else
         'update-confirm-overlay', // base.html install-update confirmation
+        'whats-new-modal',     // base.html post-update changelog popup
         'editModal', 'filterModal', 'viewModal',
         // Data modal sub-modals
         'backup-modal', 'bg-modal', 'import-modal',
@@ -2875,6 +2876,9 @@
 
         // Install-update confirmation (base.html)
         _watchModal('update-confirm-overlay');
+
+        // Post-update changelog popup (base.html)
+        _watchModal('whats-new-modal');
 
         // Edit / filter modals (base.html — present on every page)
         _watchModal('editModal');
