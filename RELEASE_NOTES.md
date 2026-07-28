@@ -8,9 +8,12 @@
 - Auto-generated title-word filter conditions (used by PAGYWOSG filters) now show a plain description instead of raw SQL in the filter editor.
 - PAGYWOSG auto-fill recognizes many more category types now, including release dates, achievement counts and ranges, title patterns, AppID digit patterns, and review ratings, so fewer categories need manual review each month.
 - "Personal categories" in the PAGYWOSG builder now include games verified specifically for your own SteamGifts username (set in Settings) instead of excluding the category's verified games entirely. Categories that are inherently personal can also come pre-checked automatically based on maintainer review.
+- Added a `CONTRIBUTORS.md` file crediting everyone who's helped shape PlayDate through bug reports, feature suggestions, and other feedback.
 
 ### Fixes
 
 - Fixed the "✕ CLEAR" button staying visible on the library page whenever a platform source was hidden, even with no active filter or search.
 - Fixed the update checker getting stuck showing "Install Update" with the same broken download link after a release wasn't fully published yet - going back and retrying now checks for updates again instead of reusing the stale result.
 - Fixed text selection not lining up with the visible text when copying SQL from the filter editor's preview box.
+- Fixed the hamburger menu looking lopsided when focused with a gamepad - the update, store-name, and BLAEO notification dots are now combined into a single indicator instead of three, so the menu button is properly centered.
+- Fixed the Linux/macOS installer showing a "Done" button instead of "Launch PlayDate", and not actually launching PlayDate when run on its own instead of through `launch.sh`.
