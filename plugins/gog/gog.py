@@ -626,7 +626,7 @@ def sync_gog_metadata(force=False):
             name            = row['name']
             has_meta        = row['meta_fetched'] and row['meta_fetched'] != '0'
 
-            if has_meta:
+            if has_meta and not force:
                 # Metadata already fetched — only missing achievements
                 if not (session and galaxy_user_id):
                     time.sleep(0.5)
