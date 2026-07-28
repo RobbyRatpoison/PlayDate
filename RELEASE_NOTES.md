@@ -20,3 +20,4 @@
 - Fixed GOG's "Fetch metadata" not actually re-fetching games that were already synced, so review scores and other metadata could get permanently stuck.
 - Fixed GOG games removed from your account not being cleaned up on the next library sync.
 - Fixed a crash when Steam rate-limits a "Sync Steam Data" request; now shows a clear message instead.
+- Fixed the gamepad focus highlight not appearing on the update-install confirmation and What's New popups.
