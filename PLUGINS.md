@@ -59,6 +59,16 @@ Set `"required": false` (or omit the field entirely) if your plugin can launch g
 
 The optional `source` field enables update checking. Set it to `github:owner/repo` pointing to the GitHub repository where releases are published. PlayDate compares the installed `version` against the latest release tag (stripping a leading `v`) and surfaces an update link in the Plugins modal when a newer version is available. Updates download and overwrite the plugin folder in-place; a restart is required to load the new code.
 
+### `min_core_version` field (optional)
+
+If your plugin relies on a lifecycle method, field, or behavior introduced in a specific PlayDate release, declare the minimum core version it needs:
+
+```json
+"min_core_version": "1.7.0"
+```
+
+At startup, `load_all()` compares this against the running PlayDate version. If the installed core is older, the plugin is **not imported or registered** — it fails safely instead of crashing on a missing method/field or throwing at import time. It still shows up in the Plugins modal with a "needs PlayDate X.Y.Z" message (fetched from `GET /api/plugins/incompatible`) and can still be uninstalled from there; only `register()` and everything after it in `load_all()` is skipped. Omit the field if your plugin has no minimum version requirement.
+
 ## __init__.py — the plugin class
 
 `plugins/__init__.py` calls `mod.plugin` on your package, so `__init__.py` must expose a `plugin` singleton.

@@ -152,6 +152,7 @@ Six signals: tag cosine similarity (playtime-weighted taste profile from beaten 
 Non-Steam library sources are optional plugins in `plugins/<id>/`. See `PLUGINS.md` for the full developer guide. Key points:
 
 - **Auto-discovery:** any folder under `plugins/` with a `plugin.json` is loaded at startup via `plugins/__init__.py`.
+- **`min_core_version` field in `plugin.json`** — optional; if set and newer than the running `config.__version__`, `load_all()` skips importing/registering the plugin (fails safe instead of crashing on a missing method/field a newer plugin version assumes). Recorded in `_incompatible_plugins`, exposed via `GET /api/plugins/incompatible`, and rendered in the Plugins modal with a "needs PlayDate X.Y.Z" badge; still uninstallable via the normal uninstall flow (falls back to the standard `plugins/<id>/` path since it was never registered).
 - **Jinja2 globals:** `has_plugin(id)`, `plugin_fragments(slot)`, `platform_labels()`, `plugin_js_api()` — available in all templates.
 - **`window._PLAT_LABELS`** — injected in `base.html`; maps platform key → display label. Use this instead of hardcoded dicts. Core provides `steam`, `epic_games`, `ea_app`, `ubisoft`; plugins add their own.
 - **`window._PLUGIN_API`** — injected in `base.html`; maps platform key → `{uninstall_url, scrape_url, scrape_method, store_url, store_label, appid_label, sync_label}`. Core templates use this for per-platform behavior; no platform-specific branches in core code.

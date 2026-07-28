@@ -20,6 +20,19 @@ _plugin_manifests: dict = {}
 _plugin_update_cache = {}    # keyed by plugin_id: {update_available, latest_version, source, checked_at, error}
 _launcher_status_cache = {}  # keyed by platform: {available, detail, checked_at}
 
+# Plugins whose plugin.json declares a min_core_version newer than this build --
+# not imported/registered, just recorded here so the Plugins modal can explain
+# why they're missing and still offer to remove the folder.
+_incompatible_plugins: dict = {}
+
+
+def _semver(v):
+    """Parse 'X.Y.Z'-ish into a comparable tuple. Non-numeric/missing parts -> 0."""
+    try:
+        return tuple(int(x) for x in str(v).split('.'))
+    except Exception:
+        return (0, 0, 0)
+
 
 def _parse_github_repo(url):
     """Return (owner, repo) from a GitHub URL or 'owner/repo' slug, or (None, None)."""
@@ -122,6 +135,8 @@ def _startup_launcher_status_check():
 
 def load_all(app):
     """Discover and register all plugins found in this directory."""
+    from config import __version__ as core_version
+
     plugins_dir = os.path.dirname(os.path.abspath(__file__))
     if not os.path.isdir(plugins_dir):
         return
@@ -133,12 +148,31 @@ def load_all(app):
         try:
             with open(manifest_path) as f:
                 manifest = json.load(f)
+
+            min_core = manifest.get('min_core_version')
+            if min_core and _semver(min_core) > _semver(core_version):
+                pid = manifest.get('id', entry)
+                _incompatible_plugins[pid] = {
+                    'id':               pid,
+                    'name':             manifest.get('name', entry),
+                    'version':          manifest.get('version', '?'),
+                    'platform':         manifest.get('platform', ''),
+                    'min_core_version': min_core,
+                    'current_version':  core_version,
+                }
+                log.warning(
+                    f"Plugin {manifest.get('name', entry)!r} needs PlayDate >= {min_core}, "
+                    f"this build is {core_version} — not loaded"
+                )
+                continue
+
             mod    = importlib.import_module(f'plugins.{entry}')
             p      = mod.plugin
             p.register(app)
             _plugins[p.id]          = p
             _plugin_paths[p.id]     = plugin_path
             _plugin_manifests[p.id] = manifest
+            _incompatible_plugins.pop(p.id, None)
             if hasattr(p, 'fragments'):
                 tpl_dir = os.path.join(plugin_path, 'templates')
                 for slot, tpl in p.fragments().items():
@@ -269,6 +303,22 @@ def list_plugins():
         })
     return jsonify(result)
 
+@plugins_bp.route('/api/plugins/incompatible')
+def list_incompatible_plugins():
+    """Plugins present on disk but not loaded because plugin.json's min_core_version
+    is newer than this build. Separate from /api/plugins so that endpoint's shape
+    (loaded plugins only) stays stable for existing callers."""
+    from database import get_db
+    db = get_db()
+    result = []
+    for pid, entry in _incompatible_plugins.items():
+        row = db.execute(
+            'SELECT COUNT(*) FROM games WHERE platform = ?', (entry['platform'],)
+        ).fetchone() if entry['platform'] else None
+        result.append({**entry, 'game_count': row[0] if row else 0})
+    db.close()
+    return jsonify(result)
+
 @plugins_bp.route('/api/plugins/install', methods=['POST'])
 def install_plugin():
     if 'plugin_file' not in request.files:
@@ -336,12 +386,6 @@ def check_plugin_updates():
             latest = tag.lstrip('v')
             installed = manifest.get('version', '0')
 
-            def _semver(v):
-                try:
-                    return tuple(int(x) for x in v.split('.'))
-                except Exception:
-                    return (0, 0, 0)
-
             available = _semver(latest) > _semver(installed)
             entry = {
                 'update_available': available,
@@ -394,24 +438,28 @@ def recheck_launcher_status(platform_id):
 @plugins_bp.route('/api/plugins/<plugin_id>/uninstall', methods=['POST'])
 def uninstall_plugin(plugin_id):
     import shutil
-    p = get(plugin_id)
-    if not p:
+    p            = get(plugin_id)
+    incompatible = _incompatible_plugins.get(plugin_id)
+    if not p and not incompatible:
         return jsonify({'status': 'error', 'message': 'Plugin not found'}), 404
-    path = plugin_path(plugin_id)
+    # Incompatible plugins were never registered, so _plugin_paths has no entry --
+    # fall back to the standard plugins/<id>/ layout every install uses.
+    path = plugin_path(plugin_id) or os.path.join(os.path.dirname(os.path.abspath(__file__)), plugin_id)
     if not path or not os.path.isdir(path):
         return jsonify({'status': 'error', 'message': 'Plugin folder not found'}), 404
+    platform = p.platform if p else incompatible.get('platform')
     data = request.get_json(silent=True) or {}
     try:
-        if hasattr(p, 'on_uninstall'):
+        if p and hasattr(p, 'on_uninstall'):
             p.on_uninstall()
-        if data.get('remove_games'):
+        if data.get('remove_games') and platform:
             from database import get_db
             db = get_db()
-            db.execute('DELETE FROM games WHERE platform = ?', (p.platform,))
+            db.execute('DELETE FROM games WHERE platform = ?', (platform,))
             db.commit()
-        if data.get('remove_launcher'):
+        if data.get('remove_launcher') and platform:
             from config import get_launcher_config
-            lc = get_launcher_config(p.platform)
+            lc = get_launcher_config(platform)
             prefix = lc.get('prefix', '').strip()
             if prefix:
                 prefix_path = os.path.expanduser(prefix)
@@ -424,12 +472,13 @@ def uninstall_plugin(plugin_id):
         try:
             from config import load_config, _save_config_data
             cfg = load_config()
-            if cfg and 'launchers' in cfg and p.platform in cfg['launchers']:
-                del cfg['launchers'][p.platform]
+            if cfg and platform and 'launchers' in cfg and platform in cfg['launchers']:
+                del cfg['launchers'][platform]
                 _save_config_data(cfg)
         except Exception:
             pass
         shutil.rmtree(path)
+        _incompatible_plugins.pop(plugin_id, None)
         return jsonify({'status': 'success'})
     except Exception as e:
         log.error(f"Plugin uninstall failed: {plugin_id} — {e}", exc_info=True)

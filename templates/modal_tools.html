@@ -5603,17 +5603,53 @@ async function _renderPluginsList() {
     const body = document.getElementById('plugins-list-body');
     body.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">Loading...</div>';
     try {
-        const [pluginsResp, statusResp] = await Promise.all([
+        const [pluginsResp, statusResp, incompatResp] = await Promise.all([
             fetch('/api/plugins'),
             fetch('/api/plugins/launcher-status'),
+            fetch('/api/plugins/incompatible'),
         ]);
         const plugins = await pluginsResp.json();
         const launcherStatus = await statusResp.json();
-        if (!plugins.length) {
+        const incompatible = await incompatResp.json();
+        if (!plugins.length && !incompatible.length) {
             body.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">No plugins installed.</div>';
             return;
         }
-        body.innerHTML = plugins.map((p, pluginIdx) => {
+        const incompatibleHtml = incompatible.map((p, idx) => {
+            const pluginRow = plugins.length + idx + 2;
+            return `
+            <div class="hub-section" id="plugin-row-${escHtml(p.id)}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div>
+                        <div style="font-size:0.95rem;color:var(--text-primary);font-weight:600;">${escHtml(p.name)}</div>
+                        <div style="font-size:0.75rem;color:#8f98a0;margin-top:2px;">v${escHtml(p.version)} &middot; platform: ${escHtml(p.platform)}${p.game_count ? ` &middot; ${p.game_count} game${p.game_count !== 1 ? 's' : ''}` : ''}</div>
+                    </div>
+                    <div style="display:flex;flex-shrink:0;margin-left:12px;gap:6px;">
+                        <button class="nav-btn" style="font-size:0.78rem;"
+                                data-modal-row="${pluginRow}"
+                                onclick="_showUninstallConfirm('${escHtml(p.id)}',${p.game_count},this)">
+                            Uninstall
+                        </button>
+                    </div>
+                </div>
+                <div style="margin-top:6px;font-size:0.78rem;color:#ffa500;">&#9888; Needs PlayDate ${escHtml(p.min_core_version)} or newer (this build is ${escHtml(p.current_version)}) — not loaded</div>
+                <div id="plugin-confirm-${escHtml(p.id)}" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(199,71,71,0.1);border:1px solid rgba(199,71,71,0.3);border-radius:4px;font-size:0.82rem;">
+                    <div style="color:var(--text-primary);margin-bottom:8px;">Delete the <strong>${escHtml(p.name)}</strong> plugin folder?</div>
+                    ${p.game_count > 0 ? `
+                    <label style="display:flex;align-items:center;gap:8px;color:var(--text-primary);cursor:pointer;margin-bottom:8px;">
+                        <input type="checkbox" id="uninstall-rm-games-${escHtml(p.id)}" style="width:auto;margin:0;">
+                        Also remove ${p.game_count} game${p.game_count !== 1 ? 's' : ''} from library
+                    </label>` : ''}
+                    <div style="display:flex;gap:8px;">
+                        <button class="nav-btn" style="font-size:0.78rem;background:rgba(199,71,71,0.8);border-color:rgba(199,71,71,0.8);" data-modal-row="${pluginRow}"
+                                onclick="_doUninstallPlugin('${escHtml(p.id)}',${p.game_count})">Confirm</button>
+                        <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="${pluginRow}"
+                                onclick="_hideUninstallConfirm('${escHtml(p.id)}')">Cancel</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+        const compatibleHtml = plugins.map((p, pluginIdx) => {
             const pluginRow = pluginIdx + 2;
             const needsLauncher = p.launcher && p.launcher.required;
             const lstatus = launcherStatus[p.platform];
@@ -5669,6 +5705,7 @@ async function _renderPluginsList() {
                 </div>
             </div>`;
         }).join('');
+        body.innerHTML = compatibleHtml + incompatibleHtml;
     } catch(e) {
         const msg = (e && e.message) ? e.message : String(e);
         body.innerHTML = `<div style="color:#c74747;font-size:0.85rem;">Failed to load plugins: ${escHtml(msg)}</div>`;
