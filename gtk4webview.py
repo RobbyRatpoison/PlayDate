@@ -124,6 +124,7 @@ class BrowserView:
         self.window.connect('notify::maximized', self.on_window_maximized)
         self.window.connect('notify::default-width', self.on_window_resize_prop)
         self.window.connect('notify::default-height', self.on_window_resize_prop)
+        self.window.connect('notify::is-active', self.on_window_active_changed)
 
         self.js_bridge = BrowserView.JSBridge(window)
 
@@ -272,6 +273,24 @@ class BrowserView:
             self._last_width = w
             self._last_height = h
             self.pywebview_window.events.resized.set(w, h)
+
+    # Pushed to input.js's poll-loop focus guard as window._nativeWindowActive,
+    # taking priority over document.hasFocus()/document.hidden there. Those
+    # DOM-level signals depend on WebKit itself correctly tracking focus loss,
+    # which wasn't reliable under gamescope on Steam Deck (gamepad input kept
+    # driving PlayDate's UI while the Deck's home screen, or even a plain
+    # install-confirmation popup over some other game, had real focus). GTK's
+    # own is-active property instead reflects the compositor's actual
+    # xdg_toplevel activation state directly -- the same baseline mechanism
+    # any Wayland compositor, including gamescope, has to implement correctly
+    # for ordinary window switching to work at all.
+    def on_window_active_changed(self, window, param):
+        active = bool(window.get_property('is-active'))
+        js = f'window._nativeWindowActive = {"true" if active else "false"};'
+        try:
+            self.webview.evaluate_javascript(js, len(js), None, None, None, None)
+        except Exception:
+            logger.exception('Failed to push native window-active state to JS')
 
     def on_js_bridge_call(self, manager, message):
         body = json.loads(message.to_string())

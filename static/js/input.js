@@ -2515,14 +2515,19 @@
         _pollCount++;
 
         // Steam Deck/gamescope: switching to the Deck's own home/library UI
-        // doesn't reliably dispatch a window 'blur' event to an embedded
-        // WebKitGTK view the way a normal desktop window manager does, so the
-        // blur/focus listeners below can't be trusted alone to stop input
-        // while backgrounded. This self-checks every frame instead — cheap,
-        // and immune to any particular event not firing — so a still-connected
-        // controller can't keep driving PlayDate's UI once the Deck's home
-        // screen (or any other window) actually has focus.
-        const unfocused = document.hidden || !document.hasFocus();
+        // (or even a plain install-confirmation popup over some other game)
+        // doesn't reliably update WebKit's own document.hasFocus()/hidden —
+        // confirmed on real hardware: gamepad input kept driving PlayDate's
+        // UI regardless. window._nativeWindowActive, when present, comes
+        // straight from GTK's is-active property (gtk4webview.py's
+        // notify::is-active handler) — the compositor's real xdg_toplevel
+        // activation state, one level below WebKit's own focus tracking and
+        // far more likely to be correct under gamescope. Falls back to the
+        // DOM check when that global hasn't been set yet (e.g. very first
+        // frames before GTK's first notify fires, or non-GTK4 platforms).
+        const unfocused = (typeof window._nativeWindowActive === 'boolean')
+            ? !window._nativeWindowActive
+            : (document.hidden || !document.hasFocus());
         if (unfocused) {
             if (!_wasUnfocused) {
                 _wasUnfocused = true;
