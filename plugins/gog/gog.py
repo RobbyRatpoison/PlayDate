@@ -510,7 +510,7 @@ def fetch_gog_metadata(gog_id):
             result['review_percentage']   = percent
             result['weighted_percentage'] = _weighted_score(percent, count)
             result['total_reviews']       = count
-            result['positive_reviews']    = round(p * count)  # noqa: F821 -- pre-existing bug: `p` is undefined (caught by except below, so this field silently never gets set); likely meant `value / 5` or `percent / 100`
+            result['positive_reviews']    = round(percent / 100 * count)
             result['review_score']        = review_score_label(percent, count)
     except Exception as e:
         log.warning(f'GOG metadata: ratings fetch failed for {gog_id}: {e}')
@@ -540,6 +540,29 @@ def fetch_gog_achievements(gog_id, galaxy_user_id, session):
         return None
 
 
+def _fetch_all_products(session):
+    """Fetch every product (game or otherwise) in the user's GOG library, paginated.
+    Same endpoint/shape as _do_sync_library's Phase 1. Returns (products, total_pages)."""
+    products = []
+    page = 1
+    total_pages = 1
+    while True:
+        resp = session.get(
+            'https://embed.gog.com/account/getFilteredProducts',
+            params={'mediaType': 1, 'page': page},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        total_pages = data.get('totalPages', 1)
+        products.extend(data.get('products', []))
+        if page >= total_pages:
+            break
+        page += 1
+        time.sleep(0.3)
+    return products, total_pages
+
+
 def sync_gog_metadata(force=False):
     """
     Fetch and store GOG product metadata for GOG games.
@@ -562,7 +585,7 @@ def sync_gog_metadata(force=False):
     session        = get_valid_session()
     if session:
         try:
-            all_products, _ = _fetch_all_products(session)  # noqa: F821 -- pre-existing bug: no such function in this module (caught by except below, so valid_gog_ids always falls back to None and this pruning step never runs)
+            all_products, _ = _fetch_all_products(session)
             valid_gog_ids   = {
                 str(p['id']) for p in (all_products or [])
                 if p.get('url') and not p.get('isMovie')
