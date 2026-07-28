@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.7
+## v1.6.7 - 2026-07-28
 ### New
 
 - The library search bar now narrows results live as you type instead of waiting for Enter.
