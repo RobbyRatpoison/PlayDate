@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.8
+## v1.6.8 - 2026-07-28
 ### New
 
 - Play or Pay picks now generate a saved filter automatically, matching how PAGYWOSG results work. (prompted by feedback from Blue™)
