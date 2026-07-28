@@ -1,10 +1,8 @@
 import logging
-import os
 import re
 import sqlite3
 from datetime import datetime, timezone
 
-from config import BASE_DIR
 
 log = logging.getLogger(__name__)
 

@@ -317,7 +317,7 @@ def pick_game():
                 for (f, s, m), g in scored:
                     cumulative += f
                     if r <= cumulative:
-                        game, final, sim, matched = g, f, s, m
+                        game, _, _, matched = g, f, s, m
                         break
 
             rev = review_score(game)

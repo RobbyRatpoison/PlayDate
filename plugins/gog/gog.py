@@ -11,7 +11,7 @@ import threading
 import time
 import zlib
 import requests
-from config import CONFIG_PATH, load_config, _save_config_data
+from config import load_config, _save_config_data
 from database import next_negative_appid
 from scrapers import _weighted_score
 from utils import review_score_label
@@ -510,7 +510,7 @@ def fetch_gog_metadata(gog_id):
             result['review_percentage']   = percent
             result['weighted_percentage'] = _weighted_score(percent, count)
             result['total_reviews']       = count
-            result['positive_reviews']    = round(p * count)
+            result['positive_reviews']    = round(p * count)  # noqa: F821 -- pre-existing bug: `p` is undefined (caught by except below, so this field silently never gets set); likely meant `value / 5` or `percent / 100`
             result['review_score']        = review_score_label(percent, count)
     except Exception as e:
         log.warning(f'GOG metadata: ratings fetch failed for {gog_id}: {e}')
@@ -562,7 +562,7 @@ def sync_gog_metadata(force=False):
     session        = get_valid_session()
     if session:
         try:
-            all_products, _ = _fetch_all_products(session)
+            all_products, _ = _fetch_all_products(session)  # noqa: F821 -- pre-existing bug: no such function in this module (caught by except below, so valid_gog_ids always falls back to None and this pruning step never runs)
             valid_gog_ids   = {
                 str(p['id']) for p in (all_products or [])
                 if p.get('url') and not p.get('isMovie')
@@ -1324,7 +1324,6 @@ def launch_gog_game(appid):
                 'message': f'Cannot find executable for {game_name!r} — please set it manually'}
 
     import platform as _plat
-    import subprocess
     _host_win = _plat.system() == 'Windows'
     _is_exe   = platform_executable and platform_executable.lower().endswith('.exe')
 

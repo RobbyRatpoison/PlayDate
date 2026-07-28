@@ -122,8 +122,6 @@ def launch_game(appid):
     db.close()
     game_name     = row['name'] if row else ''
     game_platform = (row['platform'] or 'steam') if row else 'steam'
-    platform_id   = row['platform_id'] if row else None
-    is_installed  = bool(row['installed']) if row else False
 
     if game_platform == 'steam':
         # Steam launch via steam:// URI (handles install too if not installed)
@@ -196,7 +194,7 @@ def raise_window_route():
         import gi
         gi.require_version('Gtk', '3.0')
         from gi.repository import Gtk, GLib
-        main_win = getattr(_webview_window, 'native', None)
+        main_win = getattr(_webview_window, 'native', None)  # noqa: F821 -- pre-existing bug: _webview_window is never imported here, so this route no-ops (NameError swallowed by the except below); preserved as-is during the app.py blueprint split, not introduced by it
         for win in Gtk.Window.list_toplevels():
             # Only raise the main window — presenting WebKit internal windows
             # (offscreen renderer, etc.) causes KDE to briefly show them as

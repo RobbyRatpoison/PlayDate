@@ -1,0 +1,5 @@
+# Pyflakes only: unused imports/variables, undefined names, redefinitions.
+# Deliberately narrow — this codebase's style (dense one-liners, longer lines)
+# doesn't fit pycodestyle's formatting opinions, and the goal here is catching
+# real bugs, not enforcing a style.
+lint.select = ["F"]

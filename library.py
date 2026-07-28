@@ -6,7 +6,7 @@ import time
 from config import load_state, BASE_DIR, BUILTIN_FILTERS, resolve_outline_rule_where
 from database import get_db, add_to_blacklist, remove_from_blacklist, get_blacklist
 from utils import get_all_unique_groups, get_all_unique_tags, validate_user_path
-from flask import Blueprint, jsonify, render_template, request, redirect, url_for
+from flask import Blueprint, jsonify, render_template, request
 
 log = logging.getLogger(__name__)
 
@@ -536,7 +536,7 @@ def update_game():
     for col in ('last_played', 'date_added', 'release_date'):
         if col in data:
             data[col] = date_to_ts(data[col]) if data[col] else None
-    from utils import get_all_unique_tags, get_all_unique_groups, get_all_unique_genres, get_all_unique_categories, invalidate_unique_cache
+    from utils import get_all_unique_genres, get_all_unique_categories, invalidate_unique_cache
     try:
         old_groups_str = None
         if 'groups' in data:
@@ -594,7 +594,7 @@ def bulk_edit_games(data):
     )}
     column = allowed_columns.get(column)
     if not column:
-        return jsonify({"status": "error", "message": f"Column is not editable."}), 400
+        return jsonify({"status": "error", "message": "Column is not editable."}), 400
     if not value and mode not in ('replace', 'remove'):
         return jsonify({"status": "error", "message": "Value cannot be empty."}), 400
 

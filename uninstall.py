@@ -229,7 +229,7 @@ class UninstallerApp(tk.Tk):
         selected = [f for f, (v, _) in self._data_vars.items() if v.get()]
         msg = "This will remove PlayDate's launcher, virtual environment, and system registration."
         if selected:
-            msg += f"\n\nThe following user data will also be permanently deleted:\n  • " + "\n  • ".join(selected)
+            msg += "\n\nThe following user data will also be permanently deleted:\n  • " + "\n  • ".join(selected)
         if self._do_delete_folder:
             msg += f"\n\nThe entire PlayDate folder will be deleted:\n  {INSTALL_DIR}"
         msg += "\n\nContinue?"
@@ -408,7 +408,7 @@ class UninstallerApp(tk.Tk):
 
             self._log_line("\n✔  PlayDate has been uninstalled.", "ok")
             if self._do_delete_folder:
-                self._log_line(f"   The PlayDate folder will be deleted when you close this window.", "warn")
+                self._log_line("   The PlayDate folder will be deleted when you close this window.", "warn")
             else:
                 self._log_line(f"   Your PlayDate folder is untouched: {INSTALL_DIR}", "info")
             self._uninstall_ok = True

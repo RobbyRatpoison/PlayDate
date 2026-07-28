@@ -34,7 +34,7 @@ class GogPlugin:
     date_import_url = 'https://www.gog.com/en/account/settings/orders?ref=playdate'
 
     def launch_game(self, appid):
-        from .gog import launch_gog_game, start_install, get_install_state
+        from .gog import launch_gog_game, start_install
         from database import get_db
         db = get_db()
         row = db.execute(

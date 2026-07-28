@@ -2,7 +2,6 @@
 runners/wine.py — Shared Wine helpers for plugins that need to run Windows executables.
 """
 
-import glob
 import logging
 import os
 import subprocess

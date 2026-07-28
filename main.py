@@ -199,7 +199,7 @@ import migration
 from app import create_app, populate_cancel
 from config import BASE_DIR
 from database import init_db
-from utils import (find_steam_path, get_all_steam_library_paths,
+from utils import (get_all_steam_library_paths,
                    start_steamapps_watcher, stop_steamapps_watcher,
                    sync_local_install_status)
 
@@ -254,7 +254,6 @@ def _setup_focus_handler(webview_window):
     if _os == 'Linux':
         # GTK: listen for focus return so gamepad input can be unsuppressed.
         try:
-            import gi
             from gi.repository import Gtk
 
             _connected = set()
@@ -572,7 +571,7 @@ class PyWebviewAPI:
                 if redirect_pattern not in base_url:
                     log.info(f'open_auth_popup: no match for pattern {redirect_pattern!r}, skipping')
                     return
-                log.info(f'open_auth_popup: redirect_pattern matched, running code_js')
+                log.info('open_auth_popup: redirect_pattern matched, running code_js')
                 # Strategy 1: code in URL query params (GOG and standard OAuth)
                 code = _code_from_url(current)
                 if code:

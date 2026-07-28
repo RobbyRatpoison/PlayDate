@@ -14,7 +14,7 @@ import shutil
 
 try:
     import tkinter as tk
-    from tkinter import ttk, messagebox
+    from tkinter import ttk
 except ImportError:
     print("ERROR: tkinter is not available. Install python3-tk and re-run.")
     sys.exit(1)
@@ -384,7 +384,6 @@ class InstallerApp(tk.Tk):
                 if SYSTEM == "Linux":
                     os_release = self._os_release
                     if any(d in os_release for d in ("debian", "ubuntu", "mint", "pop")):
-                        ver = f"{sys.version_info.major}.{sys.version_info.minor}"
                         hint = (
                             f"\n\nOn Debian/Ubuntu, the venv module is a separate package.\n"
                             f"Run this command, then re-run the installer:\n\n"
@@ -503,7 +502,7 @@ class InstallerApp(tk.Tk):
                 pass
             raise RuntimeError("pip install failed. Check the log above or install-error.log.")
 
-        self._log_line(f"✔  All dependencies installed", "ok")
+        self._log_line("✔  All dependencies installed", "ok")
         self._advance("Step 4 — Dependencies installed")
 
     def _step_launcher(self):
@@ -511,7 +510,7 @@ class InstallerApp(tk.Tk):
         if SYSTEM == "Windows":
             with open(LAUNCHER_BAT, "w") as f:
                 f.write(f'@echo off\ncd /d "{INSTALL_DIR}"\nstart "" "{VENV_PYTHON}" "{MAIN_PY}"\n')
-            self._log_line(f"✔  Launcher created: playdate-launch.bat", "ok")
+            self._log_line("✔  Launcher created: playdate-launch.bat", "ok")
         else:
             with open(LAUNCHER_SH, "w") as f:
                 if SYSTEM == "Linux":
@@ -531,7 +530,7 @@ class InstallerApp(tk.Tk):
                 else:
                     f.write(f'#!/usr/bin/env bash\ncd "{INSTALL_DIR}"\nexec "{VENV_PYTHON}" "{MAIN_PY}" "$@"\n')
             os.chmod(LAUNCHER_SH, 0o755)
-            self._log_line(f"✔  Launcher created: playdate-launch.sh", "ok")
+            self._log_line("✔  Launcher created: playdate-launch.sh", "ok")
         self._advance("Step 5 — Launcher ready")
 
     def _step_register(self):

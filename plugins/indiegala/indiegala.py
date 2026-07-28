@@ -658,7 +658,7 @@ def launch_game(appid):
 
     return {
         'status':  'not_installed',
-        'message': f'Game folder opened — drop the downloaded files in, then launch again.',
+        'message': 'Game folder opened — drop the downloaded files in, then launch again.',
     }
 
 

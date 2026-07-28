@@ -597,22 +597,15 @@ def parse_appinfo():
         idx += 1
         pos = end + 1
 
-    # Reverse map for the keys we care about
+    # Reverse map for the one key we need up front (used below to locate each
+    # record's VDF start by byte pattern); the rest are looked up by string
+    # name directly off the parsed VDF dict once decoded.
     KEY_APPINFO = None
-    KEY_COMMON  = None
-    KEY_NAME    = None
-    KEY_TYPE    = None
-    KEY_STEAM_RELEASE_DATE    = None
-    KEY_ORIGINAL_RELEASE_DATE = None
     for kid, kname in keys.items():
-        if kname == 'appinfo':                KEY_APPINFO = kid
-        elif kname == 'common':               KEY_COMMON = kid
-        elif kname == 'name':                 KEY_NAME   = kid
-        elif kname == 'type':                 KEY_TYPE   = kid
-        elif kname == 'steam_release_date':   KEY_STEAM_RELEASE_DATE = kid
-        elif kname == 'original_release_date': KEY_ORIGINAL_RELEASE_DATE = kid
+        if kname == 'appinfo':
+            KEY_APPINFO = kid
+            break
 
-    VALID_TYPES = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
     max_key = len(keys)
 
     def _read_vdf(buf, off, depth=0):

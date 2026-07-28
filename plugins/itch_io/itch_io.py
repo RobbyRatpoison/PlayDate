@@ -505,7 +505,7 @@ def start_install_watcher():
     class _InstallHandler(FileSystemEventHandler):
         def _on_change(self, path):
             if os.path.dirname(os.path.abspath(path)) == os.path.abspath(ITCH_INSTALL_BASE):
-                log.info(f'itch.io: install dir change detected — syncing install status')
+                log.info('itch.io: install dir change detected — syncing install status')
                 try:
                     sync_install_status()
                 except Exception as e:

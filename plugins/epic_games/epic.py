@@ -10,7 +10,7 @@ import threading
 import time
 
 import requests
-from config import CONFIG_PATH, BASE_DIR, load_config, _save_config_data
+from config import BASE_DIR, load_config, _save_config_data
 from database import next_negative_appid
 from images import save_as_jpg
 from utils import review_score_label

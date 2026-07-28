@@ -119,7 +119,7 @@ def install_cancel(appid):
 @bp.route('/uninstall/<int:appid>', methods=['POST'])
 def uninstall(appid):
     import shutil
-    from database import get_db, update_game_data
+    from database import update_game_data
     db  = get_db()
     row = db.execute(
         'SELECT name, install_path FROM games WHERE appid=? AND platform=?',

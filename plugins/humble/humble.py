@@ -514,7 +514,6 @@ def _find_executable(game_dir):
     """
     is_windows = sys.platform == 'win32'
     is_mac     = sys.platform == 'darwin'
-    is_linux   = sys.platform == 'linux'
 
     # macOS: check for .app bundles first
     if is_mac:

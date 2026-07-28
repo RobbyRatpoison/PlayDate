@@ -15,8 +15,8 @@ from flask import Blueprint, jsonify, request
 from images import download_vertical, download_horizontal, download_icon, _get_steam_assets, _sgdb_search_game_id, VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR
 from datetime import datetime, timezone
 from config import load_config, get_active_account
-from database import add_new_game, batch_insert_placeholder_games, update_game_data, get_db, add_to_blacklist
-from utils import get_locally_installed_appids, sync_local_install_status, fetch_local_library, get_acf_names, parse_appinfo
+from database import batch_insert_placeholder_games, update_game_data, get_db, add_to_blacklist
+from utils import get_locally_installed_appids, fetch_local_library, get_acf_names, parse_appinfo
 
 blaeo_bp = Blueprint('blaeo', __name__)
 
@@ -770,7 +770,6 @@ def _add_new(cancel_event=None, progress_cb=None):
         protondb_nq.put(appid)
         hltb_nq.put(appid)
 
-    art_backoff    = _PoolBackoff('art')
     meta_backoff   = _PoolBackoff('meta')
     cheevo_backoff = _PoolBackoff('cheevo')
     # Expose priority queues so /api/populate-priority can feed them
@@ -1009,7 +1008,7 @@ def fetch_store_data(appid, session=None):
 
     except RateLimitedError:
         raise
-    except Exception as e:
+    except Exception:
         log.error(f"Error fetching store data for {appid}")
         return None
 
@@ -1050,7 +1049,7 @@ def fetch_review_data(appid, session=None):
 
     except RateLimitedError:
         raise
-    except Exception as e:
+    except Exception:
         log.error(f"Error fetching review data for {appid}")
         return None
 
@@ -1102,7 +1101,7 @@ def fetch_cheevo_data(appid):
 
     except RateLimitedError:
         raise
-    except Exception as e:
+    except Exception:
         log.error(f"Error fetching achievement data for AppID: {appid}")
         return None
 
@@ -1392,7 +1391,7 @@ def _rebuild_steam_sources(gs, current_collections, current_members, cursor):
 
 def _blaeo_apply_all(data):
     """Write all proposed BLAEO changes to the database. Used by the populate flow."""
-    from config import load_group_sources, save_group_sources, gs_is_protected, gs_add_owner
+    from config import load_group_sources, save_group_sources, gs_is_protected
     today           = data['today']
     row_data        = data['row_data']
     current_members = data['current_members']

@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from library import build_tree_sql, build_condition_sql
+from library import build_tree_sql
 
 
 def cond(column, operator, value, **extra):

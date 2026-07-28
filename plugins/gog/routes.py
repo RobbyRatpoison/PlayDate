@@ -187,8 +187,6 @@ def gog_install_cancel(appid):
 
 @bp.route('/uninstall/<int:appid>', methods=['POST'])
 def gog_uninstall(appid):
-    from .gog import GOG_INSTALL_BASE
-
     db  = get_db()
     row = db.execute(
         'SELECT name, install_path FROM games WHERE appid = ? AND platform = ?',

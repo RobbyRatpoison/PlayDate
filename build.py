@@ -52,7 +52,6 @@ def run(cmd, **kwargs):
 
 
 def main():
-    import shutil
     import zipfile
 
     version = read_version()
@@ -70,7 +69,7 @@ def main():
         f.write(f"PlayDate v{version} portable build\n")
 
     # Zip the dist/PlayDate directory as the portable release asset
-    portable_zip = os.path.join(ROOT, "dist", f"PlayDate-Windows-Portable.zip")
+    portable_zip = os.path.join(ROOT, "dist", "PlayDate-Windows-Portable.zip")
     print(f"\n>>> Creating portable zip: {portable_zip}\n")
     with zipfile.ZipFile(portable_zip, "w", zipfile.ZIP_DEFLATED) as zf:
         for dirpath, _, filenames in os.walk(dist_dir):

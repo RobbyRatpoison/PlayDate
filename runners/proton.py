@@ -5,7 +5,6 @@ runners/proton.py — Detect and launch Proton for Windows GOG games.
 import glob
 import logging
 import os
-import subprocess
 
 from runners.sandbox import host_popen
 

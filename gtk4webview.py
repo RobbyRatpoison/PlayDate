@@ -17,7 +17,6 @@ from typing import Any
 from uuid import uuid1
 
 from webview import FileDialog, _state, settings, windows
-from webview.dom import _dnd_state
 from webview.menu import Menu, MenuAction, MenuSeparator
 from webview.models import Request, Response
 from webview.screen import Screen
@@ -28,7 +27,7 @@ from webview.util import (
     js_bridge_call,
     parse_file_type,
 )
-from webview.window import FixPoint, Window
+from webview.window import Window
 
 logger = logging.getLogger('pywebview')
 os.environ['EGL_LOG_LEVEL'] = 'fatal'

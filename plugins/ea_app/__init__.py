@@ -123,7 +123,7 @@ class EAAppPlugin:
 
         try:
             if sys.platform == 'win32':
-                log.info(f'EA launch: using os.startfile on Windows')
+                log.info('EA launch: using os.startfile on Windows')
                 os.startfile(url)
             else:  # Linux — Wine (EA App has no macOS version)
                 import json
@@ -187,7 +187,6 @@ class EAAppPlugin:
                     env_extra.update({'WINEFSYNC': '1', 'WINEESYNC': '1'})
                 # Explicitly select NVIDIA Vulkan ICD if available, to ensure
                 # DXVK uses the discrete GPU rather than a software fallback.
-                import shutil as _shutil
                 nvidia_icd = '/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json'
                 if os.path.exists(nvidia_icd):
                     env_extra['VK_ICD_FILENAMES'] = nvidia_icd

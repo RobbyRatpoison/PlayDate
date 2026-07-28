@@ -11,7 +11,6 @@ Library sync uses the Juno GraphQL API (service-aggregation-layer.juno.ea.com).
 import json
 import logging
 import os
-import re
 import threading
 import time
 
@@ -515,9 +514,6 @@ def _fetch_games_detail(session, offer_ids, chunk_size=100):
 def _fetch_entitlement_dates(session, pid):
     """EA's entitlements REST API is not accessible via the implicit-flow token. Returns {}."""
     return {}
-
-    log.info(f'EA entitlement dates (Juno): fetched {len(dates)} grant dates')
-    return dates
 
 
 # ── Library sync ──────────────────────────────────────────────────────────────
