@@ -118,7 +118,17 @@ jobs:
           print("Patched manifest to build from the CI checkout")
 
       # ── 4. Install flatpak + flatpak-builder ──────────────────────────────────
+      # NEEDRESTART_MODE=a (automatic) stops Ubuntu's needrestart from popping
+      # its "which services should be restarted?" prompt when apt installs a
+      # package that touches a running service -- with no TTY attached on a
+      # CI runner, that prompt just hangs the step forever instead of erroring
+      # (observed: stuck 10+ minutes on this exact step, cancelled manually).
+      # timeout-minutes is a second, independent safety net in case something
+      # else ever hangs here too -- normally finishes in well under a minute.
       - name: Install flatpak tooling
+        timeout-minutes: 5
+        env:
+          NEEDRESTART_MODE: a
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
