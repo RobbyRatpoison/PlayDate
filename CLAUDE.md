@@ -107,7 +107,7 @@ Long-running operations run in daemon threads with `threading.Event` (`_populate
 
 ### Scrapers
 
-**Rate limiting:** fetch functions raise `RateLimitedError` on 429 → populate pauses 15s and retries once → if retry also 429, populate aborts. `RateLimitedError` is defined in `scrapers.py`.
+**Rate limiting:** fetch functions raise `RateLimitedError` on 429, carrying `retry_after` (seconds) parsed from the response's `Retry-After` header when present (`_parse_retry_after()`). Populate and bulk-rescrape workers share a `_PoolBackoff` gate per pool (meta/cheevo/bulk_rescrape): the first 429 in a pool closes a shared gate and every worker waits together, preferring the server's `retry_after` over the fixed `BACKOFF_DELAYS` sequence (`[15, 60, 300, 3615]`) when given, capped at the largest configured delay; after all `BACKOFF_DELAYS` attempts are exhausted the pool aborts. `sync_store_release_dates`/`sync_store_names` (startup migrations) use a simpler pause-and-retry-once, also preferring `retry_after` when present. `/api/scrape_single/<appid>` (single-game "Sync Steam Data") catches `RateLimitedError` and returns a `429` with a clear message instead of crashing.
 
 **API key optional:** without one, `add_new()` reads from local Steam files (`localconfig.vdf` for playtime, ACF manifests for names, `appinfo.vdf` for names/types). Achievements skipped without key; Store API, reviews, and tag scraping work without one.
 

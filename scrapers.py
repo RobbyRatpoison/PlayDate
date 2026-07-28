@@ -26,11 +26,39 @@ _blaeo_sync_lock  = threading.Lock()
 
 
 class RateLimitedError(Exception):
-    """Raised when Steam returns HTTP 429."""
-    pass
+    """Raised when Steam returns HTTP 429. retry_after (seconds, float) is set
+    when the response carried a Retry-After header -- callers prefer this over
+    the fixed BACKOFF_DELAYS guess when present."""
+    def __init__(self, retry_after=None):
+        super().__init__('Rate limited')
+        self.retry_after = retry_after
 
 
-# Backoff delays in seconds: 15s → 1m → 5m → 1h+15s
+def _parse_retry_after(resp):
+    """Parse a 429 response's Retry-After header into seconds (float), or None
+    if the header is absent or unparseable. Handles both forms RFC 7231 allows:
+    a plain integer, or an HTTP-date."""
+    val = resp.headers.get('Retry-After')
+    if not val:
+        return None
+    try:
+        return float(val)
+    except ValueError:
+        pass
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(val)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (dt - datetime.now(timezone.utc)).total_seconds())
+    except Exception:
+        return None
+
+
+# Backoff delays in seconds: 15s → 1m → 5m → 1h+15s. Used when a 429 doesn't
+# carry a Retry-After header; when it does, that value is honored instead
+# (capped at the largest delay here so a bogus/huge value can't stall a pool
+# indefinitely).
 BACKOFF_DELAYS = [15, 60, 300, 3615]
 
 
@@ -64,9 +92,12 @@ class _PoolBackoff:
         self._lock    = threading.Lock()
         self.aborted  = False
 
-    def on_rate_limited(self, cancel_event=None):
+    def on_rate_limited(self, cancel_event=None, retry_after=None):
         """
-        Called by the worker that received the 429.
+        Called by the worker that received the 429. retry_after (seconds), if
+        given, comes from the response's Retry-After header and is preferred
+        over the fixed BACKOFF_DELAYS guess for this wait -- capped at the
+        largest configured delay so a bogus/huge value can't stall the pool.
         Returns True if the pool should keep running, False if all retries are
         exhausted (caller should exit the worker).
         """
@@ -80,13 +111,14 @@ class _PoolBackoff:
                 self.aborted = True
                 log.warning(f"[{self.name}] All backoff attempts exhausted — aborting pool.")
                 return False
-            delay = BACKOFF_DELAYS[self._attempt]
+            delay = min(retry_after, BACKOFF_DELAYS[-1]) if retry_after else BACKOFF_DELAYS[self._attempt]
             self._attempt += 1
             self._gate.clear()
 
         log.warning(
-            f"[{self.name}] Rate limited. Waiting {delay}s "
-            f"(attempt {self._attempt}/{len(BACKOFF_DELAYS)})..."
+            f"[{self.name}] Rate limited. Waiting {delay:.0f}s "
+            f"(attempt {self._attempt}/{len(BACKOFF_DELAYS)}"
+            f"{', server-requested' if retry_after else ''})..."
         )
         deadline = time.time() + delay
         while time.time() < deadline:
@@ -262,13 +294,13 @@ def _meta_worker(normal_q, priority_q, backoff, cancel_event, total, today, prog
                 progress_cb('meta', appid, total)
             time.sleep(1.5)
 
-        except RateLimitedError:
+        except RateLimitedError as e:
             if progress_cb:
                 attempt = backoff._attempt + 1
-                delay   = BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
+                delay   = min(e.retry_after, BACKOFF_DELAYS[-1]) if e.retry_after else BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
                 progress_cb('rate_limit_hit', {'pool': 'meta', 'attempt': attempt, 'delay': delay}, total)
             priority_q.put(appid)   # re-queue for retry after backoff
-            if not backoff.on_rate_limited(cancel_event):
+            if not backoff.on_rate_limited(cancel_event, retry_after=e.retry_after):
                 return
         except Exception as e:
             log.error(f"[meta] Error for {appid}: {e}")
@@ -303,13 +335,13 @@ def _cheevo_worker(normal_q, priority_q, backoff, cancel_event, today, progress_
             update_game_data(appid, **game_data)
             if progress_cb:
                 progress_cb('cheevo', appid, None)
-        except RateLimitedError:
+        except RateLimitedError as e:
             if progress_cb:
                 attempt = backoff._attempt + 1
-                delay   = BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
+                delay   = min(e.retry_after, BACKOFF_DELAYS[-1]) if e.retry_after else BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
                 progress_cb('rate_limit_hit', {'pool': 'cheevo', 'attempt': attempt, 'delay': delay}, None)
             priority_q.put(appid)
-            if not backoff.on_rate_limited(cancel_event):
+            if not backoff.on_rate_limited(cancel_event, retry_after=e.retry_after):
                 return
         except Exception as e:
             log.error(f"[cheevo] Error for {appid}: {e}")
@@ -937,7 +969,7 @@ def _scrape_store_page_date(appid, session=None):
             allow_redirects=True,
         )
         if resp.status_code == 429:
-            raise RateLimitedError()
+            raise RateLimitedError(_parse_retry_after(resp))
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
         date_div = soup.select_one('.release_date .date')
@@ -964,7 +996,7 @@ def fetch_store_data(appid, session=None):
     try:
         response = _http.get(url, timeout=15)
         if response.status_code == 429:
-            raise RateLimitedError()
+            raise RateLimitedError(_parse_retry_after(response))
         response.raise_for_status()
         json_data = response.json()
 
@@ -1021,7 +1053,7 @@ def fetch_review_data(appid, session=None):
     try:
         response = _http.get(url, timeout=20)
         if response.status_code == 429:
-            raise RateLimitedError()
+            raise RateLimitedError(_parse_retry_after(response))
         response.raise_for_status()
 
         data = response.json()
@@ -1071,7 +1103,7 @@ def fetch_cheevo_data(appid):
     try:
         response = requests.get(url, timeout=15)
         if response.status_code == 429:
-            raise RateLimitedError()
+            raise RateLimitedError(_parse_retry_after(response))
         if response.status_code == 400:
             return {'total_achievements': 0, 'unlocked_achievements': 0}
         response.raise_for_status()
@@ -1121,7 +1153,7 @@ def fetch_tag_data(appid, session=None):
     try:
         response = _http.get(url, headers=headers, timeout=10)
         if response.status_code == 429:
-            raise RateLimitedError()
+            raise RateLimitedError(_parse_retry_after(response))
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -2007,13 +2039,13 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
                         progress_cb('done', appid, total)
                     time.sleep(0.5)
 
-            except RateLimitedError:
+            except RateLimitedError as e:
                 q.put(appid)   # re-queue for retry after backoff
                 if progress_cb:
                     attempt = backoff._attempt + 1
-                    delay   = BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
+                    delay   = min(e.retry_after, BACKOFF_DELAYS[-1]) if e.retry_after else BACKOFF_DELAYS[min(backoff._attempt, len(BACKOFF_DELAYS) - 1)]
                     progress_cb('rate_limit', {'attempt': attempt, 'delay': delay}, total)
-                if not backoff.on_rate_limited(cancel_event):
+                if not backoff.on_rate_limited(cancel_event, retry_after=e.retry_after):
                     with lock:
                         counts['failed'] += 1
                     return
@@ -2307,10 +2339,11 @@ def sync_store_release_dates():
                     update_game_data(appid, release_date=ts)
                 done_ids.add(appid_str)
                 break
-            except RateLimitedError:
+            except RateLimitedError as e:
                 if attempt == 0:
-                    log.warning(f"sync_store_release_dates: rate limited at appid {appid}, pausing 30s.")
-                    time.sleep(30)
+                    delay = min(e.retry_after, 300) if e.retry_after else 30
+                    log.warning(f"sync_store_release_dates: rate limited at appid {appid}, pausing {delay:.0f}s.")
+                    time.sleep(delay)
                 else:
                     log.error(f"sync_store_release_dates: retry failed for {appid} — rate limited again")
                     failed += 1
@@ -2395,9 +2428,10 @@ def sync_store_names():
                     pending.append({'appid': appid, 'old_name': row['name'], 'new_name': store_name})
             else:
                 update_game_data(appid, name_from_store=1)
-        except RateLimitedError:
-            log.warning(f"sync_store_names: rate limited at appid {appid}, pausing 30s.")
-            time.sleep(30)
+        except RateLimitedError as e:
+            delay = min(e.retry_after, 300) if e.retry_after else 30
+            log.warning(f"sync_store_names: rate limited at appid {appid}, pausing {delay:.0f}s.")
+            time.sleep(delay)
             try:
                 store_info = fetch_store_data(appid, session=session)
                 if store_info:

@@ -3341,8 +3341,11 @@ function pickRandomGame() {
                     openDetailPane({ ..._dpCurrentGame, ...g });
                     _dpDescLoaded.delete(appid); // refresh description too
                 }
+                if (btn) { btn.textContent = 'Done'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Sync'; }, 1500); }
+            } else if (btn) {
+                btn.textContent = data.message || 'Failed';
+                setTimeout(() => { btn.disabled = false; btn.textContent = 'Sync'; }, 2500);
             }
-            if (btn) { btn.textContent = 'Done'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Sync'; }, 1500); }
         } catch (_) {
             if (btn) { btn.disabled = false; btn.textContent = 'Sync'; }
         }

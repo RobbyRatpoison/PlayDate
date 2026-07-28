@@ -1303,6 +1303,8 @@ const achLink = document.getElementById('achievements-link');
                     safeSet('edit-status', 'Completed');
                 }
                 btn.textContent = "Complete!";
+            } else {
+                btn.textContent = data.message || "Failed";
             }
         } catch (err) {
             btn.textContent = "Failed";

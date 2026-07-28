@@ -771,17 +771,23 @@ def bulk_distinct_values(data):
 
 @library_bp.route('/api/scrape_single/<int:appid>', methods=['GET', 'POST'])
 def scrape_single(appid):
-    from scrapers import fetch_store_data, fetch_tag_data, fetch_player_data, fetch_review_data, fetch_cheevo_data
+    from scrapers import fetch_store_data, fetch_tag_data, fetch_player_data, fetch_review_data, fetch_cheevo_data, RateLimitedError
     from utils import fetch_local_library, get_acf_names, parse_appinfo
     from config import load_config as _load_config, get_active_account as _get_active_account
     _cfg     = _load_config() or {}
     _account = _get_active_account() or {}
 
-    player_data = fetch_player_data(appid) or {}
-    store_data  = fetch_store_data(appid) or {}
-    review_data = fetch_review_data(appid) or {}
-    cheevo_data = fetch_cheevo_data(appid) or {} if _account.get('api_key') else {}
-    tag_data    = fetch_tag_data(appid) or {}
+    try:
+        player_data = fetch_player_data(appid) or {}
+        store_data  = fetch_store_data(appid) or {}
+        review_data = fetch_review_data(appid) or {}
+        cheevo_data = fetch_cheevo_data(appid) or {} if _account.get('api_key') else {}
+        tag_data    = fetch_tag_data(appid) or {}
+    except RateLimitedError as e:
+        retry_after = round(e.retry_after) if e.retry_after else None
+        message = (f"Steam is rate-limiting requests — try again in {retry_after}s."
+                   if retry_after else "Steam is rate-limiting requests — try again shortly.")
+        return jsonify({"status": "error", "message": message, "retry_after": retry_after}), 429
 
     data_out = {
         "developers":             store_data.get('developers', ''),
