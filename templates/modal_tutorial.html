@@ -9,12 +9,14 @@
         <div style="display:grid; grid-template-columns:200px 1fr; gap:20px; flex:1; min-height:0;">
 
             <!-- Left: table of contents -->
-            <div id="tutorial-toc" style="overflow-y:auto; border-right:1px solid var(--border); padding-right:14px;">
+            <div id="tutorial-toc" style="grid-column:1; overflow-y:auto; border-right:1px solid var(--border); padding-right:14px;">
                 <!-- section rows injected by tutorial.js -->
             </div>
 
-            <!-- Right: active section step -->
-            <div id="tutorial-section-view" style="display:none; flex-direction:column; overflow-y:auto; min-height:0;">
+            <!-- Right: active section step (spans the full width — ToC and this
+                 pane are never shown at the same time, so there's no reason to
+                 confine this to the narrower right column). -->
+            <div id="tutorial-section-view" style="grid-column:1 / -1; display:none; flex-direction:column; overflow-y:auto; min-height:0;">
                 <div id="tutorial-step-progress" style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px; flex-shrink:0;"></div>
                 <h3 id="tutorial-step-title" style="margin:0 0 10px; color:var(--accent); flex-shrink:0;"></h3>
                 <div id="tutorial-step-body" style="font-size:0.9rem; line-height:1.65; color:var(--text-primary); flex:1;"></div>
