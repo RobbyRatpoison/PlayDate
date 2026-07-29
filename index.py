@@ -41,7 +41,7 @@ def _filter_tree_to_sql(tree):
     return sql or '1=1'
 
 
-def _build_shelf_query(shelf, saved_filters):
+def _build_shelf_query(shelf, saved_filters, state):
     """Returns (where_clause, order_clause) or (None, None) for special widgets."""
     filter_key = shelf.get('filter_key') or shelf.get('preset', 'all_games')
 
@@ -66,6 +66,13 @@ def _build_shelf_query(shelf, saved_filters):
         where = _filter_tree_to_sql(sf['tree'] if isinstance(sf, dict) and 'tree' in sf else sf)
     else:
         where = '1=1'
+
+    # Same condition library.py's grid query applies -- shelves had no
+    # equivalent at all, so "Hide duplicate entries" was only ever honored
+    # on the Library page, not Home.
+    if state.get('hide_duplicates', True):
+        dup_cond = "(duplicate_of IS NULL OR duplicate_of = '')"
+        where = dup_cond if where == '1=1' else f"({where}) AND {dup_cond}"
 
     # Platform filter — values are validated to prevent SQL injection
     shelf_hidden = [p for p in (shelf.get('hidden_platforms') or []) if re.match(r'^[a-z][a-z0-9_]*$', p or '')]
@@ -118,7 +125,7 @@ def index():
     shelf_games = {}
 
     for shelf in dedup_order:
-        where, order = _build_shelf_query(shelf, saved_filters)
+        where, order = _build_shelf_query(shelf, saved_filters, state)
         if where is None:
             shelf_games[shelf['id']] = []
             continue
@@ -232,7 +239,7 @@ def shuffle_shelf(shelf_id):
             return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
 
         saved_filters = state.get('saved_filters', {})
-        where, _ = _build_shelf_query(shelf, saved_filters)
+        where, _ = _build_shelf_query(shelf, saved_filters, state)
         if where is None:
             return jsonify({'status': 'error', 'message': 'Widget shelf'}), 400
 
@@ -272,7 +279,7 @@ def refill_shelf(shelf_id):
             return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
 
         saved_filters = state.get('saved_filters', {})
-        where, order = _build_shelf_query(shelf, saved_filters)
+        where, order = _build_shelf_query(shelf, saved_filters, state)
         if where is None:
             return jsonify({'status': 'success', 'games': []})
 
