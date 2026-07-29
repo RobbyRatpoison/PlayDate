@@ -47,6 +47,11 @@ def open_url_route():
 
 @system_bp.route('/api/open-install-dir/<appid>', methods=['POST'])
 def open_install_dir(appid):
+    try:
+        appid = int(appid)
+    except ValueError:
+        return jsonify({"status": "error", "message": "Invalid appid"}), 400
+
     db = get_db()
     try:
         row = db.execute("SELECT platform, install_path FROM games WHERE appid = ?", (appid,)).fetchone()

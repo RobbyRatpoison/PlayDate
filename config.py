@@ -1313,8 +1313,9 @@ def set_background():
 
 @config_bp.route('/api/set-background-from-path', methods=['POST'])
 def set_background_from_path():
+    from utils import validate_user_path
     data = request.get_json(force=True)
-    path = (data or {}).get('path', '')
+    path = validate_user_path((data or {}).get('path', ''))
     if not path or not os.path.isfile(path):
         return jsonify({"status": "error", "message": "File not found."}), 400
     ext = os.path.splitext(path)[1].lower()
@@ -1340,7 +1341,8 @@ def preview_bg_from_path():
     # localhost server is running. A simple request can't set custom headers.
     if request.headers.get('X-PlayDate-Internal') != '1':
         return ('', 403)
-    path = request.args.get('path', '')
+    from utils import validate_user_path
+    path = validate_user_path(request.args.get('path', ''))
     if not path or not os.path.isfile(path):
         return ('', 404)
     ext = os.path.splitext(path)[1].lower()
