@@ -64,10 +64,19 @@ const TUTORIAL_SECTIONS = [
                 title: 'Bulk operations',
                 body: `<p>Select multiple games in the grid (or list view) and use <strong>Bulk Ops</strong> to edit tags/status across all of them at once, or re-scrape metadata and cover art in bulk.</p>`,
             },
+        ],
+    },
+    {
+        id: 'date-import',
+        title: 'Importing Purchase Dates',
+        steps: [
             {
-                title: 'Importing purchase dates',
-                body: `<p>Steam and GOG don't expose accurate purchase/activation dates through their APIs, so PlayDate can pull them from your account's own history pages instead, using a companion browser userscript (needs the Tampermonkey extension). Install it from <a href="https://github.com/RobbyRatpoison/PlayDate/raw/refs/heads/main/steam_date_import.user.js" target="_blank">GitHub</a>.</p>
-                       <p>Click the ↗ next to <strong>Date Added</strong> in a game's edit panel to import one game's date, or use Bulk Ops' <strong>Date Importer</strong> tab to fetch dates for many games at once.</p>`,
+                title: 'Why import dates?',
+                body: `<p>Steam and GOG don't expose accurate purchase/activation dates through their APIs, so PlayDate can pull them from your account's own history pages instead, using a companion browser userscript (needs the Tampermonkey extension). Install it from <a href="https://github.com/RobbyRatpoison/PlayDate/raw/refs/heads/main/steam_date_import.user.js" target="_blank">GitHub</a>.</p>`,
+            },
+            {
+                title: 'Single game or bulk',
+                body: `<p>Click the ↗ next to <strong>Date Added</strong> in a game's edit panel to import one game's date, or use the Library page's Bulk Ops → <strong>Date Importer</strong> tab to fetch dates for many games at once.</p>`,
             },
         ],
     },
