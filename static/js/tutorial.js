@@ -206,16 +206,6 @@ function _tutRenderStep() {
     document.getElementById('tutorial-step-title').textContent = step.title;
     document.getElementById('tutorial-step-body').innerHTML = step.body;
 
-    const imgWrap = document.getElementById('tutorial-step-image-wrap');
-    const img = document.getElementById('tutorial-step-image');
-    if (step.image) {
-        img.src = step.image;
-        img.alt = step.title;
-        imgWrap.style.display = 'block';
-    } else {
-        imgWrap.style.display = 'none';
-    }
-
     document.getElementById('tutorial-next-btn').textContent =
         _tutStep === section.steps.length - 1 ? 'Done' : 'Next';
 }
