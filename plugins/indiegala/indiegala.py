@@ -293,7 +293,7 @@ def _run_sync():
         MAX_PAGES = 200
         while page <= MAX_PAGES:
             _sync_state['status'] = f'Fetching page {page}…'
-            url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}?page={page}'
+            url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}/showcase/{page}/'
             try:
                 resp = requests.get(url, headers=_headers(), timeout=20,
                                     allow_redirects=True)
@@ -400,7 +400,7 @@ def fetch_dates_for_appids(appids):
     # window of page numbers. Stops on an empty page instead.
     MAX_PAGES = 200
     while page <= MAX_PAGES and still_needed:
-        url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}?page={page}'
+        url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}/showcase/{page}/'
         try:
             resp = requests.get(url, headers=_headers(), timeout=20, allow_redirects=True)
             if resp.status_code != 200 or '/login' in resp.url:

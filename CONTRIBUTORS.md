@@ -31,6 +31,7 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - "Hide duplicate entries" not applying to Home page shelves
 - GOG games' release dates sorting before/after all Steam games instead of interleaving chronologically
 - IndieGala library sync only fetching the first page
+- IndieGala library sync still stuck re-fetching page one after the previous fix; found and supplied the actual URL fix
 
 **devonrv**
 - Pointed out the name collision with the Playdate handheld console
