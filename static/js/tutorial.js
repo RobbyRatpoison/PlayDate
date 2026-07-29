@@ -181,7 +181,7 @@ function _tutShowToc() {
 function _tutRenderToc() {
     const toc = document.getElementById('tutorial-toc');
     toc.innerHTML = TUTORIAL_SECTIONS.map((s, i) =>
-        `<button class="settings-item" data-modal-row="${i}" onclick="_tutShowSection('${s.id}')">${escHtml(s.title)}</button>`
+        `<button class="settings-item" data-modal-row="${i}" onclick="_tutShowSection('${s.id}')" style="justify-content:center; text-align:center;">${escHtml(s.title)}</button>`
     ).join('');
 }
 
