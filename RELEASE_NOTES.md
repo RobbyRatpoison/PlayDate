@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.10
+## v1.6.10 - 2026-07-29
 ### New
 
 - The custom artwork field on the game edit panel now also accepts a local file path, not just an image URL.
