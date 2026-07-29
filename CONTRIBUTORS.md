@@ -28,6 +28,9 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Gentoo install failing to detect WebKitGTK 6.0/GTK4; also pointed at the fix
 - Secondary Steam library games not recognized as installed; suggested reading `libraryfolders.vdf`
 - Date filter "on (exact)" / "matches pattern" broken
+- "Hide duplicate entries" not applying to Home page shelves
+- GOG games' release dates sorting before/after all Steam games instead of interleaving chronologically
+- IndieGala library sync only fetching the first page
 
 **devonrv**
 - Pointed out the name collision with the Playdate handheld console
