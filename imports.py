@@ -9,7 +9,7 @@ import threading
 import zipfile
 from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
-from database import get_db
+from database import get_db, date_to_ts
 from config import BASE_DIR
 from utils import validate_user_path
 
@@ -233,6 +233,17 @@ def execute_import(data):
                     continue
                 if normalize_dates:
                     val = normalize_date(val)
+                    # normalize_date() always returns a 'YYYY-MM-DD' string,
+                    # which is right for TEXT-ish target columns (meta_fetched
+                    # etc.) but silently corrupts an INTEGER-affinity one
+                    # (date_added/last_played/release_date all store Unix
+                    # timestamps) -- a column with a mix of INTEGER and TEXT
+                    # values sorts by storage class first, not by real date.
+                    # Same bug class as the GOG plugin's release_date fix.
+                    if 'INT' in tgt_pragma.get(tgt, '').upper():
+                        val = date_to_ts(val)
+                        if val is None:
+                            continue
                 update_kwargs[tgt] = val
 
             if not update_kwargs:
