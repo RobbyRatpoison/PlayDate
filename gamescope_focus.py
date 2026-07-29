@@ -7,10 +7,18 @@ Confirmed on real Steam Deck hardware that neither WebKit's own
 document.hasFocus()/hidden nor GTK's is-active property reliably reflect
 this -- gamepad input kept driving PlayDate's UI while the Deck's own
 home screen was frontmost. gamescope tracks real compositor-level focus
-separately via X11 atoms on its embedded Xwayland root window (the same
-mechanism Proton itself uses to decide whether to drop input), set via
-XChangeProperty whenever its internal focus target changes and watchable
-via a standard PropertyNotify event -- no polling needed.
+separately via X11 atoms on its embedded Xwayland root window, set via
+XChangeProperty whenever its internal focus target changes -- the same
+mechanism Proton itself uses to decide whether to drop input.
+
+Polls rather than using XNextEvent/PropertyNotify: an earlier
+PropertyNotify-based version registered correctly (own XID read back fine,
+XSelectInput/XInternAtom all succeeded) but never woke up for a change
+that `xprop -root -spy` on the same X server clearly saw at the same
+moment, on real hardware. Root cause not identified (some interaction
+between a raw ctypes Xlib client thread and event delivery is suspected)
+but not worth chasing further given a 100ms poll is more than fast enough
+for this and eliminates the entire class of bug.
 
 No-ops entirely outside gamescope: XInternAtom with only_if_exists=True
 returns 0 when the atom was never created, which is the case for any
@@ -20,33 +28,12 @@ import ctypes
 import ctypes.util
 import logging
 import threading
+import time
 
 logger = logging.getLogger('gamescope_focus')
 
-_PROPERTY_CHANGE_MASK = 1 << 22
-_PROPERTY_NOTIFY = 19
 _XA_CARDINAL = 6
-
-
-class _XPropertyEvent(ctypes.Structure):
-    _fields_ = [
-        ('type', ctypes.c_int),
-        ('serial', ctypes.c_ulong),
-        ('send_event', ctypes.c_int),
-        ('display', ctypes.c_void_p),
-        ('window', ctypes.c_ulong),
-        ('atom', ctypes.c_ulong),
-        ('time', ctypes.c_ulong),
-        ('state', ctypes.c_int),
-    ]
-
-
-class _XEvent(ctypes.Union):
-    _fields_ = [
-        ('type', ctypes.c_int),
-        ('xproperty', _XPropertyEvent),
-        ('pad', ctypes.c_long * 24),
-    ]
+_POLL_INTERVAL = 0.1
 
 
 def _load_xlib():
@@ -58,8 +45,6 @@ def _load_xlib():
     x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
     x11.XInternAtom.restype = ctypes.c_ulong
     x11.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
-    x11.XSelectInput.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_long]
-    x11.XNextEvent.argtypes = [ctypes.c_void_p, ctypes.POINTER(_XEvent)]
     x11.XGetWindowProperty.argtypes = [
         ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_long, ctypes.c_long,
         ctypes.c_int, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int),
@@ -95,11 +80,11 @@ def _read_cardinal(x11, display, window, atom):
 
 def watch(own_xid, on_focus_change):
     """
-    Spawns a daemon thread that watches gamescope's GAMESCOPE_FOCUSED_WINDOW
-    root property and calls on_focus_change(bool) once with the current
-    state, then again on every change, comparing against own_xid. Silently
-    does nothing if libX11 is unavailable, no display can be opened, or the
-    atom doesn't exist (i.e. not running under gamescope).
+    Spawns a daemon thread that polls gamescope's GAMESCOPE_FOCUSED_WINDOW
+    root property every 100ms and calls on_focus_change(bool) once with the
+    current state, then again on every change, comparing against own_xid.
+    Silently does nothing if libX11 is unavailable, no display can be
+    opened, or the atom doesn't exist (i.e. not running under gamescope).
     """
     def _run():
         try:
@@ -120,20 +105,17 @@ def watch(own_xid, on_focus_change):
                 logger.info('gamescope focus watch: GAMESCOPE_FOCUSED_WINDOW absent, not gamescope, skipping')
                 return
 
-            current = _read_cardinal(x11, display, root, focused_window_atom)
-            logger.info(f'gamescope focus watch: started, own_xid={own_xid} initial focused_window={current}')
-            if current is not None:
-                on_focus_change(current == own_xid)
+            last = _read_cardinal(x11, display, root, focused_window_atom)
+            logger.info(f'gamescope focus watch: started (polling), own_xid={own_xid} initial focused_window={last}')
+            if last is not None:
+                on_focus_change(last == own_xid)
 
-            x11.XSelectInput(display, root, _PROPERTY_CHANGE_MASK)
-            event = _XEvent()
             while True:
-                x11.XNextEvent(display, ctypes.byref(event))
-                if event.type != _PROPERTY_NOTIFY or event.xproperty.atom != focused_window_atom:
-                    continue
+                time.sleep(_POLL_INTERVAL)
                 value = _read_cardinal(x11, display, root, focused_window_atom)
-                logger.info(f'gamescope focus watch: focused_window changed to {value} (own_xid={own_xid})')
-                if value is not None:
+                if value is not None and value != last:
+                    logger.info(f'gamescope focus watch: focused_window changed to {value} (own_xid={own_xid})')
+                    last = value
                     on_focus_change(value == own_xid)
         except Exception:
             logger.exception('gamescope focus watch: error, stopping')
