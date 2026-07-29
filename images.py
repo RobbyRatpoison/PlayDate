@@ -3,6 +3,7 @@ import os
 import io
 import requests
 from urllib.parse import quote as url_quote, urlparse
+from urllib.request import url2pathname
 from PIL import Image
 from config import BASE_DIR, load_config
 from flask import Blueprint, jsonify, request
@@ -357,8 +358,9 @@ def download_icon(appid, icon_hash, source='auto', sgdb_id=None, game_name=None)
 
 def download_from_url(appid, url, orientation):
     """
-    Downloads an image from a user-supplied URL and saves it for the given
-    orientation ('vertical', 'horizontal', or 'icon').
+    Saves an image for the given orientation ('vertical', 'horizontal', or
+    'icon') from a user-supplied source: an http(s) URL is downloaded, while
+    a local filesystem path or file:// URL is read directly off disk.
     Returns 'custom' on success, 'missing' on failure.
     """
     _ensure_dirs()
@@ -369,6 +371,24 @@ def download_from_url(appid, url, orientation):
     }
     save_dir = dir_map.get(orientation, VERTICAL_DIR)
     save_path = os.path.join(save_dir, f'{appid}.jpg')
+
+    parsed = urlparse(url)
+    if parsed.scheme in ('', 'file'):
+        from utils import validate_user_path
+        raw_path   = url2pathname(parsed.path) if parsed.scheme == 'file' else url
+        local_path = validate_user_path(raw_path)
+        log.info(f"download_from_url: {orientation} art for {appid} from local path {local_path}")
+        if not local_path or not os.path.isfile(local_path):
+            log.warning(f"download_from_url: local path not found for {appid}: {local_path}")
+            return 'missing'
+        try:
+            with open(local_path, 'rb') as f:
+                image_bytes = f.read()
+            if save_as_jpg(image_bytes, save_path):
+                return 'custom'
+        except Exception as e:
+            log.warning(f"download_from_url: local read failed for {appid}: {e}")
+        return 'missing'
 
     log.info(f"download_from_url: {orientation} art for {appid} from {url}")
     try:
@@ -479,7 +499,7 @@ def download_artwork(appid):
     url         = data.get('url', '').strip()
     orientation = data.get('orientation', 'vertical')
     if not url:
-        return jsonify({"status": "error", "message": "No URL provided"}), 400
+        return jsonify({"status": "error", "message": "No URL or file path provided"}), 400
     if orientation not in ('vertical', 'horizontal', 'icon'):
         return jsonify({"status": "error", "message": "Invalid orientation"}), 400
     result = download_from_url(appid, url, orientation)
@@ -498,7 +518,7 @@ def download_artwork(appid):
         source = sgdb_source_map[orientation] if (_u.hostname and (_u.hostname == 'steamgriddb.com' or _u.hostname.endswith('.steamgriddb.com'))) else 'custom'
         update_game_data(appid, **{col_map[orientation]: source})
         return jsonify({"status": "success", "source": source})
-    return jsonify({"status": "error", "message": "Failed to download image. Check the URL and try again."}), 500
+    return jsonify({"status": "error", "message": "Failed to load image. Check the URL or file path and try again."}), 500
 
 @images_bp.route('/api/sgdb-options/<int:appid>/<artwork_type>')
 def sgdb_options(appid, artwork_type):

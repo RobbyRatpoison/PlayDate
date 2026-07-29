@@ -477,7 +477,7 @@
                             <button type="button" class="nav-btn art-action-btn" onclick="clearArt('vertical')" data-modal-row="21" style="color:var(--text-danger, #c74b4b);">Clear</button>
                         </div>
                         <div id="art-url-row-vertical" style="display:none; flex-direction:column; gap:6px;">
-                            <input type="text" id="art-url-vertical" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
+                            <input type="text" id="art-url-vertical" placeholder="Paste an image URL or local file path..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
                             <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('vertical')" data-modal-row="22" style="width:100%;">Save</button>
                         </div>
                         <div id="art-status-vertical" class="art-status"></div>
@@ -500,7 +500,7 @@
                             <button type="button" class="nav-btn art-action-btn" onclick="clearArt('horizontal')" data-modal-row="21" style="color:var(--text-danger, #c74b4b);">Clear</button>
                         </div>
                         <div id="art-url-row-horizontal" style="display:none; flex-direction:column; gap:6px;">
-                            <input type="text" id="art-url-horizontal" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
+                            <input type="text" id="art-url-horizontal" placeholder="Paste an image URL or local file path..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
                             <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('horizontal')" data-modal-row="22" style="width:100%;">Save</button>
                         </div>
                         <div id="art-status-horizontal" class="art-status"></div>
@@ -523,7 +523,7 @@
                             <button type="button" class="nav-btn art-action-btn" onclick="clearArt('icon')" data-modal-row="21" style="color:var(--text-danger, #c74b4b);">Clear</button>
                         </div>
                         <div id="art-url-row-icon" style="display:none; flex-direction:column; gap:6px;">
-                            <input type="text" id="art-url-icon" placeholder="Paste a direct image URL..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
+                            <input type="text" id="art-url-icon" placeholder="Paste an image URL or local file path..." style="width:100%; box-sizing:border-box;" data-modal-row="22">
                             <button type="button" class="nav-btn art-action-btn" onclick="saveArtCustomUrl('icon')" data-modal-row="22" style="width:100%;">Save</button>
                         </div>
                         <div id="art-status-icon" class="art-status"></div>
@@ -1099,7 +1099,7 @@ const achLink = document.getElementById('achievements-link');
         const appid  = document.getElementById('edit-appid').value;
         const url    = document.getElementById(`art-url-${type}`).value.trim();
         const status = document.getElementById(`art-status-${type}`);
-        if (!url) { status.style.color = '#ff8080'; status.textContent = 'Enter a URL first.'; return; }
+        if (!url) { status.style.color = '#ff8080'; status.textContent = 'Enter a URL or file path first.'; return; }
         status.style.color = '#aaa'; status.textContent = 'Downloading...';
         try {
             const res  = await fetch(`/api/download-artwork/${appid}`, {
