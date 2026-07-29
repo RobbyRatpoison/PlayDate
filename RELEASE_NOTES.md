@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.9
+## v1.6.9 - 2026-07-29
 ### New
 
 - Added an in-app Tutorial covering many of the features included in PlayDate. Shows automatically on first setup (or once for existing installs), and anytime after from the hamburger menu.
