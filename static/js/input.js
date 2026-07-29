@@ -2534,6 +2534,18 @@
             if (!_wasUnfocused) {
                 _wasUnfocused = true;
                 _clearGamepadState();
+                // Steam Input can synthesize a real Enter/Space keydown for
+                // the A button (same mechanism already noted above for
+                // Escape/arrow keys), independent of this poll loop. If a
+                // PlayDate button still has DOM focus when that arrives, the
+                // browser's own "Enter activates the focused element"
+                // behavior fires it directly -- bypassing every focus check
+                // here entirely, since it never goes through gamepad state
+                // at all. Blurring on the unfocus transition removes the
+                // target for that synthesized keypress to land on.
+                if (document.activeElement && document.activeElement !== document.body) {
+                    document.activeElement.blur();
+                }
             }
             return;
         }

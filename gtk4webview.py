@@ -46,8 +46,10 @@ from gi.repository import WebKit as webkit
 try:
     gi.require_version('GdkX11', '4.0')
     from gi.repository import GdkX11
-except (ValueError, ImportError):
+    logger.info('gtk4webview: GdkX11 typelib loaded')
+except (ValueError, ImportError) as e:
     GdkX11 = None
+    logger.info(f'gtk4webview: GdkX11 typelib unavailable, gamescope focus watch disabled: {e}')
 
 import gamescope_focus
 
@@ -300,6 +302,7 @@ class BrowserView:
         js = f'window._nativeWindowActive = {"true" if active else "false"};'
         try:
             self.webview.evaluate_javascript(js, len(js), None, None, None, None)
+            logger.info(f'pushed window._nativeWindowActive = {active}')
         except Exception:
             logger.exception('Failed to push native window-active state to JS')
 
@@ -312,11 +315,14 @@ class BrowserView:
     # so there's no fight over the value in practice.
     def on_window_realize(self, window):
         if GdkX11 is None:
+            logger.info('gamescope focus watch: GdkX11 unavailable, not starting')
             return
         surface = window.get_surface()
         if not isinstance(surface, GdkX11.X11Surface):
+            logger.info(f'gamescope focus watch: surface is {type(surface).__name__}, not X11Surface, not starting')
             return
         xid = GdkX11.X11Surface.get_xid(surface)
+        logger.info(f'gamescope focus watch: own XID is {xid}, starting watch')
         gamescope_focus.watch(xid, self._on_gamescope_focus_change)
 
     def _on_gamescope_focus_change(self, focused):

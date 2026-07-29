@@ -104,23 +104,24 @@ def watch(own_xid, on_focus_change):
     def _run():
         try:
             x11 = _load_xlib()
-        except OSError:
-            logger.debug('gamescope focus watch: libX11 unavailable, skipping')
+        except OSError as e:
+            logger.info(f'gamescope focus watch: libX11 unavailable, skipping ({e})')
             return
 
         display = x11.XOpenDisplay(None)
         if not display:
-            logger.debug('gamescope focus watch: could not open X display, skipping')
+            logger.info('gamescope focus watch: could not open X display, skipping')
             return
 
         try:
             root = x11.XDefaultRootWindow(display)
             focused_window_atom = x11.XInternAtom(display, b'GAMESCOPE_FOCUSED_WINDOW', True)
             if not focused_window_atom:
-                logger.debug('gamescope focus watch: GAMESCOPE_FOCUSED_WINDOW absent, not gamescope, skipping')
+                logger.info('gamescope focus watch: GAMESCOPE_FOCUSED_WINDOW absent, not gamescope, skipping')
                 return
 
             current = _read_cardinal(x11, display, root, focused_window_atom)
+            logger.info(f'gamescope focus watch: started, own_xid={own_xid} initial focused_window={current}')
             if current is not None:
                 on_focus_change(current == own_xid)
 
@@ -131,6 +132,7 @@ def watch(own_xid, on_focus_change):
                 if event.type != _PROPERTY_NOTIFY or event.xproperty.atom != focused_window_atom:
                     continue
                 value = _read_cardinal(x11, display, root, focused_window_atom)
+                logger.info(f'gamescope focus watch: focused_window changed to {value} (own_xid={own_xid})')
                 if value is not None:
                     on_focus_change(value == own_xid)
         except Exception:
