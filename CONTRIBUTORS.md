@@ -40,6 +40,7 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Helped test/confirm a launch-crash fix live
 - Suggested the dice button and a fixed/sticky library toolbar
 - Suggested achievement-based filtering and a completion overlay (not implemented)
+- Update-install confirmation suggesting a backup every time, even right after making one - led to a 24-hour cooldown after a completed backup
 
 **hallak65**
 - Installer defaulting to AppData, causing errors

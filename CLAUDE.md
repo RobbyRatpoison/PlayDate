@@ -202,6 +202,18 @@ Shelf fields: `filter_key` (builtin or saved filter name), `sort_col` (`'RANDOM(
 
 Times stored in minutes. `hltb_fetched` states: `NULL`/`'0'` = never fetched; `'unconfirmed'` = matched below threshold (times NULL); `'no_match'` = no results; `YYYY-MM-DD` = confirmed. Startup catch-up only fetches `NULL`/`'0'` — does not retry `no_match` automatically.
 
+## In-App Tutorial
+
+`templates/modal_tutorial.html` (included from `base.html` on every page) + `static/js/tutorial.js` - a table-of-contents modal covering every part of the app, built on the same step-show pattern as the Emulators "Add Emulator" wizard (`_tutShowSection(id, stepIndex)` hides/shows step divs; `_tutNext`/`_tutBack` walk the index). No dedicated gamepad zone: it reuses the existing `'modal'` zone in `input.js` (registered in `_MODAL_IDS`, `_watchModal()`, and `_closeAnyOpenModal()`'s checks list) since every interactive element is a plain `data-modal-row` button. ToC and the step view are mutually exclusive, so both are full-width flex siblings rather than grid columns; a fixed-track CSS grid would auto-place whichever one is visible into the first track, a real bug hit during development.
+
+Content lives entirely in `TUTORIAL_SECTIONS` (`tutorial.js`) as trusted static copy (assigned via `innerHTML`, not `escHtml()`), no screenshots by design: embedding real screenshots would mean shipping a maintainer's personal library/account state to every user.
+
+**Auto-show:** `config.json`'s `tutorial_seen` bool (same one-shot pattern as `last_seen_version`/What's New, see `/api/tutorial/seen`, `/api/whats-new`), exposed via `inject_config_status()` as `window._TUTORIAL_SEEN`. A brand-new account and an existing account upgrading to the version that added this both start with no key, so one flag covers "show after first-run setup" and "show once for existing users" with no special-casing. Sequenced after What's New's own dismiss (or immediately if there's nothing to show) so the two never fight for the screen on an upgrade that ships both at once.
+
+## Update Confirmation Backup Cooldown
+
+`update-confirm-overlay` (base.html)'s "Back Up First" button is hidden, and its hint text swapped, whenever `GET /api/backup-status` (`backup.py`) reports a backup completed within `BACKUP_COOLDOWN_SECONDS` (24h). `last_backup_at` (a `state.json` unix-timestamp float) is written by both `/api/backup` and `/api/backup-to-path` on success. Checked fresh via fetch every time `handleUpdateBtn()` opens the modal, not injected at page load - completing a backup doesn't reload the page, so a stale server-rendered flag would still nag immediately after backing up, which is the exact complaint this fixes.
+
 ## PAGYWOSG Filter Builder
 
 The PAGYWOSG tool (`modal_tools.html`) builds structured filter trees for the monthly PAGYWOSG event on SteamGifts. Categories are fetched live from `pagywosg.xyz`: there's no static catalog of category names.
