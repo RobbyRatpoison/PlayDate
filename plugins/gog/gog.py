@@ -10,6 +10,7 @@ import re
 import threading
 import time
 import zlib
+from datetime import datetime, timezone
 import requests
 from config import load_config, _save_config_data
 from database import next_negative_appid
@@ -483,9 +484,26 @@ def fetch_gog_metadata(gog_id):
     if pub:
         result['publishers'] = pub
 
+    # games.release_date is INTEGER (Unix timestamp) -- this used to store
+    # str(release_date)[:10] (a "YYYY-MM-DD" string) directly, which SQLite's
+    # type affinity can't losslessly coerce into that column's storage class.
+    # A column with a mix of INTEGER (Steam) and TEXT (GOG) values sorts by
+    # storage class first (NULL < INTEGER/REAL < TEXT), not by date -- ORDER
+    # BY release_date grouped every GOG game before/after every Steam game
+    # instead of interleaving them by actual date.
     release_date = product.get('globalReleaseDate') or product.get('gogReleaseDate')
     if release_date:
-        result['release_date'] = str(release_date)[:10]
+        try:
+            dt = datetime.fromisoformat(str(release_date).replace('Z', '+00:00'))
+            # A date-only value (no offset/Z) parses as naive, and naive
+            # .timestamp() falls back to the local system timezone rather
+            # than UTC -- forced explicitly here to match date_to_ts() and
+            # every other plugin's date parsing in this codebase.
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            result['release_date'] = int(dt.timestamp())
+        except ValueError:
+            pass
 
     # tags = official genre classifications (Role-playing, Action, Fantasy…)
     genre_list = [t['name'] for t in (emb.get('tags') or []) if t.get('name')]

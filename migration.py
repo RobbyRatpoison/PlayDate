@@ -9,7 +9,7 @@ from config import BASE_DIR, CONFIG_PATH
 
 log = logging.getLogger(__name__)
 
-CURRENT_VERSION    = 11
+CURRENT_VERSION    = 12
 BACKGROUND_VERSION = 11
 
 _migrations:            dict[int, callable] = {}
@@ -522,6 +522,43 @@ def _m11_group_sources_json():
         with open(gs_path, 'w') as f:
             json.dump(gs, f, indent=2)
         log.info(f"_m11: wrote {os.path.basename(gs_path)}")
+
+
+@migration(12)
+def _m12_gog_release_date_strings():
+    """Re-run v3's date-string-to-timestamp fix for release_date only.
+
+    fetch_gog_metadata() (plugins/gog/gog.py) was storing 'YYYY-MM-DD'
+    strings instead of Unix timestamps, so any GOG game synced after v3
+    already ran got the same bad string data v3 was written to clean up in
+    the first place -- undoing the fix for anyone who added GOG games since.
+    Fixed at the source separately; this is the one-time cleanup for data
+    already written by the time that fix ships.
+    """
+    from database import date_to_ts
+
+    for db_path in _all_db_files():
+        conn = sqlite3.connect(db_path, timeout=10)
+        try:
+            cursor = conn.cursor()
+            rows = cursor.execute(
+                "SELECT rowid, release_date FROM games WHERE release_date IS NOT NULL"
+            ).fetchall()
+            updates, nulls = [], []
+            for rowid, val in rows:
+                if isinstance(val, str):
+                    ts = date_to_ts(val)
+                    if ts is not None:
+                        updates.append((ts, rowid))
+                    else:
+                        nulls.append((rowid,))
+            if updates:
+                cursor.executemany("UPDATE games SET release_date = ? WHERE rowid = ?", updates)
+            if nulls:
+                cursor.executemany("UPDATE games SET release_date = NULL WHERE rowid = ?", nulls)
+            conn.commit()
+        finally:
+            conn.close()
 
 
 # ── Background migrations ─────────────────────────────────────────────────────
