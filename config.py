@@ -469,6 +469,7 @@ def inject_config_status():
         startup_page=state.get('startup_page', 'home'),
         platform_priority=_active_platform_priority(state),
         app_version=__build__,
+        tutorial_seen=config.get('tutorial_seen', False),
     )
 
 def load_config():
@@ -1269,6 +1270,16 @@ def dismiss_whats_new():
         return jsonify({'status': 'ok'})
     config_data = load_config() or {}
     config_data['last_seen_version'] = __build__
+    _save_config_data(config_data)
+    return jsonify({'status': 'ok'})
+
+
+@config_bp.route('/api/tutorial/seen', methods=['POST'])
+def mark_tutorial_seen():
+    if not is_configured():
+        return jsonify({'status': 'ok'})
+    config_data = load_config() or {}
+    config_data['tutorial_seen'] = True
     _save_config_data(config_data)
     return jsonify({'status': 'ok'})
 

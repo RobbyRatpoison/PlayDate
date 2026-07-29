@@ -194,6 +194,7 @@
     window._PLAT_LABELS  = {{ platform_labels() | tojson }};
     window._PLUGIN_API   = {{ plugin_js_api() | tojson }};
     window._PAG_OPS      = {{ pagywosg_op_table() | tojson }};
+    window._TUTORIAL_SEEN = {{ tutorial_seen | tojson }};
     </script>
     <script>
     // Reveal the body as soon as the DOM is ready
@@ -232,6 +233,7 @@
                     <button class="hamburger-item" onclick="closeHamburger();openDataModal()">Data</button>
                     <button class="hamburger-item" onclick="closeHamburger();openSystemModal()">System</button>
                     <button class="hamburger-item" onclick="closeHamburger();openBlacklistModal()">Manage</button>
+                    <button class="hamburger-item" onclick="closeHamburger();openTutorialModal()">Tutorial</button>
                     <div class="hamburger-sep"></div>
                     <button id="update-check-btn" class="hamburger-item" onclick="handleUpdateBtn()"><span id="update-check-label">Check for Updates</span><span id="update-menu-dot"></span></button>
                     <div id="update-menu-status" class="hamburger-status"></div>
@@ -270,6 +272,7 @@
     {% include 'modal_filters.html' %}
     {% include 'modal_view.html' %}
     {% include 'modal_tools.html' %}
+    {% include 'modal_tutorial.html' %}
 
     {% include '_ctx_menu.html' %}
     <div id="launch-toast"></div>
@@ -1053,9 +1056,20 @@
     <script>
     (function () {
         if (!_configExists) return;
+
+        // Auto-show the tutorial once, right after What's New is out of the
+        // way — never at the same time, so the two don't fight for the
+        // screen on an upgrade that ships both new release notes and this
+        // feature for the first time.
+        function _maybeShowTutorial() {
+            if (window._TUTORIAL_SEEN) return;
+            if (typeof openTutorialModal === 'function') openTutorialModal();
+        }
+
         function _dismissWhatsNew() {
             document.getElementById('whats-new-modal').style.display = 'none';
             fetch('/api/whats-new/dismiss', { method: 'POST' }).catch(() => {});
+            _maybeShowTutorial();
         }
         window._dismissWhatsNew = _dismissWhatsNew;
         document.addEventListener('keydown', function(e) {
@@ -1066,10 +1080,13 @@
             }
         });
         fetch('/api/whats-new').then(r => r.json()).then(data => {
-            if (!data.show) return;
+            if (!data.show) {
+                _maybeShowTutorial();
+                return;
+            }
             document.getElementById('whats-new-body').innerHTML = data.html;
             document.getElementById('whats-new-modal').style.display = 'flex';
-        }).catch(() => {});
+        }).catch(() => { _maybeShowTutorial(); });
     })();
     </script>
 

@@ -737,6 +737,7 @@
         'data-modal',
         'system-modal',
         'store-names-modal',
+        'tutorial-modal',
         // Home page edit mode panels (use style.display)
         'shelf-edit-modal', 'dedup-panel', 'split-picker',
         // List mode detail pane (lowest priority — only active when in list view)
@@ -2130,6 +2131,7 @@
             ['system-modal',          'closeSystemModal'],
             ['blacklist-modal',       'closeBlacklistModal'],
             ['store-names-modal',     'closeStoreNamesModal'],
+            ['tutorial-modal',        'closeTutorialModal'],
             // home page edit mode panels
             ['shelf-edit-modal',      'semClose'],
             ['dedup-panel',           'closeDedupPanel'],
@@ -2925,6 +2927,7 @@
         _watchModal('system-modal');
         _watchModal('blacklist-modal');
         _watchModal('store-names-modal');
+        _watchModal('tutorial-modal');
 
         // Sub-modals (also registered so _anyWatchedOpen works correctly for nesting)
         _watchModal('gamepad-remap-modal');

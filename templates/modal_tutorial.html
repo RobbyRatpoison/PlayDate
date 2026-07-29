@@ -1,0 +1,36 @@
+<!-- ── TUTORIAL MODAL ── -->
+<div id="tutorial-modal" class="modal-overlay" style="display:none; z-index:99998;" onclick="if(event.target===this)closeTutorialModal();">
+    <div class="modal-content" style="width:min(880px,95vw); max-height:88vh; display:flex; flex-direction:column; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-shrink:0;">
+            <h2 style="margin:0; color:var(--text-primary);">Tutorial</h2>
+            <button onclick="closeTutorialModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+
+        <div style="display:grid; grid-template-columns:200px 1fr; gap:20px; flex:1; min-height:0;">
+
+            <!-- Left: table of contents -->
+            <div id="tutorial-toc" style="overflow-y:auto; border-right:1px solid var(--border); padding-right:14px;">
+                <!-- section rows injected by tutorial.js -->
+            </div>
+
+            <!-- Right: active section step -->
+            <div id="tutorial-section-view" style="display:none; flex-direction:column; overflow-y:auto; min-height:0;">
+                <div id="tutorial-step-progress" style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px; flex-shrink:0;"></div>
+                <h3 id="tutorial-step-title" style="margin:0 0 10px; color:var(--accent); flex-shrink:0;"></h3>
+                <div id="tutorial-step-image-wrap" style="display:none; margin-bottom:12px; flex-shrink:0;">
+                    <img id="tutorial-step-image" style="max-width:100%; display:block; border-radius:0.375rem; border:1px solid var(--border);">
+                </div>
+                <div id="tutorial-step-body" style="font-size:0.9rem; line-height:1.65; color:var(--text-primary); flex:1;"></div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:18px; flex-shrink:0; gap:8px;">
+                    <button class="nav-btn" data-modal-row="9" onclick="_tutBack()" id="tutorial-back-btn" style="min-width:5rem;">Back</button>
+                    <button class="nav-btn" data-modal-row="9" onclick="_tutShowToc()" style="min-width:6rem;">Sections</button>
+                    <button class="btn-save" data-modal-row="9" onclick="_tutNext()" id="tutorial-next-btn" style="margin:0; min-width:5rem; width:auto; padding:0.6rem 1.2rem;">Next</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/tutorial.js') }}?v={{ app_version }}"></script>
