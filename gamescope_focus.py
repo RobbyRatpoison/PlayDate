@@ -11,14 +11,19 @@ separately via X11 atoms on its embedded Xwayland root window, set via
 XChangeProperty whenever its internal focus target changes -- the same
 mechanism Proton itself uses to decide whether to drop input.
 
-Polls rather than using XNextEvent/PropertyNotify: an earlier
-PropertyNotify-based version registered correctly (own XID read back fine,
-XSelectInput/XInternAtom all succeeded) but never woke up for a change
-that `xprop -root -spy` on the same X server clearly saw at the same
-moment, on real hardware. Root cause not identified (some interaction
-between a raw ctypes Xlib client thread and event delivery is suspected)
-but not worth chasing further given a 100ms poll is more than fast enough
-for this and eliminates the entire class of bug.
+Polls on the main GLib loop via GLib.timeout_add rather than a background
+thread. Two earlier background-thread versions (one XNextEvent/
+PropertyNotify-based, one a plain time.sleep() poll) both worked for their
+very first read, then silently never saw another change again -- despite
+`xprop -root -spy` on the same X server, at the same moment, clearly
+seeing the atom keep changing. That "works once, then nothing" signature
+matches Xlib's documented lack of thread-safety without XInitThreads(),
+which can't reliably be arranged here: GDK/WebKit already make Xlib calls
+on the main thread well before this module's watch() is ever called (it's
+wired up from a 'realize' handler, by which point GDK's own X11 connection
+already exists), and XInitThreads() must be the first Xlib call in the
+whole process to be effective. Running everything on the same thread GDK
+already uses sidesteps the problem entirely instead of working around it.
 
 No-ops entirely outside gamescope: XInternAtom with only_if_exists=True
 returns 0 when the atom was never created, which is the case for any
@@ -27,13 +32,13 @@ ordinary X11/Xwayland session that isn't gamescope.
 import ctypes
 import ctypes.util
 import logging
-import threading
-import time
+
+from gi.repository import GLib
 
 logger = logging.getLogger('gamescope_focus')
 
 _XA_CARDINAL = 6
-_POLL_INTERVAL = 0.1
+_POLL_INTERVAL_MS = 100
 
 
 def _load_xlib():
@@ -80,46 +85,48 @@ def _read_cardinal(x11, display, window, atom):
 
 def watch(own_xid, on_focus_change):
     """
-    Spawns a daemon thread that polls gamescope's GAMESCOPE_FOCUSED_WINDOW
-    root property every 100ms and calls on_focus_change(bool) once with the
+    Polls gamescope's GAMESCOPE_FOCUSED_WINDOW root property every 100ms on
+    the main GLib loop and calls on_focus_change(bool) once with the
     current state, then again on every change, comparing against own_xid.
-    Silently does nothing if libX11 is unavailable, no display can be
-    opened, or the atom doesn't exist (i.e. not running under gamescope).
+    Must be called from the main thread. Silently does nothing if libX11 is
+    unavailable, no display can be opened, or the atom doesn't exist (i.e.
+    not running under gamescope).
     """
-    def _run():
+    try:
+        x11 = _load_xlib()
+    except OSError as e:
+        logger.info(f'gamescope focus watch: libX11 unavailable, skipping ({e})')
+        return
+
+    display = x11.XOpenDisplay(None)
+    if not display:
+        logger.info('gamescope focus watch: could not open X display, skipping')
+        return
+
+    root = x11.XDefaultRootWindow(display)
+    focused_window_atom = x11.XInternAtom(display, b'GAMESCOPE_FOCUSED_WINDOW', True)
+    if not focused_window_atom:
+        logger.info('gamescope focus watch: GAMESCOPE_FOCUSED_WINDOW absent, not gamescope, skipping')
+        x11.XCloseDisplay(display)
+        return
+
+    state = {'last': _read_cardinal(x11, display, root, focused_window_atom)}
+    logger.info(f'gamescope focus watch: started (main-loop polling), '
+                f'own_xid={own_xid} initial focused_window={state["last"]}')
+    if state['last'] is not None:
+        on_focus_change(state['last'] == own_xid)
+
+    def _poll():
         try:
-            x11 = _load_xlib()
-        except OSError as e:
-            logger.info(f'gamescope focus watch: libX11 unavailable, skipping ({e})')
-            return
-
-        display = x11.XOpenDisplay(None)
-        if not display:
-            logger.info('gamescope focus watch: could not open X display, skipping')
-            return
-
-        try:
-            root = x11.XDefaultRootWindow(display)
-            focused_window_atom = x11.XInternAtom(display, b'GAMESCOPE_FOCUSED_WINDOW', True)
-            if not focused_window_atom:
-                logger.info('gamescope focus watch: GAMESCOPE_FOCUSED_WINDOW absent, not gamescope, skipping')
-                return
-
-            last = _read_cardinal(x11, display, root, focused_window_atom)
-            logger.info(f'gamescope focus watch: started (polling), own_xid={own_xid} initial focused_window={last}')
-            if last is not None:
-                on_focus_change(last == own_xid)
-
-            while True:
-                time.sleep(_POLL_INTERVAL)
-                value = _read_cardinal(x11, display, root, focused_window_atom)
-                if value is not None and value != last:
-                    logger.info(f'gamescope focus watch: focused_window changed to {value} (own_xid={own_xid})')
-                    last = value
-                    on_focus_change(value == own_xid)
+            value = _read_cardinal(x11, display, root, focused_window_atom)
         except Exception:
             logger.exception('gamescope focus watch: error, stopping')
-        finally:
             x11.XCloseDisplay(display)
+            return False
+        if value is not None and value != state['last']:
+            logger.info(f'gamescope focus watch: focused_window changed to {value} (own_xid={own_xid})')
+            state['last'] = value
+            on_focus_change(value == own_xid)
+        return True
 
-    threading.Thread(target=_run, daemon=True, name='gamescope-focus-watch').start()
+    GLib.timeout_add(_POLL_INTERVAL_MS, _poll)
