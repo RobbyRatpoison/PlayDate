@@ -2,7 +2,12 @@
 <style>
     #ctx-menu {
         position: fixed;
-        z-index: 9999;
+        /* Above every modal, including the highest tier (pd-dialog-overlay,
+           rate-limit-modal, tutorial-modal, etc. at 99998-99999) -- a
+           context menu needs to render above whatever it was opened on top
+           of, and this wasn't bumped when those higher-z-index modals were
+           added, so it silently rendered underneath them. */
+        z-index: 100000;
         background: #1a2332;
         border: 1px solid #2a475e;
         border-radius: 0.5rem;
@@ -91,6 +96,9 @@
         <div class="ctx-item" id="ctx-copy"       data-action="copy">
             <i class="ctx-icon">⧉</i> Copy
         </div>
+        <div class="ctx-item" id="ctx-copylink"   data-action="copylink" style="display:none;">
+            <i class="ctx-icon">🔗</i> Copy Link Address
+        </div>
         <div class="ctx-item" id="ctx-paste"      data-action="paste">
             <i class="ctx-icon">📋</i> Paste
         </div>
@@ -153,6 +161,7 @@
     let _selText       = '';    // selected text at right-click time
     let _selStart      = 0;     // selection start index at right-click time
     let _selEnd        = 0;     // selection end index at right-click time
+    let _linkUrl       = null;  // href of the <a> being right-clicked, or null
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -246,6 +255,7 @@
         _selText   = '';
         _selStart  = 0;
         _selEnd    = 0;
+        _linkUrl   = null;
     }
 
     // ── Build menu state before showing ──────────────────────────────────
@@ -263,10 +273,13 @@
         const editable  = isEditable(target) || isEditable(_activeEl);
         const selection = _selText.length > 0;
         const appid     = findGameAppid(target);
+        const linkEl    = target.closest('a[href]');
+        _linkUrl        = linkEl ? linkEl.href : null;
 
         // ── Clipboard section ────────────────────────────────────────────
         const cutEl  = document.getElementById('ctx-cut');
         const cpyEl  = document.getElementById('ctx-copy');
+        const lnkEl  = document.getElementById('ctx-copylink');
         const pstEl  = document.getElementById('ctx-paste');
         const selEl  = document.getElementById('ctx-selectall');
 
@@ -274,13 +287,19 @@
         cutEl.classList.toggle('disabled', !(editable && selection));
         // Copy: any selection
         cpyEl.classList.toggle('disabled', !selection);
+        // Copy Link Address: only when the right-clicked element is (or is
+        // inside) a link -- native WebKit context menus normally offer this,
+        // but the app's own context-menu system replaces the native one
+        // entirely (gtk4webview.py suppresses it outright), so there was no
+        // way to get a link's URL without this.
+        lnkEl.style.display = _linkUrl ? '' : 'none';
         // Paste: only in editable fields
         pstEl.classList.toggle('disabled', !editable);
         // Select All: only in editable fields
         selEl.classList.toggle('disabled', !editable);
 
         // Hide clipboard section entirely if nothing is relevant
-        const anyClipboard = editable || selection;
+        const anyClipboard = editable || selection || !!_linkUrl;
         document.getElementById('ctx-clipboard-section').style.display =
             anyClipboard ? '' : 'none';
 
@@ -421,6 +440,17 @@
                 try {
                     await navigator.clipboard.writeText(text);
                 } catch (_) {}
+                break;
+            }
+
+            case 'copylink': {
+                const url = _linkUrl;
+                hideMenu();
+                if (url) {
+                    try {
+                        await navigator.clipboard.writeText(url);
+                    } catch (_) {}
+                }
                 break;
             }
 
