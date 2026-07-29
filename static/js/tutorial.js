@@ -1,4 +1,4 @@
-// ── Tutorial modal ───────────────────────────────────────────────────────────
+// -- Tutorial modal --------------------------------------------------------
 // Table of contents + per-section step cards. Content authored here is trusted
 // static copy (not user/API data), so step bodies are assigned via innerHTML
 // to allow basic formatting rather than run through escHtml().
@@ -11,21 +11,21 @@ const TUTORIAL_SECTIONS = [
             {
                 title: 'Welcome to PlayDate',
                 body: `<p>PlayDate is a local game library manager for your Steam collection, with optional support for GOG, Epic, and other non-Steam launchers through plugins.</p>
-                       <p>This tutorial is a quick tour of everything — jump to any section from the list on the left, or work through it top to bottom. You can reopen it anytime from the hamburger menu (☰) → Tutorial.</p>`,
+                       <p>This tutorial is a quick tour of everything - jump to any section from the list, or work through it top to bottom. You can reopen it anytime from the hamburger menu (☰) → Tutorial.</p>`,
             },
             {
                 title: 'Three main pages',
                 body: `<p>The nav bar at the top always has three pages:</p>
                        <ul>
-                         <li><strong>Home</strong> — curated shelves of games (Recently Played, Unfinished, and whatever else you set up).</li>
-                         <li><strong>Library</strong> — your full collection, with filters and bulk tools.</li>
-                         <li><strong>Pick 6</strong> — a "what should I play next" picker.</li>
+                         <li><strong>Home</strong> - curated shelves of games (Recently Played, Unfinished, and whatever else you set up).</li>
+                         <li><strong>Library</strong> - your full collection, with filters and bulk tools.</li>
+                         <li><strong>Pick 6</strong> - a "what should I play next" picker.</li>
                        </ul>
-                       <p>Everything else — settings, plugins, emulators, backups — lives behind the hamburger button (☰) in the top-left.</p>`,
+                       <p>Everything else - settings, plugins, emulators, backups - lives behind the hamburger button (☰) in the top-left.</p>`,
             },
             {
                 title: 'Gamepad friendly',
-                body: `<p>Every menu, modal, and library view in PlayDate can be driven entirely with a gamepad — this app is built with Steam Deck in mind. D-pad/stick to move, A to confirm, B to back out.</p>
+                body: `<p>Every menu, modal, and library view in PlayDate can be driven entirely with a gamepad - this app is built with Steam Deck in mind. D-pad/stick to move, A to confirm, B to back out.</p>
                        <p>Gamepad support can be toggled, remapped, or diagnosed from the hamburger menu → System.</p>`,
             },
         ],
@@ -36,15 +36,15 @@ const TUTORIAL_SECTIONS = [
         steps: [
             {
                 title: 'What are shelves?',
-                body: `<p>The Home page shows your library as a set of horizontal shelves — each one a filtered, sorted row of games, like "Unfinished," "Recently Added," or a random pick.</p>`,
+                body: `<p>The Home page shows your library as a set of horizontal shelves - each one a filtered, sorted row of games, like "Unfinished," "Recently Added," or a random pick.</p>`,
             },
             {
                 title: 'Editing the layout',
                 body: `<p>Hamburger menu → <strong>Edit Home Layout</strong> lets you add, remove, and reorder shelves, choose what each one shows (a saved filter or a built-in one), how it's sorted, and whether two shelves sit side by side.</p>`,
             },
             {
-                title: 'Shuffle shelves',
-                body: `<p>A shelf sorted by "Shuffle" picks a fresh random set of games each time — good for a "surprise me" row. Use the shuffle button on that shelf to reroll it without leaving the page.</p>`,
+                title: 'Random shelves',
+                body: `<p>Set a shelf's sort to <strong>Random</strong> to get a fresh random set of games. A shelf sorted this way shows a shuffle icon (↻) next to its title - click it to reroll that shelf without leaving the page.</p>`,
             },
         ],
     },
@@ -54,11 +54,11 @@ const TUTORIAL_SECTIONS = [
         steps: [
             {
                 title: 'Grid or list view',
-                body: `<p>The Library page defaults to a scrolling grid of cover art. Switch to <strong>list view</strong> from the VIEW menu for a compact, split-pane layout — a scrollable row list on the left and a detail/edit pane on the right, good for quickly working through a lot of games.</p>`,
+                body: `<p>The Library page defaults to a scrolling grid of cover art. Switch to <strong>list view</strong> from the VIEW menu for a compact, split-pane layout - a scrollable row list on the left and a detail/edit pane on the right, good for quickly working through a lot of games.</p>`,
             },
             {
                 title: 'Building a filter',
-                body: `<p>The filter builder lets you combine conditions — tags, genres, completion status, release date, playtime, and more — into AND/OR groups. Save a filter once you've built it, and it becomes available as a shelf, or reusable anytime from the Library page.</p>`,
+                body: `<p>The filter builder lets you combine conditions - tags, genres, completion status, release date, playtime, and more - into AND/OR groups. Save a filter once you've built it, and it becomes available as a shelf, or reusable anytime from the Library page.</p>`,
             },
             {
                 title: 'Bulk operations',
@@ -72,7 +72,7 @@ const TUTORIAL_SECTIONS = [
         steps: [
             {
                 title: 'What Pick 6 does',
-                body: `<p>Pick 6 answers "what should I play next?" — it weighs six signals (how similar a game's tags are to what you've enjoyed before, review score, how long it's been sitting unplayed, completion history, playtime, and release age) and surfaces six games weighted by that score, not just a strict top list.</p>`,
+                body: `<p>Pick 6 answers "what should I play next?" - it weighs six signals (how similar a game's tags are to what you've enjoyed before, review score, how long it's been sitting unplayed, completion history, playtime, and release age) and surfaces six games weighted by that score, not just a strict top list.</p>`,
             },
             {
                 title: 'Rerolling and filtering',
@@ -86,7 +86,7 @@ const TUTORIAL_SECTIONS = [
         steps: [
             {
                 title: 'What is PAGYWOSG?',
-                body: `<p>PAGYWOSG ("Play A Game You Won on SteamGifts") is a monthly community event on SteamGifts. Each event has its own set of category rules — PlayDate can read those live and build a matching filter for you automatically, instead of you checking your library against each category by hand.</p>`,
+                body: `<p>PAGYWOSG ("Play A Game You Won on SteamGifts") is a monthly community event on SteamGifts. Each event has its own set of category rules - PlayDate can read those live and build a matching filter for you automatically, instead of you checking your library against each category by hand.</p>`,
             },
             {
                 title: 'Set your SteamGifts username',
@@ -94,7 +94,7 @@ const TUTORIAL_SECTIONS = [
             },
             {
                 title: 'Building a filter',
-                body: `<p>Open the PAGYWOSG tool from the hamburger menu's Tools section, pick the event, and PlayDate assembles and saves a filter matching that month's rules — ready to use like any other saved filter.</p>`,
+                body: `<p>Open the PAGYWOSG tool from the hamburger menu's <strong>Community Tools</strong> section, pick the event, and PlayDate assembles and saves a filter matching that month's rules - ready to use like any other saved filter.</p>`,
             },
         ],
     },
@@ -104,11 +104,11 @@ const TUTORIAL_SECTIONS = [
         steps: [
             {
                 title: 'Beyond Steam',
-                body: `<p>Steam is built into PlayDate directly. Everything else — GOG, Epic Games, EA App, Ubisoft, itch.io, and more — comes from optional plugins. GOG's plugin ships bundled; the rest install separately.</p>`,
+                body: `<p>Steam is built into PlayDate directly. Everything else comes from plugins - and PlayDate ships with a handful already built in: GOG, Epic Games, EA App, Ubisoft Connect, Humble Bundle, itch.io, Amazon Games, Battle.net, IndieGala, and Rockstar Games. No separate download needed to use any of them.</p>`,
             },
             {
                 title: 'Installing and managing plugins',
-                body: `<p>Hamburger menu → <strong>Plugins</strong> lets you install a plugin from a zip file or a GitHub URL, check for updates, and uninstall (with the option to remove that platform's games too).</p>`,
+                body: `<p>Hamburger menu → <strong>Plugins</strong> shows everything bundled in, and also lets you install additional third-party plugins from a zip file or a GitHub URL, check for updates, and uninstall (with the option to remove that platform's games too).</p>`,
             },
             {
                 title: 'Duplicate detection',
@@ -126,7 +126,7 @@ const TUTORIAL_SECTIONS = [
             },
             {
                 title: 'Adding an emulator',
-                body: `<p>Hamburger menu → <strong>Emulators</strong> — pick a platform from the list to use a common preset, or add a custom entry pointing at your own emulator binary.</p>`,
+                body: `<p>Hamburger menu → <strong>Emulators</strong> - pick a platform from the list to use a common preset, or add a custom entry pointing at your own emulator binary.</p>`,
             },
         ],
     },
@@ -136,7 +136,7 @@ const TUTORIAL_SECTIONS = [
         steps: [
             {
                 title: 'Controls',
-                body: `<p>D-pad or the left stick moves focus, A confirms/activates, B backs out or closes a menu. This works the same way everywhere — home shelves, the library grid, every modal.</p>`,
+                body: `<p>D-pad or the left stick moves focus, A confirms/activates, B backs out or closes a menu. This works the same way everywhere - home shelves, the library grid, every modal.</p>`,
             },
             {
                 title: 'Configuring gamepad input',
@@ -144,7 +144,7 @@ const TUTORIAL_SECTIONS = [
             },
             {
                 title: 'More settings',
-                body: `<p>Also worth knowing about: <strong>Appearance</strong> (theme colors, background image) and <strong>Data</strong> (backup/restore, CSV export, imports) — both in the hamburger menu.</p>`,
+                body: `<p>Also worth knowing about: <strong>Appearance</strong> (theme colors, background image) and <strong>Data</strong> (backup/restore, CSV export, imports), both in the hamburger menu.</p>`,
             },
         ],
     },
@@ -202,7 +202,7 @@ function _tutRenderStep() {
     const step = section.steps[_tutStep];
 
     document.getElementById('tutorial-step-progress').textContent =
-        `${section.title} — Step ${_tutStep + 1} of ${section.steps.length}`;
+        `${section.title} - Step ${_tutStep + 1} of ${section.steps.length}`;
     document.getElementById('tutorial-step-title').textContent = step.title;
     document.getElementById('tutorial-step-body').innerHTML = step.body;
 

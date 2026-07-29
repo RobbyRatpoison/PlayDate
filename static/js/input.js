@@ -2518,11 +2518,11 @@
 
         // Steam Deck/gamescope: switching to the Deck's own home/library UI
         // (or even a plain install-confirmation popup over some other game)
-        // doesn't reliably update WebKit's own document.hasFocus()/hidden —
+        // doesn't reliably update WebKit's own document.hasFocus()/hidden --
         // confirmed on real hardware: gamepad input kept driving PlayDate's
         // UI regardless. window._nativeWindowActive, when present, comes
         // straight from GTK's is-active property (gtk4webview.py's
-        // notify::is-active handler) — the compositor's real xdg_toplevel
+        // notify::is-active handler) -- the compositor's real xdg_toplevel
         // activation state, one level below WebKit's own focus tracking and
         // far more likely to be correct under gamescope. Falls back to the
         // DOM check when that global hasn't been set yet (e.g. very first
