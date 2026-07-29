@@ -43,6 +43,14 @@ from gi.repository import GLib as glib
 from gi.repository import Gtk as gtk
 from gi.repository import WebKit as webkit
 
+try:
+    gi.require_version('GdkX11', '4.0')
+    from gi.repository import GdkX11
+except (ValueError, ImportError):
+    GdkX11 = None
+
+import gamescope_focus
+
 renderer = 'gtkwebkit2'
 webkit_ver = webkit.get_major_version(), webkit.get_minor_version(), webkit.get_micro_version()
 
@@ -125,6 +133,7 @@ class BrowserView:
         self.window.connect('notify::default-width', self.on_window_resize_prop)
         self.window.connect('notify::default-height', self.on_window_resize_prop)
         self.window.connect('notify::is-active', self.on_window_active_changed)
+        self.window.connect('realize', self.on_window_realize)
 
         self.js_bridge = BrowserView.JSBridge(window)
 
@@ -285,12 +294,35 @@ class BrowserView:
     # any Wayland compositor, including gamescope, has to implement correctly
     # for ordinary window switching to work at all.
     def on_window_active_changed(self, window, param):
-        active = bool(window.get_property('is-active'))
+        self._set_native_window_active(bool(window.get_property('is-active')))
+
+    def _set_native_window_active(self, active):
         js = f'window._nativeWindowActive = {"true" if active else "false"};'
         try:
             self.webview.evaluate_javascript(js, len(js), None, None, None, None)
         except Exception:
             logger.exception('Failed to push native window-active state to JS')
+
+    # Starts gamescope_focus's X11 property watch once our own window has a
+    # real surface to get an XID from. GTK's is-active above never actually
+    # changes under gamescope for this scenario (confirmed on hardware), so
+    # this is a second, independent writer to the same window._nativeWindowActive
+    # -- harmless outside gamescope since gamescope_focus.watch() no-ops there,
+    # and under gamescope is-active effectively never fires again once stuck,
+    # so there's no fight over the value in practice.
+    def on_window_realize(self, window):
+        if GdkX11 is None:
+            return
+        surface = window.get_surface()
+        if not isinstance(surface, GdkX11.X11Surface):
+            return
+        xid = GdkX11.X11Surface.get_xid(surface)
+        gamescope_focus.watch(xid, self._on_gamescope_focus_change)
+
+    def _on_gamescope_focus_change(self, focused):
+        # Called from gamescope_focus's watcher thread, not the GTK main
+        # thread -- must marshal back via idle_add before touching GTK/WebKit.
+        glib.idle_add(self._set_native_window_active, focused)
 
     def on_js_bridge_call(self, manager, message):
         body = json.loads(message.to_string())
