@@ -56,6 +56,7 @@ sys.excepthook = handle_exception
 # Set PLAYDATE_GTK4=1 to force the GTK4/WebKit6 renderer (useful for testing
 # on systems that have both GTK3 and GTK4 WebKit installed).
 _USE_GTK4 = False
+_USE_LEGACY_GTK3 = False
 if sys.platform == "linux" and not getattr(sys, 'frozen', False):
     try:
         import gi as _gi
@@ -68,6 +69,7 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
                     _gi.require_version('WebKit2', _v)
                     from gi.repository import WebKit2 as _wk2  # noqa
                     _webkit_ok = True
+                    _USE_LEGACY_GTK3 = True
                     break
                 except Exception:
                     pass
@@ -194,6 +196,16 @@ if _USE_GTK4:
     sys.modules['webview.platforms.gtk'] = _mod
     _wp.gtk = _mod
     log.info("GTK4/WebKit 6.0 renderer loaded")
+elif _USE_LEGACY_GTK3:
+    # Legacy WebKit2GTK is what's actually available on most current Steam
+    # Deck/Flatpak installs (confirmed via /proc/<pid>/maps showing
+    # libwebkit2gtk-4.1.so loaded, not WebKit 6.0) -- gtk4webview.py's own
+    # gamescope focus watch never runs in that case, so patch the same
+    # behavior onto pywebview's stock GTK3 module instead.
+    import webview.platforms.gtk as _stock_gtk
+    import gtk3webview_patch
+    gtk3webview_patch.install(_stock_gtk)
+    log.info("Patched legacy GTK3/WebKit2GTK renderer with gamescope focus watch")
 
 import migration
 from app import create_app, populate_cancel
