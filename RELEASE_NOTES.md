@@ -12,3 +12,4 @@
 - Fixed GOG games' release dates sorting before/after all Steam games instead of by actual date. (reported by DarkRainX)
 - Fixed IndieGala library sync stopping after the first page.
 - Fixed date imports with "normalize dates" enabled scrambling date sort order.
+- Added "Copy Link Address" to the right-click menu, and fixed that menu appearing behind some popups instead of on top.
