@@ -278,12 +278,20 @@ def _run_sync():
         }
 
         page        = 1
-        total_pages = 1
         added       = 0
         updated     = 0
         fetch_error = None
 
-        while page <= total_pages:
+        # Not driven by _parse_total_pages() -- that trusts the page-number
+        # links visible in page 1's own HTML, which undercounts the real
+        # total if IndieGala's pagination widget only ever shows a nearby
+        # window of pages (e.g. "1 2 3 ... Next") rather than every page
+        # number up front (reported: sync stopped after page 1 despite more
+        # games existing). Fetching until an empty page comes back doesn't
+        # depend on correctly parsing that widget at all. MAX_PAGES is just
+        # a runaway-loop safety net, not the real stopping condition.
+        MAX_PAGES = 200
+        while page <= MAX_PAGES:
             _sync_state['status'] = f'Fetching page {page}…'
             url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}?page={page}'
             try:
@@ -303,11 +311,13 @@ def _run_sync():
                 break
 
             if page == 1:
-                total_pages = _parse_total_pages(resp.text)
-                log.info(f'IndieGala sync: {total_pages} page(s)')
+                log.info(f'IndieGala sync: _parse_total_pages() says {_parse_total_pages(resp.text)} page(s) '
+                         f'(informational only -- actual stop condition is an empty page)')
 
             games = _parse_page(resp.text)
             log.info(f'IndieGala sync: page {page} — {len(games)} games parsed')
+            if not games:
+                break
 
             for game in games:
                 prod_id = game['prod_id']
@@ -341,8 +351,6 @@ def _run_sync():
                 if game['img_url']:
                     _download_art(appid, game['img_url'])
 
-            if page >= total_pages:
-                break
             page += 1
             time.sleep(0.5)
 
@@ -386,9 +394,12 @@ def fetch_dates_for_appids(appids):
     still_needed     = set(prod_id_to_appid)
     result           = {appid: None for appid in appids}
 
-    page        = 1
-    total_pages = 1
-    while page <= total_pages and still_needed:
+    page = 1
+    # See _run_sync()'s comment: not bounded by _parse_total_pages(), which
+    # undercounts if IndieGala's pagination widget only shows a nearby
+    # window of page numbers. Stops on an empty page instead.
+    MAX_PAGES = 200
+    while page <= MAX_PAGES and still_needed:
         url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}?page={page}'
         try:
             resp = requests.get(url, headers=_headers(), timeout=20, allow_redirects=True)
@@ -398,10 +409,11 @@ def fetch_dates_for_appids(appids):
             log.warning(f'IndieGala date re-fetch page {page} failed: {e}')
             break
 
-        if page == 1:
-            total_pages = _parse_total_pages(resp.text)
+        games = _parse_page(resp.text)
+        if not games:
+            break
 
-        for game in _parse_page(resp.text):
+        for game in games:
             pid = game['prod_id']
             if pid in still_needed:
                 ts = _parse_dt(game['date_str'])
