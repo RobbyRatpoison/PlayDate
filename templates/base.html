@@ -259,9 +259,9 @@
     <div id="update-confirm-overlay" class="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99998;align-items:center;justify-content:center;" onclick="if(event.target===this)_closeUpdateConfirm()">
         <div style="background:#1a2332;border:1px solid #2a475e;border-radius:0.625rem;padding:1.75rem 2rem 1.5rem;max-width:27.5rem;width:90vw;box-shadow:0 12px 40px rgba(0,0,0,0.6);">
             <div id="update-confirm-title" style="color:#c7d5e0;font-size:1rem;font-weight:bold;margin:0 0 10px;"></div>
-            <div style="color:#8f98a0;font-size:0.85rem;line-height:1.6;margin:0 0 22px;">If you haven't backed up recently, it's a good idea to do so before updating — just in case.</div>
+            <div id="update-confirm-backup-hint" style="color:#8f98a0;font-size:0.85rem;line-height:1.6;margin:0 0 22px;">If you haven't backed up recently, it's a good idea to do so before updating - just in case.</div>
             <div style="display:flex;gap:0.625rem;justify-content:center;flex-wrap:wrap;">
-                <button data-modal-row="0" onclick="_closeUpdateConfirm();openBackupModal()" style="padding:0.5rem 1.2rem;border-radius:0.375rem;font-size:0.85rem;font-weight:bold;cursor:pointer;letter-spacing:0.04em;background:transparent;color:#c7d5e0;border:1px solid #2a475e;">Back Up First</button>
+                <button id="update-confirm-backup-btn" data-modal-row="0" onclick="_closeUpdateConfirm();openBackupModal()" style="padding:0.5rem 1.2rem;border-radius:0.375rem;font-size:0.85rem;font-weight:bold;cursor:pointer;letter-spacing:0.04em;background:transparent;color:#c7d5e0;border:1px solid #2a475e;">Back Up First</button>
                 <button id="update-confirm-install-btn" data-modal-row="0" onclick="_closeUpdateConfirm();_doInstallUpdate()" style="padding:0.5rem 1.2rem;border-radius:0.375rem;font-size:0.85rem;font-weight:bold;cursor:pointer;letter-spacing:0.04em;background:var(--accent);color:#0e1621;border:1px solid var(--accent);">Install Now</button>
             </div>
             <div style="text-align:center;margin-top:14px;"><button data-modal-row="1" onclick="_closeUpdateConfirm()" style="background:none;border:none;color:#8f98a0;font-size:0.8rem;cursor:pointer;">Cancel</button></div>
@@ -896,6 +896,20 @@
                     return;
                 }
                 document.getElementById('update-confirm-title').textContent = `Install PlayDate v${_latestVersion}?`;
+                // Checked fresh every time (not just on page load) -- completing a
+                // backup doesn't reload the page, so a stale server-rendered flag
+                // would still nag right after backing up, which is the whole thing
+                // this is meant to fix.
+                let recentBackup = false;
+                try {
+                    const r = await fetch('/api/backup-status');
+                    const d = await r.json();
+                    recentBackup = !!d.recent;
+                } catch (e) {}
+                document.getElementById('update-confirm-backup-btn').style.display = recentBackup ? 'none' : '';
+                document.getElementById('update-confirm-backup-hint').textContent = recentBackup
+                    ? "You've already backed up recently, so you're good to install."
+                    : "If you haven't backed up recently, it's a good idea to do so before updating - just in case.";
                 document.getElementById('update-confirm-overlay').style.display = 'flex';
             } else {
                 await _runUpdateCheck();

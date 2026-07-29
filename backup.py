@@ -4,10 +4,11 @@ see CLAUDE.md's feedback on Flatpak portal-path timeouts for why."""
 import logging
 import os
 import threading
+import time
 
 from flask import Blueprint, jsonify, request
 
-from config import BASE_DIR
+from config import BASE_DIR, load_state, save_state
 from database import get_db
 from utils import validate_user_path
 
@@ -17,6 +18,10 @@ backup_bp = Blueprint('backup', __name__)
 
 _restore_lock  = threading.Lock()
 _restore_state = {'status': 'idle', 'error': None, 'restored': None, 'skipped': None}  # idle|running|success|error
+
+# How long a completed backup suppresses the "Back Up First" nudge on the
+# update-install confirmation (base.html) before it starts suggesting again.
+BACKUP_COOLDOWN_SECONDS = 24 * 60 * 60
 
 
 def _extract_backup_zip(raw: bytes, logger):
@@ -238,6 +243,7 @@ def backup():
         _fill_backup_zip(zf, include_art)
     buf.seek(0)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    save_state({'last_backup_at': time.time()})
     return send_file(buf, mimetype='application/zip', as_attachment=True,
                      download_name=f'playdate_backup_{ts}.zip')
 
@@ -257,9 +263,18 @@ def backup_to_path():
     try:
         with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             _fill_backup_zip(zf, include_art)
+        save_state({'last_backup_at': time.time()})
         return jsonify({"status": "success", "path": save_path, "size": os.path.getsize(save_path)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@backup_bp.route('/api/backup-status')
+def backup_status():
+    """Whether a backup completed recently enough to skip the "Back Up First"
+    nudge on the update-install confirmation (base.html)."""
+    last = load_state().get('last_backup_at')
+    recent = bool(last) and (time.time() - last) < BACKUP_COOLDOWN_SECONDS
+    return jsonify({"recent": recent, "last_backup_at": last})
 
 @backup_bp.route('/api/export-csv', methods=['POST'])
 def export_csv():

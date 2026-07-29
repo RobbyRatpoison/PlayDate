@@ -919,6 +919,8 @@ def save_state(updates):
                 state["startup_page"] = updates["startup_page"]
         if "hide_duplicates" in updates:
             state["hide_duplicates"] = bool(updates["hide_duplicates"])
+        if "last_backup_at" in updates:
+            state["last_backup_at"] = float(updates["last_backup_at"])
         if "platform_priority" in updates:
             import re as _re
             _plat_re = _re.compile(r'^[a-z][a-z0-9_]*$')
