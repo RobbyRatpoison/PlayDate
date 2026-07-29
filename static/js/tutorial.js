@@ -161,10 +161,12 @@ function openTutorialModal(sectionId) {
         window._TUTORIAL_SEEN = true;
         fetch('/api/tutorial/seen', { method: 'POST' }).catch(() => {});
     }
+    // Always render the ToC first (and size the modal to it, see
+    // _tutShowToc()) even when opening straight into a section, so the
+    // locked height is always the ToC's own natural height.
+    _tutShowToc();
     if (sectionId) {
         _tutShowSection(sectionId, 0);
-    } else {
-        _tutShowToc();
     }
 }
 
@@ -178,9 +180,18 @@ let _tutStep = 0;
 function _tutShowToc() {
     _tutSection = null;
     _tutStep = 0;
-    document.getElementById('tutorial-toc').style.display = 'block';
     document.getElementById('tutorial-section-view').style.display = 'none';
+    document.getElementById('tutorial-toc').style.display = 'block';
     _tutRenderToc();
+
+    // Lock the modal to whatever height the ToC naturally takes up, so
+    // switching to a step view (text length varies a lot between steps)
+    // never resizes the modal or moves the Back/Sections/Next row.
+    // Re-measured every time in case the section count ever changes.
+    const modalContent = document.getElementById('tutorial-modal-content');
+    modalContent.style.height = 'auto';
+    const h = modalContent.getBoundingClientRect().height;
+    modalContent.style.height = h + 'px';
 }
 
 function _tutRenderToc() {
