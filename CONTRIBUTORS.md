@@ -32,6 +32,7 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - GOG games' release dates sorting before/after all Steam games instead of interleaving chronologically
 - IndieGala library sync only fetching the first page
 - IndieGala library sync still stuck re-fetching page one after the previous fix; found and supplied the actual URL fix
+- IndieGala's "View on IndieGala" link pointing to a broken, merged URL
 
 **devonrv**
 - Pointed out the name collision with the Playdate handheld console
@@ -87,6 +88,8 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 
 **greatmastermario**
 - Reported missing Linux install dependencies on Ubuntu 24.04 (`python3-venv`, `python3-pip`, `python3-tk`), leading to an updated README and a clearer installer error/hint
+- Quoted-substring PAGYWOSG AppID categories not being auto-detected
+- Suggested tagging Secret Santa/Snowballs gifts with the year given, as evidence for mod verification
 
 **onegoodleg**
 - Suggested a completion-status rosette on cards - directly inspired the card-outline feature
