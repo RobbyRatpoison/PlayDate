@@ -62,6 +62,19 @@ def download_status(appid):
     return jsonify(get_download_state(appid))
 
 
+@bp.route('/scrape-single/<int:appid>', methods=['POST'])
+def scrape_single(appid):
+    from .humble import rescrape
+    from database import update_game_data
+
+    meta = rescrape(appid)
+    if meta is None:
+        return jsonify({'status': 'error', 'message': 'Could not find this game in your Humble library'}), 502
+
+    update_game_data(appid, **meta)
+    return jsonify({'status': 'success', 'data': meta})
+
+
 @bp.route('/uninstall/<int:appid>', methods=['POST'])
 def uninstall(appid):
     from .humble import uninstall_game

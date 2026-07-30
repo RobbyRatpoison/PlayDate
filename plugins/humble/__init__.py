@@ -36,15 +36,19 @@ class HumblePlugin:
         from .humble import launch_game
         return launch_game(appid)
 
+    def rescrape(self, appid):
+        from .humble import rescrape
+        return rescrape(appid)
+
     def js_api(self):
         return {
             'uninstall_url':  '/api/humble/uninstall/{appid}',
-            'scrape_url':     None,
+            'scrape_url':     '/api/humble/scrape-single/{appid}',
             'scrape_method':  'POST',
             'store_url':      'https://www.humblebundle.com/home/library/{slug}',
             'store_label':    'View on Humble Bundle ↗',
             'appid_label':    'Humble ID:',
-            'sync_label':     'Sync Humble Library',
+            'sync_label':     'Sync Humble Data',
         }
 
     def manage_ui(self):

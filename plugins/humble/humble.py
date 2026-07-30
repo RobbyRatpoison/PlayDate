@@ -363,6 +363,60 @@ def fetch_dates_for_appids(appids, on_result):
         on_result(appid, None)
 
 
+# ── Single-game re-scrape ────────────────────────────────────────────────────────
+
+def rescrape(appid):
+    """
+    Re-fetch order data for a single Humble game via its order API.
+    Unlike IndieGala, Humble's platform_slug ("gamekey/machine_name") targets
+    a real per-order endpoint directly -- no need to walk the whole library.
+    Returns an update dict ready for update_game_data(), or None on failure.
+    """
+    if not is_connected():
+        return None
+
+    db  = get_db()
+    row = db.execute(
+        "SELECT platform_slug FROM games WHERE appid=? AND platform='humble'", (appid,)
+    ).fetchone()
+    db.close()
+    if not row or not row['platform_slug']:
+        return None
+
+    gamekey, _, machine_name = row['platform_slug'].partition('/')
+    if not gamekey or not machine_name:
+        return None
+
+    try:
+        resp = requests.get(
+            f'{HUMBLE_API}/order/{gamekey}',
+            headers=_headers(),
+            timeout=20,
+            allow_redirects=False,
+        )
+        if resp.status_code in (301, 302) or not resp.ok:
+            return None
+        order = resp.json()
+    except requests.exceptions.RequestException as e:
+        log.warning(f'Humble rescrape: order fetch failed for {gamekey}: {e}')
+        return None
+
+    for sub in order.get('subproducts', []):
+        if (sub.get('machine_name') or '').strip() != machine_name:
+            continue
+        name = (sub.get('human_name') or machine_name).strip()
+        dev  = ((sub.get('payee') or {}).get('human_name') or '').strip()
+        meta = {'meta_fetched': datetime.now(timezone.utc).date().isoformat()}
+        if name:
+            meta['name'] = name
+        if dev:
+            meta['developers'] = dev
+            meta['publishers'] = dev
+        return meta
+
+    return None
+
+
 # ── Download & launch ───────────────────────────────────────────────────────────
 
 if sys.platform == 'win32':
