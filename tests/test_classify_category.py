@@ -143,6 +143,10 @@ def test_appid_contains_number_via_steam_id_phrasing():
     assert_cond(one('Games with 42 in their steam ID'), 'appid', 'contains', '42')
 
 
+def test_appid_contains_quoted_multidigit_via_with_phrasing():
+    assert_cond(one('Games with "45" in their Steam AppID'), 'appid', 'contains', '45')
+
+
 def test_appid_not_contains():
     assert_cond(one("Games that don't have the number 3 in their ID"),
                 'appid', 'not_contains', '3')

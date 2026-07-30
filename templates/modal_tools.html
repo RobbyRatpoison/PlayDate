@@ -715,14 +715,17 @@
                 max-height:160px; overflow-y:auto; box-shadow:0 6px 16px rgba(0,0,0,0.4);"></div>
         </div>
 
-        <div style="position:relative; margin-bottom:12px;">
+        <div style="position:relative; margin-bottom:12px; display:flex; gap:8px;">
             <button id="santa-group-btn" data-modal-row="0"
                 onclick="toggleSantaGroupPicker()"
-                style="width:100%; text-align:left; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text-secondary); font-size:0.9rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
-                <span id="santa-group-label">Add all games from a group...</span>
-                <span style="font-size:0.75rem;">&#9660;</span>
+                style="flex:1; min-width:0; text-align:left; padding:7px 10px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text-secondary); font-size:0.9rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+                <span id="santa-group-label" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Add all games from a group...</span>
+                <span style="font-size:0.75rem; flex-shrink:0; margin-left:6px;">&#9660;</span>
             </button>
-            <div id="santa-group-picker" style="display:none; position:absolute; left:0; right:0; top:100%; z-index:99;
+            <input id="santa-group-year" type="number" placeholder="Year" data-modal-row="0"
+                title="Optional — tags every game added from the chosen group with this year"
+                style="width:72px; flex-shrink:0; box-sizing:border-box; padding:7px 8px; border-radius:6px; border:1px solid var(--border); background:var(--input-bg); color:var(--text-primary); font-size:0.9rem;">
+            <div id="santa-group-picker" style="display:none; position:absolute; left:0; right:80px; top:100%; z-index:99;
                 background:var(--bg-surface); border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px;
                 max-height:180px; overflow-y:auto; box-shadow:0 6px 16px rgba(0,0,0,0.4);"></div>
         </div>
@@ -730,7 +733,7 @@
         <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;">
             Gift List (<span id="santa-count">0</span>)
         </div>
-        <div id="santa-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:6px; margin-bottom:14px;"></div>
+        <div id="santa-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:6px; margin-bottom:14px; padding-right:14px;"></div>
 
         <div style="display:flex; gap:8px; justify-content:flex-end;">
             <button class="nav-btn" data-modal-row="1" onclick="closeSantaModal()">Close</button>
@@ -1263,6 +1266,7 @@
                     <label for="pag-santa-cb" id="pag-santa-label" style="display:inline; margin:0; cursor:pointer;" onclick="event.stopPropagation()">Include Secret Santa / Snowballs gifts (<span id="pag-santa-count">0</span> games)</label>
                     <span id="pag-santa-setup" style="display:none; font-size:0.78rem; color:var(--text-secondary); font-style:italic;">— add gifts via <a href="#" data-modal-row="pag-santa" onclick="event.preventDefault();event.stopPropagation();closePagModal();openSantaModal()" style="color:var(--accent);">Secret Santa / Snowballs</a></span>
                 </div>
+                <div id="pag-wins-selected-tags" style="font-size:0.76rem; color:var(--text-secondary); margin-bottom:6px; min-height:1.1em;">No tags selected</div>
                 <input type="text" id="pag-wins-search" placeholder="Search tags…"
                     data-modal-row="pag-wins-search"
                     style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
@@ -1283,6 +1287,7 @@
                     <span style="color:var(--text-primary); font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:0.06em;">Criteria — All Games</span>
                     <span style="color:var(--text-secondary); font-size:0.75rem; font-style:italic;">applies to your whole library</span>
                 </div>
+                <div id="pag-all-selected-tags" style="font-size:0.76rem; color:var(--text-secondary); margin-bottom:6px; min-height:1.1em;">No tags selected</div>
                 <input type="text" id="pag-all-search" placeholder="Search tags…"
                     data-modal-row="pag-all-search"
                     style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"

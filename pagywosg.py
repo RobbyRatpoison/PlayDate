@@ -340,6 +340,12 @@ def classify_category(base, base_appids, icaio_ga_dict, icaio_wl_dict, santa_gif
         if m:
             return _cond('appid', 'contains', m.group(1), 'appid')
 
+        # 'Games with "45" in their Steam AppID' — quoted digit-string
+        # substring, "with" instead of "contains"; may be more than one digit.
+        m = re.search(r'\bwith\s+["“”]?(\d+)["“”]?\s+in\b', base, re.I)
+        if m:
+            return _cond('appid', 'contains', m.group(1), 'appid')
+
     m = (re.search(r'steam\s*id\s+containing\s+(\w+)', base, re.I) or
          re.search(r'\b(\w+)\s+in\s+(?:their\s+)?steam\s*(?:app\s*)?id', base, re.I))
     if m:
@@ -745,6 +751,12 @@ def pagywosg_auto():
     conds_wins, conds_all = [], []
     appids_wins, appids_all = {}, {}
     skipped = []
+    # Categories that fell through to the verified-fallback path but currently
+    # have zero verified appids (typically an upcoming event nobody has played
+    # yet) — these are real personal-category candidates, just without any
+    # games to show yet, so the "Personal categories" UI can't discover them
+    # from _pagWinsGames/_pagAllGames alone the way it does once appids exist.
+    personal_candidates = set()
 
     _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = load_supplements()
 
@@ -801,6 +813,8 @@ def pagywosg_auto():
                     _add_appids(r['appids'], base, auto=r['auto'], verifiers_by_appid=vbi)
             elif r['type'] == 'skip':
                 skipped.append(base)
+                if r['reason'] == 'unhandled':
+                    personal_candidates.add(base)
 
     # Scan the whole games table once (fast — user's library is small) and
     # intersect in Python, avoiding a huge IN (?, ?, ...) with 5000+ params.
@@ -869,6 +883,7 @@ def pagywosg_auto():
         "wins":   _serialise_pool(appids_wins, tags_wins, conds_wins),
         "all":    _serialise_pool(appids_all,  tags_all,  conds_all),
         "skipped": skipped,
+        "personal_candidates": sorted(personal_candidates),
         "default_personal": load_personal_defaults(event_id),
     }
     _lib_db.close()
@@ -1015,11 +1030,20 @@ def santa_gifts():
         gifts = data.get('gifts', [])
         if not isinstance(gifts, list):
             return jsonify({'status': 'error', 'message': 'Invalid data.'}), 400
-        validated = [
-            {'appid': int(g['appid']), 'name': str(g['name'])}
-            for g in gifts
-            if isinstance(g, dict) and 'appid' in g and 'name' in g
-        ]
+        validated = []
+        for g in gifts:
+            if not (isinstance(g, dict) and 'appid' in g and 'name' in g):
+                continue
+            entry = {'appid': int(g['appid']), 'name': str(g['name'])}
+            # Year the gift was given — evidence for mod verification of Secret
+            # Santa/Snowball entries, shown in the PAGYWOSG hover tooltip.
+            year = g.get('year')
+            if year not in (None, ''):
+                try:
+                    entry['year'] = int(year)
+                except (TypeError, ValueError):
+                    pass
+            validated.append(entry)
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(validated, f, indent=2, ensure_ascii=False)

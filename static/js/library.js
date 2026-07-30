@@ -1704,10 +1704,16 @@ async function stopBulkDateImport() {
                 (Array.isArray(desc) ? desc : [desc]).forEach(d => results.push({ desc: d, label, verified: false }));
             }
         });
-        (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).forEach(({ cat, pool, verifiers, auto }) => {
-            if (auto && pool === 'wins') return;
-            if (pool === 'wins' && !isWin) return;
-            results.push({ desc: cat, label: _pagLabel(pool, game, sgGroup), verified: !auto, verifiers: verifiers || [] });
+        (_serverFilterTree.pagywosg_verified?.[String(game.appid)] || []).forEach(({ cat, pool, verifiers, auto, year }) => {
+            // Santa/snowball entries carry a `year` (evidence of when the gift
+            // was given) — always show those as their own line even though
+            // they're otherwise auto+wins, which is normally suppressed below
+            // in favor of the "(santa/snowball)" relabeling of other matched
+            // wins-pool conditions further up.
+            if (auto && pool === 'wins' && !year) return;
+            if (pool === 'wins' && !isWin && !year) return;
+            const label = year ? `(santa/snowball, ${year})` : _pagLabel(pool, game, sgGroup);
+            results.push({ desc: cat, label, verified: !auto, verifiers: verifiers || [] });
         });
 
         const hltbMin = _hltbMin(game);

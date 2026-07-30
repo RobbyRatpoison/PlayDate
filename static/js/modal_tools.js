@@ -347,6 +347,7 @@ let _pagEventName  = '';
 let _pagSgGroup    = undefined;
 let _pagAllGroups  = [];  // all distinct groups in the library
 let _pagPersonalCats = new Set();  // category names marked as personal (auto=true when saving)
+let _pagPersonalCandidates = [];   // category names with zero verified appids so far (e.g. upcoming event) that could still become personal
 
 // Columns available for the condition builder
 const PAG_COLUMNS = [
@@ -556,12 +557,16 @@ async function miamSave() {
 }
 
 // ── Secret Santa / Snowballs ──
-let _santaGifts = [];        // [{appid, name}]
+let _santaGifts = [];        // [{appid, name, year?}] — year is optional evidence of when the gift was given
 let _santaSaved = [];        // snapshot of last-saved state for dirty check
 let _santaSaving = false;
 let _santaSearchTimer = null;
 let _santaSearchCache = [];  // last search results
 let _santaGroupPickerOpen = false;
+
+function _santaFingerprint() {
+    return _santaGifts.map(g => `${g.appid}:${g.year || ''}`).sort().join(',');
+}
 
 async function openSantaModal() {
     document.getElementById('santa-modal').style.display = 'flex';
@@ -569,13 +574,14 @@ async function openSantaModal() {
     const res = await fetch('/api/santa-gifts');
     const data = await res.json();
     _santaGifts = data.gifts || [];
-    _santaSaved = _santaGifts.map(g => g.appid).sort().join(',');
+    _santaSaved = _santaFingerprint();
     _renderSantaList();
     const inp = document.getElementById('santa-search');
     inp.value = '';
     document.getElementById('santa-search-results').style.display = 'none';
     _closeSantaGroupPicker();
     document.getElementById('santa-group-label').textContent = 'Add all games from a group...';
+    document.getElementById('santa-group-year').value = '';
     inp.focus();
     _loadSantaGroups();
 }
@@ -624,25 +630,38 @@ async function _santaAddGroup(group) {
             status.textContent = `No Steam games found in "${group}".`;
             return;
         }
-        let added = 0;
+        let added = 0, updated = 0;
+        const yearInput = document.getElementById('santa-group-year').value.trim();
+        const year = yearInput ? parseInt(yearInput, 10) : null;
         games.forEach(g => {
-            if (!_santaGifts.find(x => x.appid === g.appid)) {
-                _santaGifts.push({appid: g.appid, name: g.name});
+            const existing = _santaGifts.find(x => x.appid === g.appid);
+            if (!existing) {
+                const entry = {appid: g.appid, name: g.name};
+                if (year) entry.year = year;
+                _santaGifts.push(entry);
                 added++;
+            } else if (year && existing.year !== year) {
+                // Already in the list — a year specified for this batch
+                // overrides whatever the game had before (or lack thereof).
+                existing.year = year;
+                updated++;
             }
         });
         _renderSantaList();
         document.getElementById('santa-group-label').textContent = 'Add all games from a group...';
-        status.textContent = added
-            ? `Added ${added} game${added === 1 ? '' : 's'} from "${group}".`
-            : `All games from "${group}" are already in the list.`;
+        const parts = [];
+        if (added)   parts.push(`added ${added} game${added === 1 ? '' : 's'}`);
+        if (updated) parts.push(`updated the year on ${updated} existing game${updated === 1 ? '' : 's'}`);
+        status.textContent = parts.length
+            ? `${parts.join(', ')} from "${group}"${year ? ` (${year})` : ''}.`
+            : `All games from "${group}" are already in the list${year ? ` with year ${year}` : ''}.`;
     } catch (e) {
         status.textContent = 'Failed to fetch group.';
     }
 }
 
 function _santaIsDirty() {
-    return _santaGifts.map(g => g.appid).sort().join(',') !== _santaSaved;
+    return _santaFingerprint() !== _santaSaved;
 }
 function closeSantaModal() {
     if (_santaIsDirty()) {
@@ -662,9 +681,13 @@ function _renderSantaList() {
         el.innerHTML = '<div style="padding:10px 12px; color:var(--text-secondary); font-size:0.85rem;">No games added yet.</div>';
     } else {
         el.innerHTML = sorted
-            .map((g, i) => `<div data-modal-row="${i + 1}" onclick="_santaRemove(${g.appid})" style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; border-bottom:1px solid var(--border); cursor:pointer;">
-                <span style="font-size:0.88rem; color:var(--text-primary);">${escHtml(g.name)}</span>
-                <span style="color:var(--text-secondary); font-size:0.85rem; padding:0 2px; line-height:1;">&#x2715;</span>
+            .map((g, i) => `<div data-modal-row="${i + 1}" onclick="_santaRemove(${g.appid})" style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 10px; border-bottom:1px solid var(--border); cursor:pointer;">
+                <span onclick="event.stopPropagation()" style="font-size:0.88rem; color:var(--text-primary); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:default;">${escHtml(g.name)}</span>
+                <input type="number" value="${g.year || ''}" placeholder="year"
+                    title="Year this gift was given — shown in the PAGYWOSG hover tooltip as evidence"
+                    onclick="event.stopPropagation()" onchange="_santaSetYear(${g.appid}, this.value)"
+                    style="width:64px; flex-shrink:0; padding:2px 6px; font-size:0.8rem; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px;">
+                <span style="color:var(--text-secondary); font-size:0.85rem; padding:0 2px; line-height:1; flex-shrink:0;">&#x2715;</span>
             </div>`)
             .join('');
     }
@@ -677,6 +700,17 @@ function _renderSantaList() {
 function _santaRemove(appid) {
     _santaGifts = _santaGifts.filter(g => g.appid !== appid);
     _renderSantaList();
+}
+
+function _santaSetYear(appid, value) {
+    const g = _santaGifts.find(x => x.appid === appid);
+    if (!g) return;
+    const year = parseInt(value, 10);
+    if (value === '' || isNaN(year)) {
+        delete g.year;
+    } else {
+        g.year = year;
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -749,7 +783,7 @@ async function saveSantaGifts() {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            _santaSaved = _santaGifts.map(g => g.appid).sort().join(',');
+            _santaSaved = _santaFingerprint();
             status.style.color = 'var(--text-secondary)';
             status.textContent = 'Saved.';
         } else {
@@ -764,7 +798,7 @@ async function saveSantaGifts() {
     _santaSaving = false;
 }
 
-let _pagSantaGifts = [];  // [{appid, name}] loaded once on pagInit
+let _pagSantaGifts = [];  // [{appid, name, year?}] loaded once on pagInit
 
 let _pagCompDefaults = ['Never Played', 'Unfinished'];
 
@@ -904,6 +938,15 @@ function _pagRenumberRows() {
     }
 }
 
+function pagUpdateSelectedTagsSummary(pool) {
+    const el = document.getElementById(`pag-${pool}-selected-tags`);
+    if (!el) return;
+    const selected = pool === 'all' ? _pagSelectedAll : _pagSelectedWins;
+    el.textContent = selected.size
+        ? `Selected tags: ${[...selected].sort((a, b) => a.localeCompare(b)).join(', ')}`
+        : 'No tags selected';
+}
+
 function pagRenderTags(pool) {
     const tags = pool === 'all' ? _pagAllTags : _pagWinsTags;
     const selected = pool === 'all' ? _pagSelectedAll : _pagSelectedWins;
@@ -919,10 +962,12 @@ function pagRenderTags(pool) {
             if (selected.has(tag)) selected.delete(tag);
             else selected.add(tag);
             chip.classList.toggle('selected');
+            pagUpdateSelectedTagsSummary(pool);
             pagUpdateSql();
         };
         container.appendChild(chip);
     });
+    pagUpdateSelectedTagsSummary(pool);
     _pagRenumberRows();
 }
 
@@ -1330,11 +1375,13 @@ async function pagConfirmSave() {
     });
     if (document.getElementById('pag-santa-cb')?.checked && _pagSantaGifts.length) {
         const santaCat = 'Secret Santa / Snowballs';
-        _pagSantaGifts.forEach(({appid, name}) => {
+        _pagSantaGifts.forEach(({appid, name, year}) => {
             const key = String(appid);
             if (!verifiedLookup[key]) verifiedLookup[key] = [];
             if (!verifiedLookup[key].some(e => e.cat === santaCat && e.pool === 'wins')) {
-                verifiedLookup[key].push({cat: santaCat, pool: 'wins', auto: true});
+                const entry = {cat: santaCat, pool: 'wins', auto: true};
+                if (year) entry.year = year;
+                verifiedLookup[key].push(entry);
             }
         });
     }
@@ -1406,8 +1453,13 @@ function pagUpdateAppidsInfo(pool) {
     const el = document.getElementById(`pag-${pool}-appids-info`);
     if (!el) return;
     const allGames = pool === 'wins' ? _pagWinsGames : _pagAllGames;
+    // A game counts as included unless every one of its categories is a
+    // verified_fallback category the user has toggled personal (and thus
+    // conditionally excluded). Auto categories (icaio/santa) are never
+    // personal-toggleable and always count — `auto` here only means "don't
+    // show a mod-verified label," not "requires personal restriction."
     const games = allGames.filter(g => g.in_library && !g.redundant &&
-        g.categories.some(c => !c.auto && !_pagPersonalCats.has(c.cat)));
+        g.categories.some(c => c.auto || !_pagPersonalCats.has(c.cat)));
     if (!games.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
 
     const listId = `pag-${pool}-appids-list`;
@@ -1440,6 +1492,10 @@ function pagRenderPersonalCats() {
     [..._pagWinsGames, ..._pagAllGames].forEach(g => {
         (g.categories || []).forEach(({cat, auto}) => { if (!auto) cats.add(cat); });
     });
+    // Categories with zero verified appids so far (e.g. an upcoming event
+    // nobody has played yet) never show up via the games loop above — surface
+    // them too so they can be pre-toggled ahead of any verifications landing.
+    _pagPersonalCandidates.forEach(cat => cats.add(cat));
     if (!cats.size) { section.style.display = 'none'; section.innerHTML = ''; return; }
     const sorted = [...cats].sort();
     pagRenderPersonalCats._list = sorted;
@@ -1484,6 +1540,8 @@ async function pagAutoFill(next = false) {
         }
 
         pagClearAll();
+
+        _pagPersonalCandidates = data.personal_candidates || [];
 
         // Pre-check categories the maintainer has curated as always-personal
         // for this event — still individually toggle-able from here.
@@ -1548,6 +1606,7 @@ function pagClearAll() {
     _pagAllGames          = [];
     _pagWinsGames         = [];
     _pagPersonalCats.clear();
+    _pagPersonalCandidates = [];
     pagUpdateAppidsInfo('all');
     pagUpdateAppidsInfo('wins');
     pagRenderTags('all');
