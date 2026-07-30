@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.11
+## v1.6.11 - 2026-07-30
 ### New
 
 - Secret Santa / Snowballs gifts can now be tagged with the year given, shown in the PAGYWOSG hover tooltip as evidence. Group-add can tag a whole batch at once. (suggested by greatmastermario)
