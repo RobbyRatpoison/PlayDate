@@ -856,6 +856,19 @@ def scrape_single(appid):
     if not session:
         return None
 
+    # get_valid_session() can succeed purely from a locally-cached, not-yet-
+    # expired token with no network round trip, and _fetch_games_detail /
+    # _fetch_supercat both swallow every exception (including offline
+    # ConnectionError) into an empty result rather than propagating it. Left
+    # unchecked, that means a fully offline rescrape still returns a
+    # (nearly empty) dict and gets reported as success, stamping meta_fetched
+    # on a game nothing was actually fetched for. Probe first so an outage
+    # is reported honestly instead of silently faking success.
+    try:
+        requests.head('https://www.ea.com/', timeout=8)
+    except requests.exceptions.RequestException:
+        return None
+
     from database import get_db
     db  = get_db()
     row = db.execute(

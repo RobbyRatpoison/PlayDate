@@ -37,15 +37,19 @@ class IndieGalaPlugin:
         from .indiegala import launch_game
         return launch_game(appid)
 
+    def rescrape(self, appid):
+        from .indiegala import rescrape
+        return rescrape(appid)
+
     def js_api(self):
         return {
             'uninstall_url':  '/api/indiegala/uninstall/{appid}',
-            'scrape_url':     None,
+            'scrape_url':     '/api/indiegala/scrape-single/{appid}',
             'scrape_method':  'POST',
-            'store_url':      'https://www.indiegala.com/store/game/{slug}',
+            'store_url':      '{slug}',
             'store_label':    'View on IndieGala ↗',
             'appid_label':    'IndieGala ID:',
-            'sync_label':     'Sync IndieGala Library',
+            'sync_label':     'Sync IndieGala Data',
         }
 
     def manage_ui(self):

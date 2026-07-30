@@ -771,11 +771,23 @@ def bulk_distinct_values(data):
 
 @library_bp.route('/api/scrape_single/<int:appid>', methods=['GET', 'POST'])
 def scrape_single(appid):
+    import requests
     from scrapers import fetch_store_data, fetch_tag_data, fetch_player_data, fetch_review_data, fetch_cheevo_data, RateLimitedError
     from utils import fetch_local_library, get_acf_names, parse_appinfo
     from config import load_config as _load_config, get_active_account as _get_active_account
     _cfg     = _load_config() or {}
     _account = _get_active_account() or {}
+
+    # The fetch_* helpers below all swallow connection errors into a plain
+    # None/{} the same way they swallow "Steam has no data for this appid",
+    # so a real network outage otherwise looks identical to a harmless empty
+    # result and this route reports fake success. Probe first so we can
+    # tell the user their internet is down instead of silently no-oping.
+    try:
+        requests.head('https://store.steampowered.com/', timeout=8)
+    except requests.exceptions.RequestException:
+        return jsonify({"status": "error",
+                         "message": "Could not reach Steam — check your internet connection."}), 503
 
     try:
         player_data = fetch_player_data(appid) or {}

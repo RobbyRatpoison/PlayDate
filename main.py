@@ -665,7 +665,9 @@ class PyWebviewAPI:
                 # WebKit's isolated world runs directly in the engine.
                 body_js = code_js or 'document.body.innerText'
 
-                def _gtk_run_js():
+                _MAX_JS_RETRIES = 12  # ~12s of 1s polling after the initial 1.5s delay
+
+                def _gtk_run_js(retry=0):
                     from urllib.parse import urlparse as _up
                     wk = None
                     found_uris = []
@@ -721,9 +723,11 @@ class PyWebviewAPI:
                             cookies = mgr.get_cookies_finish(async_result)
                             if cookies:
                                 for _c in cookies:
-                                    log.debug(f'open_auth_popup: native cookie {_c.get_name()!r} = {_c.get_value()[:80]!r}')
+                                    log.info(f'open_auth_popup: native cookie {_c.get_name()!r} '
+                                             f'domain={_c.get_domain()!r} httponly={_c.get_http_only()!r} '
+                                             f'= {_c.get_value()[:300]!r}')
                             else:
-                                log.debug('open_auth_popup: no native cookies returned')
+                                log.info('open_auth_popup: no native cookies returned')
                         except Exception as _e:
                             log.warning(f'open_auth_popup: native cookie cb: {_e}')
                     try:
@@ -759,10 +763,15 @@ class PyWebviewAPI:
                             threading.Thread(target=_exchange_and_close, args=(extracted,),
                                              daemon=True).start()
                         elif code_js:
-                            # code_js was provided but returned empty — keep popup open so
-                            # the user can interact with the page (e.g. generate a key) and
-                            # the next navigation will trigger another extraction attempt.
-                            log.info('open_auth_popup: code_js returned empty — keeping popup open for retry')
+                            # code_js was provided but returned empty. Some pages write the
+                            # session data to storage asynchronously after load (e.g. Ubisoft's
+                            # /ready page), so poll a few more times before giving up and
+                            # falling back to waiting for the next navigation.
+                            if retry < _MAX_JS_RETRIES:
+                                log.info(f'open_auth_popup: code_js returned empty — retrying ({retry + 1}/{_MAX_JS_RETRIES})')
+                                GLib.timeout_add(1000, _gtk_run_js, retry + 1)
+                            else:
+                                log.info('open_auth_popup: code_js returned empty — keeping popup open for retry')
                         else:
                             threading.Thread(target=_exchange_and_close, args=('',),
                                              daemon=True).start()
@@ -895,6 +904,72 @@ class PyWebviewAPI:
                             _wk.connect('load-changed', _on_load_changed)
                         except Exception as _e:
                             log.warning(f'open_auth_popup: load-changed hook failed: {_e}')
+                        try:
+                            import re as _re
+                            _NET_RE = _re.compile(r'ubisoft|ubi\.com|ubiservices', _re.I)
+
+                            def _coerce_bytes(gval):
+                                if gval is None:
+                                    return b''
+                                if isinstance(gval, (bytes, bytearray)):
+                                    return bytes(gval)
+                                try:
+                                    return bytes(gval)
+                                except Exception:
+                                    pass
+                                try:
+                                    return gval.get_data() or b''
+                                except Exception:
+                                    return b''
+
+                            def _on_resource_load_started(wkview, resource, request, *_a):
+                                try:
+                                    r_uri = resource.get_uri() or ''
+                                except Exception:
+                                    r_uri = ''
+                                if not _NET_RE.search(r_uri):
+                                    return
+                                try:
+                                    method = request.get_http_method() or ''
+                                except Exception:
+                                    method = ''
+                                log.info(f'open_auth_popup: [NET] {method} {r_uri}')
+
+                                def _on_resource_finished(res, *_b):
+                                    status, mime = None, ''
+                                    try:
+                                        resp = res.get_response()
+                                        if resp:
+                                            status = resp.get_status_code()
+                                            mime = resp.get_mime_type() or ''
+                                    except Exception:
+                                        pass
+
+                                    def _on_data_cb(res2, async_result, *_c):
+                                        try:
+                                            raw = _coerce_bytes(res2.get_data_finish(async_result))
+                                            body = raw.decode('utf-8', errors='replace')
+                                        except Exception as _e:
+                                            log.info(f'open_auth_popup: [NET] {r_uri} status={status} body read failed: {_e}')
+                                            return
+                                        tag = '[NET][TICKET?]' if ('ticket' in body.lower() or 'rememberme' in body.lower()) else '[NET]'
+                                        log.info(f'open_auth_popup: {tag} {r_uri} status={status} mime={mime!r} '
+                                                 f'len={len(body)} body={body[:1800]!r}')
+
+                                    try:
+                                        res.get_data(None, _on_data_cb)
+                                    except Exception as _e:
+                                        log.info(f'open_auth_popup: [NET] {r_uri} status={status} get_data call failed: {_e}')
+
+                                try:
+                                    resource.connect('finished', _on_resource_finished)
+                                except Exception as _e:
+                                    log.warning(f'open_auth_popup: resource finished-hook failed: {_e}')
+
+                            _wk.connect('resource-load-started', _on_resource_load_started)
+                            log.info('open_auth_popup: network capture hook installed')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: network capture hook failed: {_e}')
                         popup_wk_ref[0] = _wk
                         try:
                             _wk.load_uri(url)

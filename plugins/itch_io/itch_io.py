@@ -1064,6 +1064,16 @@ def rescrape_game(appid):
     if not row:
         return None
 
+    # Every network step below (API call, art downloads) catches its own
+    # exceptions and just logs+continues, so a fully offline attempt would
+    # otherwise still return a truthy result and get treated as success,
+    # silently stamping meta_fetched/cheevos_fetched on a game nothing was
+    # actually fetched for. Probe first so an outage is reported honestly.
+    try:
+        requests.head('https://itch.io/', timeout=8)
+    except requests.exceptions.RequestException:
+        return None
+
     game_id   = row['platform_id']
     game_name = row['name']
     today     = _date.today().isoformat()

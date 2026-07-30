@@ -760,6 +760,7 @@
     }
 
     function pillInputSet(hiddenId, boxId, csvString) {
+        if (csvString === undefined) return;
         _pillSync(hiddenId, csvString ? csvString.split(',').map(v => v.trim()).filter(Boolean) : []);
         _pillRender(hiddenId, boxId);
     }
@@ -1301,6 +1302,22 @@ const achLink = document.getElementById('achievements-link');
                 if ((game.total_achievements ?? 0) > 0 &&
                     game.unlocked_achievements === game.total_achievements) {
                     safeSet('edit-status', 'Completed');
+                }
+                // Store link is derived from platform_slug but isn't a form field
+                // saved by the modal's submit handler, so it needs its own refresh
+                // here -- otherwise a freshly-rescraped slug wouldn't show up until
+                // Save + reopening the modal.
+                if (game.platform_slug !== undefined) {
+                    const storeLink = document.getElementById('store-link');
+                    if (storeLink) {
+                        if (_papi?.store_url && game.platform_slug) {
+                            storeLink.href          = _papi.store_url.replace('{slug}', game.platform_slug);
+                            storeLink.textContent   = _papi.store_label || 'View on Store ↗';
+                            storeLink.style.display = '';
+                        } else {
+                            storeLink.style.display = 'none';
+                        }
+                    }
                 }
                 btn.textContent = "Complete!";
             } else {

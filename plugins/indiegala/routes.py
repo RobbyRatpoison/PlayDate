@@ -102,6 +102,19 @@ def scan():
         return jsonify({'error': str(e)}), 500
 
 
+@bp.route('/scrape-single/<int:appid>', methods=['POST'])
+def scrape_single(appid):
+    from .indiegala import rescrape
+    from database import update_game_data
+
+    meta = rescrape(appid)
+    if meta is None:
+        return jsonify({'status': 'error', 'message': 'Could not find this game in your IndieGala library'}), 502
+
+    update_game_data(appid, **meta)
+    return jsonify({'status': 'success', 'data': meta})
+
+
 @bp.route('/uninstall/<int:appid>', methods=['POST'])
 def uninstall(appid):
     from .indiegala import uninstall_game

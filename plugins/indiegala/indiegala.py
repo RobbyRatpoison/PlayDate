@@ -175,8 +175,11 @@ _PROD_ID_RE    = re.compile(r'/products/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 _SHOWCASE_RE   = re.compile(r'(https?://(?:www\.)?indiegala\.com/library/showcase/[^\s"\']+)')
 
 
+_SHOWCASE_ID_RE = re.compile(r"showShowcaseContents\('(\d+)'")
+
+
 def _parse_page(html):
-    """Return list of dicts with prod_id, prod_name, date_str, img_url, showcase_url."""
+    """Return list of dicts with prod_id, prod_name, date_str, img_url, showcase_url, freebies_url."""
     soup  = BeautifulSoup(html, 'html.parser')
     games = []
     for card in soup.find_all('figcaption',
@@ -192,6 +195,7 @@ def _parse_page(html):
         img_url      = ''
         prod_id      = ''
         showcase_url = ''
+        freebies_url = ''
         if fig:
             # The figure or a parent <a> may link directly to the showcase page
             wrap = fig.find_parent('a', href=True) or fig.find('a', href=True)
@@ -211,11 +215,25 @@ def _parse_page(html):
                     if not showcase_url:
                         showcase_url = f'https://www.indiegala.com/library/showcase/{prod_id}'
 
+            # The public freebies.indiegala.com page (the game's actual store/info
+            # page) lives in a separate panel elsewhere on the page, cross-referenced
+            # by the numeric id in this card's showShowcaseContents('<id>', ...)
+            # onclick handler -- not derivable from the card itself or guessable
+            # from the name.
+            item_li = card.find_parent('li')
+            click_a = item_li.find('a', class_='fit-click') if item_li else None
+            id_m = _SHOWCASE_ID_RE.search((click_a.get('onclick') or '') if click_a else '')
+            if id_m:
+                sub = soup.find(id=f'showcase-{id_m.group(1)}')
+                title_a = sub.find('a', class_='library-showcase-title', href=True) if sub else None
+                if title_a and 'freebies.indiegala.com' in title_a['href']:
+                    freebies_url = title_a['href']
+
         if not prod_id:
             continue
         games.append({'prod_id': prod_id, 'prod_name': title,
                       'date_str': date_str, 'img_url': img_url,
-                      'showcase_url': showcase_url})
+                      'showcase_url': showcase_url, 'freebies_url': freebies_url})
     return games
 
 
@@ -265,9 +283,9 @@ def _run_sync():
     try:
         db = get_db()
         existing = {
-            row['platform_id']: row['appid']
+            row['platform_id']: (row['appid'], row['platform_slug'], row['platform_appname'])
             for row in db.execute(
-                "SELECT appid, platform_id FROM games WHERE platform='indiegala'"
+                "SELECT appid, platform_id, platform_slug, platform_appname FROM games WHERE platform='indiegala'"
             ).fetchall()
         }
         blacklisted = {
@@ -326,26 +344,46 @@ def _run_sync():
 
                 if prod_id in existing:
                     updated += 1
+                    ex_appid, ex_slug, ex_appname = existing[prod_id]
+                    fresh_showcase_url = game.get('showcase_url') or ''
+                    fresh_freebies_url = game.get('freebies_url') or ''
+                    # platform_slug used to hold the showcase (download) URL
+                    # before it was repointed at the freebies page -- this
+                    # both backfills platform_appname (the actual download
+                    # URL launch_game() needs) from any stale rows and
+                    # (re)writes platform_slug with the correct freebies URL.
+                    if not ex_appname and fresh_showcase_url:
+                        db.execute(
+                            "UPDATE games SET platform_appname=? WHERE appid=?",
+                            (fresh_showcase_url, ex_appid),
+                        )
+                    if fresh_freebies_url and fresh_freebies_url != ex_slug:
+                        db.execute(
+                            "UPDATE games SET platform_slug=? WHERE appid=?",
+                            (fresh_freebies_url, ex_appid),
+                        )
+                    db.commit()
                     continue
 
                 prod_name    = game['prod_name']
                 date_ts      = _parse_dt(game['date_str']) or int(time.time())
                 showcase_url = game.get('showcase_url') or ''
+                freebies_url = game.get('freebies_url') or ''
                 appid        = next_negative_appid(db)
 
                 db.execute(
                     """INSERT OR IGNORE INTO games
-                       (appid, name, platform, platform_id, platform_slug,
+                       (appid, name, platform, platform_id, platform_slug, platform_appname,
                         date_added, completion_status, installed,
                         art_fetched, meta_fetched, cheevos_fetched,
                         protondb_fetched, hltb_fetched)
-                       VALUES (?, ?, 'indiegala', ?, ?,
+                       VALUES (?, ?, 'indiegala', ?, ?, ?,
                                ?, 'Never Played', 0,
                                '0', '0', '0', '0', '0')""",
-                    (appid, prod_name, prod_id, showcase_url, date_ts),
+                    (appid, prod_name, prod_id, freebies_url, showcase_url, date_ts),
                 )
                 db.commit()
-                existing[prod_id] = appid
+                existing[prod_id] = (appid, freebies_url, showcase_url)
                 added += 1
 
                 if game['img_url']:
@@ -424,6 +462,77 @@ def fetch_dates_for_appids(appids):
         time.sleep(0.5)
 
     return result
+
+
+# ── Single/bulk metadata re-fetch ────────────────────────────────────────────────
+
+# IndieGala has no per-product API -- the only source for a game's
+# freebies/showcase links is the same paginated library listing _run_sync()
+# walks. Cached briefly so a bulk-rescrape batch touching several IndieGala
+# games shares one walk instead of each game re-walking the whole library
+# from page 1 (bulk_rescrape_games calls plugin.rescrape() once per appid).
+_rescrape_cache     = {'ts': 0, 'games': {}}
+_rescrape_lock      = threading.Lock()
+_RESCRAPE_CACHE_TTL = 120  # seconds
+
+
+def _fetch_full_library():
+    """Walk every library page, returning {prod_id: game_dict}."""
+    games_by_id = {}
+    page = 1
+    MAX_PAGES = 200
+    while page <= MAX_PAGES:
+        url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}/showcase/{page}/'
+        try:
+            resp = requests.get(url, headers=_headers(), timeout=20, allow_redirects=True)
+            if resp.status_code != 200 or '/login' in resp.url:
+                break
+        except Exception as e:
+            log.warning(f'IndieGala rescrape: page {page} fetch failed: {e}')
+            break
+
+        games = _parse_page(resp.text)
+        if not games:
+            break
+        for game in games:
+            games_by_id[game['prod_id']] = game
+
+        page += 1
+        time.sleep(0.5)
+
+    return games_by_id
+
+
+def rescrape(appid):
+    """
+    Re-fetch freebies/showcase links for a single IndieGala game.
+    Returns an update dict ready for update_game_data(), or None if the game
+    can't be found or the library can't be reached.
+    """
+    db  = get_db()
+    row = db.execute(
+        "SELECT platform_id FROM games WHERE appid=? AND platform='indiegala'", (appid,)
+    ).fetchone()
+    db.close()
+    if not row or not row['platform_id']:
+        return None
+    prod_id = row['platform_id']
+
+    with _rescrape_lock:
+        if time.time() - _rescrape_cache['ts'] > _RESCRAPE_CACHE_TTL:
+            _rescrape_cache['games'] = _fetch_full_library()
+            _rescrape_cache['ts']    = time.time()
+        game = _rescrape_cache['games'].get(prod_id)
+
+    if not game:
+        return None
+
+    meta = {'meta_fetched': datetime.now(timezone.utc).date().isoformat()}
+    if game.get('freebies_url'):
+        meta['platform_slug'] = game['freebies_url']
+    if game.get('showcase_url'):
+        meta['platform_appname'] = game['showcase_url']
+    return meta
 
 
 # ── Art ─────────────────────────────────────────────────────────────────────────
@@ -585,7 +694,7 @@ def launch_game(appid):
 
     db  = get_db()
     row = db.execute(
-        "SELECT name, platform_id, platform_slug, installed, install_path, platform_executable "
+        "SELECT name, platform_id, platform_appname, installed, install_path, platform_executable "
         "FROM games WHERE appid=?", (appid,)
     ).fetchone()
     db.close()
@@ -662,7 +771,7 @@ def launch_game(appid):
     update_game_data(appid, install_path=game_dir)
     _open_folder(game_dir)
 
-    showcase_url = (row['platform_slug'] if row else '') or ''
+    showcase_url = (row['platform_appname'] if row else '') or ''
     if not showcase_url and row and row['platform_id']:
         showcase_url = f'https://www.indiegala.com/library/showcase/{row["platform_id"]}'
     if showcase_url:
