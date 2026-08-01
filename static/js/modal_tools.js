@@ -55,6 +55,48 @@ function setBackupTab(tab) {
     document.getElementById('restore-tab-btn').style.color       = isBackup ? 'var(--text-secondary)' : 'var(--on-accent)';
 }
 
+function openSendLogModal() {
+    document.getElementById('send-log-modal').style.display = 'flex';
+}
+function closeSendLogModal() {
+    document.getElementById('send-log-modal').style.display = 'none';
+    document.getElementById('send-log-message').value = '';
+    document.getElementById('send-log-status').textContent = '';
+    document.getElementById('send-log-status').className = 'tool-status';
+}
+
+function submitLog() {
+    const btn     = document.getElementById('send-log-btn');
+    const status  = document.getElementById('send-log-status');
+    const message = document.getElementById('send-log-message').value;
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    status.className = 'tool-status info';
+    status.textContent = 'Sending log…';
+
+    fetch('/api/submit-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+    })
+        .then(res => res.json().then(data => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok || data.status !== 'success') throw new Error(data.message || 'Unknown error');
+            status.className = 'tool-status success';
+            status.textContent = '✔ Log sent. Thanks for the report!';
+            document.getElementById('send-log-message').value = '';
+        })
+        .catch(err => {
+            status.className = 'tool-status error';
+            status.textContent = `✘ ${err.message}`;
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Send Log';
+        });
+}
+
 function openImportModal() {
     document.getElementById('import-modal').style.display = 'flex';
     resetImport();

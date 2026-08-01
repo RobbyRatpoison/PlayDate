@@ -826,11 +826,31 @@
             <button class="settings-item" data-modal-row="5" onclick="openGamepadDiag()">Gamepad Diagnostics</button>
         </div>
         <div class="hub-section">
+            <div class="hub-section-label">Support</div>
+            <button class="settings-item" data-modal-row="6" onclick="openSendLogModal()">Send Log to Developer</button>
+        </div>
+        <div class="hub-section">
             <div class="hub-section-label">Testing</div>
             <div style="padding:8px 10px; display:flex; flex-direction:column; gap:8px;">
-                <button class="nav-btn" data-modal-row="6" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
+                <button class="nav-btn" data-modal-row="7" onclick="resizeToSteamDeck()" style="font-size:0.8rem;">Resize to Steam Deck (1280x800)</button>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- ── SEND LOG MODAL ── -->
+<div id="send-log-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeSendLogModal();">
+    <div class="modal-content" style="width:440px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <h2 style="margin:0; color:var(--text-primary);">Send Log to Developer</h2>
+            <button onclick="closeSendLogModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#x2715;</button>
+        </div>
+        <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:10px 14px; margin-bottom:14px; font-size:0.8rem; color:var(--text-secondary); line-height:1.5;">
+            This sends your <strong style="color:var(--text-primary);">playdate.log</strong> file and your PlayDate version/OS straight to the developer for troubleshooting. It does <strong style="color:var(--text-primary);">not</strong> include config.json, state.json, or any account credentials — but the log may contain file paths (including your OS username) and your Steam library details.
+        </div>
+        <textarea id="send-log-message" data-modal-row="0" placeholder="Optional: what were you trying to do when the problem happened?" rows="4" maxlength="1000" style="width:100%; box-sizing:border-box; resize:vertical; margin-bottom:12px;"></textarea>
+        <button class="nav-btn" id="send-log-btn" data-modal-row="1" onclick="submitLog()">Send Log</button>
+        <div id="send-log-status" class="tool-status"></div>
     </div>
 </div>
 

@@ -66,6 +66,7 @@ from date_import import date_import_bp
 from system import system_bp
 from pick import pick_bp
 from backup import backup_bp
+from diagnostics import diagnostics_bp
 from updater import updater_bp, _startup_update_check
 from scrapers import blaeo_bp
 from pagywosg import pagywosg_bp
@@ -112,6 +113,7 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(system_bp)
     app.register_blueprint(pick_bp)
     app.register_blueprint(backup_bp)
+    app.register_blueprint(diagnostics_bp)
     app.register_blueprint(updater_bp)
     app.register_blueprint(blaeo_bp)
     app.register_blueprint(pagywosg_bp)

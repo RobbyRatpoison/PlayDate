@@ -718,7 +718,7 @@
         // Library bulk modals
         'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
         // Tools page expanding modals
-        'pagywosg-modal', 'blacklist-modal', 'theme-modal',
+        'pagywosg-modal', 'blacklist-modal', 'theme-modal', 'send-log-modal',
         // Sub-modals of hamburger items (before their parents)
         'hltb-modal',          // from library-modal
         'theme-picker-modal',  // from appearance-modal
@@ -2118,6 +2118,7 @@
             ['import-modal',          'closeImportModal'],
             ['pagywosg-modal',        'closePagModal'],
             ['theme-modal',           'closeThemeModal'],
+            ['send-log-modal',        'closeSendLogModal'],
             ['gamepad-remap-modal',   'closeGamepadRemap'],
             ['gamepad-diag-modal',    'closeGamepadDiag'],
             // top-level hamburger modals
@@ -2954,6 +2955,7 @@
         _watchModal('import-modal');
         _watchModal('pagywosg-modal');
         _watchModal('theme-modal');
+        _watchModal('send-log-modal');
 
         // Color picker popover — dynamically inserted/removed from document.body
         const _cpPopVisible = () => !!document.getElementById('_color-picker-popover');
