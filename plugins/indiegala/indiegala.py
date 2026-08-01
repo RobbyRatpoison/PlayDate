@@ -22,6 +22,15 @@ LIBRARY_URL    = 'https://www.indiegala.com/library'
 VERTICAL_DIR   = os.path.join(BASE_DIR, 'static', 'img', 'library', 'vertical')
 HORIZONTAL_DIR = os.path.join(BASE_DIR, 'static', 'img', 'library', 'horizontal')
 
+
+class SessionExpired(Exception):
+    """Raised when a library fetch gets redirected to /login -- the saved
+    session cookie is present but no longer valid. Distinct from a plain
+    "game not found," which single-game rescrape would otherwise report
+    identically (an empty/partial library walk looks the same as a real
+    404 unless the redirect is checked and surfaced separately)."""
+    pass
+
 _sync_state = {'running': False, 'status': '', 'added': 0, 'updated': 0, 'error': None}
 _sync_lock  = threading.Lock()
 
@@ -485,8 +494,12 @@ def _fetch_full_library():
         url = LIBRARY_URL if page == 1 else f'{LIBRARY_URL}/showcase/{page}/'
         try:
             resp = requests.get(url, headers=_headers(), timeout=20, allow_redirects=True)
-            if resp.status_code != 200 or '/login' in resp.url:
+            if '/login' in resp.url:
+                raise SessionExpired('IndieGala session expired')
+            if resp.status_code != 200:
                 break
+        except SessionExpired:
+            raise
         except Exception as e:
             log.warning(f'IndieGala rescrape: page {page} fetch failed: {e}')
             break

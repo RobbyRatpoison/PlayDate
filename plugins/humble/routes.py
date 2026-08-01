@@ -67,7 +67,11 @@ def scrape_single(appid):
     from .humble import rescrape
     from database import update_game_data
 
-    meta = rescrape(appid)
+    try:
+        meta = rescrape(appid)
+    except RuntimeError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 502
+
     if meta is None:
         return jsonify({'status': 'error', 'message': 'Could not find this game in your Humble library'}), 502
 

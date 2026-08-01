@@ -104,10 +104,17 @@ def scan():
 
 @bp.route('/scrape-single/<int:appid>', methods=['POST'])
 def scrape_single(appid):
-    from .indiegala import rescrape
+    from .indiegala import rescrape, is_connected, SessionExpired
     from database import update_game_data
 
-    meta = rescrape(appid)
+    if not is_connected():
+        return jsonify({'status': 'error', 'message': 'Not connected to IndieGala — connect it in Plugins settings'}), 502
+
+    try:
+        meta = rescrape(appid)
+    except SessionExpired:
+        return jsonify({'status': 'error', 'message': 'Session expired — please reconnect IndieGala in the Plugins settings.'}), 502
+
     if meta is None:
         return jsonify({'status': 'error', 'message': 'Could not find this game in your IndieGala library'}), 502
 

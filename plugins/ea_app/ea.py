@@ -851,10 +851,17 @@ def _fetch_supercat(session, offer_id):
 # ── Single-game rescrape ──────────────────────────────────────────────────────
 
 def scrape_single(appid):
-    """Re-fetch metadata and art for one EA game. Returns dict or None."""
+    """
+    Re-fetch metadata and art for one EA game. Returns dict or None.
+    Raises RuntimeError when not connected or the session has expired, so
+    the route can tell that apart from a genuine fetch failure instead of
+    reporting both as the same generic error.
+    """
+    if not is_connected():
+        raise RuntimeError('EA App account not connected')
     session = get_valid_session()
     if not session:
-        return None
+        raise RuntimeError('EA App session expired — please reconnect')
 
     # get_valid_session() can succeed purely from a locally-cached, not-yet-
     # expired token with no network round trip, and _fetch_games_detail /

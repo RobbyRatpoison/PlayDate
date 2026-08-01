@@ -371,9 +371,13 @@ def rescrape(appid):
     Unlike IndieGala, Humble's platform_slug ("gamekey/machine_name") targets
     a real per-order endpoint directly -- no need to walk the whole library.
     Returns an update dict ready for update_game_data(), or None on failure.
+    Raises RuntimeError (same as fetch_dates_for_appids above) when not
+    connected or the session has expired, so the route can tell the two
+    apart from a genuine "game not found" instead of reporting both as the
+    same generic failure.
     """
     if not is_connected():
-        return None
+        raise RuntimeError('Humble account not connected')
 
     db  = get_db()
     row = db.execute(
@@ -395,8 +399,10 @@ def rescrape(appid):
             allow_redirects=False,
         )
         if resp.status_code in (301, 302) or not resp.ok:
-            return None
+            raise RuntimeError('Humble session expired — please reconnect')
         order = resp.json()
+    except RuntimeError:
+        raise
     except requests.exceptions.RequestException as e:
         log.warning(f'Humble rescrape: order fetch failed for {gamekey}: {e}')
         return None

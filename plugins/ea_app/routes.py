@@ -206,7 +206,11 @@ def ea_scrape_single(appid):
     from .ea import scrape_single
     from database import ts_to_date
 
-    meta = scrape_single(appid)
+    try:
+        meta = scrape_single(appid)
+    except RuntimeError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 502
+
     if meta is None:
         return jsonify({'status': 'error', 'message': 'Metadata fetch failed'}), 502
 
