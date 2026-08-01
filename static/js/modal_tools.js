@@ -1907,9 +1907,10 @@ async function runBackup() {
     btn.disabled = true;
     btn.textContent = 'Creating backup…';
     status.className = 'tool-status info';
-    status.textContent = includeArt
+    status.innerHTML = (includeArt
         ? 'Building backup (including cover art — this may take a moment)…'
-        : 'Building backup…';
+        : 'Building backup…')
+        + '<br><strong style="color:var(--color-warning);">⚠ Do not close PlayDate until this finishes.</strong>';
 
     try {
         // ── Path 1: pywebview native Save-As dialog ──────────────────────────
