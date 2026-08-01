@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.12
+## v1.6.12 - 2026-08-01
 ### New
 
 - Added a "Send Log to Developer" option (System settings) to send your log file straight to the developer for troubleshooting, without needing a GitHub account.
