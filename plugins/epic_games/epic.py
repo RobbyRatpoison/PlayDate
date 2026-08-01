@@ -77,6 +77,19 @@ VERTICAL_DIR   = os.path.join(BASE_DIR, 'static', 'img', 'library', 'vertical')
 HORIZONTAL_DIR = os.path.join(BASE_DIR, 'static', 'img', 'library', 'horizontal')
 
 
+def _clean_epic_slug(slug):
+    """
+    Epic's catalog/store APIs (urlSlug/productSlug) inconsistently append a
+    sub-page segment like "/home" to some products' slugs and not others --
+    seemingly depending on how the listing was configured on Epic's end, not
+    anything PlayDate can predict. The store_url template only wants the bare
+    product slug (store.epicgames.com/p/{slug}); a "/home" (or any other
+    sub-page) suffix produces a broken link for the affected games.
+    """
+    slug = (slug or '').strip().strip('/')
+    return slug.split('/', 1)[0] if slug else ''
+
+
 # ── Token storage ─────────────────────────────────────────────────────────────
 
 def load_epic_tokens():
@@ -343,7 +356,7 @@ def _do_sync_library():
                     entry    = catalog_batch.get(cid, {})
                     app_name = cid_best_appname.get(cid, '')
                     name     = entry.get('title') or app_name
-                    url_slug = entry.get('urlSlug', '')
+                    url_slug = _clean_epic_slug(entry.get('urlSlug', ''))
 
                     with _sync_lock:
                         _sync_state['current_game'] = name
@@ -522,7 +535,7 @@ def _fetch_epic_store_data(namespace):
             if names:
                 result['tags'] = ','.join(names)
                 log.info(f'Epic store tags for {namespace!r}: {names}')
-        slug = (el.get('productSlug') or el.get('urlSlug') or '').strip()
+        slug = _clean_epic_slug(el.get('productSlug') or el.get('urlSlug'))
         if slug:
             result['platform_slug'] = slug
         desc = (el.get('description') or '').strip()
@@ -611,7 +624,7 @@ def _extract_metadata(entry):
         # Epic stores as "Action,Adventure" -- matches our comma-separated convention
         meta['genres'] = genres_str
 
-    url_slug = entry.get('urlSlug', '').strip()
+    url_slug = _clean_epic_slug(entry.get('urlSlug', ''))
     if url_slug:
         meta['platform_slug'] = url_slug
 
@@ -673,10 +686,15 @@ def scrape_single(appid):
     """
     Re-fetch metadata and art for a single Epic game.
     Returns a dict of updated fields, or None on failure.
+    Raises RuntimeError when not connected or the session has expired, so
+    the route can tell that apart from a genuine fetch failure instead of
+    reporting both as the same generic error.
     """
+    if not is_connected():
+        raise RuntimeError('Epic Games account not connected')
     session = get_valid_session()
     if not session:
-        return None
+        raise RuntimeError('Epic Games session expired — please reconnect')
 
     from database import get_db
     db  = get_db()

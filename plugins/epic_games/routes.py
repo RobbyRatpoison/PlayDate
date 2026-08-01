@@ -76,12 +76,37 @@ def epic_sync_metadata_status():
     return jsonify(get_meta_sync_state())
 
 
+@bp.route('/fix-slugs', methods=['POST'])
+def epic_fix_slugs():
+    """Strip any stray sub-page suffix (e.g. "/home") that Epic's catalog API
+    inconsistently appends to some products' slugs, breaking the store link.
+    No auth needed — this only cleans up values already stored locally."""
+    from .epic import _clean_epic_slug
+    db   = get_db()
+    rows = db.execute(
+        "SELECT appid, platform_slug FROM games WHERE platform='epic_games' AND platform_slug IS NOT NULL AND platform_slug != ''"
+    ).fetchall()
+    db.close()
+    updated = 0
+    for row in rows:
+        cleaned = _clean_epic_slug(row['platform_slug'])
+        if cleaned and cleaned != row['platform_slug']:
+            update_game_data(row['appid'], platform_slug=cleaned)
+            updated += 1
+    log.info(f'Epic fix-slugs: checked {len(rows)} games, updated {updated}')
+    return jsonify({'status': 'success', 'checked': len(rows), 'updated': updated})
+
+
 @bp.route('/scrape-single/<int:appid>', methods=['POST'])
 def epic_scrape_single(appid):
     from .epic import scrape_single
     from database import ts_to_date
 
-    meta = scrape_single(appid)
+    try:
+        meta = scrape_single(appid)
+    except RuntimeError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 502
+
     if meta is None:
         return jsonify({'status': 'error', 'message': 'Metadata fetch failed'}), 502
 

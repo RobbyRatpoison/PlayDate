@@ -258,9 +258,23 @@ class EpicGamesPlugin:
                                     'Click <strong>Open Epic Login</strong> — your browser opens the Epic login page.',
                                     'Log in to your Epic Games account.',
                                     "You'll land on a page showing a code. Copy the value next to <code>authorizationCode</code> and paste it below.",
+                                    'If the popup gets stuck on a verification/captcha page: Epic\'s login is behind '
+                                    'Cloudflare, which sometimes blocks PlayDate\'s embedded browser outright. Sign in at '
+                                    '<a href="https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode" target="_blank">epicgames.com</a> '
+                                    'in your regular browser instead, copy the authorizationCode from the page you land on, and paste it below.',
                                 ],
                                 'input_placeholder': 'Paste the authorizationCode value',
                                 'open_label': 'Open Epic Login',
+                                'submit_label': 'Connect',
+                            }},
+                            {'type': 'button', 'label': 'Paste authorizationCode manually', 'variant': 'muted', 'action': {
+                                'type': 'oauth_paste',
+                                'title': 'Connect Epic Account',
+                                'url_endpoint': '/api/epic_games/auth-url',
+                                'callback_endpoint': '/api/epic_games/callback',
+                                'instructions': [],
+                                'input_placeholder': '',
+                                'open_label': '',
                                 'submit_label': 'Connect',
                             }},
                         ],
@@ -277,6 +291,15 @@ class EpicGamesPlugin:
                     },
                 },
                 launcher_section,
+                {
+                    'title': 'Library',
+                    'items': [
+                        {'type': 'text', 'content': 'Fix store page links for games where the URL does not resolve correctly. Does not require an Epic account.'},
+                        {'type': 'button', 'label': 'Fix Store Links', 'action': {
+                            'type': 'call', 'fn': 'epicFixSlugs',
+                        }},
+                    ],
+                },
             ],
         }
 
