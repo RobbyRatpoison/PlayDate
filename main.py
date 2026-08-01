@@ -508,6 +508,13 @@ class PyWebviewAPI:
         3. On Linux/GTK: WebKit decide-policy hook -- intercepts navigation
            before connection is attempted, only when code is in the URL.
            Handles redirects to unreachable hosts like https://localhost.
+        4. On Windows/Mac (no gi): runs code_js via evaluate_js when provided
+           (itch.io, Amazon, Ubisoft), else reads document.body.innerText for a
+           JSON {authorizationCode|code} body (GOG, Epic). Falls back to
+           pywebview's get_cookies() when cookie_name is set and nothing was
+           extracted (IndieGala, Humble, Rockstar). Empty result on this path
+           keeps the popup open for a retry rather than closing it, matching
+           strategy 2's "keeping popup open" behavior on GTK.
         """
         import threading
         import requests as _requests
@@ -593,24 +600,52 @@ class PyWebviewAPI:
                 try:
                     from gi.repository import GLib, Gtk
                 except ImportError:
-                    # Windows/Mac: use pywebview's evaluate_js to read the response body.
-                    # WebView2 (Windows) runs JS outside eval() so CSP doesn't block it.
-                    log.info('open_auth_popup: gi not available, trying pywebview evaluate_js')
-                    try:
-                        raw = (w.evaluate_js('document.body.innerText') or '').strip()
-                        if raw.startswith('{'):
-                            import json as _json
-                            data = _json.loads(raw)
-                            extracted = (data.get('authorizationCode')
-                                         or data.get('code') or '').strip()
-                            if extracted:
-                                threading.Thread(target=_exchange_and_close,
-                                                 args=(extracted,), daemon=True).start()
-                                return
-                    except Exception as _e:
-                        log.warning(f'open_auth_popup: evaluate_js fallback failed: {_e}')
-                    log.warning('open_auth_popup: gi not available, cannot read body')
-                    _exchange_and_close('')
+                    # Windows/Mac: no GTK isolated-JS world or cookie manager available.
+                    # WebView2 (Windows) runs JS outside eval() so CSP doesn't block plain
+                    # evaluate_js calls, which covers code_js and the JSON-body strategy
+                    # below. cookie_name falls back to pywebview's own get_cookies(),
+                    # which reads from the browser engine's native cookie store the same
+                    # way GTK's cookie manager does (works for HttpOnly cookies, unlike
+                    # document.cookie).
+                    log.info('open_auth_popup: gi not available, trying pywebview fallbacks')
+                    extracted = ''
+                    if code_js:
+                        try:
+                            extracted = (w.evaluate_js(code_js) or '').strip()
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: code_js eval failed: {_e}')
+                    else:
+                        try:
+                            raw = (w.evaluate_js('document.body.innerText') or '').strip()
+                            if raw.startswith('{'):
+                                import json as _json
+                                data = _json.loads(raw)
+                                extracted = (data.get('authorizationCode')
+                                             or data.get('code') or '').strip()
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: evaluate_js fallback failed: {_e}')
+
+                    if not extracted and cookie_name:
+                        try:
+                            for jar in (w.get_cookies() or []):
+                                for morsel in jar.values():
+                                    if morsel.key == cookie_name and morsel.value:
+                                        extracted = morsel.value
+                                        break
+                                if extracted:
+                                    break
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: get_cookies fallback failed: {_e}')
+
+                    if extracted:
+                        threading.Thread(target=_exchange_and_close,
+                                         args=(extracted,), daemon=True).start()
+                    else:
+                        # Nothing yet -- e.g. code_js clicked through to a follow-up
+                        # page, or the login cookie isn't set yet. Leave the popup
+                        # open; the next navigation re-triggers _on_loaded to retry,
+                        # matching the GTK path's "keeping popup open" behavior.
+                        log.info('open_auth_popup: nothing extracted yet — keeping popup open')
                     return
 
                 if cookie_name:
@@ -831,16 +866,120 @@ class PyWebviewAPI:
     Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
     Object.defineProperty(navigator, 'vendor', {get: () => 'Google Inc.'});
     Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
-    Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+    Object.defineProperty(navigator, 'plugins', {get: () => {
+        // A raw-integer array (the previous version of this fake) is a
+        // trivially detectable automation tell to any bot-check that
+        // inspects plugin shape rather than just .length -- real Chrome's
+        // 5-entry built-in-PDF-viewer plugin list has name/filename/
+        // description on each entry.
+        var _mk = function(name, filename, desc) {
+            return {name: name, filename: filename, description: desc, length: 1};
+        };
+        var _arr = [
+            _mk('PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+            _mk('Chrome PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+            _mk('Chromium PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+            _mk('Microsoft Edge PDF Viewer', 'internal-pdf-viewer', 'Portable Document Format'),
+            _mk('WebKit built-in PDF', 'internal-pdf-viewer', 'Portable Document Format'),
+        ];
+        _arr.item = function(i) { return _arr[i] || null; };
+        _arr.namedItem = function(n) {
+            for (var i = 0; i < _arr.length; i++) if (_arr[i].name === n) return _arr[i];
+            return null;
+        };
+        return _arr;
+    }});
     Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
     Object.defineProperty(navigator, 'cookieEnabled', {get: () => true});
     if (!window.chrome) {
         window.chrome = {runtime: {}, loadTimes: function(){}, csi: function(){}, app: {}};
     }
+    // Save a private reference to window.webkit's messageHandlers *before*
+    // hiding window.webkit below -- this is what lets the failed-response
+    // logger further down reach Python even though window.webkit itself is
+    // spoofed away as undefined for the page's own fingerprinting checks.
+    try { window.__pdWebKit = window.webkit; } catch(e) {}
     // Remove WebKit2GTK-specific globals that fingerprint the embedded browser.
     try { Object.defineProperty(window, 'webkit', {get: () => undefined, configurable: true}); } catch(e) {}
     try { Object.defineProperty(window, 'WebKitPoint', {get: () => undefined, configurable: true}); } catch(e) {}
     try { Object.defineProperty(window, 'WebKitCSSMatrix', {get: () => undefined, configurable: true}); } catch(e) {}
+    // Log failed (4xx/5xx) XHR/fetch response bodies back to playdate.log via
+    // the pdNetLog script-message bridge -- WebKitWebResource.get_data() has
+    // proven unreliable for XHR/fetch-originated bodies (consistently a
+    // 1-byte placeholder instead of real content) across multiple plugins'
+    // popups this session, so this reads the body from inside the page's own
+    // JS instead, where it's never been the problem.
+    function _pdNetLog(msg) {
+        // postMessage() to a script message handler silently truncates long
+        // strings somewhere in WebKit's own IPC marshaling (confirmed: it's
+        // not JSC.Value.to_string(), which round-trips 20k+ chars fine
+        // standalone) -- consistently cutting off well under 1000 chars.
+        // Split into small chunks with a shared id + index/total so the
+        // Python side can reassemble the full message.
+        try {
+            if (!(window.__pdWebKit && window.__pdWebKit.messageHandlers && window.__pdWebKit.messageHandlers.pdNetLog)) return;
+            var s = String(msg);
+            var id = 'm' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+            var chunkSize = 200;
+            var total = Math.max(1, Math.ceil(s.length / chunkSize));
+            for (var i = 0; i < total; i++) {
+                var chunk = s.slice(i * chunkSize, (i + 1) * chunkSize);
+                window.__pdWebKit.messageHandlers.pdNetLog.postMessage(id + '|' + i + '/' + total + '|' + chunk);
+            }
+        } catch(e) {}
+    }
+    (function() {
+        var _oOpen = XMLHttpRequest.prototype.open, _oSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.open = function(m, u) { this._pdu = u || ''; this._pdm = m || ''; return _oOpen.apply(this, arguments); };
+        XMLHttpRequest.prototype.send = function() {
+            var x = this;
+            x.addEventListener('load', function() {
+                try {
+                    if (x.status >= 400) {
+                        var body = (x.responseType === '' || x.responseType === 'text') ? x.responseText : '[non-text response, type=' + x.responseType + ']';
+                        _pdNetLog('[XHR ' + x.status + '] ' + x._pdm + ' ' + x._pdu + ' :: ' + String(body).slice(0, 12000));
+                    }
+                } catch(e) {}
+            });
+            return _oSend.apply(this, arguments);
+        };
+        var _oFetch = window.fetch;
+        if (typeof _oFetch === 'function') {
+            window.fetch = function(input, init) {
+                var u = typeof input === 'string' ? input : (input && input.url) || '';
+                var p = _oFetch.apply(this, arguments);
+                p.then(function(r) {
+                    if (r && r.status >= 400) {
+                        r.clone().text().then(function(t) {
+                            _pdNetLog('[FETCH ' + r.status + '] ' + u + ' :: ' + String(t).slice(0, 12000));
+                        }).catch(function(){});
+                    }
+                }).catch(function(){});
+                return p;
+            };
+        }
+    })();
+    // Capture uncaught JS errors/rejections in every frame (ALL_FRAMES
+    // injection means this also covers embedded widget iframes, e.g.
+    // hCaptcha's own frame) and log them the same way as failed requests --
+    // when a challenge/captcha widget silently fails to mount, the actual
+    // reason is usually a thrown exception here, not anything visible over
+    // the network.
+    window.addEventListener('error', function(ev) {
+        try {
+            var stack = (ev.error && ev.error.stack) ? ('\n' + ev.error.stack) : '';
+            _pdNetLog('[JS-ERROR] ' + (ev.message || '') + ' @ ' + (ev.filename || '') +
+                      ':' + (ev.lineno || '') + ':' + (ev.colno || '') + stack);
+        } catch (e) {}
+    });
+    window.addEventListener('unhandledrejection', function(ev) {
+        try {
+            var r = ev.reason;
+            var msg = (r && r.message) ? r.message : String(r);
+            var stack = (r && r.stack) ? ('\n' + r.stack) : '';
+            _pdNetLog('[JS-REJECTION] ' + msg + stack);
+        } catch (e) {}
+    });
     // Polyfill localStorage in case the WebKit context returns a broken implementation.
     (function() {
         var _ok = false;
@@ -879,6 +1018,16 @@ class PyWebviewAPI:
                         except Exception as _e:
                             log.warning(f'open_auth_popup: set UA failed: {_e}')
                         try:
+                            # Enables right-click > Inspect Element in the popup, giving
+                            # direct access to the real console/network tabs -- a more
+                            # reliable diagnostic path than routing everything through
+                            # our own postMessage-based logging bridge, which has proven
+                            # unreliable (silently drops messages under burst load).
+                            _s.set_enable_developer_extras(True)
+                            log.info('open_auth_popup: developer extras enabled (right-click > Inspect Element)')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: enable developer extras failed: {_e}')
+                        try:
                             mgr = _wk.get_user_content_manager()
                             _full_js = _ANTI_BOT_JS + ('\n' + intercept_js if intercept_js else '')
                             script = _WK2.UserScript(
@@ -891,6 +1040,51 @@ class PyWebviewAPI:
                             log.info('open_auth_popup: anti-bot script injected')
                         except Exception as _e:
                             log.warning(f'open_auth_popup: anti-bot inject failed: {_e}')
+                        try:
+                            # Keyed by the JS side's per-message id; each entry buffers
+                            # {chunk_index: chunk_text} until every chunk has arrived.
+                            _net_log_buffers = {}
+
+                            def _on_net_log_msg(_mgr, js_value, *_a):
+                                try:
+                                    # WebKit2GTK 4.1 passes a JSC.Value directly; older
+                                    # versions wrap it in a WebKitJavascriptResult.
+                                    val = js_value.get_js_value() if hasattr(js_value, 'get_js_value') else js_value
+                                    raw = val.to_string() if val else ''
+                                except Exception as _e2:
+                                    log.info(f'open_auth_popup: [JS-NET] <unreadable chunk: {_e2}>')
+                                    return
+                                # Format from _pdNetLog: "<id>|<index>/<total>|<chunk>"
+                                try:
+                                    id_part, rest = raw.split('|', 1)
+                                    idx_part, chunk = rest.split('|', 1)
+                                    idx_str, total_str = idx_part.split('/')
+                                    idx, total = int(idx_str), int(total_str)
+                                except Exception:
+                                    log.info(f'open_auth_popup: [JS-NET] {raw[:2000]}')
+                                    return
+                                buf = _net_log_buffers.setdefault(id_part, {})
+                                buf[idx] = chunk
+                                if len(buf) >= total:
+                                    full = ''.join(buf.get(i, '') for i in range(total))[:20000]
+                                    del _net_log_buffers[id_part]
+                                    # app.py's logging formatter caps every rendered log
+                                    # line at 500 chars app-wide (_TruncatingFormatter) --
+                                    # a global safeguard not worth changing just for this
+                                    # debug feature. Split across several lines instead,
+                                    # each well under that cap, so the full body still
+                                    # makes it into playdate.log.
+                                    _piece = 400
+                                    _total_pieces = max(1, -(-len(full) // _piece))
+                                    for _pi in range(_total_pieces):
+                                        log.info(f'open_auth_popup: [JS-NET {_pi + 1}/{_total_pieces}] '
+                                                 f'{full[_pi * _piece:(_pi + 1) * _piece]}')
+
+                            if mgr.register_script_message_handler('pdNetLog'):
+                                mgr.connect('script-message-received::pdNetLog', _on_net_log_msg)
+                                log.info('open_auth_popup: pdNetLog script message handler registered')
+                        except Exception as _e:
+                            log.warning(f'open_auth_popup: pdNetLog handler registration failed: {_e}')
                         try:
                             cm = _wk.get_website_data_manager().get_cookie_manager()
                             cm.set_accept_policy(_WK2.CookieAcceptPolicy.ALWAYS)
@@ -906,7 +1100,12 @@ class PyWebviewAPI:
                             log.warning(f'open_auth_popup: load-changed hook failed: {_e}')
                         try:
                             import re as _re
-                            _NET_RE = _re.compile(r'ubisoft|ubi\.com|ubiservices', _re.I)
+                            # Generic: match whatever site this popup is logging into (derived
+                            # from redirect_pattern, e.g. 'epicgames.com' from
+                            # 'epicgames.com/id/api/redirect') plus Cloudflare's own challenge
+                            # resources, so this isn't hardcoded to a single plugin's domain.
+                            _site_domain = redirect_pattern.split('/')[0]
+                            _NET_RE = _re.compile(_re.escape(_site_domain) + r'|cloudflare|cf-', _re.I)
 
                             def _coerce_bytes(gval):
                                 if gval is None:
@@ -923,6 +1122,18 @@ class PyWebviewAPI:
                                     return b''
 
                             def _on_resource_load_started(wkview, resource, request, *_a):
+                                # Sec-CH-UA client-hints injection (claiming Chrome 124 to
+                                # match the spoofed UA above, since WebKit never implemented
+                                # Client Hints natively) was tried here and removed -- it
+                                # coincided with itch.io's login getting stuck in a permanent
+                                # Cloudflare "Just a moment..." challenge loop (confirmed via
+                                # repeated 403s in playdate.log), most likely because claiming
+                                # Chrome via headers while every other signal still reads as
+                                # WebKit is a stronger inconsistency flag than sending no
+                                # Client Hints at all. Left as a cautionary note rather than
+                                # silently deleted, since the same idea will look tempting
+                                # again the next time a captcha-blocked login needs debugging.
+
                                 try:
                                     r_uri = resource.get_uri() or ''
                                 except Exception:
