@@ -13,13 +13,22 @@ import time
 import requests
 from datetime import datetime, timezone, date as _date
 
-from config import load_config, _save_config_data
+from config import load_config, _save_config_data, __version__
 from database import get_db, next_negative_appid, update_game_data
 
 log = logging.getLogger(__name__)
 
 ITCH_API      = 'https://itch.io/api/1'
 ITCH_API_NEW  = 'https://api.itch.io'
+
+# Bare requests' default User-Agent ("python-requests/x.x") reads as a script
+# to Cloudflare-style bot protection and gets blocked outright -- same class
+# of issue as Discord's API (see diagnostics.py). A shared session with a
+# real UA is one fix point instead of patching every call site individually.
+_session = requests.Session()
+_session.headers.update({
+    'User-Agent': f'PlayDate/{__version__} (+https://github.com/RobbyRatpoole/PlayDate)',
+})
 
 
 # ── Config helpers ─────────────────────────────────────────────────────────────
@@ -46,7 +55,7 @@ def _api_key():
 
 def verify_and_connect(api_key):
     """Verify an API key and store credentials. Returns username or raises ValueError."""
-    r = requests.get(f'{ITCH_API}/{api_key}/me', timeout=10)
+    r = _session.get(f'{ITCH_API}/{api_key}/me', timeout=10)
     if r.status_code in (401, 403, 404):
         raise ValueError('Invalid API key')
     r.raise_for_status()
@@ -67,7 +76,7 @@ def login_with_credentials(username, password):
     If 2FA is required, raises ValueError with a message asking for the TOTP code,
     including the session token as a suffix separated by '|'.
     """
-    r = requests.post(f'{ITCH_API}/login',
+    r = _session.post(f'{ITCH_API}/login',
                       data={'username': username, 'password': password, 'source': 'desktop'},
                       timeout=10)
     data = r.json()
@@ -97,7 +106,7 @@ def verify_totp(totp_token, totp_code):
     Complete a 2FA login. totp_token is the session token from the initial login response.
     Returns the username string on success, raises ValueError on failure.
     """
-    r = requests.post(f'{ITCH_API}/totp/verify',
+    r = _session.post(f'{ITCH_API}/totp/verify',
                       json={'token': totp_token, 'code': totp_code},
                       timeout=10)
     data   = r.json()
@@ -195,7 +204,7 @@ def _do_sync():
                 _sync_state.update({'running': False, 'phase': 'stopped', 'new_games': 0, 'total_games': 0})
             return
         try:
-            r = requests.get(
+            r = _session.get(
                 f'{ITCH_API_NEW}/profile/owned-keys',
                 params={'page': page},
                 headers={'Authorization': f'Bearer {key}'},
@@ -356,7 +365,7 @@ def _download_itch_cover(cover_url, appid, vertical=True, horizontal=True):
     import io as _io
     from config import BASE_DIR
 
-    r = requests.get(cover_url, timeout=15)
+    r = _session.get(cover_url, timeout=15)
     r.raise_for_status()
     img = Image.open(_io.BytesIO(r.content))
     if img.mode in ('RGBA', 'P', 'LA'):
@@ -396,7 +405,7 @@ def fetch_dates_for_appids(appids, on_result):
 
     while still_needed:
         try:
-            r = requests.get(
+            r = _session.get(
                 f'{ITCH_API_NEW}/profile/owned-keys',
                 params={'page': page},
                 headers={'Authorization': f'Bearer {key}'},
@@ -627,7 +636,7 @@ def get_game_uploads(game_id, download_key_id=None):
         url = f'{ITCH_API}/{key}/download-key/{download_key_id}/uploads'
     else:
         url = f'{ITCH_API}/{key}/game/{game_id}/uploads'
-    r = requests.get(url, timeout=15)
+    r = _session.get(url, timeout=15)
     r.raise_for_status()
     data = r.json()
     if 'errors' in data:
@@ -636,7 +645,7 @@ def get_game_uploads(game_id, download_key_id=None):
     # Fall back to game endpoint if download-key returned nothing
     if not uploads and download_key_id:
         log.debug(f'itch.io: download-key uploads empty for game {game_id}, trying game endpoint')
-        r2 = requests.get(f'{ITCH_API}/{key}/game/{game_id}/uploads', timeout=15)
+        r2 = _session.get(f'{ITCH_API}/{key}/game/{game_id}/uploads', timeout=15)
         if r2.ok:
             uploads = r2.json().get('uploads', [])
     return uploads
@@ -646,7 +655,7 @@ def _get_download_url(upload_id, download_key_id=None):
     """Return a time-limited download URL for an upload."""
     key    = _api_key()
     params = {'download_key_id': download_key_id} if download_key_id else {}
-    r = requests.get(f'{ITCH_API}/{key}/upload/{upload_id}/download',
+    r = _session.get(f'{ITCH_API}/{key}/upload/{upload_id}/download',
                      params=params, allow_redirects=False, timeout=15)
     if r.status_code in (301, 302, 303, 307, 308):
         return r.headers.get('Location', '')
@@ -800,7 +809,7 @@ def install_game(appid, progress_cb=None, cancel_ev=None):
 
     # Download
     try:
-        r = requests.get(download_url, stream=True, timeout=60)
+        r = _session.get(download_url, stream=True, timeout=60)
         r.raise_for_status()
         total = int(r.headers.get('content-length', 0))
         done  = 0
@@ -1054,10 +1063,21 @@ def launch_game(appid):
 # ── Metadata ───────────────────────────────────────────────────────────────────
 
 def rescrape_game(appid):
-    """Re-fetch metadata for an itch.io game. Returns update dict or None."""
+    """
+    Re-fetch metadata for an itch.io game. Returns update dict or None.
+    Raises RuntimeError when not connected or a configured API key is
+    rejected (401), so the route can tell that apart from a genuine fetch
+    failure -- matching every other plugin's rescrape/scrape_single. A
+    connected-but-quiet run (key valid, nothing new) still only refreshes
+    art via SGDB if the itch.io API call itself finds nothing, but "never
+    connected at all" is not treated as a success anymore: reporting
+    "Complete!" for a sync that never touched metadata was misleading.
+    """
     from images import download_vertical, download_horizontal, download_icon, _sgdb_search_game_id
 
     key = _api_key()
+    if not key:
+        raise RuntimeError('itch.io account not connected')
     db  = get_db()
     row = db.execute("SELECT platform_id, name FROM games WHERE appid=?", (appid,)).fetchone()
     db.close()
@@ -1070,8 +1090,9 @@ def rescrape_game(appid):
     # silently stamping meta_fetched/cheevos_fetched on a game nothing was
     # actually fetched for. Probe first so an outage is reported honestly.
     try:
-        requests.head('https://itch.io/', timeout=8)
-    except requests.exceptions.RequestException:
+        _session.head('https://itch.io/', timeout=8)
+    except requests.exceptions.RequestException as e:
+        log.warning(f'itch.io rescrape: connectivity probe failed for {appid} — {e}')
         return None
 
     game_id   = row['platform_id']
@@ -1079,27 +1100,34 @@ def rescrape_game(appid):
     today     = _date.today().isoformat()
     result    = {'meta_fetched': today, 'cheevos_fetched': today}
 
-    # Try itch.io API for fresh metadata
+    # Fetch fresh metadata. A *rejected* key (401) is a real problem worth
+    # surfacing as a distinct error -- otherwise this would silently return a
+    # "successful" result (meta_fetched/cheevos_fetched stamped) with none of
+    # the metadata actually refreshed, indistinguishable from a healthy key
+    # that just found nothing new.
     cover_url = None
-    if key:
-        try:
-            r = requests.get(f'{ITCH_API}/{key}/game/{game_id}', timeout=10)
-            if r.ok:
-                game = r.json().get('game', {})
-                if game:
-                    result['platform_slug'] = game.get('url', '')
-                    result['name']          = game.get('title', game_name)
-                    cover_url               = game.get('still_cover_url') or game.get('cover_url')
-                    user    = game.get('user') or {}
-                    creator = user.get('display_name') or user.get('username') or ''
-                    if creator:
-                        result['developers'] = creator
-                        result['publishers'] = creator
-                    release_date = _parse_date(game.get('published_at'))
-                    if release_date:
-                        result['release_date'] = release_date
-        except Exception as e:
-            log.warning(f'itch.io rescrape: API call failed for {game_id}: {e}')
+    try:
+        r = _session.get(f'{ITCH_API}/{key}/game/{game_id}', timeout=10)
+        if r.status_code == 401:
+            raise RuntimeError('itch.io API key invalid — please reconnect')
+        if r.ok:
+            game = r.json().get('game', {})
+            if game:
+                result['platform_slug'] = game.get('url', '')
+                result['name']          = game.get('title', game_name)
+                cover_url               = game.get('still_cover_url') or game.get('cover_url')
+                user    = game.get('user') or {}
+                creator = user.get('display_name') or user.get('username') or ''
+                if creator:
+                    result['developers'] = creator
+                    result['publishers'] = creator
+                release_date = _parse_date(game.get('published_at'))
+                if release_date:
+                    result['release_date'] = release_date
+    except RuntimeError:
+        raise
+    except Exception as e:
+        log.warning(f'itch.io rescrape: API call failed for {game_id}: {e}')
 
     # Art
     try:
@@ -1133,7 +1161,7 @@ def fetch_description(platform_id):
     if not key:
         return None
     try:
-        r = requests.get(f'{ITCH_API}/{key}/game/{platform_id}', timeout=10)
+        r = _session.get(f'{ITCH_API}/{key}/game/{platform_id}', timeout=10)
         if r.ok:
             game = r.json().get('game', {})
             return game.get('short_text') or None

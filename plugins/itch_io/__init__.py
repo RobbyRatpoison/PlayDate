@@ -101,9 +101,24 @@ class ItchIoPlugin:
                                     'Log in to itch.io. The window will open on your API keys page.',
                                     'Click <strong>Generate new API key</strong>.',
                                     'If not auto-detected, copy the key and paste it below.',
+                                    'If the popup gets stuck on a "Just a moment..." verification page: '
+                                    'itch.io is behind Cloudflare, which sometimes blocks PlayDate\'s embedded '
+                                    'browser outright. Sign in at '
+                                    '<a href="https://itch.io/user/settings/api-keys" target="_blank">itch.io/user/settings/api-keys</a> '
+                                    'in your regular browser instead, generate a key there, and paste it below.',
                                 ],
                                 'input_placeholder': 'Paste your API key here...',
                                 'open_label': 'Open itch.io Login',
+                                'submit_label': 'Connect',
+                            }},
+                            {'type': 'button', 'label': 'Paste API key manually', 'variant': 'muted', 'action': {
+                                'type': 'oauth_paste',
+                                'title': 'Connect itch.io',
+                                'url_endpoint': '/api/itch_io/auth-url',
+                                'callback_endpoint': '/api/itch_io/connect',
+                                'instructions': [],
+                                'input_placeholder': '',
+                                'open_label': '',
                                 'submit_label': 'Connect',
                             }},
                         ],

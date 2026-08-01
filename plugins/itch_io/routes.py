@@ -143,8 +143,18 @@ def uninstall(appid):
 @bp.route('/scrape-single/<int:appid>', methods=['POST'])
 def scrape_single(appid):
     from .itch_io import rescrape_game
-    meta = rescrape_game(appid)
+
+    try:
+        meta = rescrape_game(appid)
+    except RuntimeError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 502
+
     if not meta:
         return jsonify({'status': 'error', 'message': 'Failed to fetch metadata'}), 400
     update_game_data(appid, **meta)
-    return jsonify({'status': 'success'})
+
+    from database import ts_to_date
+    data_out = dict(meta)
+    if data_out.get('release_date'):
+        data_out['release_date'] = ts_to_date(data_out['release_date']) or ''
+    return jsonify({'status': 'success', 'data': data_out})
