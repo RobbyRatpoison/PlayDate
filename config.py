@@ -15,7 +15,7 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.6.11"
+__version__ = "1.6.12"
 # Full tag this build came from (e.g. "1.6.5-beta.2"), overwritten by CI —
 # __version__ above is always the bare X.Y.Z (stripped of any -beta/-rc
 # suffix, since Inno Setup/display code assume that), so it alone can't tell

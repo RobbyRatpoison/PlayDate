@@ -52,6 +52,9 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Requested HLTB times and Steam library sync
 - Suggested "Steam Playtime Manager" / "Steam Game Manager" as names
 
+**ImpAtience**
+- itch.io and IndieGala sign-in popups closing before completing login on the Windows portable build
+
 **inmate66**
 - Riffed "SCP-3" off the S-CPE name suggestion
 
@@ -101,6 +104,7 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Requested a portable (non-installer) version
 - Suggested auto-including Beaten games in PAGYWOSG results
 - Requested support for other SteamGifts monthly events - led to the Monthly in a Month tool
+- Backup files silently becoming permanently corrupted if PlayDate was closed before a backup finished saving
 
 **Propane BLUNTZ**
 - Early pre-release testing on Windows, before the project's git history began
