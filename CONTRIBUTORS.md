@@ -33,6 +33,7 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - IndieGala library sync only fetching the first page
 - IndieGala library sync still stuck re-fetching page one after the previous fix; found and supplied the actual URL fix
 - IndieGala's "View on IndieGala" link pointing to a broken, merged URL
+- IndieGala store links only working for GalaFreebies picks, not games made free directly by developers
 
 **devonrv**
 - Pointed out the name collision with the Playdate handheld console
