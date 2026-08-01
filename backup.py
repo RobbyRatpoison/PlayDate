@@ -19,9 +19,22 @@ backup_bp = Blueprint('backup', __name__)
 _restore_lock  = threading.Lock()
 _restore_state = {'status': 'idle', 'error': None, 'restored': None, 'skipped': None}  # idle|running|success|error
 
+# Set for the duration of any zip write (backup() / backup_to_path()). main.py's
+# window-closing handler waits on this before its hard os._exit(0), so closing
+# the app mid-backup can't truncate a zip that's still being written to disk.
+_backup_in_progress = threading.Event()
+
 # How long a completed backup suppresses the "Back Up First" nudge on the
 # update-install confirmation (base.html) before it starts suggesting again.
 BACKUP_COOLDOWN_SECONDS = 24 * 60 * 60
+
+
+def is_backup_in_progress():
+    return _backup_in_progress.is_set()
+
+
+def is_restore_in_progress():
+    return _restore_state['status'] == 'running'
 
 
 def _extract_backup_zip(raw: bytes, logger):
@@ -239,8 +252,12 @@ def backup():
     data        = request.json or {}
     include_art = data.get('include_art', False)
     buf         = io.BytesIO()
-    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        _fill_backup_zip(zf, include_art)
+    _backup_in_progress.set()
+    try:
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            _fill_backup_zip(zf, include_art)
+    finally:
+        _backup_in_progress.clear()
     buf.seek(0)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     save_state({'last_backup_at': time.time()})
@@ -253,6 +270,13 @@ def backup_to_path():
     Write the backup zip directly to a path chosen via pywebview's native
     Save-As dialog (path is passed in the request body).  Used by the
     pywebview build; the browser fallback still uses /api/backup.
+
+    Writes to a .tmp sibling first and only renames onto save_path once the
+    zip has closed cleanly -- if the process dies mid-write (app closed,
+    killed, crashed), save_path is left untouched (either absent or still
+    holding whatever was there before) instead of a truncated zip with no
+    central directory, which reads as "Invalid zip file" on every future
+    restore attempt regardless of PlayDate version.
     """
     import zipfile
     data        = request.json or {}
@@ -260,13 +284,22 @@ def backup_to_path():
     include_art = data.get('include_art', False)
     if not save_path:
         return jsonify({"status": "error", "message": "No path provided."}), 400
+    tmp_path = save_path + '.tmp'
+    _backup_in_progress.set()
     try:
-        with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             _fill_backup_zip(zf, include_art)
+        os.replace(tmp_path, save_path)
         save_state({'last_backup_at': time.time()})
         return jsonify({"status": "success", "path": save_path, "size": os.path.getsize(save_path)})
     except Exception as e:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
         return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        _backup_in_progress.clear()
 
 @backup_bp.route('/api/backup-status')
 def backup_status():

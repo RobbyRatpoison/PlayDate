@@ -1329,4 +1329,15 @@ if __name__ == '__main__':
     stop_steamapps_watcher()
     for _p in plugins.loaded().values():
         _p.on_shutdown()
+
+    # Give an in-flight backup/restore a chance to finish its zip write before
+    # the hard kill below -- otherwise closing the window mid-backup truncates
+    # the file (no central directory), which then reads as "Invalid zip file"
+    # on every future restore attempt regardless of PlayDate version.
+    from backup import is_backup_in_progress, is_restore_in_progress
+    _wait_start = time.time()
+    while (is_backup_in_progress() or is_restore_in_progress()) and time.time() - _wait_start < 30:
+        log.info("Waiting for in-flight backup/restore to finish before exiting...")
+        time.sleep(0.5)
+
     os._exit(0)  # hard kill — sys.exit() waits for non-daemon threads (e.g. populate workers)
