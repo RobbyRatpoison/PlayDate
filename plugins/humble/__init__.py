@@ -45,8 +45,6 @@ class HumblePlugin:
             'uninstall_url':  '/api/humble/uninstall/{appid}',
             'scrape_url':     '/api/humble/scrape-single/{appid}',
             'scrape_method':  'POST',
-            'store_url':      'https://www.humblebundle.com/home/library/{slug}',
-            'store_label':    'View on Humble Bundle ↗',
             'appid_label':    'Humble ID:',
             'sync_label':     'Sync Humble Data',
         }
