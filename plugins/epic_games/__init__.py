@@ -50,6 +50,31 @@ def _find_native_launcher():
     return None
 
 
+def _heal_launcher_manifest(prefix):
+    """
+    Work around a Wine bug in EpicGamesLauncher's self-updater: after an update
+    it should promote LauncherUpdate.manifest -> Launcher.manifest, but the
+    rename silently fails under Wine. With no local manifest, the launcher
+    concludes it's always out of date, "reinstalls" (no-op copy), and restarts
+    itself every few seconds -- a runaway loop that can freeze the machine.
+    Called before every launch so a fresh install or a later real EGL update
+    can't leave the launcher stuck in that state.
+    """
+    data_dir = os.path.join(prefix, 'drive_c', 'ProgramData', 'Epic', 'EpicGamesLauncher', 'Data')
+    manifest = os.path.join(data_dir, 'Launcher.manifest')
+    pending  = os.path.join(data_dir, 'LauncherUpdate.manifest')
+    if os.path.isfile(manifest) or not os.path.isfile(pending):
+        return
+    try:
+        import shutil
+        shutil.copy2(pending, manifest)
+        if os.path.isfile(pending + '.meta'):
+            shutil.copy2(pending + '.meta', manifest + '.meta')
+        log.info('Epic launcher: promoted LauncherUpdate.manifest -> Launcher.manifest to break self-update loop')
+    except Exception as e:
+        log.warning('Epic launcher: failed to promote launcher manifest: %s', e)
+
+
 class EpicGamesPlugin:
     id       = 'epic_games'
     name     = 'Epic Games'
@@ -132,6 +157,7 @@ class EpicGamesPlugin:
                         'status':  'error',
                         'message': 'Epic launcher not configured. Open Plugins → Manage to set up Wine.',
                     }
+                _heal_launcher_manifest(prefix)
                 from runners.wine import launch_protocol_url
                 launch_protocol_url(prefix, url, wine_bin=wine_bin, env_extra={
                     'WINEDEBUG': '-all',
