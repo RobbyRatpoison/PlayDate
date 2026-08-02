@@ -1098,12 +1098,15 @@ def save_launcher_config(platform_id, cfg):
 @config_bp.route('/api/launcher-config/<platform_id>', methods=['GET'])
 def get_launcher_config_route(platform_id):
     import plugins
+    from runners.sandbox import host_is_executable
     from runners.wine import find_wine_binary, find_proton_wine
     from runners.launcher_installer import default_prefix
     cfg = get_launcher_config(platform_id)
     manifest = plugins.plugin_manifest(platform_id)
     installer_cfg = manifest.get('launcher', {}).get('installer')
     detected = find_proton_wine() or find_wine_binary()
+    if cfg.get('wine_bin') and not host_is_executable(cfg['wine_bin']):
+        cfg = {**cfg, 'wine_bin': ''}
     return jsonify({
         'status':              'success',
         'config':              cfg,
@@ -1150,8 +1153,9 @@ def get_launcher_install_status_route(platform_id):
 @config_bp.route('/api/launcher-uninstall/<platform_id>', methods=['POST'])
 def launcher_uninstall_route(platform_id):
     import shutil
+    from runners.launcher_installer import default_prefix
     cfg = get_launcher_config(platform_id)
-    prefix = os.path.expanduser(cfg.get('prefix', '').strip())
+    prefix = os.path.expanduser(cfg.get('prefix', '').strip() or default_prefix(platform_id))
     removed = False
     if prefix:
         try:

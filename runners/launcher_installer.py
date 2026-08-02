@@ -20,7 +20,7 @@ import threading
 
 import requests
 
-from runners.sandbox import IN_FLATPAK, host_popen, host_run, host_which
+from runners.sandbox import IN_FLATPAK, host_is_executable, host_popen, host_run, host_which
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +107,11 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     import shutil
     from runners.wine import find_wine_binary
 
-    from runners.wine import find_proton_wine, is_proton_wine
+    from runners.wine import build_proton_env, find_proton_wine, is_proton_wine
+    if wine_bin and not host_is_executable(wine_bin):
+        log.warning('Launcher install [%s]: saved wine_bin no longer exists on host (%s), re-detecting',
+                    platform_id, wine_bin)
+        wine_bin = None
     wb = wine_bin or find_proton_wine() or find_wine_binary()
     if not wb:
         _fail(platform_id, 'No Wine binary found. Install Wine or GE-Proton via Steam.')
@@ -136,13 +140,17 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     _set(platform_id, 'creating_prefix', 'Creating Wine prefix...')
     try:
         os.makedirs(prefix, exist_ok=True)
-        env = {**os.environ, 'WINEPREFIX': prefix, 'WINEARCH': winearch, 'WINEDEBUG': '-all'}
+        base_env = build_proton_env(wb) if is_proton_wine(wb) else dict(os.environ)
+        env = {**base_env, 'WINEPREFIX': prefix, 'WINEARCH': winearch, 'WINEDEBUG': '-all', **extra_env}
         r = host_run(
             [wb, 'wineboot', '--init'],
-            env=env, check=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         log.info('Launcher install [%s]: wineboot exit=%d', platform_id, r.returncode)
+        if r.returncode != 0:
+            err = r.stderr.decode('utf-8', errors='replace')[:1000]
+            _fail(platform_id, f'Failed to create Wine prefix (wineboot exit {r.returncode}): {err}')
+            return
         if win_version:
             r2 = host_run(
                 [wb, 'reg', 'add', r'HKCU\Software\Wine', '/v', 'Version',
@@ -253,7 +261,8 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
         # Run installer interactively in Wine (user completes the setup window).
         _set(platform_id, 'installing', 'Running installer — complete the setup window...')
         try:
-            env = {**os.environ, 'WINEPREFIX': prefix, 'WINEDEBUG': '-all', **extra_env}
+            base_env = build_proton_env(wb) if is_proton_wine(wb) else dict(os.environ)
+            env = {**base_env, 'WINEPREFIX': prefix, 'WINEDEBUG': '-all', **extra_env}
             cmd = [wb, 'msiexec', '/i', installer_path] if installer_type == 'msi' else [wb, installer_path]
             log.info('Launcher install [%s]: running %s', platform_id, cmd)
             proc = host_popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
