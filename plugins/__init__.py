@@ -25,6 +25,150 @@ _launcher_status_cache = {}  # keyed by platform: {available, detail, checked_at
 # why they're missing and still offer to remove the folder.
 _incompatible_plugins: dict = {}
 
+# Plugins that used to ship as source directly in this repo (plugins/<id>/).
+# No longer bundled -- installed on first run (and re-offered any time after
+# an uninstall) from their own GitHub release, the same mechanism any
+# third-party plugin uses. This is what makes "uninstall" actually stick
+# across a PlayDate update: there's no bundled copy left for an update to
+# silently reintroduce.
+OFFICIAL_PLUGINS = [
+    {'id': 'ea_app',     'name': 'EA App',        'source': 'RobbyRatpoison/playdate-plugin-ea-app'},
+    {'id': 'epic_games', 'name': 'Epic Games',    'source': 'RobbyRatpoison/playdate-plugin-epic-games'},
+    {'id': 'gog',        'name': 'GOG',           'source': 'RobbyRatpoison/playdate-plugin-gog'},
+    {'id': 'humble',     'name': 'Humble Bundle', 'source': 'RobbyRatpoison/playdate-plugin-humble'},
+    {'id': 'indiegala',  'name': 'IndieGala',     'source': 'RobbyRatpoison/playdate-plugin-indiegala'},
+    {'id': 'itch_io',    'name': 'itch.io',       'source': 'RobbyRatpoison/playdate-plugin-itch-io'},
+]
+
+
+def _user_plugins_dir() -> str:
+    """
+    Writable directory for installed plugins -- separate from the bundled
+    plugins/ directory next to this file, which is read-only at runtime
+    under Flatpak (and gets wholesale-replaced by every update on every
+    platform). BASE_DIR already resolves correctly per-platform (Flatpak's
+    XDG data dir, exe-adjacent for a frozen build, or the project dir when
+    running from source), so reusing it here needs no platform-specific
+    logic of its own.
+    """
+    from config import BASE_DIR
+    d = os.path.join(BASE_DIR, 'plugins')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _migrate_legacy_plugin_dirs(bundled_dir: str, user_dir: str):
+    """
+    One-time, self-terminating migration: anything sitting directly in the
+    bundled plugins/ directory -- a leftover of the old flat layout, where
+    both shipped and user-installed plugins lived in the same place -- moves
+    into the writable user_dir. Covers both a plugin that used to ship
+    bundled (now removed from the repo, so an old checkout/install still has
+    its files on disk) and a third-party plugin someone zip-installed before
+    this split existed. Never raises; a failure here shouldn't block startup.
+    """
+    import shutil
+    if os.path.abspath(bundled_dir) == os.path.abspath(user_dir):
+        # Running from source: BASE_DIR is the project root, so the writable
+        # dir and the bundled dir next to this file are literally the same
+        # path. Nothing to migrate -- it's already "in" the writable location.
+        return
+    try:
+        entries = os.listdir(bundled_dir)
+    except OSError:
+        return
+    for entry in entries:
+        src = os.path.join(bundled_dir, entry)
+        if not os.path.isdir(src) or not os.path.exists(os.path.join(src, 'plugin.json')):
+            continue
+        dest = os.path.join(user_dir, entry)
+        if os.path.exists(dest):
+            log.warning(
+                f"Plugin migration: {entry} already exists in the writable plugins "
+                f"directory, leaving the old copy at {src} in place"
+            )
+            continue
+        try:
+            shutil.move(src, dest)
+            log.info(f"Plugin migration: moved {entry} to the writable plugins directory")
+        except Exception as e:
+            log.warning(f"Plugin migration: failed to move {entry}: {e}")
+
+
+def _plugin_on_disk(plugin_id: str) -> bool:
+    """Check the filesystem directly, not the in-memory _plugins registry --
+    this has to run before the first load_all() ever populates it."""
+    for d in (_user_plugins_dir(), os.path.dirname(os.path.abspath(__file__))):
+        if os.path.exists(os.path.join(d, plugin_id, 'plugin.json')):
+            return True
+    return False
+
+
+def _plugin_was_configured(plugin_id: str) -> bool:
+    """
+    Evidence the user actually set this plugin up: a saved auth token
+    (config.json[plugin_id]) or a launcher config entry
+    (config.json['launchers'][plugin_id]). Both get cleared -- the token by
+    the plugin's own on_uninstall(), the launcher entry by the uninstall
+    route itself -- so this reads False again immediately after a real
+    uninstall, not just whenever the plugin happens to be missing.
+    Deliberately does not look at whether games exist for this platform:
+    plugin uninstall doesn't delete games unless remove_games was explicitly
+    requested, so leftover games alone don't mean the user still wants the
+    plugin reinstalled.
+    """
+    from config import load_config
+    cfg = load_config() or {}
+    if cfg.get(plugin_id):
+        return True
+    if cfg.get('launchers', {}).get(plugin_id):
+        return True
+    return False
+
+
+def reinstall_configured_official_plugins():
+    """
+    Re-fetch and reinstall any OFFICIAL_PLUGINS entry that's missing from
+    disk but shows evidence of prior configuration (see
+    _plugin_was_configured). This is the only case that actually needs
+    fixing: Windows and source installs never lose an existing plugin's
+    files across an update in the first place (neither update mechanism
+    deletes files outside what it ships), so migration alone is enough for
+    them. Flatpak is the exception -- `flatpak install --reinstall` swaps
+    /app wholesale rather than leaving extra files alone, so an update can
+    genuinely wipe a plugin someone already had working. Deliberately does
+    NOT install a plugin nobody has ever configured -- that's what the
+    Official Plugins catalog in the Plugins modal is for, on request, not
+    automatically.
+
+    Must run (and finish) before the first load_all()/register_blueprint --
+    see the call site in app.py for why. Only ever does real network work
+    for a plugin that's both missing AND previously configured; every other
+    startup is a fast, local-only no-op.
+    """
+    import requests as _req
+    for entry in OFFICIAL_PLUGINS:
+        pid = entry['id']
+        if _plugin_on_disk(pid) or not _plugin_was_configured(pid):
+            continue
+        owner, repo = _parse_github_repo(entry['source'])
+        if not owner:
+            continue
+        try:
+            zip_url, _tag = _fetch_github_plugin_release(owner, repo)
+            if not zip_url:
+                log.warning(f"Official plugin {entry['name']}: no downloadable release found")
+                continue
+            resp = _req.get(zip_url, timeout=15)
+            resp.raise_for_status()
+            _install_plugin_zip(resp.content)
+            log.info(f"Reinstalled previously-configured official plugin: {entry['name']}")
+        except _req.exceptions.ConnectionError as e:
+            log.warning(f"Official plugin reinstall: no network connection, skipping the rest ({e})")
+            break
+        except Exception as e:
+            log.warning(f"Could not reinstall official plugin {entry['name']}: {e}")
+
 
 def _semver(v):
     """Parse 'X.Y.Z'-ish into a comparable tuple. Non-numeric/missing parts -> 0."""
@@ -93,7 +237,7 @@ def _install_plugin_zip(raw_bytes):
         if not plugin_id or not plugin_id.replace('_', '').isalnum():
             raise ValueError('Invalid or missing plugin id in plugin.json.')
 
-        plugins_dir = os.path.dirname(os.path.abspath(__file__))
+        plugins_dir = _user_plugins_dir()
         dest = os.path.join(plugins_dir, plugin_id)
         if not os.path.abspath(dest).startswith(os.path.abspath(plugins_dir) + os.sep):
             raise ValueError('Invalid plugin id.')
@@ -134,54 +278,82 @@ def _startup_launcher_status_check():
 
 
 def load_all(app):
-    """Discover and register all plugins found in this directory."""
+    """
+    Discover and register plugins from the writable user-plugins directory
+    and the bundled plugins/ directory next to this file (legacy layout --
+    nothing ships there anymore, but a not-yet-migrated or manually-dropped-in
+    plugin is still found). Safe to call more than once: anything already in
+    _plugins is skipped, so a later call (after reinstall_configured_official_plugins()
+    fetches something new) only registers what's actually new.
+    """
     from config import __version__ as core_version
 
-    plugins_dir = os.path.dirname(os.path.abspath(__file__))
-    if not os.path.isdir(plugins_dir):
-        return
-    for entry in sorted(os.listdir(plugins_dir)):
-        plugin_path    = os.path.join(plugins_dir, entry)
-        manifest_path  = os.path.join(plugin_path, 'plugin.json')
-        if not os.path.isdir(plugin_path) or not os.path.exists(manifest_path):
+    bundled_dir = os.path.dirname(os.path.abspath(__file__))
+    user_dir    = _user_plugins_dir()
+    _migrate_legacy_plugin_dirs(bundled_dir, user_dir)
+
+    # importlib.import_module('plugins.<id>') only finds a submodule inside
+    # this package's own search path -- user_dir lives elsewhere entirely
+    # (BASE_DIR, not next to this file), so it has to be added to __path__
+    # for a plugin installed there to import at all, let alone resolve its
+    # own relative imports (from . import X) correctly as a real submodule
+    # of the plugins package rather than a standalone loose file.
+    if user_dir not in __path__:
+        __path__.append(user_dir)
+
+    search_dirs = [user_dir] if user_dir == bundled_dir else [user_dir, bundled_dir]
+    claimed = set()
+    for plugins_dir in search_dirs:
+        if not os.path.isdir(plugins_dir):
             continue
-        try:
-            with open(manifest_path) as f:
-                manifest = json.load(f)
-
-            min_core = manifest.get('min_core_version')
-            if min_core and _semver(min_core) > _semver(core_version):
-                pid = manifest.get('id', entry)
-                _incompatible_plugins[pid] = {
-                    'id':               pid,
-                    'name':             manifest.get('name', entry),
-                    'version':          manifest.get('version', '?'),
-                    'platform':         manifest.get('platform', ''),
-                    'min_core_version': min_core,
-                    'current_version':  core_version,
-                }
-                log.warning(
-                    f"Plugin {manifest.get('name', entry)!r} needs PlayDate >= {min_core}, "
-                    f"this build is {core_version} — not loaded"
-                )
+        for entry in sorted(os.listdir(plugins_dir)):
+            if entry in claimed:
+                continue  # already loaded from a higher-priority directory
+            plugin_path    = os.path.join(plugins_dir, entry)
+            manifest_path  = os.path.join(plugin_path, 'plugin.json')
+            if not os.path.isdir(plugin_path) or not os.path.exists(manifest_path):
                 continue
+            try:
+                with open(manifest_path) as f:
+                    manifest = json.load(f)
 
-            mod    = importlib.import_module(f'plugins.{entry}')
-            p      = mod.plugin
-            p.register(app)
-            _plugins[p.id]          = p
-            _plugin_paths[p.id]     = plugin_path
-            _plugin_manifests[p.id] = manifest
-            _incompatible_plugins.pop(p.id, None)
-            if hasattr(p, 'fragments'):
-                tpl_dir = os.path.join(plugin_path, 'templates')
-                for slot, tpl in p.fragments().items():
-                    _fragment_map.setdefault(slot, []).append(tpl)
-                    abs_path = os.path.join(tpl_dir, tpl)
-                    _fragment_abs.setdefault(slot, []).append(abs_path)
-            log.info(f"Loaded plugin: {manifest.get('name', entry)} v{manifest.get('version', '?')}")
-        except Exception as e:
-            log.error(f"Plugin load failed: {entry} — {e}", exc_info=True)
+                manifest_id = manifest.get('id', entry)
+                claimed.add(entry)
+                if manifest_id in _plugins:
+                    continue
+
+                min_core = manifest.get('min_core_version')
+                if min_core and _semver(min_core) > _semver(core_version):
+                    _incompatible_plugins[manifest_id] = {
+                        'id':               manifest_id,
+                        'name':             manifest.get('name', entry),
+                        'version':          manifest.get('version', '?'),
+                        'platform':         manifest.get('platform', ''),
+                        'min_core_version': min_core,
+                        'current_version':  core_version,
+                    }
+                    log.warning(
+                        f"Plugin {manifest.get('name', entry)!r} needs PlayDate >= {min_core}, "
+                        f"this build is {core_version} — not loaded"
+                    )
+                    continue
+
+                mod    = importlib.import_module(f'plugins.{entry}')
+                p      = mod.plugin
+                p.register(app)
+                _plugins[p.id]          = p
+                _plugin_paths[p.id]     = plugin_path
+                _plugin_manifests[p.id] = manifest
+                _incompatible_plugins.pop(p.id, None)
+                if hasattr(p, 'fragments'):
+                    tpl_dir = os.path.join(plugin_path, 'templates')
+                    for slot, tpl in p.fragments().items():
+                        _fragment_map.setdefault(slot, []).append(tpl)
+                        abs_path = os.path.join(tpl_dir, tpl)
+                        _fragment_abs.setdefault(slot, []).append(abs_path)
+                log.info(f"Loaded plugin: {manifest.get('name', entry)} v{manifest.get('version', '?')}")
+            except Exception as e:
+                log.error(f"Plugin load failed: {entry} — {e}", exc_info=True)
 
 
 def get(plugin_id: str):
@@ -319,6 +491,18 @@ def list_incompatible_plugins():
     db.close()
     return jsonify(result)
 
+@plugins_bp.route('/api/plugins/official')
+def list_official_plugins():
+    """
+    OFFICIAL_PLUGINS entries not currently loaded -- lets the Plugins modal
+    offer a one-click install for someone trying one for the first time.
+    This is separate from reinstall_configured_official_plugins() (which
+    only runs automatically at startup, and only for a plugin with evidence
+    of prior configuration): that covers "Flatpak wiped something you
+    already had," this covers "I've never used this and want to try it."
+    """
+    return jsonify([e for e in OFFICIAL_PLUGINS if not has(e['id'])])
+
 @plugins_bp.route('/api/plugins/install', methods=['POST'])
 def install_plugin():
     if 'plugin_file' not in request.files:
@@ -443,8 +627,14 @@ def uninstall_plugin(plugin_id):
     if not p and not incompatible:
         return jsonify({'status': 'error', 'message': 'Plugin not found'}), 404
     # Incompatible plugins were never registered, so _plugin_paths has no entry --
-    # fall back to the standard plugins/<id>/ layout every install uses.
-    path = plugin_path(plugin_id) or os.path.join(os.path.dirname(os.path.abspath(__file__)), plugin_id)
+    # fall back to checking both the writable and (legacy) bundled locations.
+    path = plugin_path(plugin_id)
+    if not path:
+        for candidate_dir in (_user_plugins_dir(), os.path.dirname(os.path.abspath(__file__))):
+            candidate = os.path.join(candidate_dir, plugin_id)
+            if os.path.isdir(candidate):
+                path = candidate
+                break
     if not path or not os.path.isdir(path):
         return jsonify({'status': 'error', 'message': 'Plugin folder not found'}), 404
     platform = p.platform if p else incompatible.get('platform')
@@ -478,6 +668,9 @@ def uninstall_plugin(plugin_id):
         except Exception:
             pass
         shutil.rmtree(path)
+        _plugins.pop(plugin_id, None)
+        _plugin_paths.pop(plugin_id, None)
+        _plugin_manifests.pop(plugin_id, None)
         _incompatible_plugins.pop(plugin_id, None)
         return jsonify({'status': 'success'})
     except Exception as e:

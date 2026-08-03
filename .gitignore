@@ -66,11 +66,16 @@ make-zip.sh
 CLAUDE.md
 *.zip
 
-# --- Unfinished Plugins ---
-plugins/ubisoft/
-plugins/amazon_games/
-plugins/battle_net/
-plugins/rockstar/
+# --- Plugins ---
+# No plugin ships as source in this repo anymore -- every one (the six
+# formerly-bundled "official" plugins, the four still-unfinished ones, and
+# any third-party plugin installed via zip/GitHub) lives in the writable
+# plugins dir instead (plugins._user_plugins_dir(), which for a source
+# checkout resolves to this same physical plugins/ folder -- BASE_DIR is the
+# project root here). Only plugins/__init__.py itself is ever tracked, so a
+# blanket subdirectory ignore covers every current AND future plugin id
+# without needing a new entry each time one's installed for local testing.
+plugins/*/
 
 # --- Personal Reference ---
 HOWTO.md

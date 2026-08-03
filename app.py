@@ -367,6 +367,19 @@ def create_app(template_folder=None, static_folder=None):
     threading.Thread(target=_startup_update_check, daemon=True).start()
 
     import plugins as _plugins
+    # Must run (and finish) before load_all()/register_blueprint below --
+    # Flask refuses new blueprint registrations once the app has handled its
+    # first request, which happens well before a background thread doing
+    # GitHub round-trips would ever finish. Only reinstalls a plugin that's
+    # both missing from disk AND shows evidence of prior configuration (a
+    # saved auth token or launcher config) -- see
+    # plugins.reinstall_configured_official_plugins for why. Every other
+    # startup is a fast, local-only no-op.
+    try:
+        _plugins.reinstall_configured_official_plugins()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Official plugin reinstall check failed: {e}")
+
     _plugins.load_all(app)
 
     # Set INFO on all plugin sub-modules so their logs are captured
@@ -377,6 +390,7 @@ def create_app(template_folder=None, static_folder=None):
                 logging.getLogger(_mname).setLevel(logging.INFO)
 
     threading.Thread(target=_plugins._startup_launcher_status_check, daemon=True).start()
+
     app.jinja_env.globals['has_plugin']        = _plugins.has
     app.jinja_env.globals['plugin_fragments']  = _plugins.fragments
     app.jinja_env.globals['plugin_fragment_js'] = _plugins.fragment_js
