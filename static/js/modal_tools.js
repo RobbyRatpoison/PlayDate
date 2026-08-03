@@ -2360,6 +2360,7 @@ async function runResetBackground() {
 
 // ── BLACKLIST MANAGER ────────────────────────────────────────────────────────
 let _blacklistLoaded = false;
+let _blEntries = [];
 
 function openBlacklistModal() {
     document.getElementById('blacklist-modal').style.display = 'flex';
@@ -2372,11 +2373,63 @@ function closeBlacklistModal() {
     _filterBlacklist('');
 }
 
+function _blPlatLabel(platform) {
+    if (!platform) return 'Unknown';
+    return (window._PLAT_LABELS && window._PLAT_LABELS[platform]) || platform;
+}
+
+function _blRenderGroups(entries) {
+    const groups = document.getElementById('blacklist-groups');
+    const byPlat = {};
+    entries.forEach(e => {
+        const key = e.platform || 'unknown';
+        (byPlat[key] = byPlat[key] || []).push(e);
+    });
+    const platKeys = Object.keys(byPlat).sort((a, b) => {
+        if (a === 'steam') return -1;
+        if (b === 'steam') return 1;
+        return _blPlatLabel(a).localeCompare(_blPlatLabel(b));
+    });
+
+    const showGroupSelectAll = platKeys.length > 1;
+    groups.innerHTML = platKeys.map(plat => `
+        <div class="bl-group" data-plat="${plat}">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px;">
+                <div style="color:var(--text-secondary); font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">${escHtml(_blPlatLabel(plat))} (${byPlat[plat].length})</div>
+                ${showGroupSelectAll ? `
+                <div data-modal-row="bl-selectall-${plat}" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_blToggleGroup('${plat}',cb.checked);" style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                    <input type="checkbox" class="bl-group-cb" data-plat="${plat}" style="width:auto;margin:0;" onclick="event.stopPropagation();_blToggleGroup('${plat}',this.checked)">
+                    <label style="color:var(--text-secondary); font-size:0.78rem; cursor:pointer;">Select All</label>
+                </div>` : ''}
+            </div>
+            <table style="width:100%; border-collapse:collapse;">
+                <tbody>
+                    ${byPlat[plat].map(e => `
+                        <tr id="bl-row-${e.appid}" class="bl-row" data-name="${escHtml((e.name || '').toLowerCase())}" style="border-bottom:1px solid var(--border);">
+                            <td style="padding:9px 6px; width:1%;">
+                                <div data-modal-row="bl-${e.appid}" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;" style="display:inline-flex;cursor:pointer;padding:4px;">
+                                    <input type="checkbox" class="bl-cb" data-appid="${e.appid}" style="width:auto;margin:0;" onclick="event.stopPropagation()">
+                                </div>
+                            </td>
+                            <td style="padding:9px 10px; color:var(--text-primary); font-size:0.88rem;">${escHtml(e.name || '—')}</td>
+                            <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
+                            <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
+                            <td style="padding:9px 10px; text-align:right;">
+                                <button onclick="removeFromBlacklist(${e.appid}, this)" class="bl-remove-btn" data-modal-row="bl-${e.appid}"
+                                    style="background:none; border:1px solid var(--color-danger); color:var(--text-danger); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
+                                    onmouseover="this.style.background='rgba(163,42,42,0.2)'"
+                                    onmouseout="this.style.background='none'">Remove</button>
+                            </td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`).join('');
+}
+
 async function _loadBlacklist() {
     const status = document.getElementById('blacklist-status');
     const empty  = document.getElementById('blacklist-empty');
-    const table  = document.getElementById('blacklist-table');
-    const tbody  = document.getElementById('blacklist-tbody');
+    const bulkbar = document.getElementById('blacklist-bulkbar');
 
     status.className = 'tool-status info';
     status.textContent = 'Loading…';
@@ -2388,32 +2441,20 @@ async function _loadBlacklist() {
 
         status.textContent = '';
         _blacklistLoaded = true;
-        const entries = data.entries || [];
+        _blEntries = data.entries || [];
 
-        if (entries.length === 0) {
+        if (_blEntries.length === 0) {
             empty.style.display = 'block';
-            table.style.display = 'none';
+            bulkbar.style.display = 'none';
+            document.getElementById('blacklist-groups').innerHTML = '';
             return;
         }
 
         document.getElementById('blacklist-search').style.display = 'block';
         empty.style.display = 'none';
-        table.style.display = 'table';
-        tbody.innerHTML = entries.map((e, i) => `
-            <tr id="bl-row-${e.appid}" style="border-bottom:1px solid var(--border);">
-                <td style="padding:9px 10px; color:var(--text-primary); font-size:0.88rem;">${_escHtml(e.name || '—')}</td>
-                <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem; font-family:monospace;">${e.appid}</td>
-                <td style="padding:9px 10px; color:var(--text-secondary); font-size:0.82rem;">${e.date_blacklisted || '—'}</td>
-                <td style="padding:9px 10px; text-align:right;">
-                    <button onclick="removeFromBlacklist(${e.appid}, this)" class="bl-remove-btn" data-modal-row="${i}"
-                        style="background:none; border:1px solid var(--color-danger); color:var(--text-danger); border-radius:4px; padding:3px 10px; font-size:0.78rem; cursor:pointer; transition:background 0.15s;"
-                        onmouseover="this.style.background='rgba(163,42,42,0.2)'"
-                        onmouseout="this.style.background='none'">Remove</button>
-                </td>
-            </tr>`).join('');
-        // Put Close on the row after the last remove button
-        document.querySelector('#blacklist-modal .nav-btn[onclick*="closeBlacklistModal"]')
-            ?.setAttribute('data-modal-row', entries.length);
+        bulkbar.style.display = 'flex';
+        document.getElementById('blacklist-select-all').checked = false;
+        _blRenderGroups(_blEntries);
     } catch (e) {
         status.className = 'tool-status error';
         status.textContent = '✘ ' + e.message;
@@ -2422,20 +2463,45 @@ async function _loadBlacklist() {
 
 function _filterBlacklist(query) {
     const q = query.trim().toLowerCase();
-    const rows = document.querySelectorAll('#blacklist-tbody tr');
+    const rows = document.querySelectorAll('#blacklist-groups .bl-row');
     let visible = 0;
     rows.forEach(row => {
-        const name = row.querySelector('td')?.textContent?.toLowerCase() || '';
-        const show = !q || name.includes(q);
+        const show = !q || (row.dataset.name || '').includes(q);
         row.style.display = show ? '' : 'none';
         if (show) visible++;
     });
-    document.getElementById('blacklist-no-results').style.display = visible === 0 ? 'block' : 'none';
-    document.getElementById('blacklist-table').style.display = visible === 0 ? 'none' : 'table';
+    document.querySelectorAll('#blacklist-groups .bl-group').forEach(group => {
+        const anyVisible = [...group.querySelectorAll('.bl-row')].some(r => r.style.display !== 'none');
+        group.style.display = anyVisible ? '' : 'none';
+    });
+    document.getElementById('blacklist-no-results').style.display = (visible === 0 && _blEntries.length > 0) ? 'block' : 'none';
 }
 
-function _escHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function _blToggleAll(checked) {
+    document.getElementById('blacklist-select-all').checked = checked;
+    document.querySelectorAll('#blacklist-groups .bl-row').forEach(row => {
+        if (row.style.display === 'none') return;
+        const cb = row.querySelector('.bl-cb');
+        if (cb) cb.checked = checked;
+    });
+    document.querySelectorAll('#blacklist-groups .bl-group-cb').forEach(cb => cb.checked = checked);
+}
+
+function _blToggleGroup(plat, checked) {
+    const group = document.querySelector(`#blacklist-groups .bl-group[data-plat="${plat}"]`);
+    if (!group) return;
+    const groupCb = group.querySelector('.bl-group-cb');
+    if (groupCb) groupCb.checked = checked;
+    group.querySelectorAll('.bl-row').forEach(row => {
+        if (row.style.display === 'none') return;
+        const cb = row.querySelector('.bl-cb');
+        if (cb) cb.checked = checked;
+    });
+
+    // Keep the global Select All in sync: checked only if every visible row everywhere is checked.
+    const allRows = [...document.querySelectorAll('#blacklist-groups .bl-row')].filter(r => r.style.display !== 'none');
+    const allChecked = allRows.length > 0 && allRows.every(r => r.querySelector('.bl-cb')?.checked);
+    document.getElementById('blacklist-select-all').checked = allChecked;
 }
 
 async function removeFromBlacklist(appid, btn) {
@@ -2449,13 +2515,7 @@ async function removeFromBlacklist(appid, btn) {
         });
         const data = await res.json();
         if (data.status === 'success') {
-            const row = document.getElementById(`bl-row-${appid}`);
-            if (row) row.remove();
-            const tbody = document.getElementById('blacklist-tbody');
-            if (!tbody.querySelector('tr')) {
-                document.getElementById('blacklist-table').style.display = 'none';
-                document.getElementById('blacklist-empty').style.display = 'block';
-            }
+            _blRemoveRowsFromState([appid]);
         } else {
             btn.disabled = false;
             btn.textContent = 'Remove';
@@ -2465,6 +2525,150 @@ async function removeFromBlacklist(appid, btn) {
         btn.disabled = false;
         btn.textContent = 'Remove';
         alert('Network error.');
+    }
+}
+
+async function _blBulkRemove() {
+    const selected = [...document.querySelectorAll('#blacklist-groups .bl-cb:checked')]
+        .map(cb => parseInt(cb.dataset.appid, 10));
+    if (selected.length === 0) {
+        alert('No games selected.');
+        return;
+    }
+    const ok = await confirmCustom(`Remove ${selected.length} selected game(s) from the blacklist?`, 'Remove', 'Cancel');
+    if (!ok) return;
+
+    const status = document.getElementById('blacklist-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Removing…';
+    try {
+        const res  = await fetch('/api/blacklist/bulk-remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids: selected })
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+        status.className = 'tool-status success';
+        status.textContent = `✔ Removed ${data.count}.`;
+        _blRemoveRowsFromState(selected);
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+function _blRemoveRowsFromState(appids) {
+    const removedSet = new Set(appids);
+    _blEntries = _blEntries.filter(e => !removedSet.has(e.appid));
+    if (_blEntries.length === 0) {
+        document.getElementById('blacklist-groups').innerHTML = '';
+        document.getElementById('blacklist-bulkbar').style.display = 'none';
+        document.getElementById('blacklist-empty').style.display = 'block';
+    } else {
+        _blRenderGroups(_blEntries);
+        _filterBlacklist(document.getElementById('blacklist-search').value || '');
+    }
+}
+
+// ── STEAM JUNK FINDER ────────────────────────────────────────────────────────
+let _sjunkCandidates = [];
+
+function openSteamJunkModal() {
+    document.getElementById('steam-junk-modal').style.display = 'flex';
+    _loadSteamJunkScan();
+}
+function closeSteamJunkModal() {
+    document.getElementById('steam-junk-modal').style.display = 'none';
+}
+
+async function _loadSteamJunkScan() {
+    const status  = document.getElementById('sjunk-status');
+    const empty   = document.getElementById('sjunk-empty');
+    const results = document.getElementById('sjunk-results');
+    const list    = document.getElementById('sjunk-list');
+
+    status.className = 'tool-status info';
+    status.textContent = 'Scanning…';
+    results.style.display = 'none';
+    empty.style.display = 'none';
+    document.getElementById('sjunk-action-status').textContent = '';
+
+    try {
+        const res  = await fetch('/api/steam-junk-scan');
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+
+        status.textContent = '';
+        _sjunkCandidates = data.candidates || [];
+
+        if (_sjunkCandidates.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        document.getElementById('sjunk-select-all').checked = false;
+        list.innerHTML = _sjunkCandidates.map((c, i) => `
+            <div data-modal-row="sjunk-${i}" onclick="var cb=this.querySelector('.sjunk-cb');cb.checked=!cb.checked;"
+                style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border);">
+                <input type="checkbox" class="sjunk-cb" data-appid="${c.appid}" style="width:auto;margin:0;flex-shrink:0;" onclick="event.stopPropagation()">
+                <span style="color:var(--text-primary); font-size:0.85rem; flex:1;">${escHtml(c.name)}</span>
+                <span style="color:var(--text-secondary); font-size:0.75rem; font-family:monospace;">${c.appid}</span>
+                <span style="color:var(--text-secondary); font-size:0.72rem; white-space:nowrap;">[${c.reasons.map(escHtml).join(', ')}]</span>
+            </div>`).join('');
+        results.style.display = 'block';
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+function _sjunkToggleAll(checked) {
+    document.getElementById('sjunk-select-all').checked = checked;
+    document.querySelectorAll('#sjunk-list .sjunk-cb').forEach(cb => cb.checked = checked);
+}
+
+async function _sjunkAction(action) {
+    const selected = [...document.querySelectorAll('#sjunk-list .sjunk-cb:checked')]
+        .map(cb => parseInt(cb.dataset.appid, 10));
+    if (selected.length === 0) {
+        alert('No games selected.');
+        return;
+    }
+    const verb = action === 'blacklist' ? 'blacklist' : 'whitelist';
+    const ok = await confirmCustom(
+        `${verb === 'blacklist' ? 'Delete and blacklist' : 'Whitelist (dismiss)'} ${selected.length} selected game(s)?`,
+        'Confirm', 'Cancel'
+    );
+    if (!ok) return;
+
+    const status = document.getElementById('sjunk-action-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Working…';
+    try {
+        const res  = await fetch(`/api/steam-junk-scan/${action}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids: selected })
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+
+        status.className = 'tool-status success';
+        status.textContent = `✔ ${verb === 'blacklist' ? 'Blacklisted' : 'Whitelisted'} ${data.count}.`;
+        _sjunkCandidates = _sjunkCandidates.filter(c => !selected.includes(c.appid));
+        if (_sjunkCandidates.length === 0) {
+            document.getElementById('sjunk-results').style.display = 'none';
+            document.getElementById('sjunk-empty').style.display = 'block';
+        } else {
+            selected.forEach(appid => {
+                document.querySelector(`#sjunk-list .sjunk-cb[data-appid="${appid}"]`)?.closest('[data-modal-row]')?.remove();
+            });
+        }
+        if (action === 'blacklist') _blacklistLoaded = false; // force reload next time Blacklist Manager is opened
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
     }
 }
 

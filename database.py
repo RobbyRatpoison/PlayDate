@@ -173,12 +173,18 @@ def init_db():
             appid INTEGER PRIMARY KEY,
             name TEXT,
             date_blacklisted TEXT,
-            platform_id TEXT
+            platform_id TEXT,
+            platform TEXT
         )
     """)
 
     try:
         cursor.execute("ALTER TABLE blacklist ADD COLUMN platform_id TEXT")
+    except Exception:
+        pass  # column already exists
+
+    try:
+        cursor.execute("ALTER TABLE blacklist ADD COLUMN platform TEXT")
     except Exception:
         pass  # column already exists
 
@@ -275,22 +281,27 @@ def bulk_update_column(appids, column, value):
 # ── Blacklist helpers ──────────────────────────────────────────────────────────
 
 def get_blacklist():
-    """Return all blacklisted entries sorted by date_blacklisted DESC."""
+    """Return all blacklisted entries sorted by date_blacklisted DESC.
+    `platform` is NULL for entries blacklisted before that column existed;
+    callers group those under a fallback bucket (steam if platform_id is
+    NULL, since only non-Steam blacklisting ever set platform_id -- else
+    unknown)."""
     conn = sqlite3.connect(_db(), timeout=10)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        "SELECT appid, name, date_blacklisted FROM blacklist ORDER BY date_blacklisted DESC"
+        "SELECT appid, name, date_blacklisted, platform_id, platform FROM blacklist ORDER BY date_blacklisted DESC"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
-def add_to_blacklist(appid, name, platform_id=None):
+def add_to_blacklist(appid, name, platform_id=None, platform=None):
     """Add an appid to the blacklist. Safe to call if already present.
-    Pass platform_id for non-Steam games so re-sync skips them."""
+    Pass platform_id for non-Steam games so re-sync skips them, and platform
+    so the Blacklist Manager can group entries by platform."""
     conn = sqlite3.connect(_db(), timeout=10)
     conn.execute(
-        "INSERT OR REPLACE INTO blacklist (appid, name, date_blacklisted, platform_id) VALUES (?, ?, ?, ?)",
-        (int(appid), name, datetime.now().strftime('%Y-%m-%d'), platform_id)
+        "INSERT OR REPLACE INTO blacklist (appid, name, date_blacklisted, platform_id, platform) VALUES (?, ?, ?, ?, ?)",
+        (int(appid), name, datetime.now().strftime('%Y-%m-%d'), platform_id, platform)
     )
     conn.commit()
     conn.close()

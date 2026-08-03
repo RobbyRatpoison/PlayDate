@@ -1435,26 +1435,55 @@
             <button onclick="closeBlacklistModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
         <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">Blacklisted games are permanently skipped by "Populate PlayDate". To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
+        <button class="nav-btn" data-modal-row="find-steam-junk" onclick="openSteamJunkModal()" style="margin-bottom:14px;">Find Steam Junk</button>
         <div id="blacklist-status" class="tool-status"></div>
         <input id="blacklist-search" type="text" placeholder="Search by name…"
             style="width:100%; box-sizing:border-box; margin-bottom:12px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:0.88rem; display:none;"
             oninput="_filterBlacklist(this.value)">
         <div id="blacklist-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No blacklisted games.</div>
         <div id="blacklist-no-results" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No games match your search.</div>
-        <table id="blacklist-table" style="width:100%; border-collapse:collapse; display:none;">
-            <thead>
-                <tr style="border-bottom:1px solid var(--border);">
-                    <th style="text-align:left; padding:8px 10px; color:var(--text-secondary); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Game</th>
-                    <th style="text-align:left; padding:8px 10px; color:var(--text-secondary); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">App ID</th>
-                    <th style="text-align:left; padding:8px 10px; color:var(--text-secondary); font-size:0.78rem; font-weight:normal; text-transform:uppercase; letter-spacing:0.05em;">Blacklisted</th>
-                    <th style="padding:8px 10px;"></th>
-                </tr>
-            </thead>
-            <tbody id="blacklist-tbody"></tbody>
-        </table>
-        <div style="margin-top:16px; display:flex; justify-content:flex-end;">
-            <button class="nav-btn" data-modal-row="1" onclick="closeBlacklistModal()">Close</button>
+        <div id="blacklist-bulkbar" style="display:none; align-items:center; gap:14px; margin-bottom:10px;">
+            <div data-modal-row="bl-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_blToggleAll(cb.checked);" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="blacklist-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_blToggleAll(this.checked)">
+                <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
+            </div>
+            <button class="nav-btn" data-modal-row="bl-selectall" onclick="_blBulkRemove()" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a); padding:4px 12px; font-size:0.82rem;">Remove Selected</button>
         </div>
+        <div id="blacklist-groups"></div>
+        <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+            <button class="nav-btn" data-modal-row="bl-footer" onclick="closeBlacklistModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── STEAM JUNK FINDER MODAL (sub-modal of Blacklist Manager) ── -->
+<div id="steam-junk-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeSteamJunkModal();">
+    <div class="modal-content" style="width:min(680px,95vw); max-height:85vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--text-primary);">Find Steam Junk</h2>
+            <button onclick="closeSteamJunkModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+        </div>
+        <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">
+            Steam doesn't tag beta clients, movie/documentary entries, or bundle placeholders any differently from real games,
+            so this scans your Steam library's titles for common patterns instead. Nothing is a sure thing here &mdash;
+            review the matches and pick what to blacklist. Blacklisted items are permanently skipped by "Populate PlayDate";
+            whitelisted items are just dismissed from this list and won't be suggested again.
+        </p>
+        <div id="sjunk-status" class="tool-status"></div>
+        <div id="sjunk-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No candidates found.</div>
+        <div id="sjunk-results" style="display:none;">
+            <div data-modal-row="sjunk-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_sjunkToggleAll(cb.checked);" style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border); margin-bottom:6px;">
+                <input type="checkbox" id="sjunk-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_sjunkToggleAll(this.checked)">
+                <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
+            </div>
+            <div id="sjunk-list"></div>
+            <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('blacklist')" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Blacklist Selected</button>
+                <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('whitelist')">Whitelist Selected</button>
+                <button class="nav-btn" data-modal-row="sjunk-footer" onclick="closeSteamJunkModal()">Close</button>
+            </div>
+        </div>
+        <div id="sjunk-action-status" class="tool-status" style="margin-bottom:0;"></div>
     </div>
 </div>
 

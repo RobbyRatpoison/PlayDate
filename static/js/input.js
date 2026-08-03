@@ -718,7 +718,7 @@
         // Library bulk modals
         'bulk-edit-modal', 'bulk-rescrape-modal', 'bulk-delete-modal',
         // Tools page expanding modals
-        'pagywosg-modal', 'blacklist-modal', 'theme-modal', 'send-log-modal',
+        'pagywosg-modal', 'steam-junk-modal', 'blacklist-modal', 'theme-modal', 'send-log-modal',
         // Sub-modals of hamburger items (before their parents)
         'hltb-modal',          // from library-modal
         'theme-picker-modal',  // from appearance-modal
@@ -2117,6 +2117,7 @@
             ['bg-modal',              'closeBgModal'],
             ['import-modal',          'closeImportModal'],
             ['pagywosg-modal',        'closePagModal'],
+            ['steam-junk-modal',      'closeSteamJunkModal'],
             ['theme-modal',           'closeThemeModal'],
             ['send-log-modal',        'closeSendLogModal'],
             ['gamepad-remap-modal',   'closeGamepadRemap'],
@@ -2954,6 +2955,7 @@
         _watchModal('bg-modal');
         _watchModal('import-modal');
         _watchModal('pagywosg-modal');
+        _watchModal('steam-junk-modal');
         _watchModal('theme-modal');
         _watchModal('send-log-modal');
 

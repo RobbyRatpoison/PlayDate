@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import threading
 import time
 from config import load_state, BASE_DIR, BUILTIN_FILTERS, resolve_outline_rule_where
@@ -1208,11 +1209,12 @@ def delete_game(appid):
     blacklist = data.get('blacklist', False)
     name      = data.get('name', '')
     try:
-        # Look up platform_id before deleting (needed for non-Steam blacklist)
+        # Look up platform/platform_id before deleting (needed for blacklist)
         db = get_db()
         row = db.execute(
-            "SELECT platform_id FROM games WHERE appid = ?", (appid,)
+            "SELECT platform, platform_id FROM games WHERE appid = ?", (appid,)
         ).fetchone()
+        platform    = row['platform'] if row else None
         platform_id = row['platform_id'] if row else None
 
         # Delete DB entry
@@ -1231,7 +1233,7 @@ def delete_game(appid):
 
         # Optionally blacklist
         if blacklist:
-            add_to_blacklist(appid, name, platform_id=platform_id)
+            add_to_blacklist(appid, name, platform_id=platform_id, platform=platform)
 
         return jsonify({"status": "success"})
     except Exception as e:
@@ -1336,6 +1338,124 @@ def blacklist_remove():
     try:
         remove_from_blacklist(appid)
         return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/blacklist/bulk-remove', methods=['POST'])
+def blacklist_bulk_remove():
+    data   = request.json or {}
+    appids = data.get('appids') or []
+    if not appids:
+        return jsonify({"status": "error", "message": "No appids provided."}), 400
+    try:
+        for appid in appids:
+            remove_from_blacklist(appid)
+        return jsonify({"status": "success", "count": len(appids)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# Steam gives no structured signal for this (Store API `type` and appinfo.vdf's
+# common.type both just say "Game" for beta clients, movie entries, etc. -- confirmed
+# by hand against real examples), so title text is the only lever. Matching is
+# intentionally broad since results are only ever a human-reviewed suggestion list,
+# never auto-applied.
+_STEAM_JUNK_PATTERNS = [
+    (re.compile(r'\bbeta\b', re.I), 'beta'),
+    (re.compile(r'\balpha\b', re.I), 'alpha'),
+    (re.compile(r'\b(public|closed|open)\s+test(ing)?\b', re.I), 'public/closed test'),
+    (re.compile(r'\bunstable\b', re.I), 'unstable/test branch'),
+    (re.compile(r'\bplayable\s+teaser\b', re.I), 'playable teaser'),
+    (re.compile(r"\bfriend'?s\s+pass\b", re.I), "friend's pass"),
+    (re.compile(r'\bkey\s+only\b', re.I), 'key-only bundle placeholder'),
+    (re.compile(r'-\s*multiplayer\s*$', re.I), 'multiplayer-only companion app'),
+    (re.compile(r'\bthe\s+movie\b', re.I), 'documentary/movie'),
+    (re.compile(r'\bdemo\b', re.I), 'demo'),
+    (re.compile(r'\btrial\b', re.I), 'trial'),
+]
+
+
+def _steam_junk_match_reasons(name):
+    return [label for pat, label in _STEAM_JUNK_PATTERNS if pat.search(name or '')]
+
+
+@library_bp.route('/api/steam-junk-scan', methods=['GET'])
+def steam_junk_scan():
+    try:
+        state     = load_state()
+        dismissed = {int(a) for a in (state.get('steam_junk_whitelist') or [])}
+        db = get_db()
+        try:
+            blacklisted = {row[0] for row in db.execute(
+                "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
+            ).fetchall()}
+            rows = db.execute(
+                "SELECT appid, name FROM games WHERE platform = 'steam' ORDER BY name"
+            ).fetchall()
+        finally:
+            db.close()
+
+        candidates = []
+        for row in rows:
+            appid = row['appid']
+            if str(appid) in blacklisted or appid in dismissed:
+                continue
+            reasons = _steam_junk_match_reasons(row['name'])
+            if reasons:
+                candidates.append({'appid': appid, 'name': row['name'], 'reasons': reasons})
+
+        return jsonify({'status': 'success', 'candidates': candidates})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@library_bp.route('/api/steam-junk-scan/blacklist', methods=['POST'])
+def steam_junk_scan_blacklist():
+    data   = request.json or {}
+    appids = data.get('appids') or []
+    if not appids:
+        return jsonify({"status": "error", "message": "No appids provided."}), 400
+    try:
+        placeholders = ','.join('?' * len(appids))
+        db   = get_db()
+        rows = db.execute(
+            f"SELECT appid, name, platform, platform_id FROM games WHERE appid IN ({placeholders})", appids
+        ).fetchall()
+        info_by_id = {r['appid']: r for r in rows}
+        db.execute(f"DELETE FROM games WHERE appid IN ({placeholders})", appids)
+        db.commit()
+        db.close()
+
+        for appid in appids:
+            safe_id = str(int(appid))
+            for subdir in ('vertical', 'horizontal', 'icons'):
+                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, safe_id + '.jpg')
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+            info = info_by_id.get(appid)
+            add_to_blacklist(appid, info['name'] if info else '',
+                              platform_id=info['platform_id'] if info else None,
+                              platform=info['platform'] if info else None)
+
+        from utils import invalidate_unique_cache
+        invalidate_unique_cache()
+        return jsonify({"status": "success", "count": len(appids)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@library_bp.route('/api/steam-junk-scan/whitelist', methods=['POST'])
+def steam_junk_scan_whitelist():
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    data   = request.json or {}
+    appids = data.get('appids') or []
+    if not appids:
+        return jsonify({"status": "error", "message": "No appids provided."}), 400
+    try:
+        with _state_lock:
+            state = _load_state_unlocked()
+            existing = {int(a) for a in (state.get('steam_junk_whitelist') or [])}
+            existing.update(int(a) for a in appids)
+            state['steam_junk_whitelist'] = sorted(existing)
+            _write_state_atomic(state)
+        return jsonify({"status": "success", "count": len(appids)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
