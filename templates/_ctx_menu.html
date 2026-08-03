@@ -118,7 +118,7 @@
             <i class="ctx-icon">⬇</i> Install Game
         </div>
         <div class="ctx-item" id="ctx-store" data-action="store">
-            <i class="ctx-icon">🌐</i> Open Store Page
+            <i class="ctx-icon">🌐</i> <span id="ctx-store-label">Open Store Page</span>
         </div>
         <div class="ctx-item" id="ctx-achievements" data-action="achievements" style="display:none;">
             <i class="ctx-icon" style="color:#ffd700;">★</i> Achievements
@@ -157,6 +157,7 @@
     let _currentStatus = null;  // current completion_status of that game
     let _installed     = false; // whether the right-clicked game is installed
     let _platform      = 'steam'; // platform of the right-clicked game
+    let _platformSlug  = null;  // platform_slug of the right-clicked game (for non-Steam store links)
     let _activeEl      = null;  // element that was focused at right-click time
     let _selText       = '';    // selected text at right-click time
     let _selStart      = 0;     // selection start index at right-click time
@@ -251,6 +252,7 @@
         _appid = null;
         _currentStatus = null;
         _installed = false;
+        _platformSlug = null;
         _activeEl  = null;
         _selText   = '';
         _selStart  = 0;
@@ -317,6 +319,7 @@
             let status = null;
             let installed = false;
             let platform = 'steam';
+            let platformSlug = null;
             let _fetchedGame = null;
 
             // First try DOM data attributes (home page has these, avoids a server fetch)
@@ -327,20 +330,23 @@
 
             if (typeof GAMES !== 'undefined') {
                 const g = GAMES.find(g => String(g.appid) === String(appid));
-                if (g) { status = g.completion_status; installed = !!g.installed; platform = g.platform || 'steam'; }
+                if (g) { status = g.completion_status; installed = !!g.installed; platform = g.platform || 'steam'; platformSlug = g.platform_slug || null; }
             } else if (typeof _games !== 'undefined') {
                 const g = _games.find(g => String(g.appid) === String(appid));
-                if (g) { status = g.completion_status; installed = !!g.installed; platform = g.platform || 'steam'; }
+                if (g) { status = g.completion_status; installed = !!g.installed; platform = g.platform || 'steam'; platformSlug = g.platform_slug || null; }
             }
-            // Only fetch from server if we still don't have status
-            if (status === null) {
+            // Only fetch from server if we still don't have status, or we don't
+            // have a platform_slug for a non-Steam game (needed for its store link —
+            // the home/pick page in-memory arrays and DOM data attributes don't carry it).
+            if (status === null || (platform !== 'steam' && !platformSlug)) {
                 try {
                     const res  = await fetch(`/api/game/${appid}`);
                     const data = await res.json();
                     if (data.status === 'success') {
-                        status    = data.game.completion_status;
-                        installed = !!data.game.installed;
-                        platform  = data.game.platform || 'steam';
+                        status       = data.game.completion_status;
+                        installed    = !!data.game.installed;
+                        platform     = data.game.platform || 'steam';
+                        platformSlug = data.game.platform_slug || platformSlug;
                         _fetchedGame = data.game;
                     }
                 } catch (_) {}
@@ -348,14 +354,25 @@
             _currentStatus = status;
             _installed     = installed;
             _platform      = platform;
+            _platformSlug  = platformSlug;
 
             // Show launch/install/uninstall based on installed status
             const isNonSteam = parseInt(appid) < 0;
             document.getElementById('ctx-launch').style.display        = installed ? '' : 'none';
             document.getElementById('ctx-install').style.display       = installed ? 'none' : '';
             document.getElementById('ctx-uninstall').style.display     = installed ? '' : 'none';
-            // Steam-only links
-            document.getElementById('ctx-store').style.display         = isNonSteam ? 'none' : '';
+            // Store link: Steam always has one; non-Steam only if the platform's
+            // plugin declares a store_url template and this game has a slug to
+            // fill it in (mirrors modal_edit.html's storeLink logic). Naturally
+            // excludes Humble (no store_url — no per-game store page exists) and
+            // emulated platforms (no plugin, so no _PLUGIN_API entry at all).
+            const _storeApi  = window._PLUGIN_API?.[platform];
+            const _storeUrl  = isNonSteam
+                ? (_storeApi?.store_url && platformSlug ? _storeApi.store_url.replace('{slug}', platformSlug) : null)
+                : `https://store.steampowered.com/app/${appid}`;
+            document.getElementById('ctx-store').style.display   = _storeUrl ? '' : 'none';
+            document.getElementById('ctx-store-label').textContent =
+                isNonSteam ? (_storeApi?.store_label || 'Open Store Page') : 'Open Store Page';
             document.getElementById('ctx-community-hub').style.display = isNonSteam ? 'none' : '';
             const hasProfileSeg = !isNonSteam && !!_steamId;
             document.getElementById('ctx-achievements').style.display  = hasProfileSeg ? '' : 'none';
@@ -524,10 +541,21 @@
                 }
                 break;
 
-            case 'store':
+            case 'store': {
+                const platform     = _platform;
+                const platformSlug = _platformSlug;
                 hideMenu();
-                if (appid) openUrl(`https://store.steampowered.com/app/${appid}`);
+                if (!appid) break;
+                if (parseInt(appid) >= 0) {
+                    openUrl(`https://store.steampowered.com/app/${appid}`);
+                } else {
+                    const _api = window._PLUGIN_API?.[platform];
+                    if (_api?.store_url && platformSlug) {
+                        openUrl(_api.store_url.replace('{slug}', platformSlug));
+                    }
+                }
                 break;
+            }
 
             case 'achievements':
                 hideMenu();
