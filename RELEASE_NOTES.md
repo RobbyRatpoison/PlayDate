@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.6.13
+## v1.7.0
 ### New
 
 - "Open Store Page" in the right-click menu now supports non-Steam games.
@@ -13,5 +13,5 @@
 - Fixed EA App launcher installs failing after a Proton/Wine update.
 - Fixed "Reinstall Launcher" (EA App, Epic Games) sometimes not clearing the old install.
 - Fixed uninstalling a plugin not actually sticking -- it would silently come back on the next update.
-- Restoring a backup now re-checks installed status and launcher/emulator paths.
+- Restoring a backup now re-checks which of your games are actually installed, plus launcher and emulator paths.
 - Fixed emulated games' installed status never updating after the initial scan.
