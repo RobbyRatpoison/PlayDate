@@ -1,18 +1,25 @@
 # Writing a PlayDate Plugin
 
-Plugins add non-Steam library sources (GOG, Epic, EA App, etc.) to PlayDate. Each plugin lives in its own subdirectory under `plugins/` and is auto-discovered at startup.
+Plugins add non-Steam library sources (GOG, Epic, EA App, etc.) to PlayDate. Nothing ships as source in the main PlayDate repo, including PlayDate's own first-party integrations — GOG, EA App, Epic Games, Humble Bundle, IndieGala, and itch.io are just plugins too, published as their own GitHub repos (`plugins.OFFICIAL_PLUGINS`) and installed the same way as any third-party plugin. Each plugin lives in its own subdirectory under a writable, update-safe directory and is auto-discovered at startup.
+
+**Where plugins actually live:** `plugins._user_plugins_dir()`, which resolves to `BASE_DIR/plugins/` — the same base directory that already holds `config.json`/`games.db`. For a Flatpak install that's the app's isolated data directory, not the read-only `/app` mount; for a frozen build it's the folder next to the executable; for a source checkout it's this project's own `plugins/` folder (since `BASE_DIR` *is* the project root there, so it's literally the same physical directory you're looking at in this repo). PlayDate also still scans the bundled `plugins/` folder next to `plugins/__init__.py` for anything left over from the old single-directory layout, and migrates it into the writable directory automatically on startup — this only matters for a plugin manually dropped into that legacy location; a normal install never puts anything there.
 
 ## Installing a plugin
 
-Users can install plugins three ways:
+Users can install plugins four ways:
 
-1. **Plugins modal → Install from Zip** (hamburger menu → Plugins) — select a `.zip` file; the server validates it, extracts it to `plugins/<id>/`, and prompts for restart.
-2. **Plugins modal → Install from GitHub** — paste a GitHub repo URL (`github.com/owner/repo` or `owner/repo`); PlayDate fetches the latest release zip and installs it automatically.
-3. **Manual drop** — copy the plugin folder directly into `plugins/` and restart.
+1. **Plugins modal → Official Plugins** (hamburger menu → Plugins) — one-click install for PlayDate's own first-party plugins, listed automatically whenever one isn't currently installed (`GET /api/plugins/official`).
+2. **Plugins modal → Install from Zip** — select a `.zip` file; the server validates it, extracts it to the writable plugins directory (see above), and prompts for restart.
+3. **Plugins modal → Install from GitHub** — paste a GitHub repo URL (`github.com/owner/repo` or `owner/repo`); PlayDate fetches the latest release zip and installs it the same way.
+4. **Manual drop** — copy the plugin folder directly into the writable plugins directory and restart.
 
 The zip can be either flat (`plugin.json` at root) or wrapped in a single top-level folder (`myplugin/plugin.json`). The plugin `id` in `plugin.json` must be alphanumeric + underscores and determines the destination folder name.
 
+Every install method requires a restart to actually take effect — Flask refuses to register a new Blueprint once the app has served its first request, so a freshly-installed plugin's code sits on disk, loaded but inactive, until the next launch.
+
 If a plugin is hosted on GitHub and its `plugin.json` includes a `source` field, PlayDate will check for updates when the Plugins modal is opened and show a one-click update button when a newer release is available.
+
+Uninstalling a plugin deletes its directory outright (`shutil.rmtree`) and clears its saved credentials/launcher config — this is what makes it stick across a PlayDate update now, since there's no bundled copy anywhere for an update to silently reintroduce.
 
 ## Directory layout
 
