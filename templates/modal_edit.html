@@ -38,7 +38,7 @@
             <div style="display: flex; align-items: center; gap: 0.625rem; flex-wrap: wrap;">
                 <button type="button" class="nav-btn" data-modal-row="6" onclick="chooseConfigRestoreFile()">Restore from Backup</button>
                 <input type="file" id="config-restore-input" accept=".zip" style="display:none" onchange="configRestoreFileSelected(this)">
-                <span id="config-restore-status" style="font-size:0.85rem; color: var(--text-secondary);"></span>
+                <span id="config-restore-status" class="tool-status" style="font-size:0.85rem; margin-top:0;"></span>
             </div>
         </div>
     </div>
@@ -58,7 +58,7 @@
                 path = await window.pywebview.api.pick_open_path(['ZIP Files (*.zip)']);
             } catch (e) {
                 const status = document.getElementById('config-restore-status');
-                status.style.color = 'var(--text-danger)';
+                status.className = 'tool-status error';
                 status.textContent = '✘ ' + e.message;
                 return;
             }
@@ -75,42 +75,15 @@
         if (file) configRunRestore({ file });
     }
 
+    // Shared with the Settings modal's Backup/Restore tab -- see
+    // runBackupRestore() in modal_tools.js. No confirmMessage here: a
+    // fresh, unconfigured install has nothing of the user's to overwrite,
+    // so unlike the Settings-modal restore this one doesn't ask first.
     async function configRunRestore(source) {
-        const status = document.getElementById('config-restore-status');
-        status.style.color = 'var(--text-secondary)';
-        status.textContent = 'Restoring…';
-        try {
-            let res;
-            if (source.path) {
-                res = await fetch('/api/restore-from-path', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: source.path })
-                });
-            } else {
-                const formData = new FormData();
-                formData.append('backup_file', source.file);
-                res = await fetch('/api/restore', { method: 'POST', body: formData });
-            }
-            const started = await res.json();
-            if (started.status !== 'started') throw new Error(started.message || 'Restore failed.');
-
-            let data;
-            while (true) {
-                await new Promise(r => setTimeout(r, 700));
-                const poll = await fetch('/api/restore-status');
-                data = await poll.json();
-                if (data.status !== 'running') break;
-            }
-            if (data.status !== 'success') throw new Error(data.error || 'Restore failed.');
-
-            status.style.color = 'var(--accent-positive)';
-            status.textContent = '✔ Restored. Reloading…';
-            setTimeout(() => window.location.reload(), 1200);
-        } catch (e) {
-            status.style.color = 'var(--text-danger)';
-            status.textContent = '✘ ' + e.message;
-        }
+        await runBackupRestore(source, {
+            statusEl: document.getElementById('config-restore-status'),
+            reloadDelay: 1200,
+        });
     }
 
     // Auto-detect SteamID if field is empty

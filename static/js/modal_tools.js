@@ -2095,37 +2095,38 @@ function setRestoreFile(file) {
     document.getElementById('restore-status').textContent = '';
 }
 
-async function runRestore() {
-    if (!_restoreFile && !_restorePath) return;
+// Shared by the Settings modal's Backup/Restore tab (this file) and the
+// first-run Configuration modal's "Restore from Backup" button
+// (modal_edit.html's configRunRestore) — both hit the same backend restore
+// flow, so the client-side polling/status logic only needs to exist once.
+// statusEl is required; btn (disabled/relabeled while running) and
+// confirmMessage (skipped entirely when omitted -- the first-run modal has
+// nothing of the user's to overwrite yet, so it doesn't ask) are optional.
+async function runBackupRestore(source, { statusEl, btn = null, confirmMessage = null, reloadDelay = 1200 }) {
+    if (confirmMessage) {
+        const confirmed = await confirm(confirmMessage);
+        if (!confirmed) return;
+    }
 
-    const status = document.getElementById('restore-status');
-    const btn    = document.getElementById('restore-btn');
-    const name   = _restoreFile ? _restoreFile.name : _restorePath.split(/[\\/]/).pop();
-
-    const confirmed = await confirm(
-        `Restore from "${name}"?\n\n` +
-        `This will overwrite your current games.db, config.json, and state.json.\n` +
-        `The page will reload after restore completes.`
-    );
-    if (!confirmed) return;
-
-    btn.style.opacity   = '0.4';
-    btn.style.cursor    = 'not-allowed';
-    btn.textContent     = 'Restoring…';
-    status.className    = 'tool-status info';
-    status.textContent  = 'Restoring — please wait…';
+    if (btn) {
+        btn.style.opacity = '0.4';
+        btn.style.cursor  = 'not-allowed';
+        btn.textContent   = 'Restoring…';
+    }
+    statusEl.className   = 'tool-status info';
+    statusEl.textContent = 'Restoring — please wait…';
 
     try {
         let res;
-        if (_restorePath) {
+        if (source.path) {
             res = await fetch('/api/restore-from-path', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: _restorePath })
+                body: JSON.stringify({ path: source.path })
             });
         } else {
             const formData = new FormData();
-            formData.append('backup_file', _restoreFile);
+            formData.append('backup_file', source.file);
             res = await fetch('/api/restore', { method: 'POST', body: formData });
         }
         const started = await res.json();
@@ -2144,17 +2145,36 @@ async function runRestore() {
 
         if (data.status !== 'success') throw new Error(data.error || 'Restore failed.');
 
-        status.className = 'tool-status success';
-        status.textContent = `✔ Restored: ${data.restored.join(', ')}. Reloading…`;
+        statusEl.className   = 'tool-status success';
+        statusEl.textContent = `✔ Restored: ${data.restored.join(', ')}. Reloading…`;
 
-        setTimeout(() => window.location.reload(), 1500);
+        setTimeout(() => window.location.reload(), reloadDelay);
     } catch (e) {
-        status.className  = 'tool-status error';
-        status.textContent = '✘ ' + e.message;
-        btn.style.opacity = '1';
-        btn.style.cursor  = 'pointer';
-        btn.textContent   = 'Restore';
+        statusEl.className   = 'tool-status error';
+        statusEl.textContent = '✘ ' + e.message;
+        if (btn) {
+            btn.style.opacity = '1';
+            btn.style.cursor  = 'pointer';
+            btn.textContent   = 'Restore';
+        }
     }
+}
+
+async function runRestore() {
+    if (!_restoreFile && !_restorePath) return;
+
+    const name   = _restoreFile ? _restoreFile.name : _restorePath.split(/[\\/]/).pop();
+    const source = _restorePath ? { path: _restorePath } : { file: _restoreFile };
+
+    await runBackupRestore(source, {
+        statusEl: document.getElementById('restore-status'),
+        btn: document.getElementById('restore-btn'),
+        confirmMessage:
+            `Restore from "${name}"?\n\n` +
+            `This will overwrite your current games.db, config.json, and state.json.\n` +
+            `The page will reload after restore completes.`,
+        reloadDelay: 1500,
+    });
 }
 
 // ── BACKGROUND CHANGER ──────────────────────────────────────────────────────
@@ -3996,6 +4016,7 @@ ${oauthHtml}`;
 function openPluginsModal() {
     document.getElementById('plugins-modal').style.display = 'flex';
     _renderPluginsList().then(() => _checkPluginUpdates());
+    _renderOfficialPluginsList();
 }
 function closePluginsModal() {
     document.getElementById('plugins-modal').style.display = 'none';
@@ -4123,6 +4144,58 @@ async function _renderPluginsList() {
         fetch('/api/log-js-error', {method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({context:'_renderPluginsList', error: msg, stack: e && e.stack ? e.stack : ''})
         }).catch(function(){});
+    }
+}
+
+// Row indices start well above anything _renderPluginsList() could ever
+// produce (plugins.length + incompatible.length + 2, realistically single
+// digits) -- this section always renders below that list, so a fixed high
+// offset keeps gamepad nav order correct without coordinating live counts
+// between two independently-rendered sections.
+const OFFICIAL_PLUGIN_ROW_BASE = 100;
+
+async function _renderOfficialPluginsList() {
+    const section = document.getElementById('official-plugins-section');
+    const list    = document.getElementById('official-plugins-list');
+    try {
+        const r = await fetch('/api/plugins/official');
+        const entries = await r.json();
+        if (!entries.length) { section.style.display = 'none'; return; }
+        section.style.display = '';
+        list.innerHTML = entries.map((e, idx) => `
+            <div class="hub-section" id="official-plugin-row-${escHtml(e.id)}" style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="font-size:0.9rem;color:var(--text-primary);">${escHtml(e.name)}</div>
+                <button class="nav-btn" style="font-size:0.78rem;flex-shrink:0;margin-left:12px;"
+                        data-modal-row="${OFFICIAL_PLUGIN_ROW_BASE + idx}"
+                        onclick="_installOfficialPlugin('${escHtml(e.source)}',this)">Install</button>
+            </div>`).join('');
+    } catch (e) {
+        section.style.display = 'none';
+    }
+}
+
+async function _installOfficialPlugin(source, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Installing...';
+    try {
+        const r = await fetch('/api/plugins/install-from-github', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url: source}),
+        });
+        const d = await r.json();
+        if (d.status === 'success') {
+            btn.textContent = 'Installed — restart to activate';
+            document.getElementById('plugins-restart-notice').style.display = '';
+        } else {
+            btn.disabled = false;
+            btn.textContent = 'Install';
+            alert(d.message || 'Install failed.');
+        }
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Install';
+        alert('Install failed.');
     }
 }
 
