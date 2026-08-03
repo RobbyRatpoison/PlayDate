@@ -23,6 +23,10 @@ class ItchIoPlugin:
         except Exception as e:
             log.warning(f'itch.io startup failed: {e}')
 
+    def resync_installed(self):
+        from .itch_io import sync_install_status
+        sync_install_status()
+
     def on_shutdown(self):
         try:
             from .itch_io import stop_install_watcher

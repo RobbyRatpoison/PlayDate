@@ -141,6 +141,48 @@ def _run_restore_thread(raw: bytes, logger):
     except Exception as e:
         logger.warning(f"Restore: post-restore migration failed: {e}", exc_info=True)
 
+    # The restored DB's `installed` flags reflect whatever machine the backup
+    # was taken on/at -- stale if restoring cross-machine, or if game folders
+    # changed since the backup. Steam/plugin install-status sync normally only
+    # runs at app startup or on a filesystem-watcher event, neither of which
+    # a restore triggers on its own (the app keeps running through it) --
+    # so re-run it explicitly here rather than leaving stale flags until the
+    # next restart.
+    try:
+        from utils import sync_local_install_status
+        count = sync_local_install_status()
+        logger.info(f"Restore: Steam install status re-synced ({count} games installed)")
+    except Exception as e:
+        logger.warning(f"Restore: Steam install status re-sync failed: {e}")
+
+    try:
+        from emulators import sync_emulated_install_status, resync_emulator_binaries
+        rom_changed = sync_emulated_install_status()
+        logger.info(f"Restore: emulated game install status re-synced ({rom_changed} changed)")
+        bin_changed = resync_emulator_binaries()
+        logger.info(f"Restore: emulator binaries re-detected: {bin_changed}")
+    except Exception as e:
+        logger.warning(f"Restore: emulator re-sync failed: {e}")
+
+    try:
+        from config import revalidate_launcher_configs
+        blanked = revalidate_launcher_configs()
+        logger.info(f"Restore: launcher configs re-validated ({blanked} stale wine_bin blanked)")
+    except Exception as e:
+        logger.warning(f"Restore: launcher config re-validation failed: {e}")
+
+    try:
+        import plugins as _plugins
+        for _p in _plugins.loaded().values():
+            if hasattr(_p, 'resync_installed'):
+                try:
+                    _p.resync_installed()
+                    logger.info(f"Restore: {_p.id} install status re-synced")
+                except Exception as e:
+                    logger.warning(f"Restore: {_p.id} install status re-sync failed: {e}")
+    except Exception as e:
+        logger.warning(f"Restore: plugin install status re-sync failed: {e}")
+
     _restore_state.update({'status': 'success', 'error': None, 'restored': restored, 'skipped': skipped})
 
 

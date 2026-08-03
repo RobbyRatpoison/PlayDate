@@ -23,6 +23,10 @@ class GogPlugin:
         except Exception as e:
             log.warning(f"Startup GOG install sync failed: {e}")
 
+    def resync_installed(self):
+        from .watcher import sync_gog_install_status
+        sync_gog_install_status()
+
     def on_shutdown(self):
         from .watcher import stop_gog_watcher
         stop_gog_watcher()

@@ -1095,6 +1095,38 @@ def save_launcher_config(platform_id, cfg):
     _save_config_data(config_data)
 
 
+def revalidate_launcher_configs():
+    """
+    Blank any saved wine_bin that no longer exists on the host (same check
+    used for the GET /api/launcher-config response and a fresh install/
+    reinstall) for every configured launcher, not just the one currently
+    being viewed. A restore -- especially cross-machine -- is the other
+    common way these go stale, alongside a Proton/Wine version being replaced
+    on disk. Blanking (rather than trying to auto-redetect a replacement) is
+    intentional: the UI already falls back to live wine_bin_detected whenever
+    the saved value is empty, so this just makes that fallback kick in
+    immediately instead of after the next failed install. The prefix path
+    itself is left untouched -- a missing prefix just means "not installed
+    yet," which the existing install/reinstall flow already handles.
+    Returns the number of launcher configs blanked.
+    """
+    from runners.sandbox import host_is_executable
+    config_data = load_config()
+    if not config_data:
+        return 0
+    launchers = config_data.get('launchers', {})
+    changed = 0
+    for platform_id, lc in launchers.items():
+        wb = (lc.get('wine_bin') or '').strip()
+        if wb and not host_is_executable(wb):
+            lc['wine_bin'] = ''
+            changed += 1
+            log.info(f"revalidate_launcher_configs: blanked stale wine_bin for {platform_id}: {wb}")
+    if changed:
+        _save_config_data(config_data)
+    return changed
+
+
 @config_bp.route('/api/launcher-config/<platform_id>', methods=['GET'])
 def get_launcher_config_route(platform_id):
     import plugins

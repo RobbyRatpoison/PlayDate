@@ -101,6 +101,10 @@ class EpicGamesPlugin:
             if install_base:
                 start_epic_watcher(install_base)
 
+    def resync_installed(self):
+        from .watcher import sync_epic_install_status
+        sync_epic_install_status()
+
     def on_shutdown(self):
         from .watcher import stop_epic_watcher, stop_periodic_sync
         stop_periodic_sync()

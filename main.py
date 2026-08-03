@@ -1403,6 +1403,16 @@ if __name__ == '__main__':
 
     threading.Thread(target=_run_install_sync, daemon=True).start()
 
+    def _run_emulator_sync():
+        try:
+            from emulators import sync_emulated_install_status
+            changed = sync_emulated_install_status()
+            log.info(f"Emulated game install status synced on startup: {changed} changed")
+        except Exception as e:
+            log.warning(f"Startup emulated install sync failed: {e}")
+
+    threading.Thread(target=_run_emulator_sync, daemon=True).start()
+
     # 2c. Sync recent playtime from Steam API in background, then fetch any
     #     unfetched HLTB data and migrate store release dates silently in the same thread.
     def _run_playtime_sync():

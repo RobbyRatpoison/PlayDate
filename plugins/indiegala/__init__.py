@@ -20,6 +20,10 @@ class IndieGalaPlugin:
         sync_indiegala_install_status()
         start_indiegala_watcher(get_games_dir())
 
+    def resync_installed(self):
+        from .indiegala import sync_indiegala_install_status
+        sync_indiegala_install_status()
+
     def on_shutdown(self):
         from .watcher import stop_indiegala_watcher
         stop_indiegala_watcher()

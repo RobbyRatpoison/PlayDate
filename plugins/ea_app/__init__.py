@@ -85,6 +85,10 @@ class EAAppPlugin:
             if install_data_dir:
                 start_ea_watcher(install_data_dir)
 
+    def resync_installed(self):
+        from .watcher import sync_ea_install_status
+        sync_ea_install_status()
+
     def on_shutdown(self):
         from .watcher import stop_periodic_sync, stop_ea_watcher
         stop_periodic_sync()

@@ -20,6 +20,10 @@ class HumblePlugin:
         sync_humble_install_status()
         start_humble_watcher(HUMBLE_DOWNLOAD_DIR)
 
+    def resync_installed(self):
+        from .watcher import sync_humble_install_status
+        sync_humble_install_status()
+
     def on_shutdown(self):
         from .watcher import stop_humble_watcher
         stop_humble_watcher()

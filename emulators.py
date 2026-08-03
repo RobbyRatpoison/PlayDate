@@ -808,6 +808,63 @@ def is_emulation_platform(platform_id: str) -> bool:
     return platform_id in PLATFORM_NAMES
 
 
+def sync_emulated_install_status() -> int:
+    """
+    Re-verify `installed` for every emulated game by checking its ROM file
+    (stored as platform_id) still exists on disk. Unlike Steam/plugin installs,
+    nothing else ever re-checks this after the initial scan -- a deleted or
+    moved ROM leaves the game showing installed forever otherwise, and a
+    cross-machine backup restore is the most common way for every ROM path to
+    go stale at once. Returns the number of rows whose flag changed.
+    """
+    from database import get_db
+    if not PLATFORM_NAMES:
+        return 0
+    db = get_db()
+    placeholders = ','.join('?' * len(PLATFORM_NAMES))
+    rows = db.execute(
+        f"SELECT appid, platform_id, installed FROM games WHERE platform IN ({placeholders})",
+        list(PLATFORM_NAMES.keys()),
+    ).fetchall()
+    changed = 0
+    for row in rows:
+        rom_path = row['platform_id'] or ''
+        now_installed = 1 if (rom_path and os.path.isfile(rom_path)) else 0
+        if row['installed'] != now_installed:
+            db.execute("UPDATE games SET installed = ? WHERE appid = ?", (now_installed, row['appid']))
+            changed += 1
+    db.commit()
+    db.close()
+    return changed
+
+
+def resync_emulator_binaries() -> bool:
+    """
+    Re-detect any configured emulator binary that no longer exists at its
+    stored path (e.g. after a cross-machine restore, or the binary was moved/
+    reinstalled elsewhere). Only applies to known emulators -- custom ones have
+    no registry entry to re-detect from, so a stale custom binary is left as-is
+    for the user to fix manually rather than silently blanked. Returns whether
+    any entry was updated.
+    """
+    entries = load_emulators()
+    changed = False
+    for entry in entries:
+        binary = entry.get('binary', '')
+        if binary and os.path.isfile(binary) and os.access(binary, os.X_OK):
+            continue
+        if entry.get('custom'):
+            continue
+        redetected = auto_detect_binary(entry['id'])
+        if redetected and redetected != binary:
+            entry['binary'] = redetected
+            changed = True
+            log.info(f"emulators: re-detected binary for {entry['id']}: {redetected}")
+    if changed:
+        _save_emulators(entries)
+    return changed
+
+
 def launch_game(appid: int) -> dict:
     from database import get_db
     db  = get_db()
