@@ -8,7 +8,7 @@ Plugins add non-Steam library sources (GOG, Epic, EA App, etc.) to PlayDate. Not
 
 Users can install plugins four ways:
 
-1. **Plugins modal → Official Plugins** (hamburger menu → Plugins) — one-click install for PlayDate's own first-party plugins, listed automatically whenever one isn't currently installed (`GET /api/plugins/official`).
+1. **Plugins modal → Plugin Catalog** (hamburger menu → Plugins) — one-click install for PlayDate's own first-party plugins (`plugins.OFFICIAL_PLUGINS`) and unfinished/experimental ones (`plugins.BETA_PLUGINS`), listed automatically whenever one isn't currently installed (`GET /api/plugins/catalog`). Grouped into expandable Working / Untested / Broken sections based on each entry's `platform_status` for whatever OS PlayDate is actually running on right now — not a full cross-platform matrix, just "is this worth trying on my system."
 2. **Plugins modal → Install from Zip** — select a `.zip` file; the server validates it, extracts it to the writable plugins directory (see above), and prompts for restart.
 3. **Plugins modal → Install from GitHub** — paste a GitHub repo URL (`github.com/owner/repo` or `owner/repo`); PlayDate fetches the latest release zip and installs it the same way.
 4. **Manual drop** — copy the plugin folder directly into the writable plugins directory and restart.

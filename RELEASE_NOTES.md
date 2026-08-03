@@ -4,7 +4,9 @@
 ### New
 
 - "Open Store Page" in the right-click menu now supports non-Steam games.
-- GOG, EA App, Epic Games, Humble Bundle, IndieGala, and itch.io are no longer bundled with PlayDate -- they install automatically if you already had one set up, or via the new "Official Plugins" list in Plugins settings otherwise.
+- GOG, EA App, Epic Games, Humble Bundle, IndieGala, and itch.io are no longer bundled with PlayDate -- they install automatically if you already had one set up, or via the new Plugin Catalog in Plugins settings otherwise.
+- Ubisoft Connect, Amazon Games, Battle.net, and Rockstar Games are now available as beta plugins from the Plugin Catalog -- unfinished and not confirmed working everywhere, but feedback (especially from Windows users) is welcome.
+- The Plugin Catalog now shows whether each plugin is known to work, untested, or broken on your OS.
 
 ### Fixes
 

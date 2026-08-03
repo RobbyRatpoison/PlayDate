@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 
 from flask import Blueprint, jsonify, request
@@ -31,14 +32,50 @@ _incompatible_plugins: dict = {}
 # third-party plugin uses. This is what makes "uninstall" actually stick
 # across a PlayDate update: there's no bundled copy left for an update to
 # silently reintroduce.
+
+# platform_status: {windows, linux, mac} -> 'working' | 'untested' | 'broken'.
+# 'working' means confirmed by real reports (this session's own Linux testing,
+# or user reports for Windows) -- not "should work in theory". Kept here as
+# the canonical source core reads for catalog display, mirrored into each
+# plugin's own plugin.json for anyone browsing that repo directly.
 OFFICIAL_PLUGINS = [
-    {'id': 'ea_app',     'name': 'EA App',        'source': 'RobbyRatpoison/playdate-plugin-ea-app'},
-    {'id': 'epic_games', 'name': 'Epic Games',    'source': 'RobbyRatpoison/playdate-plugin-epic-games'},
-    {'id': 'gog',        'name': 'GOG',           'source': 'RobbyRatpoison/playdate-plugin-gog'},
-    {'id': 'humble',     'name': 'Humble Bundle', 'source': 'RobbyRatpoison/playdate-plugin-humble'},
-    {'id': 'indiegala',  'name': 'IndieGala',     'source': 'RobbyRatpoison/playdate-plugin-indiegala'},
-    {'id': 'itch_io',    'name': 'itch.io',       'source': 'RobbyRatpoison/playdate-plugin-itch-io'},
+    {'id': 'ea_app',     'name': 'EA App',        'source': 'RobbyRatpoison/playdate-plugin-ea-app',
+     'platform_status': {'windows': 'untested', 'linux': 'broken',  'mac': 'untested'}},
+    {'id': 'epic_games', 'name': 'Epic Games',    'source': 'RobbyRatpoison/playdate-plugin-epic-games',
+     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'}},
+    {'id': 'gog',        'name': 'GOG',           'source': 'RobbyRatpoison/playdate-plugin-gog',
+     'platform_status': {'windows': 'working',  'linux': 'working', 'mac': 'untested'}},
+    {'id': 'humble',     'name': 'Humble Bundle', 'source': 'RobbyRatpoison/playdate-plugin-humble',
+     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'}},
+    {'id': 'indiegala',  'name': 'IndieGala',     'source': 'RobbyRatpoison/playdate-plugin-indiegala',
+     'platform_status': {'windows': 'working',  'linux': 'working', 'mac': 'untested'}},
+    {'id': 'itch_io',    'name': 'itch.io',       'source': 'RobbyRatpoison/playdate-plugin-itch-io',
+     'platform_status': {'windows': 'working',  'linux': 'working', 'mac': 'untested'}},
 ]
+
+# Unfinished/unconfirmed plugins -- never auto-reinstalled by
+# reinstall_configured_official_plugins() regardless of saved config, since
+# even a partial config attempt on something this unproven isn't a reliable
+# "the user wants this back" signal the way it is for OFFICIAL_PLUGINS. Purely
+# opt-in via the catalog, same install mechanism as everything else.
+BETA_PLUGINS = [
+    {'id': 'ubisoft',      'name': 'Ubisoft Connect', 'source': 'RobbyRatpoison/playdate-plugin-ubisoft',
+     'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
+    {'id': 'amazon_games', 'name': 'Amazon Games',    'source': 'RobbyRatpoison/playdate-plugin-amazon-games',
+     'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
+    {'id': 'battle_net',   'name': 'Battle.net',      'source': 'RobbyRatpoison/playdate-plugin-battle-net',
+     'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
+    {'id': 'rockstar',     'name': 'Rockstar Games',  'source': 'RobbyRatpoison/playdate-plugin-rockstar',
+     'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
+]
+
+
+def _current_platform_key() -> str:
+    if sys.platform == 'win32':
+        return 'windows'
+    if sys.platform == 'darwin':
+        return 'mac'
+    return 'linux'
 
 
 def _user_plugins_dir() -> str:
@@ -491,17 +528,34 @@ def list_incompatible_plugins():
     db.close()
     return jsonify(result)
 
-@plugins_bp.route('/api/plugins/official')
-def list_official_plugins():
+@plugins_bp.route('/api/plugins/catalog')
+def list_plugin_catalog():
     """
-    OFFICIAL_PLUGINS entries not currently loaded -- lets the Plugins modal
-    offer a one-click install for someone trying one for the first time.
-    This is separate from reinstall_configured_official_plugins() (which
-    only runs automatically at startup, and only for a plugin with evidence
-    of prior configuration): that covers "Flatpak wiped something you
-    already had," this covers "I've never used this and want to try it."
+    Every OFFICIAL_PLUGINS + BETA_PLUGINS entry not currently loaded, each
+    tagged with its status for the platform PlayDate is actually running on
+    right now (not a full cross-platform matrix -- just "is this worth
+    trying on my system") -- lets the Plugins modal offer a one-click install
+    for anything not yet set up, bucketed by status rather than by
+    official/beta origin (still returned as `beta` so the UI can show that
+    distinction too if useful). Separate from
+    reinstall_configured_official_plugins() (which only runs automatically
+    at startup, and only for an OFFICIAL_PLUGINS entry with evidence of
+    prior configuration): that covers "Flatpak wiped something you already
+    had," this covers "I've never used this and want to try it."
     """
-    return jsonify([e for e in OFFICIAL_PLUGINS if not has(e['id'])])
+    platform_key = _current_platform_key()
+    result = []
+    for entry in OFFICIAL_PLUGINS + BETA_PLUGINS:
+        if has(entry['id']):
+            continue
+        result.append({
+            'id':     entry['id'],
+            'name':   entry['name'],
+            'source': entry['source'],
+            'beta':   entry in BETA_PLUGINS,
+            'status': entry.get('platform_status', {}).get(platform_key, 'untested'),
+        })
+    return jsonify({'platform': platform_key, 'plugins': result})
 
 @plugins_bp.route('/api/plugins/install', methods=['POST'])
 def install_plugin():

@@ -1,8 +1,16 @@
 """Plugin storage-split logic (plugins._migrate_legacy_plugin_dirs,
-_plugin_was_configured, _plugin_on_disk, OFFICIAL_PLUGINS) -- pure
-filesystem and dict logic, no Flask app, DB, or network involved."""
+_plugin_was_configured, _plugin_on_disk, OFFICIAL_PLUGINS, BETA_PLUGINS,
+_current_platform_key) -- pure filesystem and dict logic, no Flask app, DB,
+or network involved."""
+import sys
+
+import pytest
+
 import config
 import plugins
+
+_VALID_STATUSES = {'working', 'untested', 'broken'}
+_VALID_PLATFORM_KEYS = {'windows', 'linux', 'mac'}
 
 
 def _make_plugin_dir(base, plugin_id, extra_files=None):
@@ -117,19 +125,55 @@ class TestPluginOnDisk:
         assert plugins._plugin_on_disk('zzz_test_definitely_not_a_real_plugin') is False
 
 
-class TestOfficialPluginsRegistry:
-    def test_every_entry_has_required_fields(self):
-        for entry in plugins.OFFICIAL_PLUGINS:
+@pytest.mark.parametrize("registry_name", ["OFFICIAL_PLUGINS", "BETA_PLUGINS"])
+class TestPluginRegistries:
+    def test_every_entry_has_required_fields(self, registry_name):
+        for entry in getattr(plugins, registry_name):
             assert entry.get('id')
             assert entry.get('name')
             assert entry.get('source')
 
-    def test_ids_are_unique(self):
-        ids = [e['id'] for e in plugins.OFFICIAL_PLUGINS]
+    def test_ids_are_unique(self, registry_name):
+        ids = [e['id'] for e in getattr(plugins, registry_name)]
         assert len(ids) == len(set(ids))
 
-    def test_sources_are_owner_slash_repo(self):
-        for entry in plugins.OFFICIAL_PLUGINS:
+    def test_sources_are_owner_slash_repo(self, registry_name):
+        for entry in getattr(plugins, registry_name):
             assert entry['source'].count('/') == 1
             owner, repo = entry['source'].split('/')
             assert owner and repo
+
+    def test_platform_status_covers_all_three_platforms_with_valid_values(self, registry_name):
+        for entry in getattr(plugins, registry_name):
+            status = entry.get('platform_status')
+            assert status, f"{entry['id']} has no platform_status"
+            assert set(status.keys()) == _VALID_PLATFORM_KEYS
+            for value in status.values():
+                assert value in _VALID_STATUSES
+
+
+class TestPluginRegistriesDontOverlap:
+    def test_no_id_appears_in_both_registries(self):
+        official_ids = {e['id'] for e in plugins.OFFICIAL_PLUGINS}
+        beta_ids = {e['id'] for e in plugins.BETA_PLUGINS}
+        assert not (official_ids & beta_ids)
+
+
+class TestCurrentPlatformKey:
+    def test_windows(self, monkeypatch):
+        monkeypatch.setattr(sys, 'platform', 'win32')
+        assert plugins._current_platform_key() == 'windows'
+
+    def test_mac(self, monkeypatch):
+        monkeypatch.setattr(sys, 'platform', 'darwin')
+        assert plugins._current_platform_key() == 'mac'
+
+    def test_linux(self, monkeypatch):
+        monkeypatch.setattr(sys, 'platform', 'linux')
+        assert plugins._current_platform_key() == 'linux'
+
+    def test_unknown_platform_falls_back_to_linux(self, monkeypatch):
+        # e.g. one of the BSDs -- better to assume the more Linux-like
+        # behavior than to crash on an unrecognized sys.platform value.
+        monkeypatch.setattr(sys, 'platform', 'freebsd13')
+        assert plugins._current_platform_key() == 'linux'

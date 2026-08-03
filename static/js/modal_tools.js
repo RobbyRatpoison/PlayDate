@@ -4016,7 +4016,7 @@ ${oauthHtml}`;
 function openPluginsModal() {
     document.getElementById('plugins-modal').style.display = 'flex';
     _renderPluginsList().then(() => _checkPluginUpdates());
-    _renderOfficialPluginsList();
+    _renderPluginCatalog();
 }
 function closePluginsModal() {
     document.getElementById('plugins-modal').style.display = 'none';
@@ -4151,30 +4151,72 @@ async function _renderPluginsList() {
 // produce (plugins.length + incompatible.length + 2, realistically single
 // digits) -- this section always renders below that list, so a fixed high
 // offset keeps gamepad nav order correct without coordinating live counts
-// between two independently-rendered sections.
-const OFFICIAL_PLUGIN_ROW_BASE = 100;
+// between two independently-rendered sections. Assigned sequentially
+// top-to-bottom (section headers included) as the catalog is built, so
+// nav order always matches visual order regardless of which sections have
+// anything in them this time.
+const CATALOG_ROW_BASE = 100;
+const CATALOG_STATUS_LABELS = {working: 'Working', untested: 'Untested', broken: 'Broken'};
+const CATALOG_PLATFORM_LABELS = {windows: 'Windows', linux: 'Linux', mac: 'Mac'};
+// Which buckets start expanded -- Working is the actionable one, Untested/
+// Broken stay tucked away since most users won't care to look.
+let _catalogExpanded = {working: true, untested: false, broken: false};
 
-async function _renderOfficialPluginsList() {
-    const section = document.getElementById('official-plugins-section');
-    const list    = document.getElementById('official-plugins-list');
+async function _renderPluginCatalog() {
+    const section = document.getElementById('plugin-catalog-section');
+    const body    = document.getElementById('plugin-catalog-body');
     try {
-        const r = await fetch('/api/plugins/official');
-        const entries = await r.json();
+        const r = await fetch('/api/plugins/catalog');
+        const data = await r.json();
+        const entries = data.plugins || [];
         if (!entries.length) { section.style.display = 'none'; return; }
         section.style.display = '';
-        list.innerHTML = entries.map((e, idx) => `
-            <div class="hub-section" id="official-plugin-row-${escHtml(e.id)}" style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-size:0.9rem;color:var(--text-primary);">${escHtml(e.name)}</div>
-                <button class="nav-btn" style="font-size:0.78rem;flex-shrink:0;margin-left:12px;"
-                        data-modal-row="${OFFICIAL_PLUGIN_ROW_BASE + idx}"
-                        onclick="_installOfficialPlugin('${escHtml(e.source)}',this)">Install</button>
-            </div>`).join('');
+
+        const buckets = {working: [], untested: [], broken: []};
+        for (const p of entries) (buckets[p.status] || buckets.untested).push(p);
+
+        const platformLabel = CATALOG_PLATFORM_LABELS[data.platform] || data.platform;
+        let row = CATALOG_ROW_BASE;
+        let html = `<div class="hub-section-label">Plugin Catalog `
+                  + `<span style="font-weight:normal;color:#8f98a0;">(status shown is for ${escHtml(platformLabel)})</span></div>`;
+
+        for (const key of ['working', 'untested', 'broken']) {
+            const list = buckets[key];
+            if (!list.length) continue;
+            const expanded = _catalogExpanded[key];
+            html += `
+            <div class="hub-section" style="padding:8px 12px;cursor:pointer;" data-modal-row="${row++}"
+                 onclick="_toggleCatalogSection('${key}')">
+                <span id="catalog-toggle-${key}">${expanded ? '▾' : '▸'}</span>
+                ${CATALOG_STATUS_LABELS[key]} (${list.length})
+            </div>
+            <div id="catalog-list-${key}" style="display:${expanded ? '' : 'none'};">`;
+            for (const p of list) {
+                html += `
+                <div class="hub-section" id="catalog-plugin-row-${escHtml(p.id)}" style="display:flex;justify-content:space-between;align-items:center;margin-left:12px;">
+                    <div style="font-size:0.9rem;color:var(--text-primary);">${escHtml(p.name)}${p.beta ? ' <span style="font-size:0.72rem;color:#8f98a0;">(beta)</span>' : ''}</div>
+                    <button class="nav-btn" style="font-size:0.78rem;flex-shrink:0;margin-left:12px;"
+                            data-modal-row="${row++}"
+                            onclick="_installCatalogPlugin('${escHtml(p.source)}',this)">Install</button>
+                </div>`;
+            }
+            html += `</div>`;
+        }
+        body.innerHTML = html;
     } catch (e) {
         section.style.display = 'none';
     }
 }
 
-async function _installOfficialPlugin(source, btn) {
+function _toggleCatalogSection(key) {
+    _catalogExpanded[key] = !_catalogExpanded[key];
+    const list   = document.getElementById(`catalog-list-${key}`);
+    const toggle = document.getElementById(`catalog-toggle-${key}`);
+    if (list)   list.style.display = _catalogExpanded[key] ? '' : 'none';
+    if (toggle) toggle.textContent = _catalogExpanded[key] ? '▾' : '▸';
+}
+
+async function _installCatalogPlugin(source, btn) {
     btn.disabled = true;
     btn.textContent = 'Installing...';
     try {
