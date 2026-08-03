@@ -4,6 +4,7 @@
     "version": "1.0.0",
     "platform": "indiegala",
     "author": "RobbyRatpoison",
+    "source": "github:RobbyRatpoison/playdate-plugin-indiegala",
     "launcher": {
         "required": false
     }

@@ -4,6 +4,7 @@
     "version": "1.0.0",
     "platform": "humble",
     "author": "RobbyRatpoison",
+    "source": "github:RobbyRatpoison/playdate-plugin-humble",
     "launcher": {
         "required": false
     }
