@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.7.0
+## v1.7.0 - 2026-08-03
 ### New
 
 - "Open Store Page" in the right-click menu now supports non-Steam games.
