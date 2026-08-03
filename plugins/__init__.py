@@ -38,6 +38,13 @@ _incompatible_plugins: dict = {}
 # or user reports for Windows) -- not "should work in theory". Kept here as
 # the canonical source core reads for catalog display, mirrored into each
 # plugin's own plugin.json for anyone browsing that repo directly.
+#
+# notes: optional {windows, linux, mac} -> str, shown alongside the status in
+# the Plugin Catalog to explain *why* an untested/broken entry is in that
+# state (root cause, what's known not to work) instead of just the bare
+# label. Not every platform needs an entry; omitted = no note shown. Only
+# lives here -- not mirrored into plugin.json, since it's catalog-display
+# detail rather than something a plugin author browsing that repo needs.
 OFFICIAL_PLUGINS = [
     {'id': 'ea_app',     'name': 'EA App',        'source': 'RobbyRatpoison/playdate-plugin-ea-app',
      'platform_status': {'windows': 'untested', 'linux': 'broken',  'mac': 'untested'}},
@@ -554,6 +561,7 @@ def list_plugin_catalog():
             'source': entry['source'],
             'beta':   entry in BETA_PLUGINS,
             'status': entry.get('platform_status', {}).get(platform_key, 'untested'),
+            'note':   entry.get('notes', {}).get(platform_key),
         })
     return jsonify({'platform': platform_key, 'plugins': result})
 

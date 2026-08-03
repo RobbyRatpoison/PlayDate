@@ -4398,7 +4398,10 @@ async function _renderPluginCatalog() {
             for (const p of list) {
                 html += `
                 <div class="hub-section" id="catalog-plugin-row-${escHtml(p.id)}" style="display:flex;justify-content:space-between;align-items:center;margin-left:12px;">
-                    <div style="font-size:0.9rem;color:var(--text-primary);">${escHtml(p.name)}${p.beta ? ' <span style="font-size:0.72rem;color:#8f98a0;">(beta)</span>' : ''}</div>
+                    <div>
+                        <div style="font-size:0.9rem;color:var(--text-primary);">${escHtml(p.name)}${p.beta ? ' <span style="font-size:0.72rem;color:#8f98a0;">(beta)</span>' : ''}</div>
+                        ${p.note ? `<div style="font-size:0.75rem;color:#8f98a0;margin-top:2px;">${escHtml(p.note)}</div>` : ''}
+                    </div>
                     <button class="nav-btn" style="font-size:0.78rem;flex-shrink:0;margin-left:12px;"
                             data-modal-row="${row++}"
                             onclick="_installCatalogPlugin('${escHtml(p.source)}',this)">Install</button>
