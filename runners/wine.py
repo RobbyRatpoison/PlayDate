@@ -236,7 +236,7 @@ def create_prefix(prefix_path, wine_bin=None):
     )
 
 
-def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None):
+def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None, cwd=None):
     """
     Launch a Windows executable inside a Wine prefix.
 
@@ -245,6 +245,11 @@ def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None):
     args        : list of extra arguments to pass to the executable
     wine_bin    : path to the wine binary; auto-detected if None
     env_extra   : dict of additional environment variables
+    cwd         : working directory for the process; defaults to the exe's
+                  own directory (what a real launcher does -- confirmed live
+                  that omitting this breaks a real game, which failed to
+                  find its own relative-path data files when the process
+                  inherited PlayDate's cwd instead)
 
     Returns a subprocess.Popen object (caller should not wait -- game runs in background).
     Raises RuntimeError if no Wine binary is available.
@@ -258,10 +263,12 @@ def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None):
     env['WINEPREFIX'] = prefix_path
     if env_extra:
         env.update(env_extra)
+    if cwd is None:
+        cwd = os.path.dirname(exe)
 
     cmd = [wine_bin, exe] + (args or [])
-    log.info(f'Wine launch: {wine_bin} {exe}  (prefix={prefix_path})')
-    return host_popen(cmd, env=env)
+    log.info(f'Wine launch: {wine_bin} {exe}  (prefix={prefix_path}, cwd={cwd})')
+    return host_popen(cmd, env=env, cwd=cwd)
 
 
 def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None):
