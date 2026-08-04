@@ -4557,9 +4557,11 @@ async function _checkPluginUpdates() {
         const r = await fetch('/api/plugins/check-updates');
         const updates = await r.json();
         let anyUpdate = false;
+        window._pendingPluginUpdates = [];
         for (const u of updates) {
             if (u.update_available) {
                 anyUpdate = true;
+                window._pendingPluginUpdates.push({ id: u.id, source: u.source, latest_version: u.latest_version });
                 const el = document.getElementById(`plugin-update-${u.id}`);
                 if (el) el.innerHTML = ` &middot; <a href="#" style="color:var(--accent);" onclick="event.preventDefault();_updatePlugin('${escHtml(u.id)}','${escHtml(u.source || '')}')">v${escHtml(u.latest_version)} available</a>`;
             }

@@ -260,8 +260,10 @@
         <div style="background:#1a2332;border:1px solid #2a475e;border-radius:0.625rem;padding:1.75rem 2rem 1.5rem;max-width:27.5rem;width:90vw;box-shadow:0 12px 40px rgba(0,0,0,0.6);">
             <div id="update-confirm-title" style="color:#c7d5e0;font-size:1rem;font-weight:bold;margin:0 0 10px;"></div>
             <div id="update-confirm-backup-hint" style="color:#8f98a0;font-size:0.85rem;line-height:1.6;margin:0 0 22px;">If you haven't backed up recently, it's a good idea to do so before updating - just in case.</div>
+            <div id="update-confirm-plugins-hint" style="display:none;color:#8f98a0;font-size:0.8rem;line-height:1.5;margin:-10px 0 16px;"></div>
             <div style="display:flex;gap:0.625rem;justify-content:center;flex-wrap:wrap;">
                 <button id="update-confirm-backup-btn" data-modal-row="0" onclick="_closeUpdateConfirm();openBackupModal()" style="padding:0.5rem 1.2rem;border-radius:0.375rem;font-size:0.85rem;font-weight:bold;cursor:pointer;letter-spacing:0.04em;background:transparent;color:#c7d5e0;border:1px solid #2a475e;">Back Up First</button>
+                <button id="update-confirm-install-plugins-btn" data-modal-row="0" onclick="_closeUpdateConfirm();_doInstallUpdateWithPlugins()" style="display:none;padding:0.5rem 1.2rem;border-radius:0.375rem;font-size:0.85rem;font-weight:bold;cursor:pointer;letter-spacing:0.04em;background:var(--accent);color:#0e1621;border:1px solid var(--accent);">Update PlayDate & Plugins</button>
                 <button id="update-confirm-install-btn" data-modal-row="0" onclick="_closeUpdateConfirm();_doInstallUpdate()" style="padding:0.5rem 1.2rem;border-radius:0.375rem;font-size:0.85rem;font-weight:bold;cursor:pointer;letter-spacing:0.04em;background:var(--accent);color:#0e1621;border:1px solid var(--accent);">Install Now</button>
             </div>
             <div style="text-align:center;margin-top:14px;"><button data-modal-row="1" onclick="_closeUpdateConfirm()" style="background:none;border:none;color:#8f98a0;font-size:0.8rem;cursor:pointer;">Cancel</button></div>
@@ -831,8 +833,37 @@
             document.getElementById('update-confirm-overlay').style.display = 'none';
         }
 
+        async function _doInstallUpdateWithPlugins() {
+            const pending = window._pendingPluginUpdates || [];
+            document.body.innerHTML = '<div id="update-overlay" style="color:#c7d5e0;text-align:center;margin-top:20%;font-family:sans-serif;font-size:1.2rem;"><div id="plugin-update-progress"></div></div>';
+            const progress = document.getElementById('plugin-update-progress');
+            const lines = pending.map(p => `${p.id}: waiting…`);
+            const render = () => { progress.innerHTML = lines.join('<br>'); };
+            render();
+            for (let i = 0; i < pending.length; i++) {
+                const p = pending[i];
+                lines[i] = `${p.id}: updating…`;
+                render();
+                try {
+                    const res  = await fetch('/api/plugins/install-from-github', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: (p.source || '').replace('github:', '') }),
+                    });
+                    const data = await res.json();
+                    lines[i] = data.status === 'success' ? `${p.id}: updated to v${p.latest_version}` : `${p.id}: failed (${data.message || 'unknown error'})`;
+                } catch (e) {
+                    lines[i] = `${p.id}: failed (network error)`;
+                }
+                render();
+            }
+            await new Promise(r => setTimeout(r, 800)); // let the last line be readable before the takeover switches to the core update
+            await _doInstallUpdate();
+        }
+
         async function _doInstallUpdate() {
-            document.getElementById('update-check-label').textContent = 'Updating\u2026';
+            const label = document.getElementById('update-check-label');
+            if (label) label.textContent = 'Updating\u2026';
             await fetch('/api/perform-update', { method: 'POST' }).catch(() => {});
             document.body.innerHTML = '<div id="update-overlay" style="color:#c7d5e0;text-align:center;margin-top:20%;font-family:sans-serif;font-size:1.2rem;">Downloading update\u2026<br><small>PlayDate will restart shortly.</small></div>';
             const _dlPoll = setInterval(async () => {
@@ -861,6 +892,7 @@
             try {
                 const resp = await fetch('/api/check-update', { method: 'POST' });
                 const data = await resp.json();
+                if (typeof _checkPluginUpdates === 'function') _checkPluginUpdates();
                 if (data.update_available) {
                     _setUpdateAvailable(data.latest_version, data.is_portable);
                     status.textContent = '';
@@ -910,6 +942,23 @@
                 document.getElementById('update-confirm-backup-hint').textContent = recentBackup
                     ? "You've already backed up recently, so you're good to install."
                     : "If you haven't backed up recently, it's a good idea to do so before updating - just in case.";
+
+                const pendingPlugins = window._pendingPluginUpdates || [];
+                const pluginsBtn  = document.getElementById('update-confirm-install-plugins-btn');
+                const installBtn  = document.getElementById('update-confirm-install-btn');
+                const pluginsHint = document.getElementById('update-confirm-plugins-hint');
+                if (pendingPlugins.length > 0) {
+                    pluginsBtn.style.display = '';
+                    installBtn.textContent = 'Update PlayDate Only';
+                    pluginsHint.style.display = '';
+                    pluginsHint.textContent = 'Also available: ' + pendingPlugins.map(p => `${p.id} v${p.latest_version}`).join(', ');
+                } else {
+                    pluginsBtn.style.display = 'none';
+                    installBtn.textContent = 'Install Now';
+                    pluginsHint.style.display = 'none';
+                    pluginsHint.textContent = '';
+                }
+
                 document.getElementById('update-confirm-overlay').style.display = 'flex';
             } else {
                 await _runUpdateCheck();
@@ -961,6 +1010,9 @@
                 _betaUpdates = data.beta_updates;
                 _updateBetaLabel();
                 if (data.is_portable) { _isPortable = true; }
+                // Plugin updates are checked alongside the core check rather than on
+                // their own separate timer -- one combined "check for updates" concept.
+                if (typeof _checkPluginUpdates === 'function') _checkPluginUpdates();
                 if (data.update_available) { _setUpdateAvailable(data.latest_version, data.is_portable); return; }
                 // Startup check runs after 5s — poll until it completes
                 if (!data.checked) {
@@ -977,9 +1029,6 @@
                 }
             } catch (e) {}
         })();
-
-        // Check for plugin updates in the background on startup
-        setTimeout(() => { if (typeof _checkPluginUpdates === 'function') _checkPluginUpdates(); }, 15000);
 
         document.addEventListener('keydown', e => {
             if (e.key === 'F11') {
