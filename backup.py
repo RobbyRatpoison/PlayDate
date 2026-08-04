@@ -3,6 +3,8 @@ CSV library export. Restore runs in a background thread and is polled —
 see CLAUDE.md's feedback on Flatpak portal-path timeouts for why."""
 import logging
 import os
+import sqlite3
+import tempfile
 import threading
 import time
 
@@ -196,7 +198,19 @@ def _fill_backup_zip(zf, include_art):
         if os.path.exists(filepath):
             zf.write(filepath, arcname)
     for db_path in _glob.glob(os.path.join(BASE_DIR, 'games_*.db')):
-        zf.write(db_path, os.path.basename(db_path))
+        # VACUUM INTO runs inside its own read transaction against the live
+        # db, so it produces a transactionally consistent copy regardless of
+        # concurrent writers -- unlike a raw zf.write() of the live file,
+        # which could capture a torn mid-transaction snapshot.
+        tmp_path = tempfile.mktemp(suffix='.db')
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("VACUUM INTO ?", (tmp_path,))
+            conn.close()
+            zf.write(tmp_path, os.path.basename(db_path))
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
     for gs_path in _glob.glob(os.path.join(BASE_DIR, 'group_sources_*.json')):
         zf.write(gs_path, os.path.basename(gs_path))
     if include_art:

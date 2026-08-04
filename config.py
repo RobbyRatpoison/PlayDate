@@ -147,6 +147,12 @@ def load_theme():
             pass
     return theme
 
+def _write_theme_atomic(data):
+    tmp = THEME_PATH + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(data, f, indent=4)
+    os.replace(tmp, THEME_PATH)
+
 def save_theme(vars_dict):
     clean = {k: v for k, v in vars_dict.items() if k in DEFAULT_THEME}
     # Preserve any saved themes already in the file
@@ -160,8 +166,7 @@ def save_theme(vars_dict):
             pass
     if saved:
         clean['_saved'] = saved
-    with open(THEME_PATH, 'w') as f:
-        json.dump(clean, f, indent=4)
+    _write_theme_atomic(clean)
 
 def load_saved_themes():
     if not os.path.exists(THEME_PATH):
@@ -180,16 +185,14 @@ def save_named_theme(name, vars_dict):
     # Re-save the whole file preserving active theme
     active = load_theme()
     active['_saved'] = saved
-    with open(THEME_PATH, 'w') as f:
-        json.dump(active, f, indent=4)
+    _write_theme_atomic(active)
 
 def delete_named_theme(name):
     saved = load_saved_themes()
     saved.pop(name, None)
     active = load_theme()
     active['_saved'] = saved
-    with open(THEME_PATH, 'w') as f:
-        json.dump(active, f, indent=4)
+    _write_theme_atomic(active)
 
 def rename_named_theme(old_name, new_name):
     saved = load_saved_themes()
@@ -198,8 +201,7 @@ def rename_named_theme(old_name, new_name):
     saved[new_name] = saved.pop(old_name)
     active = load_theme()
     active['_saved'] = saved
-    with open(THEME_PATH, 'w') as f:
-        json.dump(active, f, indent=4)
+    _write_theme_atomic(active)
     return True
 
 def _cond(column, value):
@@ -482,8 +484,10 @@ def is_configured():
     return os.path.exists(CONFIG_PATH)
 
 def _save_config_data(data):
-    with open(CONFIG_PATH, 'w') as f:
+    tmp = CONFIG_PATH + '.tmp'
+    with open(tmp, 'w') as f:
         json.dump(data, f, indent=4)
+    os.replace(tmp, CONFIG_PATH)
 
 def get_active_account():
     """Returns the active account dict {steam_id, api_key, label}, or None."""
@@ -984,8 +988,7 @@ def post_theme():
             os.remove(THEME_PATH)
         # Re-write saved themes if any existed
         if saved:
-            with open(THEME_PATH, 'w') as f:
-                json.dump({'_saved': saved}, f, indent=4)
+            _write_theme_atomic({'_saved': saved})
         return jsonify({"status": "success", "theme": dict(DEFAULT_THEME)})
     vars_dict = data.get('theme', {})
     if not vars_dict:

@@ -28,15 +28,22 @@ def save_as_jpg(image_bytes, save_path):
     Converts any image format (PNG, WEBP, etc.) to JPG and saves it.
     Creates parent directories if needed. Returns True on success, False on failure.
     """
+    tmp_path = save_path + '.tmp'
     try:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         img = Image.open(io.BytesIO(image_bytes))
         if img.mode in ('RGBA', 'P', 'LA'):
             img = img.convert('RGB')
-        img.save(save_path, 'JPEG', quality=95)
+        img.save(tmp_path, 'JPEG', quality=95)
+        os.replace(tmp_path, save_path)
         return True
     except Exception as e:
         log.warning(f"save_as_jpg: conversion failed: {e}")
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
         return False
 
 

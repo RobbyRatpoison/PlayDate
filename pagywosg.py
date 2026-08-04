@@ -1045,8 +1045,10 @@ def santa_gifts():
                     pass
             validated.append(entry)
         try:
-            with open(path, 'w', encoding='utf-8') as f:
+            tmp = path + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
                 json.dump(validated, f, indent=2, ensure_ascii=False)
+            os.replace(tmp, path)
         except Exception as e:
             log.error('Failed to save gifts: %s', e)
             return jsonify({'status': 'error', 'message': 'Failed to save gifts'}), 500

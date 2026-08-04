@@ -97,8 +97,10 @@ def load_emulators() -> list:
 
 
 def _save_emulators(emulators: list):
-    with open(EMULATORS_FILE, 'w', encoding='utf-8') as f:
+    tmp = EMULATORS_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
         json.dump(emulators, f, indent=2)
+    os.replace(tmp, EMULATORS_FILE)
 
 
 def _get_entry(emu_id: str) -> dict | None:
