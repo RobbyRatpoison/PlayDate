@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.7.2
+## v1.7.2 - 2026-08-04
 ### New
 
 - Checking for PlayDate updates now also checks for plugin updates at the same time. If a plugin update is available when you go to install a PlayDate update, you can choose to update PlayDate and plugins together, or PlayDate alone.
