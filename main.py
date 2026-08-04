@@ -5,6 +5,7 @@ Uses pywebview (native OS webview, no browser required) + waitress (production W
 
 import logging
 import os
+import socket
 import sys
 import threading
 import time
@@ -226,6 +227,29 @@ def _run_flask(flask_app):
     from waitress import serve
     log.info(f"Starting waitress on {HOST}:{PORT}")
     serve(flask_app, host=HOST, port=PORT, threads=8, _quiet=True)
+
+def _port_in_use(host, port):
+    """Pre-flight check: is something already bound to our port? Used to
+    detect an already-running PlayDate instance before we start our own
+    server -- without this, a second launch's own waitress bind silently
+    fails while the app carries on regardless, ending up as a second window
+    riding on the *first* instance's server instead of a real second copy.
+
+    SO_REUSEADDR matters here: right after a previous instance exits, the
+    port can sit in TIME_WAIT for a while even though nothing is actually
+    listening on it anymore. Without this flag a plain bind() treats that
+    lingering TIME_WAIT the same as a real live listener and reports a false
+    "already running" on a completely normal restart -- confirmed live,
+    this happened on the very first test of this check."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind((host, port))
+        return False
+    except OSError:
+        return True
+    finally:
+        s.close()
 
 # ── GTK icon patch (Linux only) ───────────────────────────────────────────────
 def _fix_window_role_and_icon(window):
@@ -1358,6 +1382,29 @@ def _seed_flatpak_data_files():
 
 
 if __name__ == '__main__':
+    # 0. Refuse to start a second instance -- otherwise our own waitress bind
+    #    fails silently and this window ends up riding on the other
+    #    instance's server while our independent background threads (syncs,
+    #    migrations) still write to the same db files it might be mid-backup
+    #    on. Checked before anything else touches the DB or starts threads.
+    if _port_in_use(HOST, PORT):
+        log.warning("Another PlayDate instance already has the port — exiting")
+        try:
+            import webview
+            webview.create_window(
+                title="PlayDate",
+                html="<body style='font-family:sans-serif;background:#1b2838;"
+                     "color:#c7d5e0;text-align:center;padding-top:20%;'>"
+                     "PlayDate is already running.<br><small>Look for an "
+                     "existing window — it may be minimized or behind "
+                     "another one.</small></body>",
+                width=420, height=200, resizable=False,
+            )
+            webview.start()
+        except Exception:
+            pass
+        sys.exit(0)
+
     # 1. Create Flask app — pass bundle dir so it finds templates/static
     #    when frozen; falls back to normal behaviour when running as script
     flask_app = create_app(
