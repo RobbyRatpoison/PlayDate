@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.7.1
+## v1.7.1 - 2026-08-03
 ### New
 
 - Blacklist Manager (hamburger menu -> Blacklist) can now scan your Steam library for likely non-games (beta clients, demos, movie entries, etc.) and blacklist or dismiss them in bulk.
