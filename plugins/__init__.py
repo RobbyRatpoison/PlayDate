@@ -251,10 +251,17 @@ def _fetch_github_plugin_release(owner, repo):
     return data.get('zipball_url'), tag
 
 
-def _install_plugin_zip(raw_bytes):
+def _install_plugin_zip(raw_bytes, target_core_version=None):
     """
     Validate and extract a plugin from raw zip bytes.
     Returns (plugin_id, plugin_name). Raises ValueError with a user-facing message on failure.
+
+    target_core_version: compare min_core_version against this instead of
+    the currently-running config.__version__ when given -- used by the
+    "update PlayDate and plugins together" flow, which installs plugin
+    updates *before* the core update actually happens, so the running
+    version at that moment is still the old one even though the user is
+    updating both in the same action.
     """
     import zipfile, io, json as _json
     buf = io.BytesIO(raw_bytes)
@@ -280,6 +287,23 @@ def _install_plugin_zip(raw_bytes):
         plugin_id = manifest.get('id', '').strip()
         if not plugin_id or not plugin_id.replace('_', '').isalnum():
             raise ValueError('Invalid or missing plugin id in plugin.json.')
+
+        # Same gate load_all() applies to what's already on disk, but here --
+        # before any file is written -- so installing/updating to a plugin
+        # version too new for this PlayDate build is rejected outright
+        # instead of silently succeeding and only failing to load on the
+        # next restart (which is what happened with no check here at all:
+        # a user could click "Update", have it report success, and then
+        # lose the plugin entirely next launch with no warning at the
+        # moment they took the action).
+        from config import __version__ as _running_core_version
+        _core_version = target_core_version or _running_core_version
+        min_core = manifest.get('min_core_version')
+        if min_core and _semver(min_core) > _semver(_core_version):
+            raise ValueError(
+                f"{manifest.get('name', plugin_id)} v{manifest.get('version', '?')} "
+                f"requires PlayDate {min_core} or newer (this build is {_core_version})."
+            )
 
         plugins_dir = _user_plugins_dir()
         dest = os.path.join(plugins_dir, plugin_id)
@@ -586,6 +610,7 @@ def install_plugin_from_github():
     import requests as _req
     data = request.get_json(silent=True) or {}
     url = data.get('url', '').strip()
+    target_core_version = (data.get('target_core_version') or '').strip() or None
     if not url:
         return jsonify({'status': 'error', 'message': 'No URL provided.'}), 400
     raw_url = url.removeprefix('github:')
@@ -598,7 +623,7 @@ def install_plugin_from_github():
             return jsonify({'status': 'error', 'message': 'No downloadable zip found in the latest release.'}), 400
         resp = _req.get(zip_url, timeout=60)
         resp.raise_for_status()
-        plugin_id, name = _install_plugin_zip(resp.content)
+        plugin_id, name = _install_plugin_zip(resp.content, target_core_version=target_core_version)
         _plugin_update_cache.pop(plugin_id, None)
         return jsonify({'status': 'success', 'plugin_id': plugin_id, 'name': name, 'tag': tag})
     except ValueError as e:
@@ -625,7 +650,8 @@ def check_plugin_updates():
 
         cached = _plugin_update_cache.get(pid, {})
         if cached.get('checked_at') and (time.time() - cached['checked_at']) < TTL:
-            return {'id': pid, 'source': source, **{k: cached[k] for k in ('update_available', 'latest_version', 'error')}}
+            return {'id': pid, 'source': source,
+                    **{k: cached.get(k) for k in ('update_available', 'latest_version', 'requires_core', 'error')}}
 
         try:
             _, tag = _fetch_github_plugin_release(owner, repo)
@@ -633,14 +659,43 @@ def check_plugin_updates():
             installed = manifest.get('version', '0')
 
             available = _semver(latest) > _semver(installed)
+            requires_core = None
+            if available:
+                # Informational only -- deliberately does NOT clear
+                # `available` here. A plugin needing a newer core version
+                # than what's *currently* running is still a legitimate
+                # update to offer, since the user may update PlayDate
+                # itself in the same action ("update PlayDate and plugins
+                # together"), which installs plugin updates before the
+                # core update actually happens (see _install_plugin_zip's
+                # target_core_version param, which is the real enforcement
+                # point and correctly distinguishes the two cases). This
+                # field just lets the UI show *why* a standalone update
+                # would currently fail, without hiding the option in the
+                # bundled-update case where it wouldn't.
+                import requests as _req
+                from config import __version__ as _core_version
+                try:
+                    raw = _req.get(
+                        f'https://raw.githubusercontent.com/{owner}/{repo}/{tag}/plugin.json',
+                        timeout=8,
+                    )
+                    if raw.status_code == 200:
+                        new_min_core = raw.json().get('min_core_version')
+                        if new_min_core and _semver(new_min_core) > _semver(_core_version):
+                            requires_core = new_min_core
+                except Exception:
+                    pass  # informational only -- fail open on a network hiccup
             entry = {
                 'update_available': available,
                 'latest_version': latest,
+                'requires_core': requires_core,
                 'error': None,
                 'checked_at': time.time(),
             }
             _plugin_update_cache[pid] = entry
-            return {'id': pid, 'source': source, 'update_available': available, 'latest_version': latest, 'error': None}
+            return {'id': pid, 'source': source, 'update_available': available, 'latest_version': latest,
+                    'requires_core': requires_core, 'error': None}
         except Exception as e:
             entry = {'update_available': False, 'latest_version': None, 'error': str(e), 'checked_at': time.time()}
             _plugin_update_cache[pid] = entry

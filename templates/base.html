@@ -848,7 +848,13 @@
                     const res  = await fetch('/api/plugins/install-from-github', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: (p.source || '').replace('github:', '') }),
+                        // target_core_version: PlayDate itself hasn't updated yet at this
+                        // point (that happens after this loop, via _doInstallUpdate()) --
+                        // without this, a plugin whose min_core_version was bumped
+                        // alongside this same PlayDate release would get rejected against
+                        // the still-old running version even though the user is updating
+                        // both together in one action.
+                        body: JSON.stringify({ url: (p.source || '').replace('github:', ''), target_core_version: _latestVersion }),
                     });
                     const data = await res.json();
                     lines[i] = data.status === 'success' ? `${p.id}: updated to v${p.latest_version}` : `${p.id}: failed (${data.message || 'unknown error'})`;
