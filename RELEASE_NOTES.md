@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.7.3
+## v1.7.3 - 2026-08-05
 ### New
 
 - GOG, Humble Bundle, and itch.io now let you choose where games get installed, matching what IndieGala already offered.
