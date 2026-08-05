@@ -24,7 +24,7 @@ Pulls your Steam library and any connected platforms, enriches games with metada
 
 ### Windows
 
-Download **PlayDate-Setup.exe** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest) and run it. No Python required.
+Download **PlayDate-Setup.exe** from the [latest release](https://github.com/RobbyRatpoison/PlayDate-Library-Manager/releases/latest) and run it. No Python required.
 
 Prefer portable? Download **PlayDate-Windows-Portable.zip**, extract anywhere, and run `PlayDate.exe`.
 
@@ -58,7 +58,7 @@ On first run, `launch.sh` sets up a virtual environment, installs Python depende
 
 ### Linux (Flatpak)
 
-Download **PlayDate-\<version\>-Linux.flatpak** from the [latest release](https://github.com/RobbyRatpoison/PlayDate/releases/latest), then either double-click it in your file manager or install it from a terminal:
+Download **PlayDate-\<version\>-Linux.flatpak** from the [latest release](https://github.com/RobbyRatpoison/PlayDate-Library-Manager/releases/latest), then either double-click it in your file manager or install it from a terminal:
 
 ```bash
 flatpak install PlayDate-<version>-Linux.flatpak

@@ -6,8 +6,8 @@
 // @match        https://help.steampowered.com/*
 // @match        https://www.gog.com/en/account/settings/orders*
 // @match        https://myaccount.ea.com/am/ui/payment-wallet/order-history*
-// @updateURL    https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js
-// @downloadURL  https://raw.githubusercontent.com/RobbyRatpoison/PlayDate/main/steam_date_import.user.js
+// @updateURL    https://raw.githubusercontent.com/RobbyRatpoison/PlayDate-Library-Manager/main/steam_date_import.user.js
+// @downloadURL  https://raw.githubusercontent.com/RobbyRatpoison/PlayDate-Library-Manager/main/steam_date_import.user.js
 // @license      MIT
 // @grant        GM_xmlhttpRequest
 // @connect      localhost

@@ -72,7 +72,7 @@ const TUTORIAL_SECTIONS = [
         steps: [
             {
                 title: 'Why import dates?',
-                body: `<p>Steam and GOG don't expose accurate purchase/activation dates through their APIs, so PlayDate can pull them from your account's own history pages instead, using a companion browser userscript (needs the Tampermonkey extension). Install it from <a href="https://github.com/RobbyRatpoison/PlayDate/raw/refs/heads/main/steam_date_import.user.js" target="_blank">GitHub</a>.</p>`,
+                body: `<p>Steam and GOG don't expose accurate purchase/activation dates through their APIs, so PlayDate can pull them from your account's own history pages instead, using a companion browser userscript (needs the Tampermonkey extension). Install it from <a href="https://github.com/RobbyRatpoison/PlayDate-Library-Manager/raw/refs/heads/main/steam_date_import.user.js" target="_blank">GitHub</a>.</p>`,
             },
             {
                 title: 'Single game or bulk',

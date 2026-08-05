@@ -62,7 +62,7 @@ def _do_update_check():
             # excludes prereleases by GitHub's own definition, so beta/rc
             # builds need the full list instead — newest entry first.
             resp = _req.get(
-                'https://api.github.com/repos/RobbyRatpoison/PlayDate/releases',
+                'https://api.github.com/repos/RobbyRatpoison/PlayDate-Library-Manager/releases',
                 headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
                 timeout=10
             )
@@ -70,7 +70,7 @@ def _do_update_check():
             data = releases[0] if isinstance(releases, list) and releases else {}
         else:
             resp = _req.get(
-                'https://api.github.com/repos/RobbyRatpoison/PlayDate/releases/latest',
+                'https://api.github.com/repos/RobbyRatpoison/PlayDate-Library-Manager/releases/latest',
                 headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
                 timeout=10
             )
