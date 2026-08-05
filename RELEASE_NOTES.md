@@ -1,11 +1,16 @@
 # Release Notes
 
-## v1.7.2 - 2026-08-04
+## v1.7.3
 ### New
 
-- Checking for PlayDate updates now also checks for plugin updates at the same time. If a plugin update is available when you go to install a PlayDate update, you can choose to update PlayDate and plugins together, or PlayDate alone.
+- GOG, Humble Bundle, and itch.io now let you choose where games get installed, matching what IndieGala already offered.
+
+### Improvements
+
+- itch.io's default install folder moved to match GOG/Humble Bundle/IndieGala's convention. Any existing itch.io installs are moved automatically the first time you open this version.
 
 ### Fixes
 
-- Prevented a rare backup-corruption issue if a file (database, settings, theme, or cover art) changed at the exact moment of the backup.
-- Opening PlayDate while it's already running now shows a message instead of silently opening a broken second window.
+- Installs for GOG, Humble Bundle, itch.io, and IndieGala now check that there's enough free disk space, and that the install folder is actually writable, before starting.
+- Installing or updating a plugin that needs a newer PlayDate version than you're running is now blocked.
+- Fixed the Uninstall button in the Plugins modal staying hidden after clicking Cancel.
