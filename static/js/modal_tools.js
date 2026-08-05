@@ -4261,7 +4261,7 @@ async function _renderPluginsList() {
                         <div style="font-size:0.75rem;color:#8f98a0;margin-top:2px;">v${escHtml(p.version)} &middot; platform: ${escHtml(p.platform)}${p.game_count ? ` &middot; ${p.game_count} game${p.game_count !== 1 ? 's' : ''}` : ''}</div>
                     </div>
                     <div style="display:flex;flex-shrink:0;margin-left:12px;gap:6px;">
-                        <button class="nav-btn" style="font-size:0.78rem;"
+                        <button class="nav-btn" id="plugin-uninstall-btn-${escHtml(p.id)}" style="font-size:0.78rem;"
                                 data-modal-row="${pluginRow}"
                                 onclick="_showUninstallConfirm('${escHtml(p.id)}',${p.game_count},this)">
                             Uninstall
@@ -4312,7 +4312,7 @@ async function _renderPluginsList() {
                     </div>
                     <div style="display:flex;flex-shrink:0;margin-left:12px;gap:6px;">
                         ${manageBtn}
-                        <button class="nav-btn" style="font-size:0.78rem;"
+                        <button class="nav-btn" id="plugin-uninstall-btn-${escHtml(p.id)}" style="font-size:0.78rem;"
                                 data-modal-row="${pluginRow}"
                                 onclick="_showUninstallConfirm('${escHtml(p.id)}',${p.game_count},this)">
                             Uninstall
@@ -4454,8 +4454,8 @@ function _showUninstallConfirm(id, gameCount, btn) {
 }
 function _hideUninstallConfirm(id) {
     document.getElementById(`plugin-confirm-${id}`).style.display = 'none';
-    const row = document.getElementById(`plugin-row-${id}`);
-    if (row) row.querySelector('.nav-btn').style.display = '';
+    const btn = document.getElementById(`plugin-uninstall-btn-${id}`);
+    if (btn) btn.style.display = '';
 }
 
 async function _doUninstallPlugin(id, gameCount) {
