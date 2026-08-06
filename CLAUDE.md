@@ -201,7 +201,7 @@ Shelf fields: `filter_key` (builtin or saved filter name), `sort_col` (`'RANDOM(
 
 ## Library Views
 
-**Grid mode** (default): `library.html` uses IntersectionObserver (`rootMargin: '1200px'`) + `CARD_HTML_CACHE`. Images use `data-src` with 200ms delay after scroll (0ms on initial load). `_patchGameCard` evicts from cache so edits show fresh data.
+**Grid mode** (default): `library.html` uses IntersectionObserver (`rootMargin: '2400px'`) + `CARD_HTML_CACHE`. Images use `data-src`, loaded via `requestIdleCallback` (500ms timeout, 150ms `setTimeout` fallback) after scroll settles (0ms on initial load). Cover art responses set a 1-year `Cache-Control` max-age (`app.py`'s `serve_library_image`) since URLs are cache-busted client-side with a `?v=` timestamp bumped per-appid on actual art changes (`_imgVersions`, see `_patchGameCard`), so a stale browser cache isn't possible. `_patchGameCard` evicts from `CARD_HTML_CACHE` so edits show fresh data.
 
 **List mode**: split-pane layout (`#library-list-layout`) with `#list-pane` (scrollable rows, 20% width, resizable) and `#detail-pane` (game detail + inline edit form). Activated via the VIEW modal; stored as `artwork_orientation: 'list'` in `state.json`. On activation, `#game-grid` and `.library-header` are hidden, `body` and `.container` overflow is locked to `hidden`, and `_adjustListHeight()` sizes `#library-list-layout` to fill the remaining viewport. A `_listObserver` (IntersectionObserver) loads icons as rows scroll into view.
 

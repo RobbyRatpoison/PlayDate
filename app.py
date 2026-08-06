@@ -145,6 +145,13 @@ def create_app(template_folder=None, static_folder=None):
     import re
     _SAFE_FILENAME_RE = re.compile(r'^[\w\-./]+$')
 
+    # Cover art URLs are cache-busted client-side via a ?v= timestamp query
+    # param (bumped per-appid in _patchGameCard/_imgVersions whenever art
+    # actually changes -- see library.js), so a long browser cache here can't
+    # go stale: any URL the browser has cached is guaranteed to still be
+    # correct, and a changed image gets a brand new URL instead.
+    _LIBRARY_IMG_MAX_AGE = 31536000  # 1 year
+
     @app.route('/static/img/library/<path:filename>')
     def serve_library_image(filename):
         from database import get_dup_cache
@@ -152,7 +159,7 @@ def create_app(template_folder=None, static_folder=None):
             return '', 400
         lib_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
         if os.path.exists(os.path.join(lib_dir, filename)):
-            return send_from_directory(lib_dir, filename)
+            return send_from_directory(lib_dir, filename, max_age=_LIBRARY_IMG_MAX_AGE)
         # If the file is missing, check whether this game is a duplicate and
         # serve the canonical game's image instead.
         parts = filename.split('/')  # e.g. ['vertical', '-12345.jpg']
@@ -164,7 +171,7 @@ def create_app(template_folder=None, static_folder=None):
                 if dup_of:
                     canon_file = f"{parts[0]}/{dup_of}.{parts[1].rsplit('.', 1)[1]}"
                     if os.path.exists(os.path.join(lib_dir, canon_file)):
-                        return send_from_directory(lib_dir, canon_file)
+                        return send_from_directory(lib_dir, canon_file, max_age=_LIBRARY_IMG_MAX_AGE)
             except (ValueError, Exception):
                 pass
         return send_from_directory(lib_dir, filename)  # let Flask return 404
