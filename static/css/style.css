@@ -236,6 +236,11 @@ select {
     right: 0;
     width: auto;
     z-index: 1000;
+    /* Force permanent GPU layer promotion instead of reactive promotion at
+       scroll-start -- avoids a compositor-thread race (seen on WebKit's
+       DMA-BUF accelerated path) where a newly-promoted scrolling card layer
+       can paint a frame above this fixed layer before its own promotion settles. */
+    will-change: transform;
 }
 
 .nav-links {
