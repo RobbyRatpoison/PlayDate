@@ -1820,7 +1820,7 @@ let _loadedSavedFilterName = null;
 
 function _stripPagMeta(tree) {
     if (!tree || typeof tree !== 'object') return tree;
-    const {pagywosg, pagywosg_event, pagywosg_verified, ...rest} = tree;
+    const {pagywosg, pagywosg_event, pagywosg_verified, pagywosg_personal_cats, ...rest} = tree;
     return rest;
 }
 
@@ -1831,8 +1831,8 @@ function _stripEmptyGroups(node) {
         .filter(i => i.type !== 'group' || (i.items && i.items.length > 0));
     if (items.length === 1 && items[0].type === 'group') {
         const inner = items[0];
-        const { pagywosg, pagywosg_event, pagywosg_verified } = node;
-        return pagywosg ? { ...inner, pagywosg, pagywosg_event, pagywosg_verified } : inner;
+        const { pagywosg, pagywosg_event, pagywosg_verified, pagywosg_personal_cats } = node;
+        return pagywosg ? { ...inner, pagywosg, pagywosg_event, pagywosg_verified, pagywosg_personal_cats } : inner;
     }
     return { ...node, items };
 }
@@ -1843,6 +1843,7 @@ async function applyFilters() {
         collected.pagywosg = _loadedSavedTree.pagywosg;
         if (_loadedSavedTree.pagywosg_event) collected.pagywosg_event = _loadedSavedTree.pagywosg_event;
         if (_loadedSavedTree.pagywosg_verified) collected.pagywosg_verified = _loadedSavedTree.pagywosg_verified;
+        if (_loadedSavedTree.pagywosg_personal_cats) collected.pagywosg_personal_cats = _loadedSavedTree.pagywosg_personal_cats;
     }
     updateActivePills(collected);
 

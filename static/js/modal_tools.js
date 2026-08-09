@@ -422,6 +422,19 @@ function openPagModal() {
     document.getElementById('pagywosg-modal').style.display = 'flex';
     if (!_pagAllTags.length) pagInit();
     _pagRefreshSantaGifts();
+    _pagPopulateRefreshSelect();
+}
+
+function _pagPopulateRefreshSelect() {
+    const sel = document.getElementById('pag-refresh-select');
+    if (!sel || !sel._setOptions) return;
+    const names = Object.keys(_savedFilters).filter(n => {
+        const entry = _savedFilters[n];
+        const tree  = (entry && typeof entry === 'object' && 'tree' in entry) ? entry.tree : entry;
+        return tree && tree.pagywosg === true;
+    });
+    sel._setOptions('<option value="">Refresh saved filter…</option>' +
+        names.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${n}</option>`).join(''));
 }
 
 async function _pagRefreshSantaGifts() {
@@ -1392,6 +1405,7 @@ async function pagConfirmSave() {
     const tree = pagBuildTree();
     tree.pagywosg = true;
     if (_pagEventId) tree.pagywosg_event = {id: _pagEventId, name: _pagEventName};
+    tree.pagywosg_personal_cats = [..._pagPersonalCats].sort();
     // Build verified lookup: {appid_str: [{cat, pool}]}
     const _sgUsername = (_serverSgUsername || '').toLowerCase();
     const verifiedLookup = {};
@@ -1668,6 +1682,70 @@ function pagClearAll() {
     document.getElementById('pag-save-status').className = 'tool-status';
     document.getElementById('pag-auto-event-name').textContent = '';
     pagUpdateSql();
+}
+
+function _pagWalkTreeNodes(node, visit) {
+    if (!node || typeof node !== 'object') return;
+    visit(node);
+    if (node.type === 'group' && Array.isArray(node.items)) node.items.forEach(c => _pagWalkTreeNodes(c, visit));
+}
+
+function _pagExtractCompletionStatuses(tree) {
+    const vals = [];
+    _pagWalkTreeNodes(tree, n => { if (n.type === 'condition' && n.column === 'completion_status') vals.push(n.value); });
+    return vals;
+}
+
+function _pagExtractSantaChecked(tree) {
+    let found = false;
+    _pagWalkTreeNodes(tree, n => { if (n.type === 'appid_list' && n.auto && n.label === 'Secret Santa / Snowballs') found = true; });
+    return found;
+}
+
+async function pagRefreshSelectedFilter() {
+    const sel  = document.getElementById('pag-refresh-select');
+    const name = sel && sel.value;
+    if (!name) return;
+
+    const entry     = _savedFilters[name];
+    const savedTree = (entry && typeof entry === 'object' && 'tree' in entry) ? entry.tree : entry;
+    if (!savedTree || !savedTree.pagywosg) return;
+
+    const savedEventId      = savedTree.pagywosg_event?.id ?? null;
+    const savedEventName    = savedTree.pagywosg_event?.name ?? 'an unknown event';
+    const savedPersonalCats = new Set(savedTree.pagywosg_personal_cats || []);
+    const savedCompStatuses = _pagExtractCompletionStatuses(savedTree);
+    const savedSantaChecked = _pagExtractSantaChecked(savedTree);
+    const statusEl = document.getElementById('pag-auto-status');
+
+    // Current event is the dominant case; fall back to "upcoming" for a
+    // filter built ahead of an event that hasn't started yet.
+    await pagAutoFill(false);
+    if (savedEventId && _pagEventId !== savedEventId) await pagAutoFill(true);
+    if (savedEventId && _pagEventId !== savedEventId) {
+        statusEl.textContent = `✘ "${name}" was built for ${savedEventName}, which is neither the current nor upcoming event — rebuild it manually instead.`;
+        statusEl.style.color = 'var(--accent-negative)';
+        return;
+    }
+
+    // Overlay the saved judgment calls on top of the freshly auto-filled
+    // state (pagAutoFill()'s internal pagClearAll() wiped these, and its
+    // own auto-generated name, so restore them now).
+    document.getElementById('pag-filter-name').value = name;
+    _pagPersonalCats = savedPersonalCats;
+    pagUpdateAppidsInfo('wins');
+    pagUpdateAppidsInfo('all');
+
+    document.querySelectorAll('#pag-completion-btns .pag-comp-btn').forEach(b => {
+        b.classList.toggle('active', savedCompStatuses.length ? savedCompStatuses.includes(b.dataset.val) : true);
+    });
+
+    const santaCb = document.getElementById('pag-santa-cb');
+    if (santaCb && !santaCb.disabled) santaCb.checked = savedSantaChecked;
+
+    pagUpdateSql();
+    statusEl.textContent = `✔ Refreshed "${name}" from live data — review below, then Save.`;
+    statusEl.style.color = 'var(--accent-positive)';
 }
 
 // ── DB IMPORTER ──
@@ -3283,7 +3361,21 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('appid-col'));
     initCustomSelect(document.getElementById('tools-filter-select'));
     initCustomSelect(document.getElementById('startup-page-select'));
+    initCustomSelect(document.getElementById('pag-refresh-select'));
+    _pagSlowScroll(document.getElementById('pag-wins-tags'));
+    _pagSlowScroll(document.getElementById('pag-all-tags'));
 });
+
+// Tag pill boxes are short (a couple lines tall) but hold many tags — a
+// full-speed wheel tick can jump past several lines at once. Scale the
+// delta down so one scroll gesture moves roughly half a line instead.
+function _pagSlowScroll(el, factor = 0.35) {
+    if (!el) return;
+    el.addEventListener('wheel', e => {
+        e.preventDefault();
+        el.scrollTop += e.deltaY * factor;
+    }, { passive: false });
+}
 
 // ── ACCOUNT SETTINGS ─────────────────────────────────────────────────────────
 let _cfgAccounts = window._cfgAccounts;

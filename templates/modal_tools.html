@@ -1268,6 +1268,16 @@
                     <span id="pag-auto-event-name" style="color:var(--text-secondary); font-size:0.82rem; font-style:italic;"></span>
                     <span id="pag-auto-status" style="color:var(--accent-positive); font-size:0.82rem;"></span>
                 </div>
+                <div id="pag-refresh-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                    <select id="pag-refresh-select" data-modal-row="pag-refresh"
+                            style="min-width:220px; height:2rem; font-size:0.8rem;"
+                            data-picker-title="Refresh a saved PAGYWOSG filter">
+                        <option value="">Refresh saved filter…</option>
+                    </select>
+                    <button id="pag-refresh-btn" class="nav-btn" data-modal-row="pag-refresh"
+                            style="height:2rem; padding:0 12px; font-size:0.8rem;"
+                            onclick="pagRefreshSelectedFilter()">↻ Refresh</button>
+                </div>
             </div>
             <div style="border-bottom:1px solid var(--border); margin-top:10px;"></div>
         </div>
@@ -1295,7 +1305,7 @@
                     style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('wins')"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
+                <div id="pag-wins-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:90px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-wins-conds" style="margin-top:10px;"></div>
                 <div id="pag-wins-appids-info" style="display:none; margin-top:6px; font-size:0.78rem; color:var(--accent);"></div>
                 <button onclick="pagAddCond('wins')" data-modal-row="pag-wins-add" style="margin-top:6px; margin-left:3px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"
@@ -1316,7 +1326,7 @@
                     style="width:100%; box-sizing:border-box; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:5px; color:var(--text-primary); font-size:0.82rem; outline:none;"
                     oninput="pagFilterTags('all')"
                     onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-                <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:140px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
+                <div id="pag-all-tags" style="display:flex; flex-wrap:wrap; gap:5px; max-height:90px; overflow-y:auto; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:8px;"></div>
                 <div id="pag-all-conds" style="margin-top:10px;"></div>
                 <div id="pag-all-appids-info" style="display:none; margin-top:6px; font-size:0.78rem; color:var(--accent);"></div>
                 <button onclick="pagAddCond('all')" data-modal-row="pag-all-add" style="margin-top:6px; margin-left:3px; background:none; border:1px dashed var(--border); color:var(--text-secondary); padding:5px 14px; border-radius:5px; cursor:pointer; font-size:0.82rem; transition:all 0.2s;"

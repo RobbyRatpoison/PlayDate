@@ -95,9 +95,10 @@
         }
         if (_serverFilterTree?.pagywosg && !result.pagywosg) {
             result = { ...result,
-                pagywosg:          _serverFilterTree.pagywosg,
-                pagywosg_event:    _serverFilterTree.pagywosg_event,
-                pagywosg_verified: _serverFilterTree.pagywosg_verified,
+                pagywosg:               _serverFilterTree.pagywosg,
+                pagywosg_event:         _serverFilterTree.pagywosg_event,
+                pagywosg_verified:      _serverFilterTree.pagywosg_verified,
+                pagywosg_personal_cats: _serverFilterTree.pagywosg_personal_cats,
             };
         }
         return result;
