@@ -232,8 +232,9 @@ BUILTIN_FILTERS = {
     "wont_play":     {"label": "Won't Play",              "where": "completion_status = 'Won''t Play'",                     "group": "status",
                       "tree": _group("AND", _cond("completion_status", "Won't Play"))},
     # Widget presets — no SQL
-    "clock":          {"label": "Clock",                  "where": None},
-    "completion_pie": {"label": "Completion Chart",       "where": None},
+    "clock":            {"label": "Clock",                  "where": None},
+    "completion_pie":   {"label": "Completion Chart",       "where": None},
+    "achievement_pie":  {"label": "Achievement Chart",      "where": None},
 }
 
 DEFAULT_CARD_OUTLINES = {

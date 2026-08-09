@@ -28,6 +28,18 @@ SORT_COLUMNS = {
 from library import is_safe_sql, build_tree_sql, VIRTUAL_SORT_COLS
 
 
+def achievement_bucket(unlocked, total):
+    """Map an achievement unlock count to a quartile label for the achievement chart widget."""
+    pct = (unlocked or 0) / total * 100
+    if pct <= 25:
+        return '0-25%'
+    if pct <= 50:
+        return '26-50%'
+    if pct <= 75:
+        return '51-75%'
+    return '76-100%'
+
+
 def _filter_tree_to_sql(tree):
     """Convert a saved filter tree to an inline SQL WHERE string (values escaped)."""
     if not tree:
@@ -46,10 +58,10 @@ def _build_shelf_query(shelf, saved_filters, state):
     filter_key = shelf.get('filter_key') or shelf.get('preset', 'all_games')
 
     # Widget presets have no SQL
-    if filter_key in ('clock', 'completion_pie'):
+    if filter_key in ('clock', 'completion_pie', 'achievement_pie'):
         return None, None
     # Also handle legacy preset field pointing to a widget
-    if shelf.get('preset') in ('clock', 'completion_pie') and filter_key not in FILTER_QUERIES:
+    if shelf.get('preset') in ('clock', 'completion_pie', 'achievement_pie') and filter_key not in FILTER_QUERIES:
         return None, None
 
     # Resolve WHERE clause
@@ -166,6 +178,18 @@ def index():
     except Exception:
         pass
 
+    achievement_counts = {}
+    try:
+        rows = db.execute(
+            "SELECT unlocked_achievements, total_achievements FROM games "
+            "WHERE platform = 'steam' AND total_achievements > 0"
+        ).fetchall()
+        for row in rows:
+            bucket = achievement_bucket(row['unlocked_achievements'], row['total_achievements'])
+            achievement_counts[bucket] = achievement_counts.get(bucket, 0) + 1
+    except Exception:
+        pass
+
     from plugins import platform_labels as _platform_labels
     _plat_order = list(_platform_labels().keys())
     try:
@@ -223,6 +247,7 @@ def index():
         saved_filters=saved_filters,
         sort_columns=SORT_COLUMNS,
         completion_counts=completion_counts,
+        achievement_counts=achievement_counts,
         edit_mode=edit_mode,
         available_platforms=available_platforms,
         outline_colors=outline_colors,

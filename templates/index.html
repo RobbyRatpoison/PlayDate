@@ -270,6 +270,14 @@
 </div>
 {% endmacro %}
 
+{% macro achievement_pie_widget() %}
+<div class="completion-widget">
+    <div class="completion-pie-wrap">
+        <canvas class="achievement-pie-canvas"></canvas>
+    </div>
+</div>
+{% endmacro %}
+
 {% if edit_mode %}<script>document.body.classList.add('edit-mode');</script>{% endif %}
 
 <div class="edit-toolbar">
@@ -347,6 +355,8 @@
             </div>
             {% elif shelf.preset == 'completion_pie' %}
             {{ completion_pie_widget() }}
+            {% elif shelf.preset == 'achievement_pie' %}
+            {{ achievement_pie_widget() }}
             {% else %}
             {% if shelf.sort_col == 'RANDOM()' %}
             {% if shelf.label %}<span class="shuffle-link" onclick="shuffleShelf('{{ shelf.id }}', this)">
@@ -395,6 +405,8 @@
         </div>
         {% elif shelf.preset == 'completion_pie' %}
         {{ completion_pie_widget() }}
+        {% elif shelf.preset == 'achievement_pie' %}
+        {{ achievement_pie_widget() }}
         {% elif shelf.sort_col == 'RANDOM()' %}
         {% if shelf.label %}<span class="shuffle-link" onclick="shuffleShelf('{{ shelf.id }}', this)">
             <div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>
@@ -565,6 +577,7 @@ const _filters = {
 };
 const _sortCols = {{ sort_columns | tojson }};
 const _completionCounts = {{ completion_counts | tojson }};
+const _achievementCounts = {{ achievement_counts | tojson }};
 
 const _PIE_COLORS = {
     "Completed":    "#5BC0DE",
@@ -572,6 +585,19 @@ const _PIE_COLORS = {
     "Unfinished":   "#F0AD4E",
     "Won't Play":   "#D9534F",
     "Never Played": "#EEEEEE",
+};
+const _ACH_PIE_COLORS = {
+    "76-100%": "#5CB85C",
+    "51-75%":  "#5BC0DE",
+    "26-50%":  "#F0AD4E",
+    "0-25%":   "#D9534F",
+};
+
+const WIDGET_PRESETS = new Set(['clock', 'completion_pie', 'achievement_pie']);
+const WIDGET_LABELS = {
+    clock: 'Clock',
+    completion_pie: 'Completion Chart',
+    achievement_pie: 'Achievement Chart',
 };
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
@@ -588,16 +614,15 @@ setInterval(updateClock, 1000); updateClock();
 const _pieTooltip = document.getElementById('pie-tooltip');
 const _pieSliceMap = new WeakMap(); // canvas -> [{status, color, startAngle, endAngle}]
 
-function drawCompletionPies() {
-    document.querySelectorAll('.completion-pie-canvas').forEach(canvas => {
+function drawPieCanvases(selector, counts, order, colors) {
+    document.querySelectorAll(selector).forEach(canvas => {
         const ctx = canvas.getContext('2d');
         const size = canvas.offsetWidth || 120;
         canvas.width = size * devicePixelRatio;
         canvas.height = size * devicePixelRatio;
         ctx.scale(devicePixelRatio, devicePixelRatio);
 
-        const order = ["Never Played", "Unfinished", "Won't Play", "Beaten", "Completed"];
-        const total = order.reduce((s, k) => s + (_completionCounts[k] || 0), 0);
+        const total = order.reduce((s, k) => s + (counts[k] || 0), 0);
         if (!total) return;
 
         const cx = size / 2, cy = size / 2, r = size / 2 - 2;
@@ -609,7 +634,7 @@ function drawCompletionPies() {
         const slices = [];
 
         order.forEach(status => {
-            const count = _completionCounts[status] || 0;
+            const count = counts[status] || 0;
             if (!count) return;
             const slice = (count / total) * (Math.PI * 2);
             const start = angle;
@@ -618,9 +643,9 @@ function drawCompletionPies() {
             ctx.moveTo(cx, cy);
             ctx.arc(cx, cy, r, start, end);
             ctx.closePath();
-            ctx.fillStyle = _PIE_COLORS[status] || '#555';
+            ctx.fillStyle = colors[status] || '#555';
             ctx.fill();
-            slices.push({ status, color: _PIE_COLORS[status] || '#555', start, end, count });
+            slices.push({ status, color: colors[status] || '#555', start, end, count });
             angle += slice;
         });
 
@@ -674,6 +699,12 @@ function drawCompletionPies() {
         }
     });
 }
+function drawCompletionPies() {
+    drawPieCanvases('.completion-pie-canvas', _completionCounts,
+        ["Never Played", "Unfinished", "Won't Play", "Beaten", "Completed"], _PIE_COLORS);
+    drawPieCanvases('.achievement-pie-canvas', _achievementCounts,
+        ["0-25%", "26-50%", "51-75%", "76-100%"], _ACH_PIE_COLORS);
+}
 window.addEventListener('load', () => requestAnimationFrame(drawCompletionPies));
 function _shelfImgLoad(img) {
     applyBlurArt(img, img.closest('.shelf-capsule-inner'));
@@ -708,7 +739,7 @@ if (window.ResizeObserver) {
         entries.forEach(e => {
             const grid = e.target.querySelector('.shelf-grid');
             if (grid) trimGrid(grid);
-            const pie = e.target.querySelector('.completion-pie-canvas');
+            const pie = e.target.querySelector('.completion-pie-canvas, .achievement-pie-canvas');
             if (pie) requestAnimationFrame(drawCompletionPies);
         });
     });
@@ -781,8 +812,7 @@ function buildEditBarHTML(shelf, containerEl) {
     const sid = shelf.id;
     const isSide = containerEl.classList.contains('shelf-split-side');
     const splitRow = containerEl.closest('.shelf-split-row');
-    const isClock = shelf.preset === 'clock' || shelf.preset === 'completion_pie'
-                 || shelf.filter_key === 'clock' || shelf.filter_key === 'completion_pie';
+    const isClock = WIDGET_PRESETS.has(shelf.preset) || WIDGET_PRESETS.has(shelf.filter_key);
 
     // Height: show on single shelves and first side of split rows
     const isFirstInSplit = isSide && splitRow &&
@@ -844,8 +874,7 @@ function semOpen(sid) {
     if (!shelf) return;
     _semShelfId = sid;
 
-    const isClock = shelf.preset === 'clock' || shelf.preset === 'completion_pie'
-                 || shelf.filter_key === 'clock' || shelf.filter_key === 'completion_pie';
+    const isClock = WIDGET_PRESETS.has(shelf.preset) || WIDGET_PRESETS.has(shelf.filter_key);
     const isSide  = !!shelf.split_group;
 
     document.getElementById('sem-title').textContent = shelf.label || 'Edit Shelf';
@@ -856,7 +885,6 @@ function semOpen(sid) {
     // Filter dropdown — Presets / Widgets / Saved Filters
     const filterSel = document.getElementById('sem-filter');
     const presetKeys = ['all_games', 'installed', 'not_installed', 'never_played', 'unfinished', 'not_beaten', 'beaten'];
-    const widgetKeys = ['clock', 'completion_pie'];
     const savedKeys  = Object.keys(_savedFilters);
     const isCustom   = !!shelf.custom_sql;
     const activeFilter = shelf.filter_key || shelf.preset || 'all_games';
@@ -865,10 +893,8 @@ function semOpen(sid) {
         .filter(k => _builtinFilters[k])
         .map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${_builtinFilters[k].label}</option>`)
         .join('');
-    const widgetOpts = widgetKeys
-        .map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>
-            ${k === 'clock' ? 'Clock' : 'Completion Chart'}
-        </option>`)
+    const widgetOpts = [...WIDGET_PRESETS]
+        .map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${WIDGET_LABELS[k]}</option>`)
         .join('');
     const savedOpts = savedKeys.length
         ? `<optgroup label="Saved Filters">${savedKeys.map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${k}</option>`).join('')}</optgroup>`
@@ -931,11 +957,11 @@ function semSave() {
         s.custom_sql = raw ? normaliseSql(raw) : null;
     } else {
         s.custom_sql = null;
-        if (filterKey === 'clock' || filterKey === 'completion_pie') {
+        if (WIDGET_PRESETS.has(filterKey)) {
             s.preset = filterKey; s.filter_key = filterKey;
         } else {
             s.filter_key = filterKey;
-            if (s.preset === 'clock' || s.preset === 'completion_pie') s.preset = 'all_games';
+            if (WIDGET_PRESETS.has(s.preset)) s.preset = 'all_games';
         }
     }
 
@@ -1184,13 +1210,13 @@ function applyFilterInline(id, filterKey) {
     const s = _shelves.find(s => s.id === id);
     if (!s || !filterKey) return;
     // Widget presets update preset field; regular filters update filter_key
-    if (filterKey === 'clock' || filterKey === 'completion_pie') {
+    if (WIDGET_PRESETS.has(filterKey)) {
         s.preset = filterKey;
         s.filter_key = filterKey;
     } else {
         s.filter_key = filterKey;
         // Keep preset pointing to a valid widget key or clear it for normal shelves
-        if (s.preset === 'clock' || s.preset === 'completion_pie') s.preset = 'all_games';
+        if (WIDGET_PRESETS.has(s.preset)) s.preset = 'all_games';
     }
     s.custom_sql = null;
     // Update label to filter name for built-ins
@@ -1386,8 +1412,6 @@ function syncShelvesOrderFromDOM() {
 }
 
 // ── Dedup panel ───────────────────────────────────────────────────────────────
-const WIDGET_PRESETS = new Set(['clock', 'completion_pie']);
-
 let _dedupDragSrc  = null;
 let _dedupHoverLi  = null;
 
