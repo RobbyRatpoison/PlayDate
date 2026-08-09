@@ -251,6 +251,13 @@
         </div>
     </div>
     <div class="container">
+        <div id="notice-banner" style="display:none; align-items:flex-start; gap:0.6rem;
+             padding:10px 16px; border-radius:6px; margin-bottom:10px; font-size:0.85rem;">
+            <div id="notice-banner-msg" style="flex:1; line-height:1.5;"></div>
+            <button id="notice-banner-close" aria-label="Dismiss"
+                    style="background:none; border:none; cursor:pointer; font-size:1rem;
+                           line-height:1; color:inherit; opacity:0.75; flex-shrink:0;">✕</button>
+        </div>
         {% block content %}{% endblock %}
     </div>
 
@@ -1156,6 +1163,48 @@
             document.getElementById('whats-new-body').innerHTML = data.html;
             document.getElementById('whats-new-modal').style.display = 'flex';
         }).catch(() => { _maybeShowTutorial(); });
+    })();
+    </script>
+
+    <script>
+    (function () {
+        if (!_configExists) return;
+        const banner = document.getElementById('notice-banner');
+        const msgEl = document.getElementById('notice-banner-msg');
+        const SEVERITY_STYLE = {
+            critical: { bg: '#3d1a1a',                   border: 'var(--color-danger)',  text: 'var(--text-danger)' },
+            warning:  { bg: 'rgba(201, 124, 0, 0.15)',    border: 'var(--color-warning)', text: 'var(--text-primary)' },
+            info:     { bg: 'rgba(102, 192, 244, 0.12)',  border: 'var(--accent)',        text: 'var(--text-primary)' },
+        };
+        let _noticeId = null;
+
+        function _dismissNotice() {
+            banner.style.display = 'none';
+            if (!_noticeId) return;
+            fetch('/api/notifications/dismiss', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: _noticeId })
+            }).catch(() => {});
+        }
+        document.getElementById('notice-banner-close').addEventListener('click', _dismissNotice);
+
+        fetch('/api/notifications/status').then(r => r.json()).then(data => {
+            if (!data.show) return;
+            _noticeId = data.id;
+            const style = SEVERITY_STYLE[data.severity] || SEVERITY_STYLE.info;
+            banner.style.background = style.bg;
+            banner.style.border = `1px solid ${style.border}`;
+            banner.style.color = style.text;
+
+            let html = escHtml(data.message || '');
+            if (data.url) {
+                const label = escHtml(data.url_label || data.url);
+                html += ` &middot; <a href="${escHtml(data.url)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${label}</a>`;
+            }
+            msgEl.innerHTML = html;
+            banner.style.display = 'flex';
+        }).catch(() => {});
     })();
     </script>
 

@@ -362,6 +362,7 @@ DEFAULT_STATE = {
     "artwork_orientation": "vertical",
     "card_height": 200,
     "check_for_updates": True,
+    "check_for_notifications": True,
     "beta_updates": False,
     "window_state": None,
     "hltb_match_threshold": 99,
@@ -904,7 +905,7 @@ def save_state(updates):
         state = _load_state_unlocked()
 
         _PASSTHROUGH = {"filter_tree", "sort", "order", "artwork_orientation", "card_height",
-                        "check_for_updates", "beta_updates", "window_state", "fullscreen",
+                        "check_for_updates", "check_for_notifications", "beta_updates", "window_state", "fullscreen",
                         "pagywosg_sg_group", "shelves", "group_by",
                         "card_outlines"}
         for key in _PASSTHROUGH:
