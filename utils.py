@@ -222,8 +222,11 @@ def find_steam_root():
 def find_localconfig_path(steam_id=None):
     """
     Locates localconfig.vdf for the given SteamID64.
-    If steam_id is not provided (or the derived folder doesn't exist), falls back
-    to auto-detecting the account by listing numeric subdirs of userdata/.
+    If steam_id is not provided (or can't be parsed), falls back to auto-detecting
+    the account by listing numeric subdirs of userdata/. If steam_id IS provided
+    but its account folder has no localconfig.vdf, does NOT fall back to a
+    different account's folder — returns None instead of silently reading the
+    wrong user's data.
     Returns the file path string, or None if not found.
     """
     steam_root = find_steam_root()
@@ -238,13 +241,17 @@ def find_localconfig_path(steam_id=None):
     if steam_id:
         try:
             steamid3 = str(int(steam_id) - 76561197960265728)
+        except (ValueError, TypeError):
+            steamid3 = None
+        if steamid3 is not None:
             candidate = os.path.join(userdata, steamid3, 'config', 'localconfig.vdf')
             if os.path.isfile(candidate):
                 return candidate
-        except (ValueError, TypeError):
-            pass
+            log.warning(f"find_localconfig_path: no localconfig.vdf under userdata/{steamid3} "
+                        f"— not falling back to a different account's folder")
+            return None
 
-    # Auto-detect: try every numeric subdir and return the first localconfig found
+    # No usable steam_id: auto-detect by listing numeric subdirs
     for subdir in os.listdir(userdata):
         if subdir.isdigit():
             candidate = os.path.join(userdata, subdir, 'config', 'localconfig.vdf')
@@ -259,6 +266,9 @@ def read_steam_collections(steam_id=None):
     Reads Steam library collections from cloud-storage-namespace-1.json.
     Returns {collection_id: {'name': str, 'added': [int]}} for active
     user-defined collections, excluding known Steam built-ins (e.g. 'hidden').
+    If steam_id is provided but its userdata account folder isn't found, does
+    NOT fall back to a different account's folder. Auto-detects only when no
+    steam_id is given.
     """
     import json
 
@@ -274,13 +284,18 @@ def read_steam_collections(steam_id=None):
     if steam_id:
         try:
             steamid3 = str(int(steam_id) - 76561197960265728)
+        except (ValueError, TypeError):
+            steamid3 = None
+        if steamid3 is not None:
             candidate_dir = os.path.join(userdata, steamid3)
             if os.path.isdir(candidate_dir):
                 subdir = steamid3
-        except (ValueError, TypeError):
-            pass
+            else:
+                log.warning(f"read_steam_collections: no userdata/{steamid3} folder found "
+                            f"— not falling back to a different account's collections")
+                return {}
 
-    if subdir is None:
+    if subdir is None and not steam_id:
         for d in os.listdir(userdata):
             if d.isdigit():
                 subdir = d

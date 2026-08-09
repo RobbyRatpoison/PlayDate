@@ -1463,8 +1463,10 @@ if __name__ == '__main__':
     # 2c. Sync recent playtime from Steam API in background, then fetch any
     #     unfetched HLTB data and migrate store release dates silently in the same thread.
     def _run_playtime_sync():
+        from config import get_active_account
         from scrapers import sync_recent_playtime, sync_hltb_unfetched, sync_store_release_dates, sync_store_names, sync_steam_collections
-        sync_steam_collections()
+        _account = get_active_account()
+        sync_steam_collections((_account or {}).get('steam_id'))
         sync_recent_playtime()
         sync_hltb_unfetched()
         sync_store_release_dates()
