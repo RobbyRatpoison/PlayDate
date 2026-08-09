@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.7.4
+## v1.7.4 - 2026-08-09
 ### New
 
 - PAGYWOSG filter builder can now refresh a saved filter against current event data.
