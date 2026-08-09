@@ -1380,6 +1380,8 @@ def _steam_junk_match_reasons(name):
 
 @library_bp.route('/api/steam-junk-scan', methods=['GET'])
 def steam_junk_scan():
+    from scrapers import fetch_owned_appids
+    from config import get_active_account
     try:
         state     = load_state()
         dismissed = {int(a) for a in (state.get('steam_junk_whitelist') or [])}
@@ -1389,21 +1391,64 @@ def steam_junk_scan():
                 "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
             ).fetchall()}
             rows = db.execute(
-                "SELECT appid, name FROM games WHERE platform = 'steam' ORDER BY name"
+                "SELECT appid, name, is_free, playtime_forever FROM games WHERE platform = 'steam' ORDER BY name"
             ).fetchall()
         finally:
             db.close()
 
-        candidates = []
+        not_owned_ids = set()
+
+        # Step 1: ownership check against the Steam Web API (skipped, not
+        # errored, when no API key is configured -- same "optional key"
+        # convention as populate).
+        ownership = {'checked': False, 'error': None}
+        account = get_active_account()
+        if account and account.get('api_key'):
+            result = fetch_owned_appids()
+            if result['status'] == 'success':
+                ownership['checked'] = True
+                owned = result['appids']
+                for row in rows:
+                    appid = row['appid']
+                    if str(appid) in blacklisted or appid in dismissed:
+                        continue
+                    if appid in owned:
+                        continue
+                    # The bulk call excludes free-to-play games below Valve's
+                    # undocumented "played enough to list" threshold even when
+                    # genuinely owned, so absence alone isn't reliable for
+                    # them -- only trust it once there's enough locally-known
+                    # playtime that a still-missing entry is more likely a
+                    # real removal than an under-threshold visibility gap.
+                    # (No live playtime exists for an absent appid -- this is
+                    # the only data source available for that case.)
+                    if row['is_free'] and (row['playtime_forever'] or 0) <= 5:
+                        continue
+                    not_owned_ids.add(appid)
+            else:
+                ownership['error'] = result['message']
+
+        owned_candidates = [{'appid': r['appid'], 'name': r['name']} for r in rows if r['appid'] in not_owned_ids]
+
+        # Step 2: local title-pattern heuristics (always available). A game
+        # already flagged as no-longer-owned doesn't also need blacklisting
+        # -- it can't be re-added by Populate since it's off the account
+        # entirely -- so it's excluded here rather than double-listed.
+        pattern_candidates = []
         for row in rows:
             appid = row['appid']
-            if str(appid) in blacklisted or appid in dismissed:
+            if str(appid) in blacklisted or appid in dismissed or appid in not_owned_ids:
                 continue
             reasons = _steam_junk_match_reasons(row['name'])
             if reasons:
-                candidates.append({'appid': appid, 'name': row['name'], 'reasons': reasons})
+                pattern_candidates.append({'appid': appid, 'name': row['name'], 'reasons': reasons})
 
-        return jsonify({'status': 'success', 'candidates': candidates})
+        return jsonify({
+            'status': 'success',
+            'owned_candidates': owned_candidates,
+            'pattern_candidates': pattern_candidates,
+            'ownership': ownership,
+        })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 

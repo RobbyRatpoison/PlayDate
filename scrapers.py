@@ -683,6 +683,42 @@ def add_new(cancel_event=None, progress_cb=None):
         _populate_idle.set()
 
 
+def fetch_owned_appids():
+    """Fetch the current set of Steam appids owned by the active account, via
+    the same GetOwnedGames endpoint _add_new() uses for populate. Returns
+    {"status": "success", "appids": set(...)} or {"status": "error", "message": ...}
+    -- never raises."""
+    account = get_active_account()
+    if not account or not account.get('api_key'):
+        return {"status": "error", "message": "No Steam API key configured."}
+    api_key, steam_id = account['api_key'], account.get('steam_id')
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    url = (
+        f"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/"
+        f"?key={api_key}&steamid={steam_id}&format=json"
+        f"&include_appinfo=false&include_played_free_games=1&skip_unvetted_apps=false"
+    )
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 403:
+            return {"status": "error", "message": "Steam API: 403 Forbidden. Your API Key may be invalid."}
+        if response.status_code == 429:
+            raise RateLimitedError(_parse_retry_after(response))
+        response.raise_for_status()
+        data = response.json()
+        raw_games = data.get('response', {}).get('games', [])
+        if not raw_games:
+            return {"status": "error", "message": "No games returned. Is your Steam Profile set to Public?"}
+        return {"status": "success", "appids": {g['appid'] for g in raw_games}}
+    except RateLimitedError as e:
+        wait = f" Try again in {int(e.retry_after)}s." if e.retry_after else ""
+        return {"status": "error", "message": f"Steam API rate-limited.{wait}"}
+    except requests.exceptions.JSONDecodeError:
+        return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
+    except Exception as e:
+        return {"status": "error", "message": f"Connection Error: {str(e)}"}
+
+
 def _add_new(cancel_event=None, progress_cb=None):
     account = get_active_account()
     if not account:

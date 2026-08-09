@@ -2650,7 +2650,8 @@ function _blRemoveRowsFromState(appids) {
 }
 
 // ── STEAM JUNK FINDER ────────────────────────────────────────────────────────
-let _sjunkCandidates = [];
+let _sjunkCandidates      = [];  // title-pattern matches only
+let _sjunkOwnedCandidates = [];  // no-longer-owned matches only
 
 function openSteamJunkModal() {
     document.getElementById('steam-junk-modal').style.display = 'flex';
@@ -2661,15 +2662,24 @@ function closeSteamJunkModal() {
 }
 
 async function _loadSteamJunkScan() {
-    const status  = document.getElementById('sjunk-status');
-    const empty   = document.getElementById('sjunk-empty');
-    const results = document.getElementById('sjunk-results');
-    const list    = document.getElementById('sjunk-list');
+    const status      = document.getElementById('sjunk-status');
+    const empty       = document.getElementById('sjunk-empty');
+    const results     = document.getElementById('sjunk-results');
+    const list        = document.getElementById('sjunk-list');
+    const ownedSection = document.getElementById('sjunk-owned-section');
+    const ownedEmpty   = document.getElementById('sjunk-owned-empty');
+    const ownedResults = document.getElementById('sjunk-owned-results');
+    const ownedList     = document.getElementById('sjunk-owned-list');
+    const ownNote       = document.getElementById('sjunk-owned-note');
 
     status.className = 'tool-status info';
     status.textContent = 'Scanning…';
     results.style.display = 'none';
     empty.style.display = 'none';
+    ownedSection.style.display = 'none';
+    ownedResults.style.display = 'none';
+    ownedEmpty.style.display = 'none';
+    ownNote.style.display = 'none';
     document.getElementById('sjunk-action-status').textContent = '';
 
     try {
@@ -2678,8 +2688,39 @@ async function _loadSteamJunkScan() {
         if (data.status !== 'success') throw new Error(data.message);
 
         status.textContent = '';
-        _sjunkCandidates = data.candidates || [];
+        _sjunkCandidates      = data.pattern_candidates || [];
+        _sjunkOwnedCandidates = data.owned_candidates || [];
 
+        // ── No Longer Owned section ──
+        const ownership = data.ownership || {};
+        if (ownership.checked) {
+            ownedSection.style.display = 'block';
+            if (_sjunkOwnedCandidates.length === 0) {
+                ownedEmpty.style.display = 'block';
+            } else {
+                document.getElementById('sjunk-owned-select-all').checked = false;
+                ownedList.innerHTML = _sjunkOwnedCandidates.map((c, i) => `
+                    <div data-modal-row="sjunk-owned-${i}" onclick="var cb=this.querySelector('.sjunk-owned-cb');cb.checked=!cb.checked;"
+                        style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border);">
+                        <input type="checkbox" class="sjunk-owned-cb" data-appid="${c.appid}" style="width:auto;margin:0;flex-shrink:0;" onclick="event.stopPropagation()">
+                        <span style="color:var(--text-primary); font-size:0.85rem; flex:1;">${escHtml(c.name)}</span>
+                        <span style="color:var(--text-secondary); font-size:0.75rem; font-family:monospace;">${c.appid}</span>
+                    </div>`).join('');
+                ownedResults.style.display = 'block';
+            }
+        } else if (ownership.error) {
+            ownedSection.style.display = 'block';
+            ownNote.style.display = 'block';
+            ownNote.style.color = 'var(--color-warning)';
+            ownNote.textContent = `Couldn't check current Steam ownership: ${ownership.error}`;
+        } else {
+            ownedSection.style.display = 'block';
+            ownNote.style.display = 'block';
+            ownNote.style.color = 'var(--text-secondary)';
+            ownNote.textContent = 'Needs a Steam API key configured (Steam Account settings) to run this check.';
+        }
+
+        // ── Title-Pattern Matches section ──
         if (_sjunkCandidates.length === 0) {
             empty.style.display = 'block';
             return;
@@ -2704,6 +2745,11 @@ async function _loadSteamJunkScan() {
 function _sjunkToggleAll(checked) {
     document.getElementById('sjunk-select-all').checked = checked;
     document.querySelectorAll('#sjunk-list .sjunk-cb').forEach(cb => cb.checked = checked);
+}
+
+function _sjunkOwnedToggleAll(checked) {
+    document.getElementById('sjunk-owned-select-all').checked = checked;
+    document.querySelectorAll('#sjunk-owned-list .sjunk-owned-cb').forEach(cb => cb.checked = checked);
 }
 
 async function _sjunkAction(action) {
@@ -2744,6 +2790,48 @@ async function _sjunkAction(action) {
             });
         }
         if (action === 'blacklist') _blacklistLoaded = false; // force reload next time Blacklist Manager is opened
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+async function _sjunkOwnedDelete() {
+    const selected = [...document.querySelectorAll('#sjunk-owned-list .sjunk-owned-cb:checked')]
+        .map(cb => parseInt(cb.dataset.appid, 10));
+    if (selected.length === 0) {
+        alert('No games selected.');
+        return;
+    }
+    const ok = await confirmCustom(
+        `Delete ${selected.length} selected game(s) from PlayDate? They're no longer on your Steam account, so this won't blacklist them -- there's nothing left for "Populate PlayDate" to re-add.`,
+        'Delete', 'Cancel'
+    );
+    if (!ok) return;
+
+    const status = document.getElementById('sjunk-action-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Working…';
+    try {
+        const res  = await fetch('/api/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids: selected })
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+
+        status.className = 'tool-status success';
+        status.textContent = `✔ Deleted ${data.deleted}.`;
+        _sjunkOwnedCandidates = _sjunkOwnedCandidates.filter(c => !selected.includes(c.appid));
+        if (_sjunkOwnedCandidates.length === 0) {
+            document.getElementById('sjunk-owned-results').style.display = 'none';
+            document.getElementById('sjunk-owned-empty').style.display = 'block';
+        } else {
+            selected.forEach(appid => {
+                document.querySelector(`#sjunk-owned-list .sjunk-owned-cb[data-appid="${appid}"]`)?.closest('[data-modal-row]')?.remove();
+            });
+        }
     } catch (e) {
         status.className = 'tool-status error';
         status.textContent = '✘ ' + e.message;

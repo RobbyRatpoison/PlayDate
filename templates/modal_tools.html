@@ -1474,26 +1474,60 @@
             <button onclick="closeSteamJunkModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
         <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">
-            Steam doesn't tag beta clients, movie/documentary entries, or bundle placeholders any differently from real games,
-            so this scans your Steam library's titles for common patterns instead. Nothing is a sure thing here &mdash;
-            review the matches and pick what to blacklist. Blacklisted items are permanently skipped by "Populate PlayDate";
-            whitelisted items are just dismissed from this list and won't be suggested again.
+            Scans your library for two different kinds of problem entries, reviewed and actioned separately below.
+            Nothing here is a sure thing &mdash; review each list before removing anything.
         </p>
         <div id="sjunk-status" class="tool-status"></div>
-        <div id="sjunk-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No candidates found.</div>
-        <div id="sjunk-results" style="display:none;">
-            <div data-modal-row="sjunk-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_sjunkToggleAll(cb.checked);" style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border); margin-bottom:6px;">
-                <input type="checkbox" id="sjunk-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_sjunkToggleAll(this.checked)">
-                <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
-            </div>
-            <div id="sjunk-list"></div>
-            <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
-                <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('blacklist')" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Blacklist Selected</button>
-                <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('whitelist')">Whitelist Selected</button>
-                <button class="nav-btn" data-modal-row="sjunk-footer" onclick="closeSteamJunkModal()">Close</button>
+
+        <div id="sjunk-owned-section" class="hub-section" style="display:none;">
+            <div class="hub-section-label">No Longer Owned</div>
+            <p style="color:var(--text-secondary); font-size:0.83rem; margin:2px 0 8px;">
+                Checked against your current Steam library via the Web API (requires an API key). Free-to-play
+                games with 5 minutes or less of recorded playtime are skipped, since Steam's API hides
+                lightly-played free games from this check even when they're genuinely owned. These can't be
+                re-added by "Populate PlayDate" since they're no longer on your account &mdash; deleting them is
+                enough, no blacklist needed.
+            </p>
+            <div id="sjunk-owned-note" style="display:none; font-size:0.8rem; margin-bottom:8px;"></div>
+            <div id="sjunk-owned-empty" style="display:none; color:var(--text-secondary); font-size:0.85rem; margin-bottom:8px;">No ownership issues found.</div>
+            <div id="sjunk-owned-results" style="display:none;">
+                <div data-modal-row="sjunk-owned-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_sjunkOwnedToggleAll(cb.checked);" style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border); margin-bottom:6px;">
+                    <input type="checkbox" id="sjunk-owned-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_sjunkOwnedToggleAll(this.checked)">
+                    <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
+                </div>
+                <div id="sjunk-owned-list"></div>
+                <div style="margin-top:10px;">
+                    <button class="nav-btn" data-modal-row="sjunk-owned-footer" onclick="_sjunkOwnedDelete()" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Delete Selected</button>
+                </div>
             </div>
         </div>
-        <div id="sjunk-action-status" class="tool-status" style="margin-bottom:0;"></div>
+
+        <div class="hub-section">
+            <div class="hub-section-label">Title-Pattern Matches</div>
+            <p style="color:var(--text-secondary); font-size:0.83rem; margin:2px 0 8px;">
+                Steam doesn't tag beta clients, movie/documentary entries, or bundle placeholders any differently
+                from real games, so this scans titles for common patterns instead. Blacklisted items are
+                permanently skipped by "Populate PlayDate"; whitelisted items are just dismissed from this list
+                and won't be suggested again.
+            </p>
+            <div id="sjunk-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No candidates found.</div>
+            <div id="sjunk-results" style="display:none;">
+                <div data-modal-row="sjunk-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_sjunkToggleAll(cb.checked);" style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border); margin-bottom:6px;">
+                    <input type="checkbox" id="sjunk-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_sjunkToggleAll(this.checked)">
+                    <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
+                </div>
+                <div id="sjunk-list"></div>
+                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('blacklist')" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Blacklist Selected</button>
+                    <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('whitelist')">Whitelist Selected</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="sjunk-action-status" class="tool-status" style="margin:14px 0 0;"></div>
+        <div style="margin-top:10px;">
+            <button class="nav-btn" data-modal-row="sjunk-close" onclick="closeSteamJunkModal()">Close</button>
+        </div>
     </div>
 </div>
 
