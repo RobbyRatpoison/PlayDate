@@ -68,6 +68,9 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Suggested a PAGYWOSG hover tooltip and a configurable SG-wins group name
 - Suggested a persistent bulk-operation progress indicator
 
+**Limbert**
+- Steam Collections not syncing to groups at all; traced to the wrong Steam `userdata` account folder being auto-detected on a PC where more than one Steam account had logged in
+
 **liquidlazor**
 - Startup crash from an unconditional selenium import
 - Populate failing with an empty library when no API key was set
