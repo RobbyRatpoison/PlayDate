@@ -153,6 +153,19 @@ class MyPlugin:
         """
         pass
 
+    def pre_cheevo_scrape(self, today):
+        """
+        Optional. Called BLOCKING by populate before cheevo workers start (only
+        when a Steam API key is configured), for a plugin that can pre-fill
+        cheevos_fetched from an external source and let cheevo workers skip
+        games it already covered (e.g. a third-party completion tracker).
+        Runs in its own thread; core waits for every plugin implementing this
+        before submitting cheevo workers. Exceptions are caught and logged.
+        Most plugins should NOT implement this -- only use it if skipping
+        cheevo work for already-covered games matters for your integration.
+        """
+        pass
+
     def rescrape(self, appid):
         """
         Optional. Called by bulk_rescrape_games() for games on this platform.
@@ -361,9 +374,15 @@ Plugins inject UI into core pages via named slots. Each slot is a small HTML or 
 |------|----------------|---------|
 | `base_head_styles` | `<style>` block in `<head>` | CSS for elements your nav fragment adds |
 | `base_nav_items` | Hamburger menu, after the populate button | Persistent status buttons (e.g. install progress) |
+| `base_nav_dots` | Inside `#hamburger-btn`, alongside core's own status dots | A notification dot (see below) |
 | `base_body_scripts` | `<script>` block at end of `<body>` | JS that must exist on every page |
 | `tools_scripts` | `<script>` block in `modal_tools.html` | JS for the manage modal (sync handlers, etc.) |
+| `community_modal_extra` | Inside `#community-modal`, after the built-in sections | A section in the shared Community Tools modal (PAGYWOSG/Monthly-in-a-Month/Secret Santa/Play-or-Pay live here) -- for a plugin whose tool doesn't need a whole modal of its own. Core dispatches a `community-modal:opened` event each time the modal opens, for your fragment's JS to react to. |
 | `home_widget_<id>` | Home page, in place of the shelf matching `shelf.preset == '<id>'` | A Home page shelf widget, declared via `home_widgets()` |
+
+### Hamburger notification dots
+
+A `base_nav_dots` fragment's markup should be a single `<span id="..." data-dot-source></span>` -- the `data-dot-source` attribute is what marks it as a status dot (core's own `#update-dot`/`#store-names-dot` carry it too). It starts hidden; toggle `classList.add('visible')`/`.remove('visible')` from your own JS (in a `base_body_scripts` fragment) to show/hide it. Core automatically mirrors any visible dot onto the single `#hamburger-dot` -- no registration call needed.
 
 ### Naming convention
 
@@ -570,6 +589,7 @@ launch_protocol_url(prefix_path, url, wine_bin=None)
 - [ ] `extra_info(appid, platform, platform_id)` implemented if the plugin has supplemental info to show in the library detail pane (any platform, not just your own)
 - [ ] `context_menu_items` added to `js_api()` if the plugin adds right-click menu actions for its games
 - [ ] `on_game_launched(appid, platform)` / `on_library_updated()` implemented if the plugin needs to react to launches or library refreshes
+- [ ] `pre_cheevo_scrape(today)` implemented only if the plugin can pre-fill `cheevos_fetched` from an external source before populate's cheevo workers start
 - [ ] `home_widgets()` + a matching `home_widget_<id>` fragment implemented if the plugin adds a Home page shelf widget
 - [ ] `date_import_url` declared if the platform has an orders page the Tampermonkey script should open
 - [ ] `launcher_status()` implemented if `plugin.json` sets `launcher.required: true`
