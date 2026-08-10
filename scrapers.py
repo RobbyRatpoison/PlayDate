@@ -2023,7 +2023,7 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
 
             platform = platform_map.get(appid, 'steam')
             try:
-                plugin = _plugins_mod.get(platform)
+                plugin = _plugins_mod.get_for_platform(platform)
                 if plugin is not None and hasattr(plugin, 'rescrape'):
                     # ── Plugin-handled game ───────────────────────────────────
                     meta = plugin.rescrape(appid)

@@ -1990,6 +1990,7 @@ function pickRandomGame() {
     let _dpCurrentGame = null;
     let _dpCurrentAppid = null;
     let _dpDescLoaded = new Set(); // appids whose description is already shown
+    let _dpExtraInfoLoaded = new Set(); // appids whose plugin extra-info is already shown
 
     const _DP_SESSION_KEY = 'pd_list_selected_appid';
     function _dpSaveSelection(appid) { safeSession.setItem(_DP_SESSION_KEY, String(appid)); }
@@ -2253,6 +2254,15 @@ function pickRandomGame() {
             _dpLoadDescription(game.appid);
         }
 
+        // Plugin extra-info (load lazily)
+        if (!_dpExtraInfoLoaded.has(game.appid)) {
+            const extraSection = document.getElementById('detail-extra-info-section');
+            const extraList    = document.getElementById('detail-extra-info-list');
+            if (extraSection) extraSection.style.display = 'none';
+            if (extraList)    extraList.innerHTML = '';
+            _dpLoadExtraInfo(game.appid);
+        }
+
         // Form fields
         function dpSet(id, val) {
             const el = document.getElementById(id);
@@ -2348,6 +2358,29 @@ function pickRandomGame() {
         }
     }
 
+    async function _dpLoadExtraInfo(appid) {
+        try {
+            const res  = await fetch(`/api/game-extra-info/${appid}`);
+            const data = await res.json();
+            if (_dpCurrentAppid !== appid) return; // user selected different game
+            const section = document.getElementById('detail-extra-info-section');
+            const list     = document.getElementById('detail-extra-info-list');
+            const items = (data.status === 'success' && Array.isArray(data.items)) ? data.items : [];
+            if (list) {
+                list.innerHTML = items.map(item => {
+                    const value = item.url
+                        ? `<a href="${escHtml(item.url)}" target="_blank">${escHtml(item.value ?? '')}</a>`
+                        : escHtml(item.value ?? '');
+                    return `<div class="dp-extra-info-row"><span class="dp-extra-info-label">${escHtml(item.label ?? '')}:</span> <span>${value}</span></div>`;
+                }).join('');
+            }
+            if (section) section.style.display = items.length ? '' : 'none';
+            _dpExtraInfoLoaded.add(appid);
+        } catch (_) {
+            // silently leave the section hidden on failure
+        }
+    }
+
     async function dpSaveGame() {
         const appid = _dpCurrentAppid;
         if (!appid) return;
@@ -2405,6 +2438,7 @@ function pickRandomGame() {
                 if (_dpCurrentAppid === appid) {
                     openDetailPane({ ..._dpCurrentGame, ...g });
                     _dpDescLoaded.delete(appid); // refresh description too
+                    _dpExtraInfoLoaded.delete(appid); // refresh plugin extra-info too
                 }
                 if (btn) { btn.textContent = 'Done'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Sync'; }, 1500); }
             } else if (btn) {

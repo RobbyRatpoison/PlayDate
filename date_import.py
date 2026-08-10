@@ -149,7 +149,7 @@ def bulk_date_import_start():
     api_by_platform  = {}  # plat -> [row, …] for plugins with fetch_purchase_dates
     for r in rows:
         plat   = r['platform'] or 'steam'
-        plugin = _plugins.get(plat)
+        plugin = _plugins.get_for_platform(plat)
         if not plugin:
             continue
         if hasattr(plugin, 'date_import_url'):
@@ -180,7 +180,7 @@ def bulk_date_import_start():
         if queue:
             log.info(f"Bulk date import started: {len(queue)} Steam games queued")
         for plat, plat_rows in api_by_platform.items():
-            plugin  = _plugins.get(plat)
+            plugin  = _plugins.get_for_platform(plat)
             appids  = [r['appid'] for r in plat_rows]
             log.info(f"Bulk date import: queuing {len(appids)} {plat} games for API fetch")
             threading.Thread(

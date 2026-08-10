@@ -285,6 +285,27 @@
             color: var(--text-secondary);
             font-style: italic;
         }
+        #detail-extra-info-section {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            background: var(--bg-surface);
+        }
+        .dp-extra-info-row {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            display: flex;
+            gap: 6px;
+            padding: 2px 0;
+        }
+        .dp-extra-info-row .dp-extra-info-label {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        .dp-extra-info-row a {
+            color: var(--accent);
+            text-decoration: none;
+        }
         #detail-form-area {
             flex: 1;
             padding: 14px 16px;
@@ -795,6 +816,10 @@
                 <div id="detail-desc-section">
                     <div id="detail-desc-loading" style="display:none;">Loading description...</div>
                     <div id="detail-desc-text"></div>
+                </div>
+                <!-- Plugin-contributed extra info -->
+                <div id="detail-extra-info-section" style="display:none;">
+                    <div id="detail-extra-info-list"></div>
                 </div>
                 <!-- Form area -->
                 <div id="detail-form-area">

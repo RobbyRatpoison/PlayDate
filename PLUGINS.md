@@ -132,6 +132,23 @@ class MyPlugin:
         """
         pass
 
+    def on_game_launched(self, appid, platform):
+        """
+        Optional. Best-effort notification fired after ANY game launch is
+        dispatched (not just this plugin's own platform — check `platform`
+        if you only care about specific ones). Exceptions are caught and
+        logged by core, never surfaced to the user, so this is safe for
+        things like Discord rich presence or a launch-history log.
+        """
+        pass
+
+    def on_library_updated(self):
+        """
+        Optional. Best-effort notification fired after populate/scrape-new-games
+        finishes. Exceptions are caught and logged by core.
+        """
+        pass
+
     def rescrape(self, appid):
         """
         Optional. Called by bulk_rescrape_games() for games on this platform.
@@ -147,6 +164,18 @@ class MyPlugin:
         Optional. Called by GET /api/game-description/<appid> for non-Steam games.
         Return a plain-text description string, or None if unavailable.
         Core falls back to the Steam store API when this is not implemented.
+        """
+        pass
+
+    def extra_info(self, appid, platform, platform_id):
+        """
+        Optional. Called by GET /api/game-extra-info/<appid>, for EVERY loaded
+        game (any platform, not just this plugin's own — a price-tracker or
+        alternate review-score plugin can annotate Steam games too). Return a
+        list of {'label': str, 'value': str, 'url': str|None} dicts, or None.
+        Shown in the library list view's detail pane, below the description.
+        Called on every game-detail view, so avoid slow blocking calls where
+        possible (e.g. cache upstream results yourself).
         """
         pass
 
@@ -175,6 +204,18 @@ class MyPlugin:
             'store_label':       'View on My Platform Store ↗',
             'appid_label':       'My Platform ID:',
             'sync_label':        'Sync My Platform Data',
+            # Optional: extra entries in the game right-click menu, for games on
+            # this platform. Static and declarative -- no server round trip when
+            # the menu opens, same {appid}/{slug} templating as store_url above.
+            'context_menu_items': [
+                {
+                    'label':       'Check Price History',
+                    'action_type': 'open_url',           # 'open_url' | 'call'
+                    'url_template': 'https://example.com/price/{appid}',
+                    'visible_if':  'has_slug',            # optional: 'installed' | 'has_slug' | 'non_steam'
+                },
+                # {'label': 'Do Something', 'action_type': 'call', 'js_fn': 'myPluginCtxAction'},
+            ],
         }
 
     def manage_ui(self):
@@ -241,6 +282,18 @@ class MyPlugin:
             ],
         }
 
+    def home_widgets(self):
+        """
+        Optional. Return [{'id': str, 'label': str}, ...] describing Home page
+        shelf presets this plugin provides. Each id needs a matching
+        'home_widget_<id>' entry in fragments() below, pointing at a template
+        that renders the widget -- including its own <script> that fetches
+        whatever data it needs from a route this plugin registers itself.
+        Core passes no data in; the widget is fully self-sufficient.
+        The id shows up as a selectable preset in the Home page shelf editor.
+        """
+        return [{'id': 'myplugin_stats', 'label': 'My Platform Stats'}]
+
     def fragments(self):
         """Optional. Map injection slot names to template filenames."""
         return {
@@ -248,6 +301,7 @@ class MyPlugin:
             'base_nav_items':    'myplugin_base_nav_items.html',
             'base_body_scripts': 'myplugin_base_scripts.html',
             'tools_scripts':     'myplugin_tools_scripts.html',
+            'home_widget_myplugin_stats': 'myplugin_stats_widget.html',
         }
 
 
@@ -296,6 +350,7 @@ Plugins inject UI into core pages via named slots. Each slot is a small HTML or 
 | `base_nav_items` | Hamburger menu, after the populate button | Persistent status buttons (e.g. install progress) |
 | `base_body_scripts` | `<script>` block at end of `<body>` | JS that must exist on every page |
 | `tools_scripts` | `<script>` block in `modal_tools.html` | JS for the manage modal (sync handlers, etc.) |
+| `home_widget_<id>` | Home page, in place of the shelf matching `shelf.preset == '<id>'` | A Home page shelf widget, declared via `home_widgets()` |
 
 ### Naming convention
 
@@ -498,6 +553,10 @@ launch_protocol_url(prefix_path, url, wine_bin=None)
 - [ ] `launch_game(appid)` implemented so the Play button works (returns a status dict); use `install_poller` key (not platform-named flags) when installation is triggered
 - [ ] `rescrape(appid)` implemented if the platform has a metadata API (enables bulk rescrape)
 - [ ] `fetch_description(appid, platform_id)` implemented if the platform has a description API
+- [ ] `extra_info(appid, platform, platform_id)` implemented if the plugin has supplemental info to show in the library detail pane (any platform, not just your own)
+- [ ] `context_menu_items` added to `js_api()` if the plugin adds right-click menu actions for its games
+- [ ] `on_game_launched(appid, platform)` / `on_library_updated()` implemented if the plugin needs to react to launches or library refreshes
+- [ ] `home_widgets()` + a matching `home_widget_<id>` fragment implemented if the plugin adds a Home page shelf widget
 - [ ] `date_import_url` declared if the platform has an orders page the Tampermonkey script should open
 - [ ] `launcher_status()` implemented if `plugin.json` sets `launcher.required: true`
 - [ ] Blacklist check before inserting games

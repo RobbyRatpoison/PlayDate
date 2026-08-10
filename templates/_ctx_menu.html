@@ -142,6 +142,7 @@
         <div class="ctx-item" id="ctx-uninstall" data-action="uninstall" style="display:none; color:#ff8080;">
             <i class="ctx-icon">🗑</i> Uninstall Game
         </div>
+        <div id="ctx-plugin-items"></div>
     </div>
 </div>
 
@@ -234,6 +235,34 @@
             el = el.parentElement;
         }
         return { installed: null, name: null, status: null, platform: 'steam' };
+    }
+
+    // Render plugin-contributed context-menu items for the right-clicked game's
+    // platform, from window._PLUGIN_API[platform].context_menu_items (a static,
+    // declarative list -- same shape as store_url's {appid}/{slug} templating,
+    // so no per-open server round trip is needed). visible_if is checked
+    // against a small fixed set of known flags, never eval()'d.
+    function renderPluginCtxItems(appid, platform, platformSlug, installed, isNonSteam) {
+        const container = document.getElementById('ctx-plugin-items');
+        if (!container) return;
+        container.innerHTML = '';
+        const items = window._PLUGIN_API?.[platform]?.context_menu_items || [];
+        const flags = { installed: !!installed, has_slug: !!platformSlug, non_steam: !!isNonSteam };
+        items.forEach(def => {
+            if (def.visible_if && !flags[def.visible_if]) return;
+            const div = document.createElement('div');
+            div.className = 'ctx-item';
+            div.innerHTML = `<i class="ctx-icon">${def.icon ? escHtml(def.icon) : '🔌'}</i> ${escHtml(def.label || '')}`;
+            div.addEventListener('click', function () {
+                hideMenu();
+                if (def.action_type === 'open_url' && def.url_template) {
+                    openUrl(def.url_template.replace('{appid}', appid).replace('{slug}', platformSlug || ''));
+                } else if (def.action_type === 'call' && def.js_fn && typeof window[def.js_fn] === 'function') {
+                    window[def.js_fn](appid, platformSlug);
+                }
+            });
+            container.appendChild(div);
+        });
     }
 
     // ── Position & show ───────────────────────────────────────────────────
@@ -376,6 +405,8 @@
             document.getElementById('ctx-community-hub').style.display = isNonSteam ? 'none' : '';
             const hasProfileSeg = !isNonSteam && !!_steamId;
             document.getElementById('ctx-achievements').style.display  = hasProfileSeg ? '' : 'none';
+
+            renderPluginCtxItems(appid, platform, platformSlug, installed, isNonSteam);
 
             // Truncate long game names for the section label
             let gameName = domData.name || '';

@@ -348,6 +348,7 @@
                     <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('{{ shelf.id }}')">Cancel</button>
                 </div>
             </div>
+            {% set _wf = plugin_widget_fragment(shelf.preset) %}
             {% if shelf.preset == 'clock' %}
             <div class="clock-widget">
                 <div class="clock-time">00:00</div>
@@ -357,6 +358,8 @@
             {{ completion_pie_widget() }}
             {% elif shelf.preset == 'achievement_pie' %}
             {{ achievement_pie_widget() }}
+            {% elif _wf %}
+            {% include _wf %}
             {% else %}
             {% if shelf.sort_col == 'RANDOM()' %}
             {% if shelf.label %}<span class="shuffle-link" onclick="shuffleShelf('{{ shelf.id }}', this)">
@@ -398,6 +401,7 @@
                 <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('{{ shelf.id }}')">Cancel</button>
             </div>
         </div>
+        {% set _wf = plugin_widget_fragment(shelf.preset) %}
         {% if shelf.preset == 'clock' %}
         <div class="clock-widget">
             <div class="clock-time">00:00</div>
@@ -407,6 +411,8 @@
         {{ completion_pie_widget() }}
         {% elif shelf.preset == 'achievement_pie' %}
         {{ achievement_pie_widget() }}
+        {% elif _wf %}
+        {% include _wf %}
         {% elif shelf.sort_col == 'RANDOM()' %}
         {% if shelf.label %}<span class="shuffle-link" onclick="shuffleShelf('{{ shelf.id }}', this)">
             <div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>
@@ -599,6 +605,10 @@ const WIDGET_LABELS = {
     completion_pie: 'Completion Chart',
     achievement_pie: 'Achievement Chart',
 };
+(window._PLUGIN_HOME_WIDGETS || []).forEach(w => {
+    WIDGET_PRESETS.add(w.id);
+    WIDGET_LABELS[w.id] = w.label;
+});
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
 function updateClock() {

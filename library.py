@@ -931,7 +931,7 @@ def game_description(appid):
         return jsonify({'status': 'error', 'message': 'Game not found'}), 404
     platform = row['platform'] or 'steam'
     try:
-        plugin = _plugins.get(platform)
+        plugin = _plugins.get_for_platform(platform)
         if plugin is not None and hasattr(plugin, 'fetch_description'):
             desc = plugin.fetch_description(appid, row['platform_id'])
             if desc:
@@ -950,6 +950,18 @@ def game_description(appid):
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
     return jsonify({'status': 'error', 'message': 'No description available'})
+
+@library_bp.route('/api/game-extra-info/<int:appid>')
+def game_extra_info(appid):
+    import plugins as _plugins
+    db = get_db()
+    row = db.execute("SELECT platform, platform_id FROM games WHERE appid = ?", (appid,)).fetchone()
+    db.close()
+    if not row:
+        return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+    platform = row['platform'] or 'steam'
+    items = _plugins.collect_extra_info(appid, platform, row['platform_id'])
+    return jsonify({'status': 'success', 'items': items})
 
 @library_bp.route('/api/set-completion/<int:appid>', methods=['POST'])
 def set_completion(appid):

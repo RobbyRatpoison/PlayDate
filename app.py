@@ -347,6 +347,8 @@ def create_app(template_folder=None, static_folder=None):
             _populate_state["running"] = False
             from utils import invalidate_unique_cache
             invalidate_unique_cache()
+            import plugins as _plugins
+            _plugins.notify_library_updated()
         return jsonify(result)
 
     @app.route('/api/cancel-populate', methods=['POST'])
@@ -406,6 +408,8 @@ def create_app(template_folder=None, static_folder=None):
     app.jinja_env.globals['plugin_fragment_js'] = _plugins.fragment_js
     app.jinja_env.globals['platform_labels']   = _plugins.platform_labels
     app.jinja_env.globals['plugin_js_api']     = _plugins.plugin_js_api
+    app.jinja_env.globals['plugin_home_widgets']    = _plugins.home_widgets
+    app.jinja_env.globals['plugin_widget_fragment'] = _plugins.widget_fragment
     app.jinja_env.globals['pagywosg_op_table'] = pagywosg.js_op_table
 
     return app

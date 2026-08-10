@@ -436,6 +436,82 @@ def has(plugin_id: str) -> bool:
     return plugin_id in _plugins
 
 
+def get_for_platform(platform: str):
+    """Return the plugin that owns a given `games.platform` value, or None.
+
+    The canonical lookup by platform attribute (as opposed to `get()`, which
+    is keyed by plugin id and only happens to work for platform lookups
+    because every shipped plugin sets id == platform).
+    """
+    return next((p for p in _plugins.values() if p.platform == platform), None)
+
+
+def notify_game_launched(appid, platform):
+    """Best-effort broadcast to every plugin implementing on_game_launched().
+
+    A plugin exception here must never break the launch response, so each
+    call is isolated and logged rather than propagated.
+    """
+    for p in _plugins.values():
+        if hasattr(p, 'on_game_launched'):
+            try:
+                p.on_game_launched(appid, platform)
+            except Exception:
+                log.exception(f"Plugin {p.id} on_game_launched failed")
+
+
+def notify_library_updated():
+    """Best-effort broadcast to every plugin implementing on_library_updated()."""
+    for p in _plugins.values():
+        if hasattr(p, 'on_library_updated'):
+            try:
+                p.on_library_updated()
+            except Exception:
+                log.exception(f"Plugin {p.id} on_library_updated failed")
+
+
+def collect_extra_info(appid, platform, platform_id):
+    """Aggregate extra_info() results from every plugin that implements it.
+
+    Unlike launch_game/rescrape, this isn't limited to the platform's owning
+    plugin -- any plugin (e.g. a price tracker) may annotate any game.
+    """
+    items = []
+    for p in _plugins.values():
+        if hasattr(p, 'extra_info'):
+            try:
+                result = p.extra_info(appid, platform, platform_id)
+                if result:
+                    items.extend({**item, 'plugin': p.id} for item in result)
+            except Exception:
+                log.exception(f"Plugin {p.id} extra_info failed")
+    return items
+
+
+def home_widgets() -> list:
+    """Return {'id', 'label', 'plugin'} descriptors for every plugin-provided
+    Home page shelf preset, aggregated from each plugin's home_widgets()."""
+    out = []
+    for p in _plugins.values():
+        if hasattr(p, 'home_widgets'):
+            try:
+                out.extend({**w, 'plugin': p.id} for w in (p.home_widgets() or []))
+            except Exception:
+                log.exception(f"Plugin {p.id} home_widgets failed")
+    return out
+
+
+def widget_fragment(widget_id: str) -> str | None:
+    """Return the fragment template path registered for a plugin home widget id.
+
+    Relies on the plugin having added a 'home_widget_<id>' entry to its
+    fragments() dict -- same slot mechanism used elsewhere, just a naming
+    convention layered on top so widget ids can be looked up by shelf preset.
+    """
+    frags = fragments(f'home_widget_{widget_id}')
+    return frags[0] if frags else None
+
+
 def fragments(slot: str) -> list:
     return _fragment_map.get(slot, [])
 

@@ -139,6 +139,8 @@ def launch_game(appid):
             elif os_name == 'Windows':
                 subprocess.Popen(['cmd', '/c', 'start', '', url])
             log.info(f"Launched Steam appid {appid_int}")
+            import plugins as _plugin_registry
+            _plugin_registry.notify_game_launched(appid_int, game_platform)
         except Exception as e:
             log.error(f"Failed to launch Steam appid {appid_int}: {e}")
     else:
@@ -146,20 +148,21 @@ def launch_game(appid):
         if _emu.is_emulation_platform(game_platform):
             result = _emu.launch_game(appid_int)
             if result.get('status') == 'success':
+                import plugins as _plugin_registry
+                _plugin_registry.notify_game_launched(appid_int, game_platform)
                 new_ts = record_launch(appid_int)
                 if new_ts:
                     from database import ts_to_date
                     return jsonify({'status': 'success', 'last_played': ts_to_date(new_ts)})
             return jsonify(result)
         import plugins as _plugin_registry
-        plugin_obj = next(
-            (p for p in _plugin_registry.loaded().values() if p.platform == game_platform),
-            None,
-        )
+        plugin_obj = _plugin_registry.get_for_platform(game_platform)
         if plugin_obj and hasattr(plugin_obj, 'launch_game'):
             log.info(f"Dispatching launch for appid {appid_int} ({game_name!r}) to {game_platform} plugin")
             result = plugin_obj.launch_game(appid_int)
             log.info(f"Launch result for appid {appid_int}: {result}")
+            if result.get('status') != 'error':
+                _plugin_registry.notify_game_launched(appid_int, game_platform)
             return jsonify(result)
         log.warning(f"No launch handler for platform {game_platform!r} (appid {appid_int})")
         return jsonify({"status": "not_supported",
