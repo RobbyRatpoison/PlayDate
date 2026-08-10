@@ -11,7 +11,7 @@
 ### Fixes
 
 - Cover art no longer re-validates with the server on every view, loading faster from cache.
-- Steam Collections and startup playtime sync could read the wrong Steam account's data on PCs with multiple Steam logins.
+- Steam Collections and startup playtime sync could read the wrong Steam account's data on PCs with multiple Steam logins. (reported by Limbert)
 
 ## v1.7.3 - 2026-08-05
 ### New
