@@ -410,269 +410,6 @@ def _protondb_worker(normal_q, priority_q, cancel_event, today, progress_cb):
             log.error(f"[protondb] Error for {appid}: {e}")
 
 
-# ── HLTB fetch functions ──────────────────────────────────────────────────────
-
-_STEAM_HLTB_MAP = None  # {steam_appid_str: hltb_id_int}
-
-def _load_steam_hltb_map():
-    """
-    Load and cache the Steam→HLTB ID mapping from zpangwin/sg-data on GitHub.
-    Cached locally for 7 days; refreshed on startup.
-    """
-    global _STEAM_HLTB_MAP
-    if _STEAM_HLTB_MAP is not None:
-        return _STEAM_HLTB_MAP
-
-    from config import BASE_DIR
-    cache_path = os.path.join(BASE_DIR, 'steam_hltb_map.json')
-    url = 'https://raw.githubusercontent.com/zpangwin/sg-data/master/steam-to-hltb-mappings/steam-to-hltb-map.min.json'
-
-    try:
-        age = time.time() - os.path.getmtime(cache_path) if os.path.exists(cache_path) else float('inf')
-        if age > 7 * 86400:
-            resp = requests.get(url, timeout=30)
-            resp.raise_for_status()
-            with open(cache_path, 'w', encoding='utf-8') as f:
-                f.write(resp.text)
-            log.info('[hltb] steam_hltb_map refreshed from GitHub')
-        with open(cache_path, 'r', encoding='utf-8') as f:
-            _STEAM_HLTB_MAP = json.load(f)
-    except Exception as e:
-        log.warning(f'[hltb] could not load steam_hltb_map: {e}')
-        _STEAM_HLTB_MAP = {}
-
-    return _STEAM_HLTB_MAP
-
-
-def _hltb_clean_name(name):
-    """
-    Normalize a Steam game title for HLTB search queries.
-    Strips symbols and all punctuation so differences like trailing periods,
-    semicolons, or colon-vs-dash separators don't prevent a match.
-    """
-    name = name[:500]
-    name = re.sub(r'[®™©]', '', name)            # trademark/IP symbols
-    name = name.rstrip()                                   # trailing year, e.g. "(2010)"
-    if name.endswith(')') and len(name) >= 6 and name[-6] == '(' and name[-5:-1].isdigit():
-        name = name[:-6].rstrip()
-    name = re.sub(r'[^\w\s]', ' ', name)           # all remaining punctuation → space
-    name = re.sub(r'\bsokpop\s+s\d+\b', '', name, flags=re.IGNORECASE)  # Sokpop S07 series prefix
-    name = re.sub(r'\s{2,}', ' ', name)            # collapse whitespace
-    return name.strip()
-
-
-_HLTB_EDITION_RE = None
-
-def _hltb_strip_edition(name):
-    """
-    Strip common trailing edition/remaster qualifiers that Steam adds but HLTB omits.
-    Returns the stripped name, or the original if nothing was removed.
-    """
-    global _HLTB_EDITION_RE
-    if _HLTB_EDITION_RE is None:
-        qualifiers = '|'.join([
-            r'definitive', r'remastered', r'hd remaster', r'hd edition',
-            r'game of the year', r'goty', r'complete', r'ultimate', r'enhanced',
-            r'special', r'anniversary', r'directors? cut', r'deluxe', r'gold',
-            r'platinum', r'standard', r'extended', r'legendary',
-        ])
-        # optionally preceded by a separator word or space, followed by optional "edition/version/cut"
-        _HLTB_EDITION_RE = re.compile(
-            r'\s+(?:' + qualifiers + r')(?:\s+(?:edition|version|cut))?\s*$',
-            re.IGNORECASE
-        )
-    stripped = _HLTB_EDITION_RE.sub('', name).strip()
-    return stripped if stripped != name else name
-
-
-def fetch_hltb_data(name, threshold=75):
-    """
-    Fetch HowLongToBeat data for a game by name.
-    If the best match score >= threshold, returns full data including times.
-    If below threshold, returns only hltb_id + hltb_match_score with
-    hltb_fetched='unconfirmed' and no times (NULL) so bad data isn't stored.
-    Returns None on no results or failure.
-    Times are stored in minutes (HLTB returns hours as floats).
-    """
-    try:
-        from howlongtobeatpy import HowLongToBeat
-
-        def _search(query):
-            results = HowLongToBeat(0.0).search(query, similarity_case_sensitive=False)
-            if not results:
-                return None, 0
-            b = max(results, key=lambda r: r.similarity)
-            return b, int(round(b.similarity * 100))
-
-        cleaned = _hltb_clean_name(name)
-        best, score = _search(cleaned)
-        parens_fallback_used = False
-
-        # Single secondary pass: try edition-stripped and paren-stripped variants
-        # together, picking whichever yields the best effective score. Paren-stripped
-        # results are penalised by 15 pts since removing brackets loses information.
-        if not best or score < threshold:
-            seen = {cleaned}
-            candidates = []
-
-            shorter = _hltb_strip_edition(cleaned)
-            if shorter not in seen:
-                seen.add(shorter)
-                candidates.append((shorter, False))
-
-            no_parens = _hltb_clean_name(re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*', ' ', name))
-            if no_parens and no_parens not in seen:
-                candidates.append((no_parens, True))
-
-            best_effective = score
-            for query, penalised in candidates:
-                alt_best, alt_score = _search(query)
-                effective = alt_score - (15 if penalised else 0)
-                if alt_best and effective > best_effective:
-                    best, score, parens_fallback_used = alt_best, alt_score, penalised
-                    best_effective = effective
-
-        if not best:
-            return None
-
-        effective_score = score - 15 if parens_fallback_used else score
-        if effective_score < threshold:
-            return {
-                'hltb_id':            best.game_id,
-                'hltb_matched_name':  best.game_name,
-                'hltb_match_score':   score,
-                'hltb_main':          None,
-                'hltb_extras':        None,
-                'hltb_completionist': None,
-                'hltb_fetched':       'unconfirmed',
-            }
-
-        today = datetime.now().strftime('%Y-%m-%d')
-        return {
-            'hltb_id':            best.game_id,
-            'hltb_matched_name':  best.game_name,
-            'hltb_main':          _hours_to_minutes(best.main_story),
-            'hltb_extras':        _hours_to_minutes(best.main_extra),
-            'hltb_completionist': _hours_to_minutes(best.completionist),
-            'hltb_match_score':   score,
-            'hltb_fetched':       today,
-        }
-    except Exception as e:
-        log.warning(f"[hltb] fetch failed for '{name}': {e}")
-        return None
-
-
-def fetch_hltb_by_id(name, hltb_id):
-    """
-    Fetch HLTB data for a specific game ID. Tries search_from_id first (direct
-    lookup, works for compilations), falls back to name search if that fails.
-    Returns dict with hltb_matched_name + times, or None on total failure.
-    """
-    from howlongtobeatpy import HowLongToBeat
-
-    # Try direct lookup first — works for compilations and anything not in search
-    try:
-        match = HowLongToBeat().search_from_id(hltb_id)
-        if match:
-            return {
-                'hltb_matched_name':  match.game_name,
-                'hltb_main':          _hours_to_minutes(match.main_story),
-                'hltb_extras':        _hours_to_minutes(match.main_extra),
-                'hltb_completionist': _hours_to_minutes(match.completionist),
-                'times_available':    True,
-            }
-    except Exception as e:
-        log.warning(f"[hltb] search_from_id failed for id={hltb_id}: {e}")
-
-    # Fall back to name search (in case search_from_id is unreliable for some entries)
-    try:
-        results = HowLongToBeat(0.0).search(name, similarity_case_sensitive=False)
-        match = next((r for r in (results or []) if r.game_id == hltb_id), None)
-        if match:
-            return {
-                'hltb_matched_name':  match.game_name,
-                'hltb_main':          _hours_to_minutes(match.main_story),
-                'hltb_extras':        _hours_to_minutes(match.main_extra),
-                'hltb_completionist': _hours_to_minutes(match.completionist),
-                'times_available':    True,
-            }
-    except Exception as e:
-        log.warning(f"[hltb] name search fallback failed for '{name}' id={hltb_id}: {e}")
-
-    log.info(f"[hltb] id={hltb_id} not found by any method; storing ID only")
-    return {
-        'hltb_matched_name':  None,
-        'hltb_main':          None,
-        'hltb_extras':        None,
-        'hltb_completionist': None,
-        'times_available':    False,
-    }
-
-
-def search_hltb_results(name):
-    """
-    Search HLTB by name and return the top results for user selection.
-    Returns a list of dicts: {hltb_id, hltb_matched_name, hltb_match_score,
-    hltb_main, hltb_extras, hltb_completionist} (times in minutes).
-    """
-    try:
-        from howlongtobeatpy import HowLongToBeat
-        cleaned = _hltb_clean_name(name)
-        results = HowLongToBeat(0.0).search(cleaned, similarity_case_sensitive=False)
-        # Fall back to punctuation-stripped query if the cleaned name found nothing
-        if not results:
-            stripped = _hltb_strip_edition(cleaned)
-            if stripped != cleaned:
-                results = HowLongToBeat(0.0).search(stripped, similarity_case_sensitive=False)
-        if not results:
-            return []
-
-        out = []
-        for r in sorted(results, key=lambda x: x.similarity, reverse=True)[:8]:
-            out.append({
-                'hltb_id':            r.game_id,
-                'hltb_matched_name':  r.game_name,
-                'hltb_match_score':   int(round(r.similarity * 100)),
-                'hltb_main':          _hours_to_minutes(r.main_story),
-                'hltb_extras':        _hours_to_minutes(r.main_extra),
-                'hltb_completionist': _hours_to_minutes(r.completionist),
-            })
-        return out
-    except Exception as e:
-        log.warning(f"[hltb] search failed for '{name}': {e}")
-        return []
-
-
-def _hltb_worker(normal_q, priority_q, cancel_event, today, threshold, progress_cb):
-    while True:
-        if cancel_event and cancel_event.is_set():
-            return
-
-        appid = _next(priority_q, normal_q)
-        if appid is None:
-            return
-
-        db  = get_db()
-        row = db.execute("SELECT name, hltb_fetched FROM games WHERE appid=?", (appid,)).fetchone()
-        db.close()
-        if not row or row['hltb_fetched'] not in ('0', 'no_match', None):
-            continue
-
-        try:
-            info = fetch_hltb_data(row['name'], threshold=threshold)
-            if info:
-                update_game_data(appid, **info)
-            else:
-                update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
-                                 hltb_main=None, hltb_extras=None,
-                                 hltb_completionist=None, hltb_match_score=None)
-            if progress_cb:
-                progress_cb('hltb', appid, None)
-        except Exception as e:
-            log.error(f"[hltb] Error for {appid}: {e}")
-        time.sleep(0.5)
-
-
 # ── Main populate entry point ─────────────────────────────────────────────────
 
 def add_new(cancel_event=None, progress_cb=None):
@@ -828,7 +565,6 @@ def _add_new(cancel_event=None, progress_cb=None):
     meta_nq,     meta_pq     = queue.Queue(), queue.Queue()
     cheevo_nq,   cheevo_pq   = queue.Queue(), queue.Queue()
     protondb_nq, protondb_pq = queue.Queue(), queue.Queue()
-    hltb_nq,     hltb_pq     = queue.Queue(), queue.Queue()
 
     for appid in appid_list:
         art_nq.put(appid)
@@ -836,7 +572,6 @@ def _add_new(cancel_event=None, progress_cb=None):
         if api_key:
             cheevo_nq.put(appid)
         protondb_nq.put(appid)
-        hltb_nq.put(appid)
 
     meta_backoff   = _PoolBackoff('meta')
     cheevo_backoff = _PoolBackoff('cheevo')
@@ -847,14 +582,12 @@ def _add_new(cancel_event=None, progress_cb=None):
             'meta_pq':     meta_pq,
             'cheevo_pq':   cheevo_pq,
             'protondb_pq': protondb_pq,
-            'hltb_pq':     hltb_pq,
         }, total)
 
     ART_WORKERS      = 5
     META_WORKERS     = 1
     CHEEVO_WORKERS   = 2
     PROTONDB_WORKERS = 2
-    HLTB_WORKERS     = 2
 
     # ── Phase 1d: BLAEO pre-scrape (concurrent with art + meta workers) ───────
     # Only worthwhile when there are enough games needing cheevo data.
@@ -886,10 +619,7 @@ def _add_new(cancel_event=None, progress_cb=None):
         except Exception as e:
             log.warning(f"[populate] BLAEO pre-scrape failed (non-fatal): {e}")
 
-    from config import load_state
-    hltb_threshold = load_state().get('hltb_match_threshold', 99)
-
-    n_workers = ART_WORKERS + META_WORKERS + (CHEEVO_WORKERS if api_key else 0) + PROTONDB_WORKERS + HLTB_WORKERS
+    n_workers = ART_WORKERS + META_WORKERS + (CHEEVO_WORKERS if api_key else 0) + PROTONDB_WORKERS
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         # Art and meta start immediately
         futures = []
@@ -905,10 +635,6 @@ def _add_new(cancel_event=None, progress_cb=None):
         for _ in range(PROTONDB_WORKERS):
             futures.append(executor.submit(
                 _protondb_worker, protondb_nq, protondb_pq, cancel_event, today, progress_cb
-            ))
-        for _ in range(HLTB_WORKERS):
-            futures.append(executor.submit(
-                _hltb_worker, hltb_nq, hltb_pq, cancel_event, today, hltb_threshold, progress_cb
             ))
 
         # BLAEO runs concurrently; cheevo workers start after it finishes
@@ -2228,82 +1954,10 @@ def bulk_protondb_scrape_games(appids, cancel_event, progress_cb):
     return counts
 
 
-_startup_hltb_cancel = threading.Event()
 _store_date_migration_cancel = threading.Event()
 _store_name_migration_cancel = threading.Event()
 _populate_idle = threading.Event()
 _populate_idle.set()  # set = no populate running; cleared while add_new() is running
-
-
-def sync_hltb_unfetched():
-    """
-    On startup: silently fetch HLTB data for all games with hltb_fetched = '0' or NULL.
-    Runs after sync_recent_playtime() in the same daemon thread. Logs only, no UI progress.
-    Skips no_match games — those require manual retry via the HLTB tool.
-    """
-    from config import load_state
-    state     = load_state()
-    threshold = state.get('hltb_match_threshold', 99)
-
-    db    = get_db()
-    rows  = db.execute(
-        "SELECT appid, name FROM games WHERE hltb_fetched = '0' OR hltb_fetched IS NULL"
-    ).fetchall()
-    db.close()
-
-    if not rows:
-        log.info("sync_hltb_unfetched: nothing to fetch.")
-        return
-
-    total = len(rows)
-    log.info(f"sync_hltb_unfetched: fetching HLTB data for {total} game(s).")
-
-    steam_hltb_map = _load_steam_hltb_map()
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-
-    q = queue.Queue()
-    for row in rows:
-        q.put((row['appid'], row['name']))
-
-    counts = {'done': 0, 'failed': 0}
-    lock   = threading.Lock()
-
-    def worker():
-        while True:
-            if _startup_hltb_cancel.is_set():
-                return
-            try:
-                appid, name = q.get_nowait()
-            except queue.Empty:
-                return
-            try:
-                hltb_id = steam_hltb_map.get(str(appid))
-                if hltb_id:
-                    info = fetch_hltb_by_id(name, hltb_id)
-                    info.pop('times_available', None)
-                    update_game_data(appid, hltb_id=hltb_id, hltb_fetched=today,
-                                     hltb_match_score=100, **info)
-                else:
-                    info = fetch_hltb_data(name, threshold=threshold)
-                    if info:
-                        update_game_data(appid, **info)
-                    else:
-                        update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
-                                         hltb_matched_name=None, hltb_match_score=None,
-                                         hltb_main=None, hltb_extras=None,
-                                         hltb_completionist=None)
-                with lock:
-                    counts['done'] += 1
-            except Exception as e:
-                log.error(f"[sync_hltb_unfetched] Error for appid {appid}: {e}")
-                with lock:
-                    counts['failed'] += 1
-            time.sleep(0.5)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures_wait([pool.submit(worker) for _ in range(2)])
-
-    log.info(f"sync_hltb_unfetched: done={counts['done']} failed={counts['failed']} / {total}")
 
 
 def sync_store_release_dates():
@@ -2495,81 +2149,6 @@ def sync_store_names():
     migration.mark_background_done(11)
     log.info(f"sync_store_names: complete. diffs={len(pending)}, failed={failed}")
 
-
-def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
-    """
-    Fetch HLTB data for a list of appids by game name.
-    2 concurrent workers. Uses the match threshold from state.json.
-    """
-    from config import load_state
-    state     = load_state()
-    threshold = state.get('hltb_match_threshold', 99)
-
-    db    = get_db()
-    names = {row['appid']: row['name'] for row in db.execute(
-        f"SELECT appid, name FROM games WHERE appid IN ({','.join('?'*len(appids))})",
-        appids
-    ).fetchall()}
-    db.close()
-
-    steam_hltb_map = _load_steam_hltb_map()
-    today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-
-    q = queue.Queue()
-    for appid in appids:
-        q.put(appid)
-    total = len(appids)
-
-    counts = {'done': 0, 'failed': 0}
-    lock   = threading.Lock()
-
-    def worker():
-        while True:
-            if cancel_event and cancel_event.is_set():
-                return
-            try:
-                appid = q.get_nowait()
-            except queue.Empty:
-                return
-            name = names.get(appid)
-            if not name:
-                with lock:
-                    counts['failed'] += 1
-                if progress_cb:
-                    progress_cb('failed', appid, total)
-                continue
-            try:
-                hltb_id = steam_hltb_map.get(str(appid))
-                if hltb_id:
-                    info = fetch_hltb_by_id(name, hltb_id)
-                    info.pop('times_available', None)
-                    update_game_data(appid, hltb_id=hltb_id, hltb_fetched=today_str,
-                                     hltb_match_score=100, **info)
-                else:
-                    info = fetch_hltb_data(name, threshold=threshold)
-                    if info:
-                        update_game_data(appid, **info)
-                    else:
-                        update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
-                                         hltb_matched_name=None, hltb_match_score=None,
-                                         hltb_main=None, hltb_extras=None,
-                                         hltb_completionist=None)
-                with lock:
-                    counts['done'] += 1
-                if progress_cb:
-                    progress_cb('done', appid, total)
-            except Exception as e:
-                log.error(f"[bulk_hltb] Error for {appid}: {e}")
-                with lock:
-                    counts['failed'] += 1
-                if progress_cb:
-                    progress_cb('failed', appid, total)
-            time.sleep(0.5)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures_wait([pool.submit(worker) for _ in range(2)])
-
-    return counts
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────

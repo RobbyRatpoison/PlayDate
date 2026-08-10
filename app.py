@@ -43,7 +43,7 @@ logging.basicConfig(level=logging.WARNING, handlers=[_handler_file, _handler_str
 # PlayDate modules at INFO
 for _name in ('__main__', 'app', 'config', 'database', 'library', 'index',
               'scrapers', 'utils', 'images', 'imports', 'pagywosg',
-              'hltb', 'date_import', 'system', 'pick', 'backup', 'updater', 'pop_sync',
+              'date_import', 'system', 'pick', 'backup', 'updater', 'pop_sync',
               'runners.proton', 'runners.launcher_installer', 'plugins'):
     logging.getLogger(_name).setLevel(logging.INFO)
 
@@ -61,7 +61,6 @@ from index import index_bp
 from library import library_bp
 from emulators import emulators_bp
 from images import images_bp
-from hltb import hltb_bp
 from date_import import date_import_bp
 from system import system_bp
 from pick import pick_bp
@@ -109,7 +108,6 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(library_bp)
     app.register_blueprint(emulators_bp)
     app.register_blueprint(images_bp)
-    app.register_blueprint(hltb_bp)
     app.register_blueprint(date_import_bp)
     app.register_blueprint(system_bp)
     app.register_blueprint(pick_bp)

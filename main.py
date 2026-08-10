@@ -1461,15 +1461,15 @@ if __name__ == '__main__':
 
     threading.Thread(target=_run_emulator_sync, daemon=True).start()
 
-    # 2c. Sync recent playtime from Steam API in background, then fetch any
-    #     unfetched HLTB data and migrate store release dates silently in the same thread.
+    # 2c. Sync recent playtime from Steam API in background, then migrate store
+    #     release dates silently in the same thread. (HLTB catch-up sync, if the
+    #     hltb plugin is installed, runs from its own on_startup() hook instead.)
     def _run_playtime_sync():
         from config import get_active_account
-        from scrapers import sync_recent_playtime, sync_hltb_unfetched, sync_store_release_dates, sync_store_names, sync_steam_collections
+        from scrapers import sync_recent_playtime, sync_store_release_dates, sync_store_names, sync_steam_collections
         _account = get_active_account()
         sync_steam_collections((_account or {}).get('steam_id'))
         sync_recent_playtime()
-        sync_hltb_unfetched()
         sync_store_release_dates()
         sync_store_names()
 

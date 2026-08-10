@@ -466,7 +466,6 @@ def inject_config_status():
         gamepad_enabled=state.get('gamepad_enabled', True),
         gamepad_suppress_on_launch=state.get('gamepad_suppress_on_launch', True),
         button_remaps=state.get('button_remaps', {}),
-        hltb_match_threshold=state.get('hltb_match_threshold', 99),
         hide_duplicates=state.get('hide_duplicates', True),
         ui_scale=state.get('ui_scale', 100),
         auto_promote_unfinished=state.get('auto_promote_unfinished', True),
