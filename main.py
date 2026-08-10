@@ -1439,7 +1439,8 @@ if __name__ == '__main__':
 
     import plugins
     for _p in plugins.loaded().values():
-        _p.on_startup()
+        if hasattr(_p, 'on_startup'):
+            _p.on_startup()
 
     def _run_install_sync():
         try:
@@ -1598,7 +1599,8 @@ if __name__ == '__main__':
     log.info("Window closed. PlayDate exiting.")
     stop_steamapps_watcher()
     for _p in plugins.loaded().values():
-        _p.on_shutdown()
+        if hasattr(_p, 'on_shutdown'):
+            _p.on_shutdown()
 
     # Give an in-flight backup/restore a chance to finish its zip write before
     # the hard kill below -- otherwise closing the window mid-backup truncates
