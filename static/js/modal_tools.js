@@ -3727,6 +3727,13 @@ async function _manageLoadInfoBlocks(id, items) {
                     _manageSliderInput(el);
                 }
             } catch (_) {}
+        } else if (block.type === 'checkbox' && block.get_endpoint) {
+            try {
+                const r = await fetch(block.get_endpoint);
+                const d = await r.json();
+                const el = document.getElementById(`${id}-manage-checkbox-${escHtml(block.key)}`);
+                if (el && d.value != null) el.checked = !!d.value;
+            } catch (_) {}
         }
     }
 }
@@ -3754,6 +3761,26 @@ async function _manageSaveSlider(id, key, endpoint) {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({[key]: parseInt(el.value, 10)}),
+        });
+        const d = await r.json();
+        if (statusEl) {
+            statusEl.textContent = d.status === 'success' ? 'Saved.' : (d.message || 'Save failed.');
+            setTimeout(() => { statusEl.textContent = ''; }, 2000);
+        }
+    } catch (_) {
+        if (statusEl) statusEl.textContent = 'Save failed.';
+    }
+}
+
+async function _manageSaveCheckbox(id, key, endpoint) {
+    const el       = document.getElementById(`${id}-manage-checkbox-${key}`);
+    const statusEl = document.getElementById(`${id}-manage-checkbox-${key}-status`);
+    if (!el) return;
+    try {
+        const r = await fetch(endpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({[key]: el.checked}),
         });
         const d = await r.json();
         if (statusEl) {
@@ -4118,6 +4145,7 @@ function _buildManageBlockHtml(id, block, infoIdx, rowCtr) {
             const hint = block.hint
                 ? `<div style="font-size:0.75rem;color:#8f98a0;margin-bottom:6px;">${escHtml(block.hint)}</div>`
                 : '';
+            const saveOnclick = escHtml(`_manageSaveSlider('${eid}','${key}',${JSON.stringify(block.save_endpoint)})`);
             return `<label style="display:block;color:var(--text-secondary);font-size:0.8rem;margin-bottom:8px;">${escHtml(block.label || '')}
                 ${hint}
                 <div style="display:flex;align-items:center;gap:8px;min-width:0;">
@@ -4126,9 +4154,28 @@ function _buildManageBlockHtml(id, block, infoIdx, rowCtr) {
                     <span id="${sid}-val" style="font-size:0.85rem;color:var(--text-primary);min-width:28px;text-align:right;flex-shrink:0;">--</span>
                 </div>
                 <button class="nav-btn" type="button" style="margin-top:8px;font-size:0.8rem;" data-modal-row="${row}"
-                    onclick="_manageSaveSlider('${eid}','${key}',${JSON.stringify(block.save_endpoint)})">Save</button>
+                    onclick="${saveOnclick}">Save</button>
                 <div id="${sid}-status" style="font-size:0.78rem;color:#8f98a0;margin-top:4px;min-height:1em;"></div>
             </label>`;
+        }
+        case 'checkbox': {
+            const row  = rowCtr.r++;
+            const key  = escHtml(block.key);
+            const sid  = `${eid}-manage-checkbox-${key}`;
+            const save = `_manageSaveCheckbox('${eid}','${key}',${JSON.stringify(block.save_endpoint)})`;
+            const divOnclick   = escHtml(`var cb=this.querySelector('input');cb.checked=!cb.checked;${save}`);
+            const inputOnclick = escHtml(`event.stopPropagation();${save}`);
+            const hint = block.hint
+                ? `<div style="font-size:0.75rem;color:#8f98a0;margin:2px 0 8px 22px;">${escHtml(block.hint)}</div>`
+                : '';
+            return `<div data-modal-row="${row}" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:${block.hint ? '0' : '8px'};"
+                    onclick="${divOnclick}">
+                <input type="checkbox" id="${sid}" style="width:auto;margin:0;cursor:pointer;"
+                    onclick="${inputOnclick}">
+                <label style="color:var(--text-secondary);font-size:0.85rem;cursor:pointer;flex:1;">${escHtml(block.label || '')}</label>
+            </div>
+            ${hint}
+            <div id="${sid}-status" style="font-size:0.78rem;color:#8f98a0;margin:2px 0 8px 22px;min-height:1em;"></div>`;
         }
         case 'input':
         case 'password': {

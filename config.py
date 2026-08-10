@@ -370,6 +370,7 @@ DEFAULT_STATE = {
     "ui_scale": 100,
     "auto_promote_unfinished": True,
     "startup_page": "home",
+    "blaeo_auto_sync": False,
 }
 
 def validate_steam_creds(api_key, steam_id):
@@ -915,6 +916,8 @@ def save_state(updates):
                 state[key] = val
         if "hltb_match_threshold" in updates:
             state["hltb_match_threshold"] = int(updates["hltb_match_threshold"])
+        if "blaeo_auto_sync" in updates:
+            state["blaeo_auto_sync"] = bool(updates["blaeo_auto_sync"])
         if "ui_scale" in updates:
             state["ui_scale"] = max(75, min(200, int(updates["ui_scale"])))
         if "auto_promote_unfinished" in updates:
