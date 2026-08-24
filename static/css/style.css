@@ -124,6 +124,44 @@ select {
     border-color: var(--accent);
 }
 
+/* .nav-dropdown: a darker, bolder dropdown look used by modal selects
+   (sort/group-by, Startup Page, PAGYWOSG refresh, Edit Button corner, …).
+   Was previously defined only in library.html's own <style> block, so any
+   shared modal using it (e.g. the Appearance modal, reachable from every
+   page) rendered inconsistently depending on which page it was opened
+   from -- moved here so it applies everywhere the class is used. */
+select.nav-dropdown {
+    height: 3rem;
+    width: auto;
+    background-color: #333;
+    color: white;
+    border: 1px solid #444;
+    border-radius: 0.5rem;
+    padding: 0 1rem;
+    cursor: pointer;
+    font-weight: bold;
+}
+select.nav-dropdown:hover {
+    background-color: #444;
+}
+div.nav-dropdown {
+    width: auto;
+    min-width: 10rem;
+    flex-shrink: 0;
+}
+div.nav-dropdown .custom-select-btn {
+    height: 3rem;
+    background-color: #333;
+    color: white;
+    border: 1px solid #444;
+    border-radius: 0.5rem;
+    padding: 0 2.2rem 0 1rem;
+    font-weight: bold;
+}
+div.nav-dropdown .custom-select-btn:hover {
+    background-color: #444;
+}
+
 .custom-select-panel {
     display: none;
     position: fixed;

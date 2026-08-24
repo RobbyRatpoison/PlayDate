@@ -123,8 +123,28 @@ function renderEditButton(appid, cfg) {
     return `<div class="card-edit-overlay card-edit-${cfg.corner}" onclick="event.stopPropagation()">
         <button class="status-tag"
             style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;"
-            onclick="event.stopPropagation();openEditModalById(${appid})">✎</button>
+            onclick="event.stopPropagation();openGameEditor(${appid})">✎</button>
     </div>`;
+}
+
+// openEditModalById()/_GAME_MAP only exist in library.js (Library page only,
+// and only cover the full-column game objects Library fetches) -- same gap
+// the right-click context menu's 'edit' action already works around: use it
+// directly when available, otherwise fetch the full row and open the modal
+// with that instead. Needed for the edit button to work from Home/Pick 6,
+// whose own game data is a narrower column set.
+async function openGameEditor(appid) {
+    if (typeof openEditModalById === 'function') {
+        openEditModalById(appid);
+        return;
+    }
+    try {
+        const res = await fetch(`/api/game/${appid}`);
+        const data = await res.json();
+        if (data.status === 'success' && typeof openEditModal === 'function') {
+            openEditModal(data.game);
+        }
+    } catch (e) { /* ignore */ }
 }
 
 /**

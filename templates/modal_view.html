@@ -738,7 +738,15 @@ function _cbRenderCornerGrid() {
             <option value="platform">${label}: Platform</option>
         `;
         sel.value = _cbSlots[corner] || '';
-        sel.addEventListener('change', () => _cbSetSlot(corner, sel.value));
+        // initCustomSelect() replaces this element with a styled <div> and
+        // only wires up the .onchange PROPERTY (matching how a plain
+        // onchange="..." HTML attribute works) -- it never sees listeners
+        // attached via addEventListener, since those stay on this now-
+        // detached original node and never fire again. Must assign
+        // .onchange (a real function, not an arrow fn, so `this` binds to
+        // the replacement div when initCustomSelect calls handler.call(div, e))
+        // BEFORE calling initCustomSelect() below.
+        sel.onchange = function() { _cbSetSlot(corner, this.value); };
         grid.appendChild(sel);
         _cbSlotSelects[corner] = initCustomSelect(sel) || sel;
     });
