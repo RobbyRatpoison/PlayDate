@@ -29,8 +29,14 @@ def _ensure_dirs():
 
 def save_badge_icon(image_bytes, save_path):
     """
-    Normalizes a user-uploaded corner-badge icon to a fixed-size RGBA PNG.
-    Unlike save_as_jpg(), keeps the alpha channel -- badges overlay on top of
+    Normalizes a user-uploaded corner-badge icon to an RGBA PNG capped at
+    BADGE_ICON_SIZE on its longest side. Uses thumbnail() rather than
+    resize() -- resize() to a fixed square would squish any non-square
+    source (most platform wordmark logos aren't square) into a distorted
+    shape. The frontend's .card-badge CSS already sets object-fit:contain
+    for display, so a non-square stored file renders correctly at any
+    aspect ratio without needing padding to a fixed canvas here. Unlike
+    save_as_jpg(), keeps the alpha channel -- badges overlay on top of
     cover art, so a JPEG's forced-opaque background would show as a visible
     square patch. Returns True on success, False on failure.
     """
@@ -38,7 +44,7 @@ def save_badge_icon(image_bytes, save_path):
     try:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         img = Image.open(io.BytesIO(image_bytes)).convert('RGBA')
-        img = img.resize((BADGE_ICON_SIZE, BADGE_ICON_SIZE), Image.LANCZOS)
+        img.thumbnail((BADGE_ICON_SIZE, BADGE_ICON_SIZE), Image.LANCZOS)
         img.save(tmp_path, 'PNG')
         os.replace(tmp_path, save_path)
         return True
