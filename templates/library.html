@@ -966,6 +966,7 @@
     window.CURRENT_ORDER = {{ state.order | tojson }};
     window._artOrientation = '{{ state.get("artwork_orientation", "vertical") }}';
     window._requireDblClick = {{ state.get('require_double_click_launch', false) | tojson }};
+    window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('library', True) else none) | tojson }};
     window._groupBy = {{ group_by | tojson }};
     window._initialCardHeight = {{ state.get('card_height', 200) }};
     window._serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};

@@ -84,6 +84,34 @@ function escHtml(s) {
         .replace(/'/g, '&#39;');
 }
 
+// Shared card-badges renderer for Library/Home/Pick 6 (see CARD_BADGES config,
+// GET/POST /api/card-badges). Only the "platform" feature is game-dependent
+// (it needs the game's own platform value); "installed" badges are rendered
+// unconditionally when configured and an icon exists, with visibility left to
+// a CSS rule keyed off the ancestor's data-installed attribute -- lets a live
+// install-status flip (e.g. Home's polling loop) just work with no re-render.
+function renderCardBadges(game, cfg) {
+    if (!cfg || !cfg.slots) return '';
+    let html = '';
+    ['top_left', 'top_right', 'bottom_left', 'bottom_right'].forEach(corner => {
+        const feature = cfg.slots[corner];
+        if (feature === 'installed') {
+            const icon = cfg.icons && cfg.icons.installed;
+            if (icon) html += `<img class="card-badge card-badge-${corner} card-badge-installed" src="/static/img/badges/${icon}" alt="">`;
+        } else if (feature === 'platform') {
+            const plat = (game && game.platform) || 'steam';
+            const icon = cfg.icons && cfg.icons.platform && cfg.icons.platform[plat];
+            if (icon) {
+                html += `<img class="card-badge card-badge-${corner}" src="/static/img/badges/${icon}" alt="">`;
+            } else if (cfg.platform_fallback !== 'none') {
+                const label = (window._PLAT_LABELS && window._PLAT_LABELS[plat]) || plat;
+                html += `<span class="card-badge card-badge-${corner} card-badge-text">${escHtml(label)}</span>`;
+            }
+        }
+    });
+    return html;
+}
+
 /**
  * Format a playtime value (stored as minutes) as a human-readable hours string.
  * e.g. 75 → "1.2 hrs", 12345 → "205.8 hrs"

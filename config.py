@@ -253,6 +253,25 @@ DEFAULT_CARD_OUTLINES = {
     ]
 }
 
+# Corner badges for Library/Home/Pick 6 game cards. Unlike card outlines,
+# 'installed' and 'platform' are fixed known columns (not arbitrary filter
+# trees), so badge state is computed entirely client-side from data already
+# present on every game object -- no server-side evaluation needed. Icons are
+# user-uploaded (not bundled) to avoid shipping trademarked platform logos;
+# see images.py's badge-icon routes and static/img/badges/.
+DEFAULT_CARD_BADGES = {
+    "enabled": {"library": True, "home": True, "pick6": True},
+    "slots": {
+        "top_left": None, "top_right": None,
+        "bottom_left": None, "bottom_right": None,
+    },
+    "platform_fallback": "label",  # "label" | "none" -- for the "platform" slot when no icon is uploaded for a value
+    "icons": {
+        "installed": None,  # filename under static/img/badges/, or None if not uploaded
+        "platform": {},     # {platform_id: filename}
+    },
+}
+
 
 def resolve_outline_rule_where(rule, saved_filters):
     """Return a SQL WHERE string for a card outline rule, or None if unresolvable."""
@@ -693,6 +712,12 @@ def _load_state_unlocked():
         for rule in outline_defaults['rules']:
             rule['id'] = str(uuid.uuid4())
         state['card_outlines'] = outline_defaults
+        dirty = True
+
+    # Seed card_badges with defaults on first run
+    if 'card_badges' not in state:
+        import copy
+        state['card_badges'] = copy.deepcopy(DEFAULT_CARD_BADGES)
         dirty = True
 
     if dirty:

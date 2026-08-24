@@ -190,6 +190,20 @@ def create_app(template_folder=None, static_folder=None):
         # where BASE_DIR and the bundle's static folder are the same directory.
         return app.send_static_file('img/backgrounds/playdate_default_background.jpg')
 
+    # Badge icon filenames embed an upload timestamp (see images.py's
+    # _upload_badge_icon), so — like library art's ?v= param — a cached URL
+    # can never go stale: a changed icon always gets a brand new filename.
+    _BADGE_IMG_MAX_AGE = 31536000  # 1 year
+
+    @app.route('/static/img/badges/<path:filename>')
+    def serve_badge_image(filename):
+        if not _SAFE_FILENAME_RE.match(filename):
+            return '', 400
+        badges_dir = os.path.join(BASE_DIR, 'static', 'img', 'badges')
+        if not os.path.exists(os.path.join(badges_dir, filename)):
+            return '', 404
+        return send_from_directory(badges_dir, filename, max_age=_BADGE_IMG_MAX_AGE)
+
     # ── Inject background timestamp and builtin filters into every template ──────
     @app.context_processor
     def inject_globals():

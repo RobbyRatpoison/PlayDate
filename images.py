@@ -16,11 +16,40 @@ LIBRARY_DIR    = os.path.join(BASE_DIR, 'static', 'img', 'library')
 VERTICAL_DIR   = os.path.join(LIBRARY_DIR, 'vertical')
 HORIZONTAL_DIR = os.path.join(LIBRARY_DIR, 'horizontal')
 ICONS_DIR      = os.path.join(LIBRARY_DIR, 'icons')
+BADGES_DIR     = os.path.join(BASE_DIR, 'static', 'img', 'badges')
+
+BADGE_ICON_SIZE     = 64
+BADGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 
 
 def _ensure_dirs():
     for d in (VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR):
         os.makedirs(d, exist_ok=True)
+
+
+def save_badge_icon(image_bytes, save_path):
+    """
+    Normalizes a user-uploaded corner-badge icon to a fixed-size RGBA PNG.
+    Unlike save_as_jpg(), keeps the alpha channel -- badges overlay on top of
+    cover art, so a JPEG's forced-opaque background would show as a visible
+    square patch. Returns True on success, False on failure.
+    """
+    tmp_path = save_path + '.tmp'
+    try:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        img = Image.open(io.BytesIO(image_bytes)).convert('RGBA')
+        img = img.resize((BADGE_ICON_SIZE, BADGE_ICON_SIZE), Image.LANCZOS)
+        img.save(tmp_path, 'PNG')
+        os.replace(tmp_path, save_path)
+        return True
+    except Exception as e:
+        log.warning(f"save_badge_icon: conversion failed: {e}")
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        return False
 
 
 def save_as_jpg(image_bytes, save_path):
@@ -639,3 +668,123 @@ def rescrape_protondb(appid):
     update_game_data(appid, **game_data)
     return jsonify({'status': 'success', 'tier': info.get('protondb_tier') if info else None,
                     'confidence': info.get('protondb_confidence') if info else None})
+
+# ── Card badge icons ────────────────────────────────────────────────────────
+# User-uploaded, not bundled -- avoids shipping trademarked platform logos.
+# One icon for 'installed'; one per platform value for 'platform'.
+
+def _save_badge_icon_bytes(kind, data, platform_id=None):
+    """Shared core for both upload paths below. Returns the new filename, or
+    None on a decode/processing failure."""
+    os.makedirs(BADGES_DIR, exist_ok=True)
+    import time
+    filename = f"{platform_id if kind == 'platform' else 'installed'}_{int(time.time() * 1000)}.png"
+    save_path = os.path.join(BADGES_DIR, filename)
+    if not save_badge_icon(data, save_path):
+        return None
+
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    with _state_lock:
+        state = _load_state_unlocked()
+        badges = state.setdefault('card_badges', {})
+        icons = badges.setdefault('icons', {'installed': None, 'platform': {}})
+        if kind == 'installed':
+            old = icons.get('installed')
+            icons['installed'] = filename
+        else:
+            old = icons.setdefault('platform', {}).get(platform_id)
+            icons['platform'][platform_id] = filename
+        _write_state_atomic(state)
+    if old and old != filename:
+        try:
+            os.remove(os.path.join(BADGES_DIR, old))
+        except OSError:
+            pass
+    return filename
+
+def _upload_badge_icon(kind, platform_id=None):
+    """Browser-mode path: a real multipart file upload."""
+    if 'icon' not in request.files:
+        return jsonify({'status': 'error', 'message': 'No file uploaded.'}), 400
+    f = request.files['icon']
+    if not f.filename:
+        return jsonify({'status': 'error', 'message': 'Empty filename.'}), 400
+    data = f.read()
+    if len(data) > BADGE_UPLOAD_MAX_BYTES:
+        return jsonify({'status': 'error', 'message': 'File too large (max 5MB).'}), 400
+    filename = _save_badge_icon_bytes(kind, data, platform_id)
+    if not filename:
+        return jsonify({'status': 'error', 'message': 'Could not process image.'}), 400
+    return jsonify({'status': 'success', 'filename': filename})
+
+def _upload_badge_icon_from_path(kind, platform_id=None):
+    """pywebview-mode path: window.pywebview.api.pick_open_path() returns a
+    local file path rather than a File object -- input[type=file].click()
+    triggered from a gamepad button press doesn't open the native dialog in
+    pywebview, so the frontend calls this route instead when that API is
+    available (see chooseBgFile() for the established pattern)."""
+    from utils import validate_user_path
+    body = request.get_json(force=True) or {}
+    path = validate_user_path((body.get('path') or '').strip())
+    if not path or not os.path.isfile(path):
+        return jsonify({'status': 'error', 'message': 'File not found.'}), 400
+    if os.path.getsize(path) > BADGE_UPLOAD_MAX_BYTES:
+        return jsonify({'status': 'error', 'message': 'File too large (max 5MB).'}), 400
+    with open(path, 'rb') as fh:
+        data = fh.read()
+    filename = _save_badge_icon_bytes(kind, data, platform_id)
+    if not filename:
+        return jsonify({'status': 'error', 'message': 'Could not process image.'}), 400
+    return jsonify({'status': 'success', 'filename': filename})
+
+def _clear_badge_icon(kind, platform_id=None):
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    with _state_lock:
+        state = _load_state_unlocked()
+        badges = state.setdefault('card_badges', {})
+        icons = badges.setdefault('icons', {'installed': None, 'platform': {}})
+        if kind == 'installed':
+            old = icons.get('installed')
+            icons['installed'] = None
+        else:
+            old = icons.setdefault('platform', {}).pop(platform_id, None)
+        _write_state_atomic(state)
+    if old:
+        try:
+            os.remove(os.path.join(BADGES_DIR, old))
+        except OSError:
+            pass
+    return jsonify({'status': 'success'})
+
+@images_bp.route('/api/badge-icon/installed', methods=['POST'])
+def upload_badge_icon_installed():
+    return _upload_badge_icon('installed')
+
+@images_bp.route('/api/badge-icon/installed/from-path', methods=['POST'])
+def upload_badge_icon_installed_from_path():
+    return _upload_badge_icon_from_path('installed')
+
+@images_bp.route('/api/badge-icon/installed/clear', methods=['POST'])
+def clear_badge_icon_installed():
+    return _clear_badge_icon('installed')
+
+@images_bp.route('/api/badge-icon/platform/<platform_id>', methods=['POST'])
+def upload_badge_icon_platform(platform_id):
+    import re
+    if not re.match(r'^[a-z][a-z0-9_]*$', platform_id or ''):
+        return jsonify({'status': 'error', 'message': 'Invalid platform id.'}), 400
+    return _upload_badge_icon('platform', platform_id)
+
+@images_bp.route('/api/badge-icon/platform/<platform_id>/from-path', methods=['POST'])
+def upload_badge_icon_platform_from_path(platform_id):
+    import re
+    if not re.match(r'^[a-z][a-z0-9_]*$', platform_id or ''):
+        return jsonify({'status': 'error', 'message': 'Invalid platform id.'}), 400
+    return _upload_badge_icon_from_path('platform', platform_id)
+
+@images_bp.route('/api/badge-icon/platform/<platform_id>/clear', methods=['POST'])
+def clear_badge_icon_platform(platform_id):
+    import re
+    if not re.match(r'^[a-z][a-z0-9_]*$', platform_id or ''):
+        return jsonify({'status': 'error', 'message': 'Invalid platform id.'}), 400
+    return _clear_badge_icon('platform', platform_id)

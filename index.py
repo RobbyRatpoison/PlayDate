@@ -271,12 +271,12 @@ def shuffle_shelf(shelf_id):
         limit = shelf.get('limit', 10)
         db = get_db()
         rows = db.execute(
-            f"SELECT appid, name, installed, completion_status FROM games "
+            f"SELECT appid, name, installed, completion_status, platform FROM games "
             f"WHERE {where} ORDER BY RANDOM() LIMIT ?",
             (limit,)
         ).fetchall()
         db.close()
-        games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or ''} for r in rows]
+        games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or '', 'platform': r[4] or 'steam'} for r in rows]
         from library import _compute_outline_colors
         _outlines_cfg = state.get('card_outlines', {})
         outline_map = (

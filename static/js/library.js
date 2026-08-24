@@ -256,6 +256,7 @@
                         style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;"
                         onclick="event.stopPropagation();openEditModalById(${game.appid})">✎</button>
                 </div>
+                ${renderCardBadges(game, window.CARD_BADGES)}
             </div>`;
         CARD_HTML_CACHE.set(game.appid, html);
         return html;
@@ -530,6 +531,7 @@
         card.id           = `card-${game.appid}`;
         card.dataset.appid    = game.appid;
         card.dataset.platform = game.platform || 'steam';
+        card.dataset.installed = game.installed ? '1' : '0';
         const outlineColor = OUTLINE_COLORS[String(game.appid)];
         if (outlineColor) card.style.setProperty('--outline-color', outlineColor);
         return card;

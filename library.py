@@ -1157,6 +1157,34 @@ def save_card_outlines():
         _write_state_atomic(state)
     return jsonify({'status': 'success'})
 
+@library_bp.route('/api/card-badges', methods=['GET'])
+def get_card_badges():
+    state = load_state()
+    return jsonify({'status': 'success', 'card_badges': state.get('card_badges', {})})
+
+@library_bp.route('/api/card-badges', methods=['POST'])
+def save_card_badges():
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    data = request.json or {}
+    badges = data.get('card_badges')
+    if badges is None:
+        return jsonify({'status': 'error', 'message': 'Missing card_badges'}), 400
+    # Each feature may only occupy one slot -- defensively re-enforce here too
+    # (the UI already auto-vacates), keeping the first occurrence in a fixed
+    # corner order and clearing any later duplicate.
+    seen = set()
+    for corner in ('top_left', 'top_right', 'bottom_left', 'bottom_right'):
+        feature = (badges.get('slots') or {}).get(corner)
+        if feature and feature in seen:
+            badges['slots'][corner] = None
+        elif feature:
+            seen.add(feature)
+    with _state_lock:
+        state = _load_state_unlocked()
+        state['card_badges'] = badges
+        _write_state_atomic(state)
+    return jsonify({'status': 'success'})
+
 @library_bp.route('/api/pick-screen-color')
 def pick_screen_color():
     """Fullscreen eyedropper overlay. Spawns color_picker.py as a subprocess

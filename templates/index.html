@@ -513,6 +513,7 @@ async function _reloadLastPlayedShelves() {
                              onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                         <div class="no-art-name">${escHtml(g.name)}</div>
                     </div>
+                    ${renderCardBadges(g, window.CARD_BADGES)}
                 </div>`;
             }).join('');
             requestAnimationFrame(() => trimGrid(grid));
@@ -562,6 +563,7 @@ async function shuffleShelf(shelfId, labelEl) {
                          onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                     <div class="no-art-name">${escHtml(g.name)}</div>
                 </div>
+                ${renderCardBadges(g, window.CARD_BADGES)}
             </div>`;
         }).join('');
         // Trim to fit visible width — same as initial render
@@ -576,6 +578,7 @@ const _availablePlatforms = {{ available_platforms | tojson }};
 const _builtinFilters = {{ filter_options | tojson }};
 const _savedFilters   = {{ saved_filters | tojson }};
 const OUTLINE_COLORS  = {{ outline_colors | tojson }};
+window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('home', True) else none) | tojson }};
 // Merged filter list for the dropdown: built-ins first, then saved
 const _filters = {
     ..._builtinFilters,
@@ -1549,6 +1552,16 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('sem-filter'));
     initCustomSelect(document.getElementById('sem-sort'));
     initCustomSelect(document.getElementById('sem-sort-dir'));
+    // Card badges for server-rendered shelf cards -- the JS rebuild paths
+    // (shuffleShelf, _reloadLastPlayedShelves, install-poll refill) call
+    // renderCardBadges() directly when building their own markup; the
+    // initial Jinja-rendered cards need this one-time pass instead, using
+    // the data-platform attribute those cards already carry.
+    if (window.CARD_BADGES) {
+        document.querySelectorAll('.shelf-capsule-wrap').forEach(wrap => {
+            wrap.insertAdjacentHTML('beforeend', renderCardBadges({platform: wrap.dataset.platform}, window.CARD_BADGES));
+        });
+    }
 });
 
 // ── Install status polling ────────────────────────────────────────────────────
@@ -1608,7 +1621,8 @@ setInterval(async () => {
                                 onload="_shelfImgLoad(this)"
                                 onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                             <div class="no-art-name">${escHtml(g.name)}</div>
-                        </div>`;
+                        </div>
+                        ${renderCardBadges(g, window.CARD_BADGES)}`;
                         grid.appendChild(wrap);
                     });
                     requestAnimationFrame(() => trimGrid(grid));

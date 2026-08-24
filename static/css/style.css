@@ -703,3 +703,43 @@ button.btn-save.gamepad-focus {
     outline: 2px solid #66c0f4;
     outline-offset: 2px;
 }
+
+/* ── Card badges (Library/Home/Pick 6) ──────────────────────────────────── */
+/* Positioning is shared across all three pages; the host element differs
+   per page (.capsule-container, .shelf-capsule-wrap, .result-card) but each
+   is already a positioned element, so plain position:absolute here anchors
+   correctly without page-specific overrides. z-index sits below the
+   library edit-pencil overlay (10) so that stays on top when both are
+   visible in the (accepted, unreserved) top-right corner. */
+.card-badge {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    z-index: 5;
+    pointer-events: none;
+    object-fit: contain;
+}
+.card-badge-top_left     { top: 6px; left: 6px; }
+.card-badge-top_right    { top: 6px; right: 6px; }
+.card-badge-bottom_left  { bottom: 6px; left: 6px; }
+.card-badge-bottom_right { bottom: 6px; right: 6px; }
+
+.card-badge-text {
+    width: auto;
+    height: auto;
+    max-width: calc(100% - 12px);
+    padding: 2px 5px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 0.65rem;
+    line-height: 1.4;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* "Installed" badges render unconditionally when configured; visibility is
+   driven by whichever ancestor carries data-installed, so a live install-
+   status flip (e.g. Home's polling loop) needs no re-render. */
+[data-installed="0"] .card-badge-installed { display: none; }

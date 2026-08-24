@@ -3771,6 +3771,7 @@ function closeAccountModal() {
 function openAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'flex';
     _apLoadOutlines().then(() => _apSyncOutlineButtons(_apOutlineEnabled));
+    _apLoadBadges().then(() => _apSyncBadgesButtons(_apBadgesEnabled));
 }
 function closeAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'none';
@@ -3841,6 +3842,43 @@ async function apToggleOutline(key) {
         });
     } catch (e) { /* ignore */ }
 }
+
+let _apBadgesEnabled = null;
+
+async function _apLoadBadges() {
+    if (_apBadgesEnabled !== null) return;
+    try {
+        const r = await fetch('/api/card-badges').then(r => r.json());
+        if (r.status === 'success') {
+            _apBadgesEnabled = r.card_badges.enabled || {library: true, home: true, pick6: true};
+        }
+    } catch (e) { /* ignore */ }
+    if (!_apBadgesEnabled) _apBadgesEnabled = {library: true, home: true, pick6: true};
+}
+
+function _apSyncBadgesButtons(enabled) {
+    ['library', 'home', 'pick6'].forEach(k => {
+        const btn = document.getElementById('ap-badges-' + k);
+        if (btn) btn.classList.toggle('ap-outline-on', !!enabled[k]);
+    });
+}
+
+async function apToggleBadges(key) {
+    if (!_apBadgesEnabled) _apBadgesEnabled = {library: true, home: true, pick6: true};
+    _apBadgesEnabled[key] = !_apBadgesEnabled[key];
+    _apSyncBadgesButtons(_apBadgesEnabled);
+    try {
+        const current = await fetch('/api/card-badges').then(r => r.json());
+        const badges = current.card_badges || {};
+        badges.enabled = _apBadgesEnabled;
+        await fetch('/api/card-badges', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({card_badges: badges}),
+        });
+    } catch (e) { /* ignore */ }
+}
+
 const _PLAT_PRIORITY_LABELS = window._PLAT_LABELS;
 let _platPriority = window._platPriority;
 let _platPriorityDragSrc = null, _platPriorityHover = null;

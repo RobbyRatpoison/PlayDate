@@ -568,3 +568,311 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sel.value) _coAddFilter = {type: 'preset', preset_key: sel.value};
 });
 </script>
+
+<!-- Card Badges Modal -->
+<div id="cardBadgesModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeCardBadgesModal()">
+<div class="modal-content" style="width:38rem; max-height:82vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+
+    <div style="padding:1.25rem 1.5rem 0.875rem; border-bottom:1px solid #2a3f55; flex-shrink:0; display:flex; align-items:center; justify-content:space-between;">
+        <h2 style="margin:0; color:#fff; font-size:1.1rem;">Card Badges</h2>
+        <button onclick="closeCardBadgesModal()" style="background:none;border:none;color:#8f98a0;font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    </div>
+
+    <div style="flex:1; min-height:0; overflow-y:auto; padding:1.25rem 1.5rem;">
+        <p style="color:#8f98a0; font-size:0.8rem; margin:0 0 1rem;">
+            Show small icons in a card's corners. Icons are your own images — upload one for each platform you use, or leave it blank to fall back to text.
+        </p>
+
+        <div class="cb-corner-grid">
+            <select id="cb-slot-top_left" class="co-select cb-corner-select" data-modal-row="0" onchange="_cbSetSlot('top_left', this.value)">
+                <option value="">Top left: None</option>
+                <option value="installed">Top left: Installed</option>
+                <option value="platform">Top left: Platform</option>
+            </select>
+            <select id="cb-slot-top_right" class="co-select cb-corner-select" data-modal-row="0" onchange="_cbSetSlot('top_right', this.value)">
+                <option value="">Top right: None</option>
+                <option value="installed">Top right: Installed</option>
+                <option value="platform">Top right: Platform</option>
+            </select>
+            <select id="cb-slot-bottom_left" class="co-select cb-corner-select" data-modal-row="1" onchange="_cbSetSlot('bottom_left', this.value)">
+                <option value="">Bottom left: None</option>
+                <option value="installed">Bottom left: Installed</option>
+                <option value="platform">Bottom left: Platform</option>
+            </select>
+            <select id="cb-slot-bottom_right" class="co-select cb-corner-select" data-modal-row="1" onchange="_cbSetSlot('bottom_right', this.value)">
+                <option value="">Bottom right: None</option>
+                <option value="installed">Bottom right: Installed</option>
+                <option value="platform">Bottom right: Platform</option>
+            </select>
+        </div>
+        <div style="font-size:0.75rem; color:#8f98a0; margin:0.5rem 0 1.25rem;">A feature can only occupy one corner — assigning it elsewhere clears its old spot.</div>
+
+        <!-- Installed icon -->
+        <div id="cb-installed-section" style="display:none; margin-bottom:1.25rem; padding:0.875rem; background:#1a2332; border-radius:0.5rem; border:1px solid #2a3f55;">
+            <div style="font-size:0.85rem; color:#e2eaf0; margin-bottom:0.25rem;">Installed icon</div>
+            <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:0.75rem;">Shown when a game is installed; nothing shows otherwise.</div>
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <img id="cb-installed-preview" src="" alt="" style="display:none; width:32px; height:32px; border-radius:4px; background:#101822; border:1px solid #2a3f55; object-fit:contain;">
+                <button class="nav-btn cb-mini-btn" data-modal-row="2" onclick="_cbChooseFile('installed', null)">Upload</button>
+                <button class="nav-btn cb-mini-btn" id="cb-installed-clear-btn" data-modal-row="2" onclick="_cbClearInstalled()">Clear</button>
+                <input type="file" id="cb-installed-file" accept="image/*" style="display:none" onchange="_cbFileSelected('installed', null, this)">
+            </div>
+        </div>
+
+        <!-- Platform icons -->
+        <div id="cb-platform-section" style="display:none; margin-bottom:1rem; padding:0.875rem; background:#1a2332; border-radius:0.5rem; border:1px solid #2a3f55;">
+            <div style="font-size:0.85rem; color:#e2eaf0; margin-bottom:0.25rem;">Platform icons</div>
+            <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:0.5rem;">If a platform below has no icon uploaded:</div>
+            <div style="display:flex; gap:1rem; margin-bottom:0.75rem;">
+                <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--text-primary); cursor:pointer;">
+                    <input type="radio" name="cb-fallback" id="cb-fallback-label" data-modal-row="3" onclick="_cbSetFallback('label')" style="width:auto; margin:0;">
+                    Show its text label
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--text-primary); cursor:pointer;">
+                    <input type="radio" name="cb-fallback" id="cb-fallback-none" data-modal-row="3" onclick="_cbSetFallback('none')" style="width:auto; margin:0;">
+                    Show nothing
+                </label>
+            </div>
+            <div id="cb-platform-list"></div>
+        </div>
+    </div>
+
+    <div style="padding:0.875rem 1.5rem; border-top:1px solid #2a3f55; display:flex; gap:0.625rem; flex-shrink:0;">
+        <button onclick="closeCardBadgesModal()" class="nav-btn" data-modal-row="100" style="flex:1;">Close</button>
+        <button id="cb-save-btn" onclick="_cbSave()" class="nav-btn" data-modal-row="100"
+                style="flex:2; background:#1a5c2e; border-color:#2a7c3e; color:#fff;">Save</button>
+    </div>
+
+</div>
+</div>
+
+<style>
+.cb-corner-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+.cb-corner-select { width: 100%; height: 2.25rem; }
+.cb-mini-btn { font-size: 0.75rem; padding: 0.25rem 0.5rem; height: auto; }
+.cb-plat-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4375rem 0;
+    border-top: 1px solid #2a3f55;
+}
+.cb-plat-row:first-child { border-top: none; }
+.cb-plat-preview {
+    width: 24px; height: 24px;
+    border-radius: 4px;
+    background: #101822;
+    border: 1px solid #2a3f55;
+    flex-shrink: 0;
+    object-fit: contain;
+}
+.cb-plat-label {
+    flex: 1;
+    color: #c7d5e0;
+    font-size: 0.82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+</style>
+
+<script>
+// ── Card Badges Modal ──────────────────────────────────────────────────────
+
+let _cbSlots = {top_left: null, top_right: null, bottom_left: null, bottom_right: null};
+let _cbFallback = 'label';
+let _cbIcons = {installed: null, platform: {}};
+
+function openCardBadgesModal() {
+    closeAppearanceModal();
+    _cbLoad();
+    window._inputMgr?.registerModal?.('cardBadgesModal');
+    document.getElementById('cardBadgesModal').style.display = 'flex';
+}
+
+function closeCardBadgesModal() {
+    document.getElementById('cardBadgesModal').style.display = 'none';
+}
+
+// Native <select> elements need initCustomSelect() (OS-level popups otherwise
+// stay visible when pywebview loses focus) -- done once at page load, since
+// this modal is present on every page via base.html, rather than re-running
+// (and double-wrapping) it each time the modal opens.
+let _cbSlotSelects = {};
+document.addEventListener('DOMContentLoaded', () => {
+    ['top_left', 'top_right', 'bottom_left', 'bottom_right'].forEach(c => {
+        const native = document.getElementById('cb-slot-' + c);
+        if (native) _cbSlotSelects[c] = initCustomSelect(native) || native;
+    });
+});
+
+async function _cbLoad() {
+    try {
+        const r = await fetch('/api/card-badges').then(r => r.json());
+        const cfg = r.card_badges || {};
+        _cbSlots = Object.assign({top_left: null, top_right: null, bottom_left: null, bottom_right: null}, cfg.slots || {});
+        _cbFallback = cfg.platform_fallback || 'label';
+        _cbIcons = cfg.icons || {installed: null, platform: {}};
+        if (!_cbIcons.platform) _cbIcons.platform = {};
+    } catch (e) { /* ignore */ }
+    _cbRenderSlots();
+    _cbRenderSections();
+}
+
+function _cbRenderSlots() {
+    ['top_left', 'top_right', 'bottom_left', 'bottom_right'].forEach(c => {
+        const sel = _cbSlotSelects[c] || document.getElementById('cb-slot-' + c);
+        if (sel) sel.value = _cbSlots[c] || '';
+    });
+}
+
+function _cbSetSlot(corner, value) {
+    const val = value || null;
+    if (val) {
+        ['top_left', 'top_right', 'bottom_left', 'bottom_right'].forEach(c => {
+            if (c !== corner && _cbSlots[c] === val) _cbSlots[c] = null;
+        });
+    }
+    _cbSlots[corner] = val;
+    _cbRenderSlots();
+    _cbRenderSections();
+}
+
+function _cbSetFallback(mode) {
+    _cbFallback = mode;
+}
+
+function _cbRenderSections() {
+    const slotValues = Object.values(_cbSlots);
+    const hasInstalled = slotValues.includes('installed');
+    const hasPlatform  = slotValues.includes('platform');
+    document.getElementById('cb-installed-section').style.display = hasInstalled ? '' : 'none';
+    document.getElementById('cb-platform-section').style.display  = hasPlatform  ? '' : 'none';
+
+    const instImg = document.getElementById('cb-installed-preview');
+    if (_cbIcons.installed) {
+        instImg.src = `/static/img/badges/${_cbIcons.installed}`;
+        instImg.style.display = '';
+    } else {
+        instImg.style.display = 'none';
+    }
+    document.getElementById('cb-installed-clear-btn').style.opacity = _cbIcons.installed ? '1' : '0.4';
+
+    document.getElementById('cb-fallback-label').checked = _cbFallback !== 'none';
+    document.getElementById('cb-fallback-none').checked  = _cbFallback === 'none';
+
+    if (hasPlatform) {
+        const list = document.getElementById('cb-platform-list');
+        list.innerHTML = '';
+        const labels = window._PLAT_LABELS || {};
+        Object.keys(labels).sort((a, b) => (labels[a] || a).localeCompare(labels[b] || b)).forEach((pid, i) => {
+            const icon = _cbIcons.platform[pid];
+            const row = document.createElement('div');
+            row.className = 'cb-plat-row';
+            row.dataset.modalRow = 4 + i;
+            row.innerHTML = `
+                <img class="cb-plat-preview" src="${icon ? '/static/img/badges/' + icon : ''}" alt="" style="${icon ? '' : 'display:none;'}">
+                <span class="cb-plat-label">${escHtml(labels[pid] || pid)}</span>
+                <button class="nav-btn cb-mini-btn" data-modal-row="${4 + i}" onclick="_cbChooseFile('platform', '${pid}')">Upload</button>
+                <button class="nav-btn cb-mini-btn" data-modal-row="${4 + i}" style="opacity:${icon ? '1' : '0.4'};" onclick="_cbClearPlatform('${pid}')">Clear</button>
+                <input type="file" id="cb-plat-file-${pid}" accept="image/*" style="display:none" onchange="_cbFileSelected('platform', '${pid}', this)">
+            `;
+            list.appendChild(row);
+        });
+    }
+}
+
+// ── Icon upload (mirrors chooseBgFile()'s pywebview-vs-browser split) ───────
+// Own local busy flag rather than modal_tools.js's `_fileDlgBusy` -- that's a
+// top-level `let` (not a window property), so reusing it here would depend on
+// classic-script load order across two separate <script> blocks.
+let _cbFileDlgBusy = false;
+
+async function _cbChooseFile(kind, platformId) {
+    if (_cbFileDlgBusy) return;
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.pick_open_path) {
+        _cbFileDlgBusy = true;
+        let path;
+        try {
+            path = await window.pywebview.api.pick_open_path(['Image Files (*.png;*.jpg;*.jpeg;*.webp)']);
+        } finally {
+            setTimeout(() => { _cbFileDlgBusy = false; }, 300);
+        }
+        if (!path) return;
+        const url = kind === 'installed' ? '/api/badge-icon/installed/from-path' : `/api/badge-icon/platform/${encodeURIComponent(platformId)}/from-path`;
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path}),
+        }).then(r => r.json());
+        _cbApplyUploadResult(kind, platformId, r);
+    } else {
+        const input = document.getElementById(kind === 'installed' ? 'cb-installed-file' : `cb-plat-file-${platformId}`);
+        if (input) input.click();
+    }
+}
+
+async function _cbFileSelected(kind, platformId, input) {
+    const f = input.files[0];
+    input.value = '';
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('icon', f);
+    const url = kind === 'installed' ? '/api/badge-icon/installed' : `/api/badge-icon/platform/${encodeURIComponent(platformId)}`;
+    const r = await fetch(url, {method: 'POST', body: fd}).then(r => r.json());
+    _cbApplyUploadResult(kind, platformId, r);
+}
+
+function _cbApplyUploadResult(kind, platformId, r) {
+    if (r.status !== 'success') return;
+    if (kind === 'installed') _cbIcons.installed = r.filename;
+    else _cbIcons.platform[platformId] = r.filename;
+    _cbRenderSections();
+}
+
+async function _cbClearInstalled() {
+    if (!_cbIcons.installed) return;
+    await fetch('/api/badge-icon/installed/clear', {method: 'POST'});
+    _cbIcons.installed = null;
+    _cbRenderSections();
+}
+
+async function _cbClearPlatform(platformId) {
+    if (!_cbIcons.platform[platformId]) return;
+    await fetch(`/api/badge-icon/platform/${encodeURIComponent(platformId)}/clear`, {method: 'POST'});
+    delete _cbIcons.platform[platformId];
+    _cbRenderSections();
+}
+
+async function _cbSave() {
+    const saveBtn = document.getElementById('cb-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    try {
+        const current = await fetch('/api/card-badges').then(r => r.json());
+        const badges = current.card_badges || {};
+        badges.slots = _cbSlots;
+        badges.platform_fallback = _cbFallback;
+        const res = await fetch('/api/card-badges', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({card_badges: badges}),
+        });
+        if ((await res.json()).status === 'success') {
+            closeCardBadgesModal();
+            location.reload();
+        } else {
+            saveBtn.textContent = '✘ Save failed';
+            setTimeout(() => { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }, 2000);
+        }
+    } catch (e) {
+        saveBtn.textContent = '✘ Error';
+        setTimeout(() => { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }, 2000);
+    }
+}
+</script>

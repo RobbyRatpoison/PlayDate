@@ -554,6 +554,7 @@
 
 <script>
 const _activeFilterName = {{ filter_name | tojson }};
+window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('pick6', True) else none) | tojson }};
 
 function _pickFilterLinkColor() {
     const el = document.getElementById('pick-filter-link');
@@ -735,11 +736,14 @@ function makeCard(game, reason, boundsRelaxed, outlineColor) {
     const card = document.createElement('div');
     card.className = 'result-card' + (boundsRelaxed ? ' bounds-relaxed' : '');
     card.dataset.appid = appid;
+    card.dataset.installed = game.installed ? '1' : '0';
+    card.dataset.platform = game.platform || 'steam';
     if (outlineColor) card.style.setProperty('--outline-color', outlineColor);
     card.innerHTML = `
         <div class="result-art" onclick="launchGame(${appid})" style="cursor:pointer;">
             <img src="${localSrc}" alt="${escaped}">
             <div class="no-art-name">${escaped}</div>
+            ${renderCardBadges(game, window.CARD_BADGES)}
         </div>
         <div class="result-info">
             <div class="result-title">${escaped}</div>

@@ -27,6 +27,7 @@ memory/
 /static/img/library/
 /static/img/backgrounds/*
 !/static/img/backgrounds/playdate_default_background.jpg
+/static/img/badges/
 
 # --- User Theme ---
 theme.json
