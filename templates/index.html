@@ -512,8 +512,8 @@ async function _reloadLastPlayedShelves() {
                              onload="_shelfImgLoad(this)"
                              onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                         <div class="no-art-name">${escHtml(g.name)}</div>
+                        ${renderCardBadges(g, window.CARD_BADGES)}
                     </div>
-                    ${renderCardBadges(g, window.CARD_BADGES)}
                 </div>`;
             }).join('');
             requestAnimationFrame(() => trimGrid(grid));
@@ -562,8 +562,8 @@ async function shuffleShelf(shelfId, labelEl) {
                          onload="_shelfImgLoad(this)"
                          onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                     <div class="no-art-name">${escHtml(g.name)}</div>
+                    ${renderCardBadges(g, window.CARD_BADGES)}
                 </div>
-                ${renderCardBadges(g, window.CARD_BADGES)}
             </div>`;
         }).join('');
         // Trim to fit visible width — same as initial render
@@ -1556,10 +1556,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // (shuffleShelf, _reloadLastPlayedShelves, install-poll refill) call
     // renderCardBadges() directly when building their own markup; the
     // initial Jinja-rendered cards need this one-time pass instead, using
-    // the data-platform attribute those cards already carry.
+    // the data-platform attribute those cards already carry. Appended inside
+    // .shelf-capsule-inner (not .shelf-capsule-wrap) -- that inner element is
+    // what's actually scaled down (0.95) at rest and grown (1.0) on hover, so
+    // badges need to scale together with it or they visually float outside
+    // the shrunk artwork until hovered.
     if (window.CARD_BADGES) {
         document.querySelectorAll('.shelf-capsule-wrap').forEach(wrap => {
-            wrap.insertAdjacentHTML('beforeend', renderCardBadges({platform: wrap.dataset.platform}, window.CARD_BADGES));
+            const inner = wrap.querySelector('.shelf-capsule-inner');
+            if (inner) inner.insertAdjacentHTML('beforeend', renderCardBadges({platform: wrap.dataset.platform}, window.CARD_BADGES));
         });
     }
 });
@@ -1621,8 +1626,8 @@ setInterval(async () => {
                                 onload="_shelfImgLoad(this)"
                                 onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                             <div class="no-art-name">${escHtml(g.name)}</div>
-                        </div>
-                        ${renderCardBadges(g, window.CARD_BADGES)}`;
+                            ${renderCardBadges(g, window.CARD_BADGES)}
+                        </div>`;
                         grid.appendChild(wrap);
                     });
                     requestAnimationFrame(() => trimGrid(grid));
