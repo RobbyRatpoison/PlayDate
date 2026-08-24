@@ -13,55 +13,16 @@ log = logging.getLogger(__name__)
 
 pick_bp = Blueprint('pick', __name__)
 
+COMPLETION_STATUSES = ['Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"]
 
-@pick_bp.route('/pick')
-def pick():
-    from config import load_state, resolve_active_filter_tree, BUILTIN_FILTERS
-    state = load_state()
-    raw_ft = state.get('filter_tree')
-    ft = resolve_active_filter_tree(state)
-    state['filter_tree'] = ft  # modal sees expanded tree (mirrors library.py)
-    has_filters = bool(ft and (ft.get('items') or ft.get('custom_sql')))
-    filter_name = None
-    if isinstance(raw_ft, dict):
-        if 'saved_filter' in raw_ft:
-            filter_name = raw_ft['saved_filter']
-        elif raw_ft.get('custom_sql'):
-            cs = raw_ft['custom_sql']
-            for bf in BUILTIN_FILTERS.values():
-                if bf.get('where') == cs:
-                    filter_name = bf['label']
-                    break
-    return render_template('pick.html', state=state, has_filters=has_filters, filter_name=filter_name)
 
-@pick_bp.route('/api/pick-game', methods=['POST'])
-def pick_game():
-    from config import load_state
+def _build_pick_where(state, use_filtered):
+    """WHERE clause (active filter + hidden platforms) shared by pick_game
+    and pick_status_counts, before any completion_status condition is applied."""
     from library import build_tree_sql, _strip_sql_wrapper, is_safe_sql
 
-    data         = request.json or {}
-    mode         = data.get('mode', 'random')
-    use_filtered = data.get('use_filtered', False)
-    statuses     = data.get('statuses', None)  # None means all statuses
-    w_tags      = float(data.get('w_tags',      65))
-    w_review    = float(data.get('w_review',    35))
-    w_staleness = float(data.get('w_staleness',  0))
-    w_recency   = float(data.get('w_recency',    0))
-    w_hltb      = float(data.get('w_hltb',       0))
-
-    def _parse_bound(key):
-        v = data.get(key)
-        return float(v) if v is not None else None
-
-    b_review    = _parse_bound('b_review')
-    b_staleness = _parse_bound('b_staleness')
-    b_recency   = _parse_bound('b_recency')
-    b_hltb      = _parse_bound('b_hltb')
-
-    state  = load_state()
-    db     = get_db()
     params = []
-    where  = '1=1'
+    where = '1=1'
 
     if use_filtered:
         from config import resolve_active_filter_tree
@@ -87,6 +48,56 @@ def pick_game():
             params = list(params) + non_steam_hidden
         if plat_conds:
             where = f"({where}) AND ({' AND '.join(plat_conds)})"
+
+    return where, params
+
+
+@pick_bp.route('/pick')
+def pick():
+    from config import load_state, resolve_active_filter_tree, BUILTIN_FILTERS
+    state = load_state()
+    raw_ft = state.get('filter_tree')
+    ft = resolve_active_filter_tree(state)
+    state['filter_tree'] = ft  # modal sees expanded tree (mirrors library.py)
+    has_filters = bool(ft and (ft.get('items') or ft.get('custom_sql')))
+    filter_name = None
+    if isinstance(raw_ft, dict):
+        if 'saved_filter' in raw_ft:
+            filter_name = raw_ft['saved_filter']
+        elif raw_ft.get('custom_sql'):
+            cs = raw_ft['custom_sql']
+            for bf in BUILTIN_FILTERS.values():
+                if bf.get('where') == cs:
+                    filter_name = bf['label']
+                    break
+    return render_template('pick.html', state=state, has_filters=has_filters, filter_name=filter_name)
+
+@pick_bp.route('/api/pick-game', methods=['POST'])
+def pick_game():
+    from config import load_state
+
+    data         = request.json or {}
+    mode         = data.get('mode', 'random')
+    use_filtered = data.get('use_filtered', False)
+    statuses     = data.get('statuses', None)  # None means all statuses
+    w_tags      = float(data.get('w_tags',      65))
+    w_review    = float(data.get('w_review',    35))
+    w_staleness = float(data.get('w_staleness',  0))
+    w_recency   = float(data.get('w_recency',    0))
+    w_hltb      = float(data.get('w_hltb',       0))
+
+    def _parse_bound(key):
+        v = data.get(key)
+        return float(v) if v is not None else None
+
+    b_review    = _parse_bound('b_review')
+    b_staleness = _parse_bound('b_staleness')
+    b_recency   = _parse_bound('b_recency')
+    b_hltb      = _parse_bound('b_hltb')
+
+    state  = load_state()
+    db     = get_db()
+    where, params = _build_pick_where(state, use_filtered)
 
     if statuses is not None:
         placeholders = ','.join('?' * len(statuses))
@@ -403,4 +414,49 @@ def pick_game():
         "pool_size":             len(games),
         "bounded_pool_size":     bounded_pool_size,
         "bounds_relaxed":        any_relaxed,
+    })
+
+
+@pick_bp.route('/api/pick-status-counts', methods=['POST'])
+def pick_status_counts():
+    """Per-status game counts for greying out completion-status toggles: once for
+    the whole library (a status nobody ever set, e.g. most users never mark
+    anything 'Beaten' since nothing does it automatically) and, when the active
+    filter is in play, once more under that filter (a status the filter excludes
+    entirely, e.g. it already restricts to Never Played/Unfinished)."""
+    from config import load_state
+
+    data = request.json or {}
+    use_filtered = data.get('use_filtered', False)
+    state = load_state()
+    db = get_db()
+
+    def _counts(where, params):
+        rows = db.execute(
+            f"SELECT completion_status, COUNT(*) c FROM games WHERE ({where}) GROUP BY completion_status",
+            params
+        ).fetchall()
+        counts = {s: 0 for s in COMPLETION_STATUSES}
+        for r in rows:
+            if r['completion_status'] in counts:
+                counts[r['completion_status']] = r['c']
+        return counts
+
+    try:
+        library_where, library_params = _build_pick_where(state, use_filtered=False)
+        library_counts = _counts(library_where, library_params)
+
+        filtered_counts = None
+        if use_filtered:
+            filtered_where, filtered_params = _build_pick_where(state, use_filtered=True)
+            filtered_counts = _counts(filtered_where, filtered_params)
+    except Exception as e:
+        db.close()
+        return jsonify({"status": "error", "message": f"Filter error: {e}"}), 400
+
+    db.close()
+    return jsonify({
+        "status": "success",
+        "library_counts": library_counts,
+        "filtered_counts": filtered_counts,
     })

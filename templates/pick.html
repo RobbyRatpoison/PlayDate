@@ -392,6 +392,8 @@
         color: #0e1621;
     }
     .status-btn:not(.active):hover { background: #243447; color: #c7d5e0; }
+    .status-btn.unavailable { opacity: 0.35; cursor: not-allowed; }
+    .status-btn.unavailable:hover { background: transparent; color: #8f98a0; }
     .status-btn.gamepad-focus { outline: 2px solid var(--accent); outline-offset: 2px; }
     .status-btn.active.gamepad-focus { box-shadow: 0 0 8px rgba(102, 192, 244, 0.5); }
     .toggle-switch.gamepad-focus { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
@@ -521,7 +523,7 @@
             <div class="control-row" style="margin-top: 0.875rem;">
                 <div class="control-label">Pool</div>
                 <label class="toggle-switch">
-                    <input type="checkbox" id="filtered-toggle" {% if has_filters %}checked{% endif %}>
+                    <input type="checkbox" id="filtered-toggle" {% if has_filters %}checked{% endif %} onchange="refreshStatusAvailability()">
                     <div class="toggle-track"></div>
                     <span class="toggle-desc">Use currently filtered games only</span>
                 </label>
@@ -570,15 +572,62 @@ window._onFiltersApplied = function(filterName, hasFilters) {
     el.style.color = hasFilters ? '#66c0f4' : '#8f98a0';
     el.textContent = (filterName ? filterName : hasFilters ? 'Active filter' : 'No filter') + ' →';
     document.getElementById('filtered-toggle').checked = hasFilters;
+    refreshStatusAvailability();
 };
 
 let currentMode = 'random';
+let _statusAvailability = { library_counts: null, filtered_counts: null };
 
 function toggleStatus(btn) {
+    if (btn.classList.contains('unavailable')) return;
     btn.classList.toggle('active');
     // Ensure at least one status remains active
     const active = [...document.querySelectorAll('.status-btn.active')];
     if (active.length === 0) btn.classList.add('active');
+}
+
+// Grey out status buttons that couldn't produce a pick either way: a status
+// nobody in the library was ever set to (e.g. most users never mark anything
+// Beaten, since nothing does that automatically), or one the active filter
+// excludes entirely when "Use currently filtered games only" is on.
+async function refreshStatusAvailability() {
+    const useFiltered = document.getElementById('filtered-toggle').checked;
+    try {
+        const res = await fetch('/api/pick-status-counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ use_filtered: useFiltered })
+        });
+        const data = await res.json();
+        if (data.status !== 'success') return;
+        _statusAvailability = data;
+    } catch (e) {
+        return;
+    }
+    applyStatusAvailability();
+}
+
+function applyStatusAvailability() {
+    const { library_counts, filtered_counts } = _statusAvailability;
+    if (!library_counts) return;
+    const useFiltered = document.getElementById('filtered-toggle').checked;
+    document.querySelectorAll('.status-btn').forEach(btn => {
+        const status = btn.dataset.status;
+        const noLibraryGames = (library_counts[status] || 0) === 0;
+        const excludedByFilter = useFiltered && filtered_counts && (filtered_counts[status] || 0) === 0;
+        const unavailable = noLibraryGames || excludedByFilter;
+        btn.classList.toggle('unavailable', unavailable);
+        btn.title = !unavailable ? '' :
+            noLibraryGames ? "No games in your library have this status." : "Excluded by the active filter.";
+        if (unavailable) btn.classList.remove('active');
+    });
+    // Deactivating unavailable buttons may have left nothing active — fall
+    // back to the first available one so there's still a pool to pick from.
+    const active = [...document.querySelectorAll('.status-btn.active')];
+    if (active.length === 0) {
+        const available = document.querySelector('.status-btn:not(.unavailable)');
+        if (available) available.classList.add('active');
+    }
 }
 
 const modeDescs = {
@@ -829,5 +878,6 @@ function enforceCardRatio() {
 
 window.addEventListener('resize', enforceCardRatio);
 document.addEventListener('DOMContentLoaded', _initSliderFills);
+document.addEventListener('DOMContentLoaded', refreshStatusAvailability);
 </script>
 {% endblock %}
