@@ -97,12 +97,8 @@ def pick_game():
     if mode == 'smart' and b_review is None:
         b_review = 70.0
 
-    smart_where = where
-    if mode in ('smart', 'weighted'):
-        smart_where = f"({where}) AND completion_status NOT IN ('Beaten', 'Completed')"
-
     try:
-        rows = db.execute(f"SELECT * FROM games WHERE {smart_where}", params).fetchall()
+        rows = db.execute(f"SELECT * FROM games WHERE {where}", params).fetchall()
     except Exception as e:
         db.close()
         return jsonify({"status": "error", "message": f"Filter error: {e}"}), 400
