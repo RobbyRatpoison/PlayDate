@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import queue
+import re
 import requests
 import threading
 import time
@@ -10,11 +11,18 @@ from concurrent.futures import ThreadPoolExecutor, wait as futures_wait
 
 log = logging.getLogger(__name__)
 from bs4 import BeautifulSoup
+from flask import Blueprint, jsonify, request
 from images import download_vertical, download_horizontal, download_icon, _get_steam_assets, _sgdb_search_game_id, VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR
 from datetime import datetime, timezone
-from config import get_active_account
+from config import load_config, get_active_account
 from database import batch_insert_placeholder_games, update_game_data, get_db, add_to_blacklist
 from utils import get_locally_installed_appids, fetch_local_library, get_acf_names, parse_appinfo
+
+blaeo_bp = Blueprint('blaeo', __name__)
+
+# ── BLAEO background sync state ───────────────────────────────────────────────
+_blaeo_sync_state = {'running': False, 'done': False, 'error': None}
+_blaeo_sync_lock  = threading.Lock()
 
 
 class RateLimitedError(Exception):
@@ -581,6 +589,36 @@ def _add_new(cancel_event=None, progress_cb=None):
     CHEEVO_WORKERS   = 2
     PROTONDB_WORKERS = 2
 
+    # ── Phase 1d: BLAEO pre-scrape (concurrent with art + meta workers) ───────
+    # Only worthwhile when there are enough games needing cheevo data.
+    # Runs after placeholder insert so new games exist in the DB.
+    # Cheevo workers are started after BLAEO finishes so they skip covered games.
+    def _run_blaeo():
+        try:
+            db = get_db()
+            needs_cheevos = db.execute(
+                "SELECT COUNT(*) FROM games WHERE cheevos_fetched = '0' OR cheevos_fetched IS NULL"
+            ).fetchone()[0]
+            db.close()
+            if needs_cheevos < 50:
+                log.info(f"[populate] BLAEO pre-scrape skipped ({needs_cheevos} games need cheevos, threshold 50).")
+                return
+            blaeo_result = scrape_blaeo_games(today=today)
+            if blaeo_result.get('status') == 'success':
+                sc_count = len(blaeo_result.get('status_changes', []))
+                rn_count = len(blaeo_result.get('renames', []))
+                ad_count = len(blaeo_result.get('additions', []))
+                rm_count = len(blaeo_result.get('removals', []))
+                log.info(f"[populate] BLAEO pre-scrape updated {blaeo_result['updated']} game(s)"
+                         + (f", {sc_count} status change(s)" if sc_count else "")
+                         + (f", {rn_count} group rename(s)" if rn_count else "")
+                         + (f", {ad_count} group addition(s)" if ad_count else "")
+                         + (f", {rm_count} group removal(s)" if rm_count else "") + ".")
+            else:
+                log.info(f"[populate] BLAEO pre-scrape skipped: {blaeo_result.get('message', 'no account')}")
+        except Exception as e:
+            log.warning(f"[populate] BLAEO pre-scrape failed (non-fatal): {e}")
+
     n_workers = ART_WORKERS + META_WORKERS + (CHEEVO_WORKERS if api_key else 0) + PROTONDB_WORKERS
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         # Art and meta start immediately
@@ -599,12 +637,11 @@ def _add_new(cancel_event=None, progress_cb=None):
                 _protondb_worker, protondb_nq, protondb_pq, cancel_event, today, progress_cb
             ))
 
-        # Give metadata plugins (e.g. one that scrapes achievement data from a
-        # third-party site) a chance to pre-fill cheevos_fetched before cheevo
-        # workers start, so those workers can skip games already covered.
+        # BLAEO runs concurrently; cheevo workers start after it finishes
         if api_key:
-            import plugins as _plugins
-            _plugins.run_pre_cheevo_scrape(today)
+            blaeo_thread = threading.Thread(target=_run_blaeo, daemon=True)
+            blaeo_thread.start()
+            blaeo_thread.join()
             for _ in range(CHEEVO_WORKERS):
                 futures.append(executor.submit(
                     _cheevo_worker, cheevo_nq, cheevo_pq, cheevo_backoff, cancel_event, today, progress_cb, batch
@@ -897,6 +934,225 @@ def fetch_tag_data(appid, session=None):
 
     return None
 
+_blaeo_preview_cache = None
+
+
+def _blaeo_scrape_and_compute(today=None):
+    """Scrape BLAEO and compute proposed changes without writing to the database."""
+    if today is None:
+        today = datetime.now().strftime('%Y-%m-%d')
+    config_data = load_config()
+    account = get_active_account()
+    blaeo_url = config_data.get('blaeo_url')
+    if not blaeo_url:
+        steam_id = (account or {}).get('steam_id')
+        if not steam_id:
+            return {"status": "skipped", "message": "No BLAEO account configured."}
+        blaeo_url = f"https://www.backlog-assassins.net/users/+{steam_id}/games"
+
+    base_url = blaeo_url.rstrip('/')
+    status_map = {
+        "Never-played": "Never Played",
+        "Wont-play":    "Won't Play",
+        "Unfinished":   "Unfinished",
+        "Beaten":       "Beaten",
+        "Completed":    "Completed",
+    }
+
+    session = requests.Session()
+    session.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+
+    all_rows = []
+    url = base_url
+    page = 1
+
+    while url:
+        log.info(f"Fetching BLAEO page {page}: {url}")
+        r = session.get(url, timeout=15)
+        if r.status_code == 404:
+            raise RuntimeError("BLAEO profile not found. You may not have a BLAEO account.")
+        if r.status_code != 200:
+            raise RuntimeError(f"BLAEO may be down (HTTP {r.status_code}).")
+
+        soup = BeautifulSoup(r.text, 'html.parser')
+        if page == 1 and not soup.select_one("table.game-table"):
+            raise RuntimeError("No BLAEO game list found. You may not have a BLAEO account.")
+
+        rows = soup.select("table.game-table tbody tr.game")
+        if not rows:
+            break
+
+        all_rows.extend(rows)
+        last_cursor = rows[-1].get('data-item')
+        if not last_cursor:
+            break
+
+        url = f"{base_url}?start_at={last_cursor}"
+        page += 1
+        time.sleep(0.5)
+
+    log.info(f"Fetched {len(all_rows)} games from BLAEO across {page} page(s)")
+
+    current_lists = {}
+    for row in all_rows:
+        for tag in row.select("a.list-tag"):
+            href = tag.get('href', '')
+            m = re.search(r'/lists/(\w+)', href)
+            if m:
+                current_lists[m.group(1)] = tag.get_text(strip=True)
+
+    from config import load_group_sources
+    gs = load_group_sources()
+
+    stored = {sid[len('blaeo:'):]: sdata['name']
+              for sid, sdata in gs.get('sources', {}).items()
+              if sdata.get('type') == 'blaeo'}
+
+    renames = []
+    for list_id, new_name in current_lists.items():
+        old_name = stored.get(list_id)
+        if old_name and old_name != new_name:
+            renames.append({"id": list_id, "from": old_name, "to": new_name})
+
+    rename_map = {r['from']: r['to'] for r in renames}
+
+    db = get_db()
+    cursor = db.cursor()
+
+    _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
+    status_changes = []
+    current_members = set()
+    row_data = []
+
+    for row in all_rows:
+        try:
+            steam_link = row.select_one("a.steam")
+            if not steam_link:
+                continue
+            href = steam_link.get('href', '')
+            appid_match = re.search(r'/app/(\d+)', href)
+            if not appid_match:
+                continue
+            appid = int(appid_match.group(1))
+
+            classes = row.get('class', [])
+            raw_status = "Unknown"
+            for c in classes:
+                if c.startswith("game-") and c != "game":
+                    raw_status = c.replace("game-", "").capitalize()
+            clean_status = status_map.get(raw_status, raw_status)
+
+            tag_elements = row.select("a.list-tag")
+            blaeo_groups = [tag.get_text(strip=True) for tag in tag_elements]
+            for tag in tag_elements:
+                m = re.search(r'/lists/(\w+)', tag.get('href', ''))
+                if m:
+                    current_members.add((appid, m.group(1)))
+
+            unlocked_ach = None
+            total_ach = None
+            ach_td = row.select_one("td.achievements")
+            if ach_td and ach_td.get('data-value', '-2') != '-2':
+                spans = ach_td.select('span')
+                if len(spans) >= 2:
+                    ach_match = re.search(r'\((\d+) of (\d+)\)', spans[1].get_text())
+                    if ach_match:
+                        unlocked_ach = int(ach_match.group(1))
+                        total_ach    = int(ach_match.group(2))
+
+            row_data.append((appid, clean_status, blaeo_groups, unlocked_ach, total_ach))
+        except Exception as e:
+            log.error(f"Skipping a BLAEO row due to error: {e}")
+            continue
+
+    stored_members = {(appid, sid[len('blaeo:'):])
+                      for sid, sdata in gs.get('sources', {}).items()
+                      if sdata.get('type') == 'blaeo'
+                      for appid in sdata.get('members', [])}
+    removed_members = stored_members - current_members
+
+    removals = []
+    for appid, list_id in removed_members:
+        list_name = stored.get(list_id) or current_lists.get(list_id)
+        if not list_name:
+            continue
+        cursor.execute("SELECT name, groups FROM games WHERE appid = ?", (appid,))
+        db_row = cursor.fetchone()
+        if not db_row:
+            continue
+        # Simulate pending renames when checking membership
+        existing = {rename_map.get(g, g) for g in
+                    (g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())}
+        effective_list_name = rename_map.get(list_name, list_name)
+        if effective_list_name in existing:
+            removals.append({"appid": appid, "name": db_row['name'], "list_name": effective_list_name, "list_id": list_id})
+
+    additions = []
+    for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
+        cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
+        db_row = cursor.fetchone()
+        if not db_row:
+            continue
+
+        # Simulate pending renames so additions aren't counted for renamed groups
+        existing_groups_set = {rename_map.get(g, g) for g in
+                               (g.strip() for g in (db_row['groups'] or '').split(',') if g.strip())}
+        newly_added = set(blaeo_groups) - existing_groups_set
+        if newly_added:
+            additions.append({"appid": appid, "name": db_row['name'], "list_names": sorted(newly_added)})
+
+        old_status = db_row['completion_status'] or 'Never Played'
+        effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
+        if effective_status != old_status:
+            status_changes.append({"from": old_status, "to": effective_status,
+                                   "name": db_row['name'], "appid": appid})
+
+    db.close()
+
+    return {
+        "status":         "success",
+        "row_data":       row_data,
+        "current_members": current_members,
+        "current_lists":  current_lists,
+        "stored_lists":   stored,
+        "status_changes": status_changes,
+        "renames":        renames,
+        "additions":      additions,
+        "removals":       removals,
+        "today":          today,
+    }
+
+
+def _rebuild_blaeo_sources(gs, current_lists, current_members, cursor):
+    """Rebuild BLAEO sources in gs from the current scraped state and mark
+    any untracked DB groups as manual. cursor must be open; caller commits."""
+    from config import gs_add_owner
+    # Strip all existing BLAEO ownership from assignments
+    for sid in [s for s in list(gs.get('sources', {})) if s.startswith('blaeo:')]:
+        for game in gs.get('assignments', {}).values():
+            for group in list(game.keys()):
+                if sid in game[group]:
+                    game[group].remove(sid)
+                if not game[group]:
+                    del game[group]
+        del gs['sources'][sid]
+    gs['assignments'] = {k: v for k, v in gs.get('assignments', {}).items() if v}
+
+    for list_id, name in current_lists.items():
+        source_id = f'blaeo:{list_id}'
+        members   = sorted({appid for appid, lid in current_members if lid == list_id})
+        gs.setdefault('sources', {})[source_id] = {'type': 'blaeo', 'name': name, 'members': members}
+        for appid in members:
+            gs_add_owner(gs, appid, name, source_id)
+
+    for db_row in cursor.execute(
+        "SELECT appid, groups FROM games WHERE groups IS NOT NULL AND groups != ''"
+    ).fetchall():
+        appid_str = str(db_row['appid'])
+        for group in (g.strip() for g in db_row['groups'].split(',') if g.strip()):
+            if group not in gs.get('assignments', {}).get(appid_str, {}):
+                gs_add_owner(gs, db_row['appid'], group, 'manual')
+
 
 def _rebuild_steam_sources(gs, current_collections, current_members, cursor):
     """Rebuild Steam collection sources in gs and mark untracked DB groups as manual."""
@@ -925,6 +1181,115 @@ def _rebuild_steam_sources(gs, current_collections, current_members, cursor):
         for group in (g.strip() for g in db_row['groups'].split(',') if g.strip()):
             if group not in gs.get('assignments', {}).get(appid_str, {}):
                 gs_add_owner(gs, db_row['appid'], group, 'manual')
+
+
+def _blaeo_apply_all(data):
+    """Write all proposed BLAEO changes to the database. Used by the populate flow."""
+    from config import load_group_sources, save_group_sources, gs_is_protected
+    today           = data['today']
+    row_data        = data['row_data']
+    current_members = data['current_members']
+    current_lists   = data['current_lists']
+    renames         = data['renames']
+    removals        = data['removals']
+    additions       = data['additions']
+    status_changes  = data['status_changes']
+
+    db = get_db()
+    cursor = db.cursor()
+    updated_count = 0
+
+    gs = load_group_sources()
+
+    for r in renames:
+        log.info(f"BLAEO list renamed: '{r['from']}' -> '{r['to']}'")
+        source_id = f'blaeo:{r["id"]}'
+        for appid, lid in current_members:
+            if lid != r['id']:
+                continue
+            row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (appid,)).fetchone()
+            if not row:
+                continue
+            existing = {g.strip() for g in (row['groups'] or '').split(',') if g.strip()}
+            if r['from'] not in existing:
+                continue
+            if not gs_is_protected(gs, appid, r['from'], source_id):
+                existing.discard(r['from'])
+            existing.add(r['to'])
+            cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                           (','.join(sorted(existing)), appid))
+
+    for r in removals:
+        source_id = f'blaeo:{r["list_id"]}'
+        if gs_is_protected(gs, r['appid'], r['list_name'], source_id):
+            log.info(f"[BLAEO] Kept '{r['list_name']}' on {r['name']} — still owned by another source")
+            continue
+        db_row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],)).fetchone()
+        if db_row:
+            existing = {g.strip() for g in (db_row['groups'] or '').split(',') if g.strip()}
+            existing.discard(r['list_name'])
+            cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                           (','.join(sorted(existing)), r['appid']))
+            log.info(f"[BLAEO] Removed '{r['list_name']}' from groups for {r['name']} (appid={r['appid']})")
+
+    _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
+
+    for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
+        try:
+            db_row = cursor.execute(
+                "SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,)
+            ).fetchone()
+            if not db_row:
+                log.info(f"Game found on BLAEO but not in local DB: AppID {appid}")
+                continue
+
+            existing_groups_set = {g.strip() for g in (db_row['groups'] or '').split(',') if g.strip()}
+            updated_groups_set  = existing_groups_set.union(set(blaeo_groups))
+            new_groups_str      = ','.join(sorted(updated_groups_set))
+
+            old_status       = db_row['completion_status'] or 'Never Played'
+            effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
+
+            if unlocked_ach is not None:
+                cursor.execute(
+                    "UPDATE games SET completion_status = ?, groups = ?, "
+                    "unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? "
+                    "WHERE appid = ?",
+                    (effective_status, new_groups_str, unlocked_ach, total_ach, today, appid)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
+                    (effective_status, new_groups_str, appid)
+                )
+            updated_count += 1
+        except Exception as e:
+            log.error(f"Skipping a BLAEO row during update: {e}")
+            continue
+
+    db.commit()
+
+    _rebuild_blaeo_sources(gs, current_lists, current_members, cursor)
+    db.close()
+    save_group_sources(gs)
+
+    log.info(f"Successfully synced {updated_count} games from BLAEO.")
+    for sc in status_changes:
+        log.info(f"[BLAEO] Status change: {sc['name']} (appid={sc['appid']}): {sc['from']} -> {sc['to']}")
+    for r in renames:
+        log.info(f"[BLAEO] Group renamed: '{r['from']}' -> '{r['to']}'")
+    for a in additions:
+        for ln in a['list_names']:
+            log.info(f"[BLAEO] Added '{ln}' to groups for {a['name']} (appid={a['appid']})")
+
+    return {
+        "status":         "success",
+        "updated":        updated_count,
+        "status_changes": status_changes,
+        "renames":        renames,
+        "additions":      additions,
+        "removals":       removals,
+    }
 
 
 def sync_steam_collections(steam_id=None):
@@ -1041,6 +1406,187 @@ def sync_steam_collections(steam_id=None):
     log.info(f"[SteamCollections] Sync complete: {len(renames)} rename(s), "
              f"{len(added)} addition(s), {len(removed)} removal(s)")
     return {'status': 'success', 'renames': len(renames), 'additions': len(added), 'removals': len(removed)}
+
+
+def scrape_blaeo_games(today=None):
+    try:
+        data = _blaeo_scrape_and_compute(today)
+        if data.get('status') != 'success':
+            return data
+        return _blaeo_apply_all(data)
+    except Exception as e:
+        log.error(f"BLAEO scraper error: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def get_blaeo_preview(today=None):
+    """Scrape BLAEO and cache proposed changes for user review. Call apply_blaeo_changes() to commit."""
+    global _blaeo_preview_cache
+    try:
+        data = _blaeo_scrape_and_compute(today)
+        if data.get('status') != 'success':
+            return data
+        _blaeo_preview_cache = data
+        return {
+            "status":         "success",
+            "status_changes": data['status_changes'],
+            "renames":        data['renames'],
+            "additions":      data['additions'],
+            "removals":       data['removals'],
+        }
+    except Exception as e:
+        log.error(f"BLAEO preview error: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def apply_blaeo_changes(selections):
+    """Apply a user-selected subset of the cached BLAEO preview. Clears the cache when done."""
+    global _blaeo_preview_cache
+    if not _blaeo_preview_cache:
+        return {"status": "error", "message": "No preview data. Run Sync first."}
+
+    data           = _blaeo_preview_cache
+    today          = data['today']
+    row_data       = data['row_data']
+    current_members = data['current_members']
+    current_lists  = data['current_lists']
+    renames        = data['renames']
+
+    accept_status_set   = set(int(a) for a in selections.get('accept_status', []))
+    accept_additions_set = set(int(a) for a in selections.get('accept_additions', []))
+    accept_removals_set = {(int(r['appid']), r['list_name']) for r in selections.get('accept_removals', [])}
+    accept_renames_set  = {(r['from'], r['to']) for r in selections.get('accept_renames', [])}
+
+    db = get_db()
+    cursor = db.cursor()
+    updated_count = 0
+
+    from config import load_group_sources, save_group_sources, gs_is_protected
+    gs = load_group_sources()
+
+    for r in renames:
+        if (r['from'], r['to']) in accept_renames_set:
+            log.info(f"[BLAEO] Applying rename: '{r['from']}' -> '{r['to']}'")
+            source_id = f'blaeo:{r["id"]}'
+            for appid, lid in current_members:
+                if lid != r['id']:
+                    continue
+                row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (appid,)).fetchone()
+                if not row:
+                    continue
+                existing = {g.strip() for g in (row['groups'] or '').split(',') if g.strip()}
+                if r['from'] not in existing:
+                    continue
+                if not gs_is_protected(gs, appid, r['from'], source_id):
+                    existing.discard(r['from'])
+                existing.add(r['to'])
+                cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                               (','.join(sorted(existing)), appid))
+
+    applied_removals = []
+    for r in data['removals']:
+        if (r['appid'], r['list_name']) in accept_removals_set:
+            source_id = f'blaeo:{r["list_id"]}'
+            if gs_is_protected(gs, r['appid'], r['list_name'], source_id):
+                log.info(f"[BLAEO] Kept '{r['list_name']}' on {r['name']} — still owned by another source")
+                continue
+            db_row = cursor.execute("SELECT groups FROM games WHERE appid = ?", (r['appid'],)).fetchone()
+            if db_row:
+                existing = {g.strip() for g in (db_row['groups'] or '').split(',') if g.strip()}
+                existing.discard(r['list_name'])
+                cursor.execute("UPDATE games SET groups = ? WHERE appid = ?",
+                               (','.join(sorted(existing)), r['appid']))
+                applied_removals.append(r)
+                log.info(f"[BLAEO] Removed '{r['list_name']}' from groups for {r['name']} (appid={r['appid']})")
+
+    _PLAYDATE_STATUSES = {"Never Played", "Unfinished", "Beaten", "Completed", "Won't Play"}
+    applied_status_changes = []
+    applied_additions = []
+
+    for appid, clean_status, blaeo_groups, unlocked_ach, total_ach in row_data:
+        try:
+            cursor.execute("SELECT groups, completion_status, name FROM games WHERE appid = ?", (appid,))
+            db_row = cursor.fetchone()
+            if not db_row:
+                continue
+
+            existing_groups_str = db_row['groups'] if db_row['groups'] else ""
+            existing_groups_set = set(g.strip() for g in existing_groups_str.split(',') if g.strip())
+
+            old_status = db_row['completion_status'] or 'Never Played'
+            effective_status = clean_status if clean_status in _PLAYDATE_STATUSES else old_status
+
+            apply_status   = appid in accept_status_set and effective_status != old_status
+            newly_added    = set(blaeo_groups) - existing_groups_set
+            apply_addition = appid in accept_additions_set and bool(newly_added)
+
+            if not apply_status and not apply_addition:
+                continue
+
+            new_groups_set = existing_groups_set.union(set(blaeo_groups)) if apply_addition else existing_groups_set
+            new_groups_str = ",".join(sorted(new_groups_set))
+            final_status   = effective_status if apply_status else old_status
+
+            if apply_status:
+                applied_status_changes.append({"appid": appid, "name": db_row['name'],
+                                               "from": old_status, "to": effective_status})
+                log.info(f"[BLAEO] Status: {db_row['name']} ({appid}): {old_status} -> {effective_status}")
+            if apply_addition:
+                applied_additions.append({"appid": appid, "name": db_row['name'],
+                                          "list_names": sorted(newly_added)})
+                for ln in sorted(newly_added):
+                    log.info(f"[BLAEO] Added '{ln}' to groups for {db_row['name']} (appid={appid})")
+
+            if unlocked_ach is not None:
+                cursor.execute(
+                    "UPDATE games SET completion_status = ?, groups = ?, unlocked_achievements = ?, total_achievements = ?, cheevos_fetched = ? WHERE appid = ?",
+                    (final_status, new_groups_str, unlocked_ach, total_ach, today, appid)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE games SET completion_status = ?, groups = ? WHERE appid = ?",
+                    (final_status, new_groups_str, appid)
+                )
+            updated_count += 1
+        except Exception as e:
+            log.error(f"Skipping a BLAEO row during selective apply: {e}")
+            continue
+
+    db.commit()
+
+    _rebuild_blaeo_sources(gs, current_lists, current_members, cursor)
+    db.close()
+    save_group_sources(gs)
+    _blaeo_preview_cache = None
+
+    applied_renames = [r for r in renames if (r['from'], r['to']) in accept_renames_set]
+    log.info(f"[BLAEO] Selective apply: {updated_count} game(s) updated.")
+
+    return {
+        "status":         "success",
+        "updated":        updated_count,
+        "status_changes": applied_status_changes,
+        "renames":        applied_renames,
+        "additions":      applied_additions,
+        "removals":       applied_removals,
+    }
+
+def get_blaeo_cached_result():
+    """Return the cached preview data without re-scraping, or None if no cache."""
+    if not _blaeo_preview_cache:
+        return None
+    return {
+        "status":         "success",
+        "status_changes": _blaeo_preview_cache['status_changes'],
+        "renames":        _blaeo_preview_cache['renames'],
+        "additions":      _blaeo_preview_cache['additions'],
+        "removals":       _blaeo_preview_cache['removals'],
+    }
+
+
+def clear_blaeo_cache():
+    global _blaeo_preview_cache
+    _blaeo_preview_cache = None
 
 
 def sync_recent_playtime():
@@ -1602,3 +2148,85 @@ def sync_store_names():
 
     migration.mark_background_done(11)
     log.info(f"sync_store_names: complete. diffs={len(pending)}, failed={failed}")
+
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
+@blaeo_bp.route('/sync-blaeo')
+def sync_blaeo():
+    try:
+        result = scrape_blaeo_games()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@blaeo_bp.route('/api/blaeo-start', methods=['POST'])
+def blaeo_start():
+    with _blaeo_sync_lock:
+        if _blaeo_sync_state['running']:
+            return jsonify({'status': 'running', 'message': 'Sync already in progress'})
+        if _blaeo_sync_state['done']:
+            return jsonify({'status': 'pending'})
+        _blaeo_sync_state['running'] = True
+        _blaeo_sync_state['done']    = False
+        _blaeo_sync_state['error']   = None
+
+    def _run():
+        try:
+            result = get_blaeo_preview()
+            with _blaeo_sync_lock:
+                if result.get('status') == 'success':
+                    _blaeo_sync_state['running'] = False
+                    _blaeo_sync_state['done']    = True
+                    _blaeo_sync_state['error']   = None
+                else:
+                    _blaeo_sync_state['running'] = False
+                    _blaeo_sync_state['done']    = False
+                    _blaeo_sync_state['error']   = result.get('message', 'Sync failed')
+        except Exception as e:
+            with _blaeo_sync_lock:
+                _blaeo_sync_state['running'] = False
+                _blaeo_sync_state['done']    = False
+                _blaeo_sync_state['error']   = str(e)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'status': 'started'})
+
+@blaeo_bp.route('/api/blaeo-status')
+def blaeo_status_route():
+    return jsonify(dict(_blaeo_sync_state))
+
+@blaeo_bp.route('/api/blaeo-preview')
+def blaeo_preview():
+    if _blaeo_sync_state.get('done'):
+        cached = get_blaeo_cached_result()
+        if cached:
+            return jsonify(cached)
+    try:
+        result = get_blaeo_preview()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@blaeo_bp.route('/api/blaeo-apply', methods=['POST'])
+def blaeo_apply():
+    try:
+        selections = request.get_json() or {}
+        result = apply_blaeo_changes(selections)
+        if result.get('status') == 'success':
+            with _blaeo_sync_lock:
+                _blaeo_sync_state['done'] = False
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@blaeo_bp.route('/api/blaeo-discard', methods=['POST'])
+def blaeo_discard():
+    with _blaeo_sync_lock:
+        _blaeo_sync_state['running'] = False
+        _blaeo_sync_state['done']    = False
+        _blaeo_sync_state['error']   = None
+    clear_blaeo_cache()
+    return jsonify({'status': 'ok'})
+

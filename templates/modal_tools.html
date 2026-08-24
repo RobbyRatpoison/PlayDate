@@ -36,6 +36,15 @@
     .tool-status.success { color: var(--accent-positive); }
     .tool-status.error   { color: var(--text-danger); }
     .tool-status.info    { color: var(--accent); }
+    .blaeo-toggle { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+    .blaeo-details { padding-left: 12px; margin-top: 3px; color: var(--text-secondary); font-size: 0.85em; }
+    .blaeo-preview-section { margin-top: 6px; }
+    .blaeo-section-header { display: flex; align-items: center; gap: 6px; }
+    .blaeo-select-links { font-size: 0.8em; color: var(--accent); }
+    .blaeo-select-links span { cursor: pointer; text-decoration: underline; }
+    .blaeo-item { display: flex; align-items: baseline; gap: 5px; padding: 1px 0; }
+    .blaeo-item input[type=checkbox] { margin: 0; flex-shrink: 0; width: auto; cursor: pointer; position: relative; top: 1px; }
+    .blaeo-item label { cursor: pointer; flex: 1; min-width: 0; overflow-wrap: break-word; }
 
     /* Import wizard */
     .import-step {
@@ -637,7 +646,7 @@
                            style="width:auto; margin:0;" data-modal-row="21">
                     Mark games as Unfinished when playtime &gt; 0
                 </label>
-                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">On startup, promotes Never Played games to Unfinished if Steam shows any playtime. Disable if you use another tool to manage Never Played status.</div>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">On startup, promotes Never Played games to Unfinished if Steam shows any playtime. Disable if you use BLAEO to manage Never Played status.</div>
             </div>
         </div>
     </div>
@@ -655,7 +664,15 @@
             <button class="settings-item" data-modal-row="1" onclick="openMiamModal()">Monthly in a Month Filter Builder</button>
             <button class="settings-item" data-modal-row="2" onclick="openSantaModal()">Secret Santa / Snowballs</button>
         </div>
-        {% for _t in plugin_fragments('community_modal_extra') %}{% include _t %}{% endfor %}
+        <div class="hub-section">
+            <div class="hub-section-label">BLAEO</div>
+            <button id="blaeo-btn" class="settings-item" data-modal-row="3" onclick="runBlaeo()">Sync BLAEO</button>
+            <div id="blaeo-status" class="tool-status" style="margin-top:4px;padding:0 10px;max-height:min(320px,45vh);overflow-y:auto;"></div>
+            <div id="blaeo-actions" style="display:none;padding:0 10px;margin-top:6px;gap:8px;flex-wrap:wrap;">
+                <button id="blaeo-apply-btn" class="settings-item" onclick="applyBlaeo()" style="flex:0 0 auto;">Apply Selected</button>
+                <button id="blaeo-cancel-btn" class="settings-item" onclick="cancelBlaeo()" style="flex:0 0 auto;">Discard</button>
+            </div>
+        </div>
         <div class="hub-section">
             <div class="hub-section-label">Play or Pay</div>
             <button id="pop-sync-btn" class="settings-item" data-modal-row="4" onclick="runPopSync()">Sync Play or Pay Picks</button>

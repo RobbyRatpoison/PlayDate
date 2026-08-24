@@ -115,7 +115,7 @@
     }
     #hamburger-dot.visible { visibility: visible; }
     /* State-only markers; never rendered themselves, merged visually into #hamburger-dot */
-    [data-dot-source] { display: none; }
+    #update-dot, #store-names-dot, #blaeo-dot { display: none; }
     #update-menu-dot {
         display: inline-block;
         width: 7px;
@@ -214,11 +214,13 @@
     <div class="nav-header">
         <div class="nav-links">
             <div class="hamburger-wrap" id="hamburger-wrap">
-                <button id="hamburger-btn" onclick="toggleHamburger()"><span id="hamburger-balance"></span>☰<span id="hamburger-dot"></span><span id="update-dot" data-dot-source></span><span id="store-names-dot" data-dot-source></span>{% for _t in plugin_fragments('base_nav_dots') %}{% include _t %}{% endfor %}</button>
+                <button id="hamburger-btn" onclick="toggleHamburger()"><span id="hamburger-balance"></span>☰<span id="hamburger-dot"></span><span id="update-dot"></span><span id="store-names-dot"></span><span id="blaeo-dot"></span></button>
                 <div id="hamburger-menu">
                     <button id="add-button" class="hamburger-item hamburger-populate">POPULATE PLAYDATE</button>
                     <button id="bulk-progress-btn" class="hamburger-item hamburger-populate" style="display:none"></button>
                     <button id="store-names-btn" class="hamburger-item" style="display:none;color:var(--accent);" onclick="closeHamburger();openStoreNamesModal()"><span id="store-names-btn-label"></span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent,#66c0f4);margin-left:8px;flex-shrink:0;pointer-events:none;"></span></button>
+                    <button id="blaeo-sync-btn" class="hamburger-item" style="display:none;color:var(--accent);opacity:0.6;" disabled>BLAEO sync: running...</button>
+                    <button id="blaeo-ready-btn" class="hamburger-item" style="display:none;color:var(--accent);" onclick="closeHamburger();openCommunityModal()"><span id="blaeo-ready-label">BLAEO results ready</span><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent,#66c0f4);margin-left:8px;flex-shrink:0;pointer-events:none;"></span></button>
                     {% for _t in plugin_fragments('base_nav_items') %}{% include _t %}{% endfor %}
                     <div class="hamburger-sep"></div>
                     <button class="hamburger-item" onclick="closeHamburger();window.location.href='/?edit=1'">Edit Home Layout</button>
@@ -537,16 +539,41 @@
             btn.innerText = '';
         }
 
+        function _showBlaeoRunningNotification() {
+            document.getElementById('blaeo-sync-btn').style.display  = '';
+            document.getElementById('blaeo-ready-btn').style.display = 'none';
+            document.getElementById('blaeo-dot').classList.remove('visible');
+        }
+        function _showBlaeoReadyNotification() {
+            document.getElementById('blaeo-sync-btn').style.display  = 'none';
+            document.getElementById('blaeo-ready-label').textContent = 'BLAEO results ready';
+            document.getElementById('blaeo-ready-btn').style.display = '';
+            document.getElementById('blaeo-dot').classList.add('visible');
+        }
+        function _showBlaeoErrorNotification() {
+            document.getElementById('blaeo-sync-btn').style.display  = 'none';
+            document.getElementById('blaeo-ready-label').textContent = 'BLAEO sync failed';
+            document.getElementById('blaeo-ready-btn').style.display = '';
+            document.getElementById('blaeo-dot').classList.add('visible');
+        }
+        function _hideBlaeoNotification() {
+            document.getElementById('blaeo-sync-btn').style.display  = 'none';
+            document.getElementById('blaeo-ready-btn').style.display = 'none';
+            document.getElementById('blaeo-dot').classList.remove('visible');
+        }
+
         function _startBulkProgressPoller() {
             if (_bulkProgressPoller) return;
             _bulkProgressPoller = setInterval(async () => {
                 try {
-                    const [opRes, dateRes] = await Promise.all([
+                    const [opRes, dateRes, blaeoRes] = await Promise.all([
                         fetch('/api/bulk-op/status'),
-                        fetch('/api/bulk-date-import/status')
+                        fetch('/api/bulk-date-import/status'),
+                        fetch('/api/blaeo-status')
                     ]);
-                    const op = await opRes.json();
-                    const dt = await dateRes.json();
+                    const op    = await opRes.json();
+                    const dt    = await dateRes.json();
+                    const blaeo = await blaeoRes.json();
                     if (op.running) {
                         _updateBulkProgressBtn(op.op, op.done + op.failed, op.total);
                     } else if (dt.active) {
@@ -554,7 +581,28 @@
                     } else {
                         _clearBulkProgressBtn();
                     }
-                    if (!op.running && !dt.active) {
+                    if (blaeo.running) {
+                        _showBlaeoRunningNotification();
+                    } else if (blaeo.done) {
+                        const modalOpen = document.getElementById('community-modal').style.display !== 'none';
+                        if (modalOpen && typeof _loadBlaeoPreview === 'function') {
+                            _hideBlaeoNotification();
+                            _loadBlaeoPreview();
+                        } else {
+                            _showBlaeoReadyNotification();
+                        }
+                    } else if (blaeo.error) {
+                        const modalOpen = document.getElementById('community-modal').style.display !== 'none';
+                        if (modalOpen) {
+                            _hideBlaeoNotification();
+                            const status = document.getElementById('blaeo-status');
+                            status.className = 'tool-status error';
+                            status.textContent = '✘ ' + blaeo.error;
+                        } else {
+                            _showBlaeoErrorNotification();
+                        }
+                    }
+                    if (!op.running && !dt.active && !blaeo.running) {
                         clearInterval(_bulkProgressPoller);
                         _bulkProgressPoller = null;
                     }
@@ -571,22 +619,33 @@
 
         document.addEventListener('bulkop:started',    () => _startBulkProgressPoller());
         document.addEventListener('dateimport:started', () => _startBulkProgressPoller());
+        document.addEventListener('blaeo:started',      () => _startBulkProgressPoller());
 
         // Resume indicator if an op is already running when the page loads
         (async () => {
             try {
-                const [opRes, dateRes] = await Promise.all([
+                const [opRes, dateRes, blaeoRes] = await Promise.all([
                     fetch('/api/bulk-op/status'),
-                    fetch('/api/bulk-date-import/status')
+                    fetch('/api/bulk-date-import/status'),
+                    fetch('/api/blaeo-status')
                 ]);
-                const op = await opRes.json();
-                const dt = await dateRes.json();
+                const op    = await opRes.json();
+                const dt    = await dateRes.json();
+                const blaeo = await blaeoRes.json();
                 if (op.running) {
                     _updateBulkProgressBtn(op.op, op.done + op.failed, op.total);
                     _startBulkProgressPoller();
                 } else if (dt.active) {
                     _updateBulkProgressBtn('date', dt.done + dt.failed, dt.total);
                     _startBulkProgressPoller();
+                }
+                if (blaeo.running) {
+                    _showBlaeoRunningNotification();
+                    _startBulkProgressPoller();
+                } else if (blaeo.done) {
+                    _showBlaeoReadyNotification();
+                } else if (blaeo.error) {
+                    _showBlaeoErrorNotification();
                 }
             } catch(e) {}
         })();
@@ -607,18 +666,18 @@
         })();
 
         // ── Hamburger menu ────────────────────────────────────────────────────
-        // Any [data-dot-source] element under #hamburger-btn (core's own, or a
-        // plugin's via the base_nav_dots fragment slot) is a display:none state
-        // marker; this mirrors any of them going visible onto #hamburger-dot.
+        // #update-dot / #store-names-dot / #blaeo-dot are display:none state markers;
+        // this mirrors any of them going visible onto the single #hamburger-dot.
         (function() {
-            const btn = document.getElementById('hamburger-btn');
+            const srcIds = ['update-dot', 'store-names-dot', 'blaeo-dot'];
             const dot = document.getElementById('hamburger-dot');
             function sync() {
-                const any = Array.from(btn.querySelectorAll('[data-dot-source]'))
-                    .some(el => el.classList.contains('visible'));
+                const any = srcIds.some(id => document.getElementById(id).classList.contains('visible'));
                 dot.classList.toggle('visible', any);
             }
-            new MutationObserver(sync).observe(btn, { attributes: true, attributeFilter: ['class'], subtree: true });
+            srcIds.forEach(id => {
+                new MutationObserver(sync).observe(document.getElementById(id), { attributes: true, attributeFilter: ['class'] });
+            });
             sync();
         })();
 

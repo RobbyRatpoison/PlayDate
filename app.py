@@ -68,6 +68,7 @@ from backup import backup_bp
 from diagnostics import diagnostics_bp
 from updater import updater_bp, _startup_update_check
 from notifications import notifications_bp, _startup_notification_check
+from scrapers import blaeo_bp
 from pagywosg import pagywosg_bp
 from pop_sync import pop_bp
 from imports import imports_bp
@@ -114,6 +115,7 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(diagnostics_bp)
     app.register_blueprint(updater_bp)
     app.register_blueprint(notifications_bp)
+    app.register_blueprint(blaeo_bp)
     app.register_blueprint(pagywosg_bp)
     app.register_blueprint(pop_bp)
     app.register_blueprint(imports_bp)

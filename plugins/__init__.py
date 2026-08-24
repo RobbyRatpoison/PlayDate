@@ -4,7 +4,6 @@ import logging
 import os
 import re
 import sys
-import threading
 import time
 
 from flask import Blueprint, jsonify, request
@@ -469,31 +468,6 @@ def notify_library_updated():
                 p.on_library_updated()
             except Exception:
                 log.exception(f"Plugin {p.id} on_library_updated failed")
-
-
-def run_pre_cheevo_scrape(today):
-    """Blocking broadcast to every plugin implementing pre_cheevo_scrape(today).
-
-    Unlike the other notify_*/on_* hooks, this one blocks the caller -- populate
-    calls this before submitting cheevo workers so a plugin (e.g. one that scrapes
-    achievement data from a third-party site) gets a chance to pre-fill
-    cheevos_fetched and let cheevo workers skip games it already covered. Each
-    plugin runs in its own thread so multiple such plugins run concurrently
-    rather than serially; a plugin's exception is isolated and logged.
-    """
-    threads = []
-    for p in _plugins.values():
-        if hasattr(p, 'pre_cheevo_scrape'):
-            def _run(plugin=p):
-                try:
-                    plugin.pre_cheevo_scrape(today)
-                except Exception:
-                    log.exception(f"Plugin {plugin.id} pre_cheevo_scrape failed")
-            t = threading.Thread(target=_run, daemon=True)
-            t.start()
-            threads.append(t)
-    for t in threads:
-        t.join()
 
 
 def collect_extra_info(appid, platform, platform_id):
