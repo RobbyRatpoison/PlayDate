@@ -13,8 +13,8 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 **ArchelonGaming**
 - Reported grid-view games launching/installing from accidental clicks (mousedown, drag off the card and back, release) while scrolling and syncing - led to an opt-in double-click-to-launch/install setting
 - Suggested blacklisting a game directly from the right-click menu - led to a Delete Game context-menu item instead, using the existing delete-and-optionally-blacklist prompt
-- Suggested platform and installed-status badges on game cards (not implemented; pointed toward the existing card outline rules and Group By options instead)
-- Requested Amazon Games and LegacyGames.com support (still exploring both)
+- Suggested platform and installed-status badges on game cards - led to the Card Badges feature (Appearance menu)
+- Requested Amazon Games and LegacyGames.com support (Amazon skipped for now - already a stuck effort; LegacyGames.com noted as a future research item)
 
 **Blue™**
 - Couldn't find where to view/filter games synced from Play or Pay - led to Play or Pay generating a saved filter automatically, matching how PAGYWOSG does it
