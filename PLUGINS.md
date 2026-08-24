@@ -265,9 +265,6 @@ class MyPlugin:
                              get_endpoint: str, save_endpoint: str}
             -- get_endpoint: GET returns {value: int}, called when the modal opens.
                save_endpoint: POST body {[key]: int}, called by the block's own Save button.
-          {type: 'checkbox', label: str, hint: str?, key: str, get_endpoint: str, save_endpoint: str}
-            -- get_endpoint: GET returns {value: bool}, called when the modal opens.
-               save_endpoint: POST body {[key]: bool}, called immediately on toggle (no Save button).
 
         Action types:
           {type: 'call',       fn: str}                           -- call named JS function
