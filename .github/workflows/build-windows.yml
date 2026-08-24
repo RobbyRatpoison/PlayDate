@@ -134,7 +134,27 @@ jobs:
           sudo apt-get install -y flatpak flatpak-builder
           flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 
+      # ── 4b. Cache the installed GNOME runtime + SDK ───────────────────────────
+      # These are large (1GB+ combined) and get pulled from Flathub fresh on
+      # every single run otherwise -- this was slow before any of the
+      # tcl/tk/tkinter additions above. Keyed on the runtime-version value
+      # itself (read separately below), not the whole manifest file, so
+      # unrelated manifest edits (e.g. tweaking a build-commands step) don't
+      # needlessly evict a ~1GB cache entry that's still perfectly valid.
+      - name: Read runtime version
+        id: runtime_ver
+        run: |
+          ver=$(grep '^runtime-version:' flatpak/io.github.robbyratpoison.PlayDate.yml | sed "s/runtime-version: *//; s/[\"']//g")
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Flatpak runtime and SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-runtime-gnome-${{ steps.runtime_ver.outputs.version }}
+
       # ── 5. Install the GNOME runtime + SDK ────────────────────────────────────
+      # No-op (fast, exit 0) when the cache above already has these installed.
       - name: Install GNOME runtime and SDK
         run: flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
 
@@ -150,6 +170,26 @@ jobs:
           else
             mkdir -p flatpak/repo
           fi
+
+      # ── 5c. Cache flatpak-builder's per-module state ──────────────────────────
+      # .flatpak-builder/ holds downloaded sources plus a checksum per module
+      # (hash of that module's manifest fragment + sources) that lets
+      # flatpak-builder skip rebuilding a module untouched since the cached
+      # run -- --force-clean below only wipes the final merged build-dir
+      # output tree, not this. Slow, source-built deps (tcl, tk, the
+      # from-source CPython used to build _tkinter) otherwise recompile from
+      # scratch on every single push, beta or stable. Keyed on the manifest
+      # + pip requirements so any real change still rebuilds what changed;
+      # restore-keys falls back to the most recent cache on a miss so an
+      # in-progress manifest edit still reuses whatever earlier modules
+      # (e.g. tcl/tk) didn't change, rather than losing the whole cache.
+      - name: Cache flatpak-builder state
+        uses: actions/cache@v4
+        with:
+          path: .flatpak-builder
+          key: flatpak-builder-${{ hashFiles('flatpak/io.github.robbyratpoison.PlayDate.yml', 'requirements-flatpak.txt') }}
+          restore-keys: |
+            flatpak-builder-
 
       # ── 6. Build and bundle ───────────────────────────────────────────────────
       - name: Build with flatpak-builder
