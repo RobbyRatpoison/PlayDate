@@ -649,6 +649,22 @@
                 <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">On startup, promotes Never Played games to Unfinished if Steam shows any playtime. Disable if you use BLAEO to manage Never Played status.</div>
             </div>
         </div>
+        <div class="hub-section">
+            <div class="hub-section-label">HLTB</div>
+            <div style="padding:8px 10px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary); display:block; margin-bottom:2px;">Auto-confirm threshold</label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px;">Minimum name similarity (0–100) for auto-confirming a match. Matches below this are flagged as unconfirmed.</div>
+                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                    <input type="range" id="hltb-threshold-slider" min="0" max="100" value="{{ hltb_match_threshold }}"
+                        oninput="_onHltbSlider(this)"
+                        class="hltb-slider" data-modal-row="22">
+                    <span id="hltb-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
+                </div>
+                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="23" onclick="saveHltbThreshold()">Save</button>
+                <div id="hltb-threshold-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
+            </div>
+            <button class="settings-item" data-modal-row="24" onclick="openHltbModal()">HLTB Data</button>
+        </div>
     </div>
 </div>
 
@@ -1784,7 +1800,7 @@ window._platPriority = {{ platform_priority | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/filter_io.js') }}?v={{ app_version }}"></script>
 
-{% for _t in plugin_fragments('tools_hltb_modal') %}{% include _t %}{% endfor %}
+{% include '_modal_hltb.html' %}
 
 <!-- ═══════════════════════════ EMULATORS MODAL ══════════════════════════════ -->
 <div id="emulators-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeEmulatorsModal();">

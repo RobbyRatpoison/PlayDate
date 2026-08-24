@@ -3861,13 +3861,6 @@ const _manageOnOpen = {};  // id -> [callbacks] run each time the manage modal o
 function _openManageModal(id) {
     const entry = _manageSpecs[id];
     if (!entry) return;
-    // Escape hatch: a plugin with its own rich custom modal (built via fragments,
-    // beyond what the declarative block vocabulary below can express) can skip
-    // the generic modal builder entirely and have "Manage" open that instead.
-    if (entry.spec.open_fn) {
-        if (typeof window[entry.spec.open_fn] === 'function') window[entry.spec.open_fn]();
-        return;
-    }
     let modal = document.getElementById(`${id}-manage-modal`);
     if (!modal) {
         const frag = _buildManageModalHtml(id, entry.name, entry.spec);
@@ -3878,9 +3871,6 @@ function _openManageModal(id) {
     window._inputMgr?.registerModal?.(`${id}-manage-modal`);
     _manageRefreshAuth(id);
     _manageLoadLauncherConfig(id);
-    for (const section of (entry.spec.sections || [])) {
-        if (!section.auth) _manageLoadInfoBlocks(id, section.items || []);
-    }
     for (const cb of (_manageOnOpen[id] || [])) cb();
 }
 
@@ -3922,16 +3912,6 @@ async function _manageLoadInfoBlocks(id, items) {
                 }
             } catch (_) {}
             idx++;
-        } else if (block.type === 'slider' && block.get_endpoint) {
-            try {
-                const r = await fetch(block.get_endpoint);
-                const d = await r.json();
-                const el = document.getElementById(`${id}-manage-slider-${escHtml(block.key)}`);
-                if (el && d.value != null) {
-                    el.value = d.value;
-                    _manageSliderInput(el);
-                }
-            } catch (_) {}
         }
     }
 }
@@ -3941,33 +3921,6 @@ async function _managePost(id, endpoint, onSuccess) {
         await fetch(endpoint, {method: 'POST', headers: {'Content-Type': 'application/json'}});
         if (onSuccess === 'refresh_auth') _manageRefreshAuth(id);
     } catch (_) {}
-}
-
-function _manageSliderInput(el) {
-    const valEl = document.getElementById(`${el.id}-val`);
-    if (valEl) valEl.textContent = el.value;
-    const pct = (el.value - el.min) / (el.max - el.min) * 100;
-    el.style.setProperty('--slider-pct', pct + '%');
-}
-
-async function _manageSaveSlider(id, key, endpoint) {
-    const el       = document.getElementById(`${id}-manage-slider-${key}`);
-    const statusEl = document.getElementById(`${id}-manage-slider-${key}-status`);
-    if (!el) return;
-    try {
-        const r = await fetch(endpoint, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({[key]: parseInt(el.value, 10)}),
-        });
-        const d = await r.json();
-        if (statusEl) {
-            statusEl.textContent = d.status === 'success' ? 'Saved.' : (d.message || 'Save failed.');
-            setTimeout(() => { statusEl.textContent = ''; }, 2000);
-        }
-    } catch (_) {
-        if (statusEl) statusEl.textContent = 'Save failed.';
-    }
 }
 
 async function _manageLoadLauncherConfig(id) {
@@ -4316,25 +4269,6 @@ function _buildManageBlockHtml(id, block, infoIdx, rowCtr) {
         }
         case 'status_output':
             return `<div id="${eid}-manage-status-${escHtml(block.key)}" class="tool-status"></div>`;
-        case 'slider': {
-            const row  = rowCtr.r++;
-            const key  = escHtml(block.key);
-            const sid  = `${eid}-manage-slider-${key}`;
-            const hint = block.hint
-                ? `<div style="font-size:0.75rem;color:#8f98a0;margin-bottom:6px;">${escHtml(block.hint)}</div>`
-                : '';
-            return `<label style="display:block;color:var(--text-secondary);font-size:0.8rem;margin-bottom:8px;">${escHtml(block.label || '')}
-                ${hint}
-                <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-                    <input type="range" id="${sid}" min="${block.min ?? 0}" max="${block.max ?? 100}" value="${block.min ?? 0}"
-                        oninput="_manageSliderInput(this)" class="hltb-slider" data-modal-row="${row}">
-                    <span id="${sid}-val" style="font-size:0.85rem;color:var(--text-primary);min-width:28px;text-align:right;flex-shrink:0;">--</span>
-                </div>
-                <button class="nav-btn" type="button" style="margin-top:8px;font-size:0.8rem;" data-modal-row="${row}"
-                    onclick="_manageSaveSlider('${eid}','${key}',${JSON.stringify(block.save_endpoint)})">Save</button>
-                <div id="${sid}-status" style="font-size:0.78rem;color:#8f98a0;margin-top:4px;min-height:1em;"></div>
-            </label>`;
-        }
         case 'input':
         case 'password': {
             const row = rowCtr.r++;
@@ -4497,8 +4431,8 @@ async function _renderPluginsList() {
             body.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">No plugins installed.</div>';
             return;
         }
-        function _buildIncompatibleCardHtml(p) {
-            const pluginRow = _pluginRowCtr.r++;
+        const incompatibleHtml = incompatible.map((p, idx) => {
+            const pluginRow = plugins.length + idx + 2;
             return `
             <div class="hub-section" id="plugin-row-${escHtml(p.id)}">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -4530,10 +4464,9 @@ async function _renderPluginsList() {
                     </div>
                 </div>
             </div>`;
-        }
-        const _pluginRowCtr = {r: 2};
-        function _buildPluginCardHtml(p) {
-            const pluginRow = _pluginRowCtr.r++;
+        }).join('');
+        const compatibleHtml = plugins.map((p, pluginIdx) => {
+            const pluginRow = pluginIdx + 2;
             const needsLauncher = p.launcher && p.launcher.required;
             const lstatus = launcherStatus[p.platform];
             let launcherBadge = '';
@@ -4555,7 +4488,7 @@ async function _renderPluginsList() {
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                     <div>
                         <div style="font-size:0.95rem;color:var(--text-primary);font-weight:600;">${escHtml(p.name)}</div>
-                        <div style="font-size:0.75rem;color:#8f98a0;margin-top:2px;">v${escHtml(p.version)}${p.category === 'metadata' ? '' : ` &middot; platform: ${escHtml(p.platform)} &middot; ${p.game_count} game${p.game_count !== 1 ? 's' : ''}`}${p.source ? `<span id="plugin-update-${escHtml(p.id)}"></span>` : ''}</div>
+                        <div style="font-size:0.75rem;color:#8f98a0;margin-top:2px;">v${escHtml(p.version)} &middot; platform: ${escHtml(p.platform)} &middot; ${p.game_count} game${p.game_count !== 1 ? 's' : ''}${p.source ? `<span id="plugin-update-${escHtml(p.id)}"></span>` : ''}</div>
                     </div>
                     <div style="display:flex;flex-shrink:0;margin-left:12px;gap:6px;">
                         ${manageBtn}
@@ -4587,17 +4520,7 @@ async function _renderPluginsList() {
                     </div>
                 </div>
             </div>`;
-        }
-        const libraryPlugins  = plugins.filter(p => (p.category || 'library') !== 'metadata');
-        const metadataPlugins = plugins.filter(p => p.category === 'metadata');
-        let compatibleHtml = '';
-        if (libraryPlugins.length) {
-            compatibleHtml += `<div class="hub-section-label">Libraries</div>` + libraryPlugins.map(_buildPluginCardHtml).join('');
-        }
-        if (metadataPlugins.length) {
-            compatibleHtml += `<div class="hub-section-label">Metadata</div>` + metadataPlugins.map(_buildPluginCardHtml).join('');
-        }
-        const incompatibleHtml = incompatible.map(_buildIncompatibleCardHtml).join('');
+        }).join('');
         body.innerHTML = compatibleHtml + incompatibleHtml;
     } catch(e) {
         const msg = (e && e.message) ? e.message : String(e);
@@ -5011,6 +4934,27 @@ function openSystemModal() {
 function closeSystemModal() {
     document.getElementById('system-modal').style.display = 'none';
 }
+function _onHltbSlider(el) {
+    document.getElementById('hltb-threshold-val').textContent = el.value;
+    const pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--slider-pct', pct + '%');
+}
+
+function saveHltbThreshold() {
+    const val = parseInt(document.getElementById('hltb-threshold-slider').value, 10);
+    const status = document.getElementById('hltb-threshold-status');
+    savePreference({ hltb_match_threshold: val });
+    status.textContent = 'Saved.';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+}
+
+(function _initHltbSlider() {
+    const el = document.getElementById('hltb-threshold-slider');
+    if (!el) return;
+    const pct = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.setProperty('--slider-pct', pct + '%');
+})();
+
 function resizeToSteamDeck() {
     if (window.pywebview && window.pywebview.api && window.pywebview.api.resize_window) {
         window.pywebview.api.resize_window(1280, 800);

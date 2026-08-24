@@ -91,10 +91,6 @@ class MyPlugin:
     name     = 'My Platform'   # fallback display label
     label    = 'My Platform'   # display label used in platform_labels(); defaults to name if absent
     platform = 'myplugin'
-    category = 'library'      # optional; 'library' (default) or 'metadata' -- which
-                               # section of the Plugins modal this shows under. Use
-                               # 'metadata' for a plugin that enriches games on any
-                               # platform (like HLTB) rather than importing its own.
 
     def register(self, app):
         """Called once at startup. Register your Blueprint here."""
@@ -228,11 +224,6 @@ class MyPlugin:
         Core renders the modal; a Manage button appears automatically on the plugin card.
         The modal ID follows the convention: {plugin_id}-manage-modal.
 
-        Alternative: return {'open_fn': 'someJsFunctionName'} instead of {'sections': [...]}
-        to have the Manage button call that JS function directly rather than building a
-        generic modal -- for a plugin whose own fragment-rendered modal already covers
-        everything and would otherwise end up duplicated as two separate modals.
-
         Section fields:
           title (str)         — label shown above the section
           auth  (dict)        — optional; shows connected vs disconnected state
@@ -248,10 +239,6 @@ class MyPlugin:
           {type: 'button',  label: str, variant: 'muted'?, action: <action>}
           {type: 'buttons', items: [{label, variant?, action}]}
           {type: 'status_output',  key: str}      -- id: {plugin_id}-manage-status-{key}
-          {type: 'slider',  label: str, hint: str?, key: str, min: int, max: int,
-                             get_endpoint: str, save_endpoint: str}
-            -- get_endpoint: GET returns {value: int}, called when the modal opens.
-               save_endpoint: POST body {[key]: int}, called by the block's own Save button.
 
         Action types:
           {type: 'call',       fn: str}                           -- call named JS function
@@ -551,7 +538,6 @@ launch_protocol_url(prefix_path, url, wine_bin=None)
 
 - [ ] `plugins/myplugin/` directory with `__init__.py`, `plugin.json`, `routes.py`
 - [ ] Unique `id` and `platform` string in `plugin.json` and plugin class
-- [ ] `category = 'metadata'` set on plugin class if it enriches games on any platform rather than importing its own library (defaults to `'library'`)
 - [ ] `source` set to `github:owner/repo` in `plugin.json` if the plugin is hosted on GitHub
 - [ ] `label` set on plugin class (display name used in `window._PLAT_LABELS`)
 - [ ] `template_folder='templates'` on the Blueprint if using fragments

@@ -612,7 +612,6 @@ def list_plugins():
             'name':       p.name,
             'version':    manifest.get('version', '?'),
             'platform':   p.platform,
-            'category':   getattr(p, 'category', 'library'),
             'game_count': row[0] if row else 0,
             'source':     manifest.get('source', ''),
             'launcher':   manifest.get('launcher', {}),

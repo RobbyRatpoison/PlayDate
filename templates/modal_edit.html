@@ -298,8 +298,25 @@
                             </div>
                         </div>
 
-                        {% set _hltb_suffix = '-i' %}
-                        {% for _t in plugin_fragments('edit_modal_hltb') %}{% include _t %}{% endfor %}
+                        <div id="hltb-row-i" style="display:none; flex-direction:column; gap:6px; margin-top:10px; padding:10px 14px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0; font-weight:bold;">HLTB:</span>
+                                <span id="edit-hltb-warn-i" style="font-size:0.75rem; color:#e6b450; display:none;" data-tooltip="Low match confidence — please verify">&#9888;</span>
+                                <a id="edit-hltb-link-i" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
+                                <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" id="edit-hltb-confirm-i" onclick="_confirmHLTB(this)" data-modal-row="13"
+                                        style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
+                                    <button type="button" id="edit-hltb-other-i" onclick="_otherMatchHLTB(this)" data-modal-row="13"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
+                                    <button type="button" id="edit-hltb-clear-i" onclick="_clearHLTB(this)" data-modal-row="13"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
+                                    <button type="button" id="edit-hltb-refresh-i" onclick="_refreshHLTB(this)" data-modal-row="13"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
+                                </div>
+                            </div>
+                            <div id="edit-hltb-times-i" style="font-size:0.85rem; color:#c2c8cc;"></div>
+                        </div>
+                        <div id="edit-hltb-alt-results-i" style="flex-direction:column; gap:4px; margin-top:4px; padding:8px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;"></div>
                     </div>
 
                     <!-- STATS pane -->
@@ -379,8 +396,25 @@
                         </div>
                         {% endif %}
 
-                        {% set _hltb_suffix = '' %}
-                        {% for _t in plugin_fragments('edit_modal_hltb') %}{% include _t %}{% endfor %}
+                        <div id="hltb-row" style="display:none; flex-direction:column; gap:6px; margin-top:10px; padding:10px 14px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:0.78rem; color:#8f98a0; flex-shrink:0; font-weight:bold;">HLTB:</span>
+                                <span id="edit-hltb-warn" style="font-size:0.75rem; color:#e6b450; display:none;" data-tooltip="Low match confidence — please verify">&#9888;</span>
+                                <a id="edit-hltb-link" href="#" target="_blank" style="color:var(--accent); text-decoration:none; font-size:0.78rem; flex-shrink:0;"></a>
+                                <div style="margin-left:auto; display:flex; gap:6px; flex-wrap:wrap;">
+                                    <button type="button" id="edit-hltb-confirm" onclick="_confirmHLTB(this)" data-modal-row="7"
+                                        style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
+                                    <button type="button" id="edit-hltb-other" onclick="_otherMatchHLTB(this)" data-modal-row="7"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
+                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB(this)" data-modal-row="7"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
+                                    <button type="button" id="edit-hltb-refresh" onclick="_refreshHLTB(this)" data-modal-row="7"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
+                                </div>
+                            </div>
+                            <div id="edit-hltb-times" style="font-size:0.85rem; color:#c2c8cc;"></div>
+                        </div>
+                        <div id="edit-hltb-alt-results" style="flex-direction:column; gap:4px; margin-top:4px; padding:8px; background:var(--bg-input); border:1px solid #2a475e; border-radius:5px;"></div>
                     </div>
 
                     <!-- PAGYWOSG quals: below both panes -->
@@ -827,7 +861,7 @@ const achLink = document.getElementById('achievements-link');
         });
 
         _pagRenderQuals(game);
-        if (typeof _renderHLTB === 'function') _renderHLTB(game);
+        _renderHLTB(game);
 
         // Show/hide platform-specific fields; update sync button label
         const isSteam = game.platform === 'steam' || (!game.platform && game.appid >= 0);
@@ -1732,6 +1766,249 @@ const achLink = document.getElementById('achievements-link');
             .finally(() => { btn.textContent = 'Re-scrape'; btn.disabled = false; });
     }
 
+    let _hltbAppid = null;
+    let _hltbGame  = null;
+    let _hltbActiveAlt = null;
+
+    // Helper: get both pane elements for a given base ID
+    function _hltbEls(base) {
+        return ['', '-i'].map(s => document.getElementById(base + s)).filter(Boolean);
+    }
+
+    // Derive pane suffix from a button's ID ('-i' for info pane, '' for stats pane)
+    function _hltbCtxSuffix(btn) { return btn.id.endsWith('-i') ? '-i' : ''; }
+
+    function _fmtMins(mins) {
+        if (mins == null) return null;
+        const h = Math.floor(mins / 60), m = mins % 60;
+        return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+
+    function _renderHLTB(game) {
+        _hltbAppid = game.appid;
+        _hltbGame  = game;
+        _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
+        _hltbEls('edit-hltb-other').forEach(el => el.textContent = 'Other match');
+        _hltbEls('hltb-row').forEach(r => r.style.display = 'flex');
+
+        const fetched = game.hltb_fetched;
+        const hasData = game.hltb_id && (fetched === 'unconfirmed' || (fetched && fetched !== '0'));
+
+        if (!hasData) {
+            _hltbEls('edit-hltb-warn').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-confirm').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-clear').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-refresh').forEach(el => el.style.display = 'none');
+            _hltbEls('edit-hltb-link').forEach(link => {
+                link.href = `https://howlongtobeat.com/?q=${encodeURIComponent(game.name || '')}`;
+                link.textContent = 'Search HLTB ↗';
+            });
+            _hltbEls('edit-hltb-times').forEach(el => el.textContent = '');
+            // Auto-open the stats-pane search panel when no match exists
+            const statsOther = document.getElementById('edit-hltb-other');
+            if (statsOther) {
+                statsOther.textContent = 'Find match';
+                const altEl = document.getElementById('edit-hltb-alt-results');
+                if (altEl && !altEl.classList.contains('open')) _otherMatchHLTB(statsOther);
+            }
+            const infoOther = document.getElementById('edit-hltb-other-i');
+            if (infoOther) infoOther.textContent = 'Find match';
+            return;
+        }
+
+        _hltbEls('edit-hltb-clear').forEach(el => el.style.display = '');
+        _hltbEls('edit-hltb-refresh').forEach(el => el.style.display = '');
+        _hltbEls('edit-hltb-link').forEach(link => {
+            link.href = `https://howlongtobeat.com/game/${game.hltb_id}`;
+            link.textContent = (game.hltb_matched_name || 'HLTB') + ' ↗';
+        });
+
+        const unconfirmed = fetched === 'unconfirmed';
+        _hltbEls('edit-hltb-warn').forEach(el => el.style.display = unconfirmed ? '' : 'none');
+        _hltbEls('edit-hltb-confirm').forEach(el => el.style.display = unconfirmed ? '' : 'none');
+
+        if (unconfirmed) {
+            _hltbEls('edit-hltb-times').forEach(el => { el.textContent = 'Unconfirmed match'; el.style.color = '#8f98a0'; });
+        } else {
+            const parts = [];
+            const main   = _fmtMins(game.hltb_main);
+            const extras = _fmtMins(game.hltb_extras);
+            const compl  = _fmtMins(game.hltb_completionist);
+            if (main)   parts.push(`Main: ${main}`);
+            if (extras) parts.push(`+Extras: ${extras}`);
+            if (compl)  parts.push(`Completionist: ${compl}`);
+            const text = parts.join(' · ') || 'No times';
+            _hltbEls('edit-hltb-times').forEach(el => { el.textContent = text; el.style.color = '#c2c8cc'; });
+        }
+    }
+
+    function _refreshHLTB(btn) {
+        if (!_hltbAppid) return;
+        btn.textContent = '...';
+        btn.disabled = true;
+        fetch(`/api/hltb/${_hltbAppid}`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+            })
+            .finally(() => { btn.textContent = 'Re-scrape'; btn.disabled = false; });
+    }
+
+    function _confirmHLTB(btn) {
+        if (!_hltbAppid) return;
+        btn.textContent = '...';
+        btn.disabled = true;
+        fetch(`/api/hltb/${_hltbAppid}/confirm`, {method: 'POST'})
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+            })
+            .finally(() => { btn.textContent = 'Confirm'; btn.disabled = false; });
+    }
+
+    function _clearHLTB(btn) {
+        if (!_hltbAppid) return;
+        _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
+        fetch(`/api/hltb/${_hltbAppid}`, {method: 'DELETE'})
+            .then(() => _renderHLTB({...(_hltbGame || {}), hltb_id: null, hltb_fetched: null, hltb_main: null, hltb_extras: null, hltb_completionist: null, hltb_matched_name: null, hltb_match_score: null}));
+    }
+
+    function _otherMatchHLTB(btn) {
+        if (!_hltbAppid) return;
+        const suffix = _hltbCtxSuffix(btn);
+        const altEl = document.getElementById('edit-hltb-alt-results' + suffix);
+        if (altEl.classList.contains('open')) {
+            altEl.classList.remove('open');
+            return;
+        }
+        _hltbActiveAlt = altEl;
+        const origLabel = btn.textContent;
+        btn.textContent = '...';
+        btn.disabled = true;
+        _hltbRunSearch(altEl, _hltbGame?.name || '')
+            .finally(() => { btn.textContent = origLabel; btn.disabled = false; });
+    }
+
+    function _hltbRunSearch(altEl, query) {
+        if (!_hltbAppid) return Promise.resolve();
+
+        // Event delegation for Select buttons — set up once per altEl lifetime
+        if (!altEl._hltbDelegated) {
+            altEl._hltbDelegated = true;
+            altEl.addEventListener('click', function(e) {
+                const btn = e.target.closest('[data-hltb-select]');
+                if (btn) _selectHLTBMatch(
+                    parseInt(btn.dataset.hltbId),
+                    btn.dataset.hltbScore != null ? parseInt(btn.dataset.hltbScore) : null,
+                    btn.dataset.hltbName
+                );
+            });
+        }
+
+        const url = `/api/hltb/${_hltbAppid}/search` + (query ? `?q=${encodeURIComponent(query)}` : '');
+        return fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                const results = data.results || [];
+                const titleRowHtml = `<div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                    <input data-hltb-search-input type="text" value="${_escHtml(query)}"
+                        data-modal-row="ehltb-s"
+                        style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();_hltbResearch();}">
+                    <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                        data-modal-row="ehltb-s"
+                        onclick="_hltbResearch()">Search</button>
+                </div>`;
+                const manualHtml = `<div style="display:flex; align-items:center; gap:6px; padding:6px 0 2px; border-top:1px solid #2a475e; margin-top:4px;">
+                    <input data-hltb-manual-input type="text" placeholder="Paste HLTB URL or game ID…"
+                        data-modal-row="ehltb-m"
+                        style="flex:1; min-width:0; padding:4px 8px; font-size:0.78rem; background:var(--bg-input); border:1px solid #2a475e; border-radius:4px; color:var(--text-primary);"
+                        onkeydown="if(event.key==='Enter')_selectHLTBById()">
+                    <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                        data-modal-row="ehltb-m"
+                        onclick="_selectHLTBById()">Apply</button>
+                </div>`;
+                const resultsHtml = results.length
+                    ? results.map((r, i) => {
+                        const parts = [];
+                        if (r.hltb_main   != null) parts.push(`Main: ${_fmtMins(r.hltb_main)}`);
+                        if (r.hltb_extras != null) parts.push(`+Extras: ${_fmtMins(r.hltb_extras)}`);
+                        if (r.hltb_completionist != null) parts.push(`Compl: ${_fmtMins(r.hltb_completionist)}`);
+                        const times = parts.join(' · ');
+                        return `<div style="display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:4px; background:rgba(255,255,255,0.03); font-size:0.78rem; color:#c2c8cc;">
+                            <span style="flex:1; min-width:0;">${_escHtml(r.hltb_matched_name || '')}</span>
+                            <span style="color:#8f98a0; flex-shrink:0;">${r.hltb_match_score}</span>
+                            <span style="color:#8f98a0; flex:1; font-size:0.72rem;">${times}</span>
+                            <button type="button" class="nav-btn" style="font-size:0.72rem; padding:2px 7px; flex-shrink:0;"
+                                data-modal-row="ehltb-r-${i}"
+                                data-hltb-select="1" data-hltb-id="${r.hltb_id}"
+                                data-hltb-score="${r.hltb_match_score ?? ''}"
+                                data-hltb-name="${_escHtml(r.hltb_matched_name || '')}">Select</button>
+                        </div>`;
+                    }).join('')
+                    : '<div style="color:#8f98a0; font-size:0.78rem; padding-bottom:4px;">No results found.</div>';
+                altEl.innerHTML = titleRowHtml + resultsHtml + manualHtml;
+                altEl.classList.add('open');
+            });
+    }
+
+    function _hltbResearch() {
+        if (!_hltbActiveAlt) return;
+        const input = _hltbActiveAlt.querySelector('[data-hltb-search-input]');
+        if (!input) return;
+        const q = input.value.trim();
+        if (!q) return;
+        input.disabled = true;
+        _hltbRunSearch(_hltbActiveAlt, q).finally(() => {
+            const el = _hltbActiveAlt?.querySelector('[data-hltb-search-input]');
+            if (el) el.disabled = false;
+        });
+    }
+
+    function _selectHLTBMatch(hltbId, score, matchedName) {
+        if (!_hltbAppid) return;
+        fetch(`/api/hltb/${_hltbAppid}/select`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: score})
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
+                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {}), hltb_matched_name: matchedName});
+                }
+            });
+    }
+
+    function _selectHLTBById() {
+        if (!_hltbAppid || !_hltbActiveAlt) return;
+        const input = _hltbActiveAlt.querySelector('[data-hltb-manual-input]');
+        if (!input) return;
+        const raw = input.value.trim();
+        if (!raw) return;
+        const match = raw.match(/(?:game\/)?(\d+)/);
+        if (!match) { input.style.borderColor = 'var(--color-danger)'; return; }
+        input.style.borderColor = '';
+        const hltbId = parseInt(match[1], 10);
+        input.disabled = true;
+        fetch(`/api/hltb/${_hltbAppid}/select`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({hltb_id: hltbId, hltb_match_score: null})
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
+                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                } else {
+                    input.style.borderColor = 'var(--color-danger)';
+                }
+            })
+            .finally(() => { input.disabled = false; });
+    }
+
     function _pagEventMonthLabel(eventId) {
         if (!eventId) return null;
         const MONTHS = ['January','February','March','April','May','June',
@@ -1828,8 +2105,6 @@ const achLink = document.getElementById('achievements-link');
     });
 </script>
 
-{% for _t in plugin_fragments('edit_modal_scripts') %}{% include _t %}{% endfor %}
-
 <!-- ── SteamGridDB Browser Modal ───────────────────────────────────────────── -->
 {% if existing_sgdb_key %}
 <div id="sgdb-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:2000; align-items:center; justify-content:center;">
@@ -1866,6 +2141,8 @@ const achLink = document.getElementById('achievements-link');
 </div>
 
 <style>
+    #edit-hltb-alt-results, #edit-hltb-alt-results-i { display: none; }
+    #edit-hltb-alt-results.open, #edit-hltb-alt-results-i.open { display: flex; }
     .sgdb-thumb {
         cursor: pointer; border-radius: 4px; overflow: hidden;
         border: 2px solid transparent; transition: border-color 0.15s;

@@ -1022,7 +1022,7 @@ def bulk_op_start():
                 _bulk_op_state['rate_limit_hit'] = True
 
     def _run():
-        from scrapers import bulk_rescrape_games, bulk_art_scrape_games, bulk_protondb_scrape_games
+        from scrapers import bulk_rescrape_games, bulk_art_scrape_games, bulk_protondb_scrape_games, bulk_hltb_scrape_games
         try:
             if op == 'rescrape':
                 result = bulk_rescrape_games(appids, _bulk_op_cancel, _progress)
@@ -1031,12 +1031,7 @@ def bulk_op_start():
             elif op == 'protondb':
                 result = bulk_protondb_scrape_games(appids, _bulk_op_cancel, _progress)
             else:
-                import plugins as _plugins
-                hltb_plugin = _plugins.get('hltb')
-                if hltb_plugin is None or not hasattr(hltb_plugin, 'bulk_scrape'):
-                    result = {'error': 'HLTB plugin not installed'}
-                else:
-                    result = hltb_plugin.bulk_scrape(appids, _bulk_op_cancel, _progress)
+                result = bulk_hltb_scrape_games(appids, _bulk_op_cancel, _progress)
             with _bulk_op_lock:
                 _bulk_op_state['result']  = result
                 _bulk_op_state['aborted'] = result.get('aborted', False)
