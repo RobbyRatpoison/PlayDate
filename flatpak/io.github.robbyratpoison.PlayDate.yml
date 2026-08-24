@@ -47,6 +47,76 @@ modules:
       - type: file
         path: requirements-flatpak.txt
 
+  # org.gnome.Platform ships no Tcl/Tk at all — tkinter isn't a pip package,
+  # it needs _tkinter compiled against real Tcl/Tk libs, and this runtime's
+  # Python was built without them (the whole Lib/tkinter/ stdlib package is
+  # absent too, not just the C extension). color_picker.py (library.py's
+  # /api/pick-screen-color, the card-outline eyedropper's screen-grab
+  # fallback for when the browser EyeDropper API isn't available in
+  # WebKitGTK) needs it. Confirmed via a real Flatpak install's playdate.log:
+  # `ModuleNotFoundError: No module named 'tkinter'`, subprocess exiting
+  # before any window ever appeared.
+  #
+  # Built from upstream Tcl/Tk 8.6.14 source (not the GNOME/Flathub native
+  # colour-chooser widget) deliberately: an earlier card-outline colour
+  # picker used the browser-native `<input type="color">` (WebKitGTK's own
+  # GTK colour-chooser dialog) and it was broken in this environment — see
+  # CHANGELOG.md's v1.4.5 entry — which is why the custom HSV/hex/palette
+  # picker with this Tk-based eyedropper exists at all. Going back to a GTK
+  # colour-chooser widget risks resurrecting that bug; building real Tcl/Tk
+  # instead doesn't touch it.
+  - name: tcl
+    buildsystem: simple
+    subdir: unix
+    strip: true
+    build-commands:
+      - ./configure --prefix=/app --enable-shared --disable-rpath
+      - make
+      - make install-binaries install-libraries install-headers
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.14/tcl8.6.14-src.tar.gz
+        sha256: 5880225babf7954c58d4fb0f5cf6279104ce1cd6aa9b71e9a6322540e1c4de66
+
+  - name: tk
+    buildsystem: simple
+    subdir: unix
+    strip: true
+    build-commands:
+      - ./configure --prefix=/app --enable-shared --disable-rpath --with-tcl=/app/lib
+      - make
+      - make install-binaries install-libraries install-headers
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.14/tk8.6.14-src.tar.gz
+        sha256: 8ffdb720f47a6ca6107eac2dd877e30b0ef7fac14f3a84ebbd0b3612cee41a94
+
+  # Builds the _tkinter C extension by hand (no full CPython rebuild) plus
+  # copies the pure-Python Lib/tkinter/ package, both pulled from the exact
+  # CPython tag matching org.gnome.Platform//50's bundled Python (3.13.14 —
+  # check `flatpak run --command=python3 org.gnome.Sdk//50 -c "import sys;
+  # print(sys.version)"` before bumping the runtime version, and update the
+  # tag/path below to match). SITE/SUFFIX are computed instead of hardcoded
+  # so this doesn't silently break if that Python's exact build tag changes.
+  - name: tkinter
+    buildsystem: simple
+    strip: true
+    build-commands:
+      - |
+        set -e
+        SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('platlib'))")
+        SUFFIX=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
+        gcc -shared -fPIC -DNDEBUG -O2 $(python3-config --includes) -I/app/include \
+            -o "_tkinter${SUFFIX}" cpython-3.13.14/Modules/_tkinter.c \
+            -L/app/lib -Wl,-rpath,/app/lib -ltcl8.6 -ltk8.6
+        mkdir -p "$SITE"
+        install -Dm755 "_tkinter${SUFFIX}" "$SITE/_tkinter${SUFFIX}"
+        cp -r cpython-3.13.14/Lib/tkinter "$SITE/tkinter"
+    sources:
+      - type: archive
+        url: https://github.com/python/cpython/archive/refs/tags/v3.13.14.tar.gz
+        sha256: 717bb341aadad00b23711922d5eded58dc3d5575cff9adf87234594713380992
+
   # Portal-forwarding xdg-open/xdg-email shims so the existing
   # subprocess.Popen(['xdg-open', url]) calls in app.py (steam://, http(s)://)
   # keep working unmodified from inside the sandbox.
