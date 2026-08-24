@@ -9,6 +9,7 @@
     const _imgVersions = new Map(); // appid (int) → per-game version after image change
     let _artOrientation = window._artOrientation;
     let _groupBy = window._groupBy;
+    const _requireDblClick = !!window._requireDblClick;
     let _cardSizeTimeout = null;
 
     function _setCardSize(size) {
@@ -233,8 +234,14 @@
             : '';
         // src is intentionally omitted here — set after a scroll-idle delay
         // by scheduleImgLoad() so fast-scrolling cards never trigger a fetch.
+        // Click vs double-click is mutually exclusive (opt-in via View settings,
+        // off by default) -- wiring both would fire launchGame twice per click
+        // when off, or three times on a real double-click.
+        const clickAttr = _requireDblClick
+            ? `ondblclick="launchGame(${game.appid})"`
+            : `onclick="launchGame(${game.appid})"`;
         const html = `
-            <div class="capsule-container" onclick="launchGame(${game.appid})" style="cursor:pointer;">
+            <div class="capsule-container" ${clickAttr} style="cursor:pointer;">
                 <img data-src="${src}"
                     data-fallback="${fallback}"
                     alt=""

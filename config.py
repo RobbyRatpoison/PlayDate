@@ -907,7 +907,7 @@ def save_state(updates):
         _PASSTHROUGH = {"filter_tree", "sort", "order", "artwork_orientation", "card_height",
                         "check_for_updates", "check_for_notifications", "beta_updates", "window_state", "fullscreen",
                         "pagywosg_sg_group", "shelves", "group_by",
-                        "card_outlines"}
+                        "card_outlines", "require_double_click_launch"}
         for key in _PASSTHROUGH:
             if key in updates:
                 val = updates[key]
