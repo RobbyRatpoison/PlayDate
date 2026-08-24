@@ -399,6 +399,8 @@ DEFAULT_STATE = {
     "group_by": None,
     "ui_scale": 100,
     "auto_promote_unfinished": True,
+    "auto_complete_on_100pct": True,
+    "auto_downgrade_completed": True,
     "startup_page": "home",
 }
 
@@ -501,6 +503,8 @@ def inject_config_status():
         require_double_click_launch=state.get('require_double_click_launch', False),
         ui_scale=state.get('ui_scale', 100),
         auto_promote_unfinished=state.get('auto_promote_unfinished', True),
+        auto_complete_on_100pct=state.get('auto_complete_on_100pct', True),
+        auto_downgrade_completed=state.get('auto_downgrade_completed', True),
         startup_page=state.get('startup_page', 'home'),
         platform_priority=_active_platform_priority(state),
         app_version=__build__,
@@ -975,6 +979,10 @@ def save_state(updates):
             state["ui_scale"] = max(75, min(200, int(updates["ui_scale"])))
         if "auto_promote_unfinished" in updates:
             state["auto_promote_unfinished"] = bool(updates["auto_promote_unfinished"])
+        if "auto_complete_on_100pct" in updates:
+            state["auto_complete_on_100pct"] = bool(updates["auto_complete_on_100pct"])
+        if "auto_downgrade_completed" in updates:
+            state["auto_downgrade_completed"] = bool(updates["auto_downgrade_completed"])
         if "startup_page" in updates:
             if updates["startup_page"] in ('home', 'library', 'pick'):
                 state["startup_page"] = updates["startup_page"]

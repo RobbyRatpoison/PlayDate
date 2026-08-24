@@ -692,6 +692,24 @@
                     Mark games as Unfinished when playtime &gt; 0
                 </label>
                 <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">On startup, promotes Never Played games to Unfinished if Steam shows any playtime. Disable if you use BLAEO to manage Never Played status.</div>
+
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary); margin-top:10px;">
+                    <input type="checkbox" id="auto-complete-100pct-cb"
+                           {% if auto_complete_on_100pct %}checked{% endif %}
+                           onchange="sendStateUpdate({auto_complete_on_100pct: this.checked}, false)"
+                           style="width:auto; margin:0;" data-modal-row="22">
+                    Mark games as Completed at 100% achievements
+                </label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">Applies whenever achievement data is synced or re-scraped.</div>
+
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary); margin-top:10px;">
+                    <input type="checkbox" id="auto-downgrade-completed-cb"
+                           {% if auto_downgrade_completed %}checked{% endif %}
+                           onchange="sendStateUpdate({auto_downgrade_completed: this.checked}, false)"
+                           style="width:auto; margin:0;" data-modal-row="23">
+                    Downgrade Completed games back to Beaten if no longer 100%
+                </label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">Catches games where the developer added achievements after you'd already 100%'d it.</div>
             </div>
         </div>
         <div class="hub-section">
@@ -702,13 +720,13 @@
                 <div style="display:flex; align-items:center; gap:8px; min-width:0;">
                     <input type="range" id="hltb-threshold-slider" min="0" max="100" value="{{ hltb_match_threshold }}"
                         oninput="_onHltbSlider(this)"
-                        class="hltb-slider" data-modal-row="22">
+                        class="hltb-slider" data-modal-row="24">
                     <span id="hltb-threshold-val" style="font-size:0.85rem; color:var(--text-primary); min-width:28px; text-align:right; flex-shrink:0;">{{ hltb_match_threshold }}</span>
                 </div>
-                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="23" onclick="saveHltbThreshold()">Save</button>
+                <button class="nav-btn" style="margin-top:8px; font-size:0.8rem;" data-modal-row="25" onclick="saveHltbThreshold()">Save</button>
                 <div id="hltb-threshold-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
             </div>
-            <button class="settings-item" data-modal-row="24" onclick="openHltbModal()">HLTB Data</button>
+            <button class="settings-item" data-modal-row="26" onclick="openHltbModal()">HLTB Data</button>
         </div>
     </div>
 </div>

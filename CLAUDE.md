@@ -114,7 +114,7 @@ Long-running operations run in daemon threads with `threading.Event` (`_populate
 
 **`parse_appinfo()`** in `utils.py` parses Steam's binary `appinfo.vdf` (v29, magic `0x07564429`) with custom struct code — the `vdf` package only handles text VDF.
 
-**Startup playtime sync:** reads `localconfig.vdf`, updates playtime + last_played. For changed playtime, re-fetches achievements and updates `completion_status`: `'Never Played'` → `'Unfinished'` if playtime > 0; any → `'Completed'` if 100% achievements. `'Beaten'` is never downgraded; `"Won't Play"` only changes on 100%.
+**Startup playtime sync:** reads `localconfig.vdf`, updates playtime + last_played. For changed playtime, re-fetches achievements; `'Never Played'` → `'Unfinished'` if playtime > 0 (if `auto_promote_unfinished` is enabled). `scrapers._sweep_achievement_completion_status()` then corrects `completion_status` from whatever achievement counts are currently stored, Steam-only, gated by two independent settings (Completion Sync section, Library modal): `auto_complete_on_100pct` (any status → `'Completed'` at 100%, default on) and `auto_downgrade_completed` (`'Completed'` → `'Beaten'` if counts no longer show 100% — e.g. the developer added achievements after a 100% run, default on). Also called after `bulk_rescrape_games()` finishes, since that path refreshes achievement counts too.
 
 **BLAEO sync:** plain `requests` + `BeautifulSoup` HTML scraping, no browser automation. `data-value='-2'` on achievements cell means no Steam achievements — skip.
 

@@ -1863,6 +1863,49 @@ def clear_blaeo_cache():
     _blaeo_preview_cache = None
 
 
+def _sweep_achievement_completion_status():
+    """Corrects completion_status from stored achievement counts, independent of
+    however those counts were last refreshed (startup sync, bulk rescrape, BLAEO).
+    Two independent settings gate this:
+      - auto_complete_on_100pct: promote to Completed at 100% (any prior status;
+        Won't Play only changes if it hits 100% too)
+      - auto_downgrade_completed: demote Completed back to Beaten if the stored
+        counts no longer show 100% (e.g. the developer added achievements after
+        you'd already 100%'d it)
+    Steam-only — non-Steam platforms manage completion_status via their plugin's
+    own rescrape().
+    """
+    from config import load_state
+    state = load_state()
+    db = get_db()
+    try:
+        if state.get('auto_complete_on_100pct', True):
+            result = db.execute(
+                "UPDATE games SET completion_status = 'Completed'"
+                " WHERE total_achievements > 0"
+                "   AND unlocked_achievements = total_achievements"
+                "   AND completion_status != 'Completed'"
+                "   AND (platform = 'steam' OR platform IS NULL)"
+            )
+            if result.rowcount:
+                log.info(f"achievement sweep: promoted {result.rowcount} game(s) to Completed.")
+
+        if state.get('auto_downgrade_completed', True):
+            result = db.execute(
+                "UPDATE games SET completion_status = 'Beaten'"
+                " WHERE total_achievements > 0"
+                "   AND unlocked_achievements < total_achievements"
+                "   AND completion_status = 'Completed'"
+                "   AND (platform = 'steam' OR platform IS NULL)"
+            )
+            if result.rowcount:
+                log.info(f"achievement sweep: downgraded {result.rowcount} game(s) from Completed to Beaten.")
+
+        db.commit()
+    finally:
+        db.close()
+
+
 def sync_recent_playtime():
     """
     On startup: update playtime_forever + last_played for all played games by
@@ -1870,11 +1913,10 @@ def sync_recent_playtime():
     thread — safe to call without blocking startup.
 
     For games where playtime_forever increased, also fetches achievements (if an
-    API key is configured) and updates completion_status:
-      - Never Played + playtime > 0  → Unfinished (if auto_promote_unfinished is enabled)
-      - 100% achievements unlocked   → Completed (any status)
-      - Won't Play                   → only changed if 100% achievements
-      - Beaten                       → never downgraded; upgraded to Completed if 100%
+    API key is configured), then _sweep_achievement_completion_status() corrects
+    completion_status from the refreshed counts. Never Played + playtime > 0 also
+    promotes to Unfinished here (if auto_promote_unfinished is enabled) — that
+    part isn't achievement-driven so the sweep doesn't cover it.
     """
     from config import load_state
     try:
@@ -1939,42 +1981,20 @@ def sync_recent_playtime():
                     (cheevo.get('unlocked_achievements', 0), cheevo.get('total_achievements', 0), appid)
                 )
 
-            hundred_pct = (
-                cheevo
-                and cheevo.get('total_achievements', 0) > 0
-                and cheevo.get('unlocked_achievements', 0) == cheevo.get('total_achievements', 0)
-            )
-
-            if hundred_pct:
-                new_status = 'Completed'
-            elif current_status == 'Never Played' and new_playtime > 0 and load_state().get('auto_promote_unfinished', True):
-                new_status = 'Unfinished'
-            else:
-                new_status = None  # Beaten / Won't Play (without 100%) / Unfinished left alone
-
-            if new_status and new_status != current_status:
+            # Achievement-driven completion_status corrections (Completed at 100%,
+            # or downgraded back to Beaten if no longer 100%) happen below via
+            # _sweep_achievement_completion_status(), from the counts just written.
+            if current_status == 'Never Played' and new_playtime > 0 and load_state().get('auto_promote_unfinished', True):
                 db.execute(
-                    "UPDATE games SET completion_status = ? WHERE appid = ?",
-                    (new_status, appid)
+                    "UPDATE games SET completion_status = 'Unfinished' WHERE appid = ?",
+                    (appid,)
                 )
-
-        # Sweep: any game whose stored achievement counts already show 100%
-        # should be Completed, regardless of how the counts got there (e.g.
-        # BLAEO sync set cheevos_fetched and skipped the cheevo worker, or
-        # the cheevo worker ran but the status wasn't updated).
-        result = db.execute(
-            "UPDATE games SET completion_status = 'Completed'"
-            " WHERE total_achievements > 0"
-            "   AND unlocked_achievements = total_achievements"
-            "   AND completion_status != 'Completed'"
-            "   AND (platform = 'steam' OR platform IS NULL)"
-        )
-        if result.rowcount:
-            log.info(f"sync_recent_playtime: promoted {result.rowcount} game(s) to Completed via achievement sweep.")
 
         db.commit()
         db.close()
         log.info(f"sync_recent_playtime: updated {updated} games.")
+
+        _sweep_achievement_completion_status()
 
     except Exception as e:
         log.warning(f"sync_recent_playtime failed: {e}")
@@ -1987,7 +2007,9 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
     Concurrent metadata re-scrape for a list of appids.
     Non-Steam platforms are routed to their plugin's rescrape() method.
     Uses _PoolBackoff for rate limiting on Steam games; respects cancel_event.
-    3 concurrent workers with 0.5s inter-game delay.
+    3 concurrent workers with 0.5s inter-game delay. Once all workers finish,
+    _sweep_achievement_completion_status() corrects completion_status from
+    whatever achievement counts just got refreshed.
     """
     import plugins as _plugins_mod
 
@@ -2094,6 +2116,8 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         futures_wait([pool.submit(worker) for _ in range(3)])
+
+    _sweep_achievement_completion_status()
 
     counts['aborted'] = backoff.aborted
     return counts
