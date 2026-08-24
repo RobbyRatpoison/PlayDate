@@ -101,26 +101,33 @@ modules:
         url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.14/tk8.6.14-src.tar.gz
         sha256: 8ffdb720f47a6ca6107eac2dd877e30b0ef7fac14f3a84ebbd0b3612cee41a94
 
-  # Builds the _tkinter C extension by hand (no full CPython rebuild) plus
-  # copies the pure-Python Lib/tkinter/ package, both pulled from the exact
-  # CPython tag matching org.gnome.Platform//50's bundled Python (3.13.14 —
-  # check `flatpak run --command=python3 org.gnome.Sdk//50 -c "import sys;
-  # print(sys.version)"` before bumping the runtime version, and update the
-  # tag/path below to match). SITE/SUFFIX are computed instead of hardcoded
-  # so this doesn't silently break if that Python's exact build tag changes.
+  # Builds _tkinter via CPython's own ./configure && make (pointed at our
+  # Tcl/Tk) rather than hand-invoking gcc on Modules/_tkinter.c directly --
+  # that file pulls in private pycore_*.h headers, some of which are
+  # generated as part of CPython's own build, so there's no reliable fixed
+  # include-path incantation for it. Letting CPython build it the normal
+  # way (then lifting just the resulting .so out, without `make install`
+  # touching the runtime's real interpreter/stdlib) sidesteps that
+  # entirely. Pulls the exact CPython tag matching org.gnome.Platform//50's
+  # bundled Python (3.13.14 -- check `flatpak run --command=python3
+  # org.gnome.Sdk//50 -c "import sys; print(sys.version)"` before bumping
+  # the runtime version, and update the tag below to match). Also copies
+  # the pure-Python Lib/tkinter/ package. SITE is computed instead of
+  # hardcoded so this doesn't silently break if the site-packages path
+  # ever changes.
   - name: tkinter
     buildsystem: simple
     strip: true
     build-commands:
+      - ./configure --with-tcltk-includes="-I/app/include" --with-tcltk-libs="-L/app/lib -ltcl8.6 -ltk8.6"
+      - make -j$(nproc)
       - |
         set -e
         SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('platlib'))")
-        SUFFIX=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
-        gcc -shared -fPIC -DNDEBUG -O2 $(python3-config --includes) -I/app/include \
-            -o "_tkinter${SUFFIX}" Modules/_tkinter.c \
-            -L/app/lib -Wl,-rpath,/app/lib -ltcl8.6 -ltk8.6
+        SO=$(find . -maxdepth 2 -name '_tkinter.cpython-*.so' | head -1)
+        test -n "$SO"
         mkdir -p "$SITE"
-        install -Dm755 "_tkinter${SUFFIX}" "$SITE/_tkinter${SUFFIX}"
+        install -Dm755 "$SO" "$SITE/$(basename "$SO")"
         cp -r Lib/tkinter "$SITE/tkinter"
     sources:
       - type: archive
