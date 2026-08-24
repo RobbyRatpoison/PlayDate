@@ -18,7 +18,7 @@ HORIZONTAL_DIR = os.path.join(LIBRARY_DIR, 'horizontal')
 ICONS_DIR      = os.path.join(LIBRARY_DIR, 'icons')
 BADGES_DIR     = os.path.join(BASE_DIR, 'static', 'img', 'badges')
 
-BADGE_ICON_SIZE     = 64
+BADGE_ICON_SIZE     = 128
 BADGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 
 

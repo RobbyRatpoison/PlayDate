@@ -713,8 +713,8 @@ button.btn-save.gamepad-focus {
    visible in the (accepted, unreserved) top-right corner. */
 .card-badge {
     position: absolute;
-    width: 22px;
-    height: 22px;
+    width: 32px;
+    height: 32px;
     z-index: 5;
     pointer-events: none;
     object-fit: contain;
