@@ -555,6 +555,7 @@
 <script>
 const _activeFilterName = {{ filter_name | tojson }};
 window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('pick6', True) else none) | tojson }};
+window._requireDblClick = {{ state.get('require_double_click_launch', false) | tojson }};
 window.EDIT_BUTTON = {{ (state.edit_button if state.get('edit_button', {}).get('pages', {}).get('pick6', False) else none) | tojson }};
 
 function _pickFilterLinkColor() {
@@ -741,7 +742,7 @@ function makeCard(game, reason, boundsRelaxed, outlineColor) {
     card.dataset.platform = game.platform || 'steam';
     if (outlineColor) card.style.setProperty('--outline-color', outlineColor);
     card.innerHTML = `
-        <div class="result-art" onclick="launchGame(${appid})" style="cursor:pointer;">
+        <div class="result-art" ${launchClickAttr(appid)} style="cursor:pointer;">
             <img class="result-cover" src="${localSrc}" alt="${escaped}">
             <div class="no-art-name">${escaped}</div>
             ${renderEditButton(appid, window.EDIT_BUTTON)}

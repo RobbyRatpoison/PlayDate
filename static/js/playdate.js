@@ -75,6 +75,18 @@ function applyBlurArt(img, container, containerRatio) {
     container.classList.toggle('needs-blur', !ratioMatch);
 }
 
+// Shared click-vs-double-click attribute for game cards (Home/Pick 6 JS
+// render paths; Library's own cardInnerHTML() computes this inline since it
+// reads the module-scoped _requireDblClick const instead of the window
+// global directly). Mutually exclusive -- wiring both onclick and
+// ondblclick would fire launchGame() twice per click when the setting is
+// off, or three times on a real double-click.
+function launchClickAttr(appid) {
+    return window._requireDblClick
+        ? `ondblclick="launchGame(${appid})"`
+        : `onclick="launchGame(${appid})"`;
+}
+
 function escHtml(s) {
     return String(s)
         .replace(/&/g, '&amp;')

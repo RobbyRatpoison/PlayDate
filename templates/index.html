@@ -370,7 +370,7 @@
             {% endif %}
             <div class="shelf-grid">
                 {% for game in shelf.games %}
-                <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" onclick="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
+                <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                     <div class="shelf-capsule-inner">
                         <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                              onload="_shelfImgLoad(this)"
@@ -419,7 +419,7 @@
         </span>{% endif %}
         <div class="shelf-grid">
             {% for game in shelf.games %}
-            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" onclick="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
+            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                 <div class="shelf-capsule-inner">
                     <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                          onload="_shelfImgLoad(this)"
@@ -433,7 +433,7 @@
         {% if shelf.label %}<div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>{% endif %}
         <div class="shelf-grid">
             {% for game in shelf.games %}
-            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" onclick="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
+            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                 <div class="shelf-capsule-inner">
                     <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                          onload="_shelfImgLoad(this)"
@@ -504,7 +504,7 @@ async function _reloadLastPlayedShelves() {
                      data-name="${g.name.replace(/"/g,'&quot;')}"
                      data-status="${(g.completion_status||'').replace(/"/g,'&quot;')}"
                      data-platform="${(g.platform||'steam')}"
-                     onclick="launchGame(${g.appid})"${oc ? ` style="--outline-color:${oc}"` : ''}>
+                     ${launchClickAttr(g.appid)}${oc ? ` style="--outline-color:${oc}"` : ''}>
                     <div class="shelf-capsule-inner">
                         <img src="/static/img/library/vertical/${g.appid}.jpg"
                              alt="${g.name.replace(/"/g,'&quot;')}"
@@ -555,7 +555,7 @@ async function shuffleShelf(shelfId, labelEl) {
                  data-name="${g.name.replace(/"/g,'&quot;')}"
                  data-status="${(g.completion_status||'').replace(/"/g,'&quot;')}"
                  data-platform="${g.platform || 'steam'}"
-                 onclick="launchGame(${g.appid})"${oc ? ` style="--outline-color:${oc}"` : ''}>
+                 ${launchClickAttr(g.appid)}${oc ? ` style="--outline-color:${oc}"` : ''}>
                 <div class="shelf-capsule-inner">
                     <img src="/static/img/library/vertical/${g.appid}.jpg"
                          alt="${g.name.replace(/"/g,'&quot;')}"
@@ -581,6 +581,7 @@ const _builtinFilters = {{ filter_options | tojson }};
 const _savedFilters   = {{ saved_filters | tojson }};
 const OUTLINE_COLORS  = {{ outline_colors | tojson }};
 window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('home', True) else none) | tojson }};
+window._requireDblClick = {{ state.get('require_double_click_launch', false) | tojson }};
 window.EDIT_BUTTON = {{ (state.edit_button if state.get('edit_button', {}).get('pages', {}).get('home', False) else none) | tojson }};
 // Merged filter list for the dropdown: built-ins first, then saved
 const _filters = {
@@ -1625,7 +1626,7 @@ setInterval(async () => {
                         wrap.dataset.name = g.name;
                         wrap.dataset.status = g.completion_status || '';
                         wrap.dataset.platform = g.platform || 'steam';
-                        wrap.setAttribute('onclick', `launchGame(${g.appid})`);
+                        wrap.setAttribute(window._requireDblClick ? 'ondblclick' : 'onclick', `launchGame(${g.appid})`);
                         const imgSrc = `/static/img/library/vertical/${g.appid}.jpg`;
                         wrap.innerHTML = `<div class="shelf-capsule-inner">
                             <img src="${imgSrc}"
