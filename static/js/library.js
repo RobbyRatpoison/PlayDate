@@ -2454,21 +2454,11 @@ function pickRandomGame() {
         const appid = _dpCurrentAppid;
         if (!appid) return;
         const name = _dpCurrentGame?.name || `AppID ${appid}`;
-        if (!await confirm(`Remove "${name}" from your PlayDate library?\n\nThis deletes the game's database entry and cover image.`)) return;
-        const blacklist = await confirmCustom(
-            `Blacklist "${name}"?\n\nBlacklisted games won't be re-added during populate.`,
-            'Blacklist and Delete', 'Delete'
-        );
-        try {
-            const res = await fetch(`/api/delete-game/${appid}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ blacklist, name })
-            });
-            const result = await res.json();
-            if (result.status === 'success') window.location.reload();
-            else alert('Delete failed: ' + result.message);
-        } catch (_) { alert('Network error during delete.'); }
+        const choice = await confirmDeleteGamePrompt(name);
+        if (!choice) return;
+        const result = await submitDeleteGame(appid, name, choice.blacklist);
+        if (result.success) window.location.reload();
+        else alert('Delete failed: ' + result.message);
     }
 
     function dpOpenArtEditor() {

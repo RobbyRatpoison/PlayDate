@@ -1203,37 +1203,18 @@ const achLink = document.getElementById('achievements-link');
         const appid = document.getElementById('edit-appid').value;
         const name  = document.getElementById('edit-name').value || `AppID ${appid}`;
 
-        // Step 1 — confirm deletion
-        if (!await confirm(`Remove "${name}" from your PlayDate library?\n\nThis deletes the game's database entry and cover image. It will not affect Steam or uninstall the game.`)) return;
-
-        // Step 2 — offer blacklist
-        const blacklist = await confirmCustom(
-            `Blacklist "${name}"?\n\n` +
-            `Blacklisted games are permanently skipped by "Populate PlayDate" so they won't be re-added to your library in the future.`,
-            'Blacklist and Delete',
-            'Delete'
-        );
+        const choice = await confirmDeleteGamePrompt(name);
+        if (!choice) return;
 
         const btn = document.getElementById('delete-btn');
         btn.disabled = true;
         btn.textContent = 'Deleting...';
-        try {
-            const res = await fetch(`/api/delete-game/${appid}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ blacklist, name })
-            });
-            const result = await res.json();
-            if (result.status === 'success') {
-                closeModal();
-                window.location.reload();
-            } else {
-                alert('Delete failed: ' + result.message);
-                btn.disabled = false;
-                btn.textContent = 'Delete Game';
-            }
-        } catch (err) {
-            alert('Network error during delete.');
+        const result = await submitDeleteGame(appid, name, choice.blacklist);
+        if (result.success) {
+            closeModal();
+            window.location.reload();
+        } else {
+            alert('Delete failed: ' + result.message);
             btn.disabled = false;
             btn.textContent = 'Delete Game';
         }

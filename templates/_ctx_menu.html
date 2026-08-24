@@ -143,6 +143,9 @@
             <i class="ctx-icon">🗑</i> Uninstall Game
         </div>
         <div id="ctx-plugin-items"></div>
+        <div class="ctx-item" id="ctx-delete" data-action="delete" style="color:#ff8080;">
+            <i class="ctx-icon">✕</i> Delete Game
+        </div>
     </div>
 </div>
 
@@ -159,6 +162,7 @@
     let _installed     = false; // whether the right-clicked game is installed
     let _platform      = 'steam'; // platform of the right-clicked game
     let _platformSlug  = null;  // platform_slug of the right-clicked game (for non-Steam store links)
+    let _gameName      = '';    // full (untruncated) name of the right-clicked game
     let _activeEl      = null;  // element that was focused at right-click time
     let _selText       = '';    // selected text at right-click time
     let _selStart      = 0;     // selection start index at right-click time
@@ -426,6 +430,7 @@
                 const img = e.target.closest('[data-appid]')?.querySelector('img');
                 if (img) gameName = img.alt || img.title || '';
             }
+            _gameName = gameName || `App ${appid}`;
             const nameEl = document.getElementById('ctx-game-name');
             nameEl.textContent = gameName
                 ? (gameName.length > 28 ? gameName.slice(0, 26) + '…' : gameName)
@@ -616,6 +621,22 @@
                     } catch (_) {}
                 }
                 break;
+
+            case 'delete': {
+                const name = _gameName;
+                hideMenu();
+                if (!appid) break;
+                const choice = await confirmDeleteGamePrompt(name);
+                if (!choice) break;
+                const result = await submitDeleteGame(appid, name, choice.blacklist);
+                if (result.success) {
+                    showLaunchToast('Game deleted');
+                    location.reload();
+                } else {
+                    showLaunchToast(result.message || 'Delete failed');
+                }
+                break;
+            }
 
         }
     });

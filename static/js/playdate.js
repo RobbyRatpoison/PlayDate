@@ -281,6 +281,38 @@ async function sendStateUpdate(payload, reload = true) {
     }
 }
 
+// Shared two-step delete confirmation (remove from library, then optionally
+// blacklist) used by the edit modal, list-mode detail pane, and the game
+// context menu -- all three want the identical prompt/endpoint, just
+// different pre/post UI handling around it.
+async function confirmDeleteGamePrompt(name) {
+    const label = name || 'this game';
+    if (!await confirm(`Remove "${label}" from your PlayDate library?\n\nThis deletes the game's database entry and cover image. It will not affect Steam or uninstall the game.`)) {
+        return null;
+    }
+    const blacklist = await confirmCustom(
+        `Blacklist "${label}"?\n\n` +
+        `Blacklisted games are permanently skipped by "Populate PlayDate" so they won't be re-added to your library in the future.`,
+        'Blacklist and Delete',
+        'Delete'
+    );
+    return { blacklist };
+}
+
+async function submitDeleteGame(appid, name, blacklist) {
+    try {
+        const res = await fetch(`/api/delete-game/${appid}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blacklist, name })
+        });
+        const result = await res.json();
+        return { success: result.status === 'success', message: result.message };
+    } catch (err) {
+        return { success: false, message: 'Network error during delete.' };
+    }
+}
+
 function showFilterError(message) {
     const banner = document.getElementById('filter-error-banner');
     if (!banner) { console.error('Filter/state error:', message); return; }
