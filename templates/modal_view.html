@@ -690,6 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let _cbSlots = {top_left: null, top_right: null, bottom_left: null, bottom_right: null};
 let _cbFallback = 'label';
 let _cbIcons = {installed: null, platform: {}};
+let _cbAvailablePlatforms = null; // platforms actually in the library -- fetched once per modal open, not every platform_labels() knows about
 
 function openCardBadgesModal() {
     closeAppearanceModal();
@@ -723,6 +724,10 @@ async function _cbLoad() {
         _cbIcons = cfg.icons || {installed: null, platform: {}};
         if (!_cbIcons.platform) _cbIcons.platform = {};
     } catch (e) { /* ignore */ }
+    try {
+        const r2 = await fetch('/api/available-platforms').then(r => r.json());
+        _cbAvailablePlatforms = r2.status === 'success' ? r2.platforms : [];
+    } catch (e) { _cbAvailablePlatforms = []; }
     _cbRenderSlots();
     _cbRenderSections();
 }
@@ -773,7 +778,11 @@ function _cbRenderSections() {
         const list = document.getElementById('cb-platform-list');
         list.innerHTML = '';
         const labels = window._PLAT_LABELS || {};
-        Object.keys(labels).sort((a, b) => (labels[a] || a).localeCompare(labels[b] || b)).forEach((pid, i) => {
+        const ids = _cbAvailablePlatforms || [];
+        if (!ids.length) {
+            list.innerHTML = '<div style="color:#8f98a0; font-size:0.8rem; padding:0.375rem 0;">No games in your library yet.</div>';
+        }
+        ids.slice().sort((a, b) => (labels[a] || a).localeCompare(labels[b] || b)).forEach((pid, i) => {
             const icon = _cbIcons.platform[pid];
             const row = document.createElement('div');
             row.className = 'cb-plat-row';

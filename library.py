@@ -1185,6 +1185,24 @@ def save_card_badges():
         _write_state_atomic(state)
     return jsonify({'status': 'success'})
 
+@library_bp.route('/api/available-platforms')
+def get_available_platforms():
+    """Platforms actually present in the library right now -- distinct from
+    platform_labels(), which lists every core/plugin platform whether or not
+    any games use it (e.g. an installed-but-unused emulator platform). Used
+    by the Card Badges modal so the platform icon list isn't cluttered with
+    dozens of irrelevant emulator entries."""
+    from plugins import platform_labels as _platform_labels
+    db = get_db()
+    rows = db.execute("SELECT DISTINCT platform as p FROM games").fetchall()
+    db.close()
+    plat_order = list(_platform_labels().keys())
+    platforms = sorted(
+        {r['p'] for r in rows if r['p']},
+        key=lambda p: plat_order.index(p) if p in plat_order else 99
+    )
+    return jsonify({'status': 'success', 'platforms': platforms})
+
 @library_bp.route('/api/pick-screen-color')
 def pick_screen_color():
     """Fullscreen eyedropper overlay. Spawns color_picker.py as a subprocess
