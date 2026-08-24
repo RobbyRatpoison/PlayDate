@@ -103,6 +103,7 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Reported missing Linux install dependencies on Ubuntu 24.04 (`python3-venv`, `python3-pip`, `python3-tk`), leading to an updated README and a clearer installer error/hint
 - Quoted-substring PAGYWOSG AppID categories not being auto-detected
 - Suggested tagging Secret Santa/Snowballs gifts with the year given, as evidence for mod verification
+- Suggested splitting HLTB library sort into separate Main Story/Main + Extras/Completionist options
 
 **onegoodleg**
 - Suggested a completion-status rosette on cards - directly inspired the card-outline feature
