@@ -117,11 +117,11 @@ modules:
         SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('platlib'))")
         SUFFIX=$(python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
         gcc -shared -fPIC -DNDEBUG -O2 $(python3-config --includes) -I/app/include \
-            -o "_tkinter${SUFFIX}" cpython-3.13.14/Modules/_tkinter.c \
+            -o "_tkinter${SUFFIX}" Modules/_tkinter.c \
             -L/app/lib -Wl,-rpath,/app/lib -ltcl8.6 -ltk8.6
         mkdir -p "$SITE"
         install -Dm755 "_tkinter${SUFFIX}" "$SITE/_tkinter${SUFFIX}"
-        cp -r cpython-3.13.14/Lib/tkinter "$SITE/tkinter"
+        cp -r Lib/tkinter "$SITE/tkinter"
     sources:
       - type: archive
         url: https://github.com/python/cpython/archive/refs/tags/v3.13.14.tar.gz
