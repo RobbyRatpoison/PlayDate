@@ -17,8 +17,9 @@ COMPLETION_STATUSES = ['Never Played', 'Unfinished', 'Beaten', 'Completed', "Won
 
 
 def _build_pick_where(state, use_filtered):
-    """WHERE clause (active filter + hidden platforms) shared by pick_game
-    and pick_status_counts, before any completion_status condition is applied."""
+    """WHERE clause (active filter + hidden platforms + hide_duplicates) shared
+    by pick_game and pick_status_counts, before any completion_status condition
+    is applied."""
     from library import build_tree_sql, _strip_sql_wrapper, is_safe_sql
 
     params = []
@@ -48,6 +49,10 @@ def _build_pick_where(state, use_filtered):
             params = list(params) + non_steam_hidden
         if plat_conds:
             where = f"({where}) AND ({' AND '.join(plat_conds)})"
+
+    if state.get('hide_duplicates', True):
+        dup_cond = "(duplicate_of IS NULL OR duplicate_of = '')"
+        where = dup_cond if where == '1=1' else f"({where}) AND {dup_cond}"
 
     return where, params
 
