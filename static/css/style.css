@@ -743,3 +743,44 @@ button.btn-save.gamepad-focus {
    driven by whichever ancestor carries data-installed, so a live install-
    status flip (e.g. Home's polling loop) needs no re-render. */
 [data-installed="0"] .card-badge-installed { display: none; }
+
+/* ── Edit button overlay (Library/Home/Pick 6) ──────────────────────────── */
+/* .status-tag was previously Library-scoped; moved here so Home/Pick 6 get
+   the same pencil-button styling via the shared renderEditButton() helper.
+   --edit-btn-size is set dynamically by library.js's card-size slider; it's
+   simply unset (falls back to 1.8rem) on Home/Pick 6, which have no such
+   slider. */
+.status-tag {
+    font-size: var(--edit-btn-size, 1.8rem);
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+.status-tag:hover {
+    background: var(--accent) !important;
+    color: #1b2838 !important;
+    border-color: var(--accent) !important;
+}
+.card-edit-overlay {
+    position: absolute;
+    z-index: 8; /* above badges (5), below nothing -- it's the highest-priority corner occupant */
+    display: none;
+}
+.card-edit-top_left     { top: 6px; left: 6px; }
+.card-edit-top_right    { top: 6px; right: 6px; }
+.card-edit-bottom_left  { bottom: 6px; left: 6px; }
+.card-edit-bottom_right { bottom: 6px; right: 6px; }
+
+/* Library keeps its existing JS-throttled .hovered class (see library.js's
+   RAF-based hover handling -- a plain :hover here would fight that
+   perf-motivated design). Home/Pick 6 have no equivalent, so plain :hover
+   is fine there; all three also reveal on gamepad focus, matching how
+   .gamepad-focus already works for these card types. */
+.game-card.hovered .card-edit-overlay,
+.game-card.gamepad-focus .card-edit-overlay,
+.shelf-capsule-wrap:hover .card-edit-overlay,
+.shelf-capsule-wrap.gamepad-focus .card-edit-overlay,
+.result-card:hover .card-edit-overlay,
+.result-card.gamepad-focus .card-edit-overlay {
+    display: block;
+}

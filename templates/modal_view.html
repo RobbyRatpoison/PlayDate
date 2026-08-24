@@ -583,24 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             Show small icons in a card's corners. Icons are your own images — upload one for each platform you use, or leave it blank to fall back to text.
         </p>
 
-        <div class="cb-corner-grid">
-            <select id="cb-slot-top_left" class="co-select cb-corner-select" data-modal-row="0" onchange="_cbSetSlot('top_left', this.value)">
-                <option value="">Top left: None</option>
-                <option value="installed">Top left: Installed</option>
-                <option value="platform">Top left: Platform</option>
-            </select>
-            <div class="cb-corner-disabled" data-tooltip="Reserved for the edit button on the Library page">Top right: reserved</div>
-            <select id="cb-slot-bottom_left" class="co-select cb-corner-select" data-modal-row="1" onchange="_cbSetSlot('bottom_left', this.value)">
-                <option value="">Bottom left: None</option>
-                <option value="installed">Bottom left: Installed</option>
-                <option value="platform">Bottom left: Platform</option>
-            </select>
-            <select id="cb-slot-bottom_right" class="co-select cb-corner-select" data-modal-row="1" onchange="_cbSetSlot('bottom_right', this.value)">
-                <option value="">Bottom right: None</option>
-                <option value="installed">Bottom right: Installed</option>
-                <option value="platform">Bottom right: Platform</option>
-            </select>
-        </div>
+        <div class="cb-corner-grid" id="cb-corner-grid"></div>
         <div style="font-size:0.75rem; color:#8f98a0; margin:0.5rem 0 1.25rem;">A feature can only occupy one corner — assigning it elsewhere clears its old spot.</div>
 
         <!-- Installed icon -->
@@ -692,6 +675,9 @@ let _cbFallback = 'label';
 let _cbIcons = {installed: null, platform: {}};
 let _cbAvailablePlatforms = null; // platforms actually in the library -- fetched once per modal open, not every platform_labels() knows about
 
+let _cbEditButtonCorner = 'top_right';
+const _CB_CORNER_LABELS = {top_left: 'Top left', top_right: 'Top right', bottom_left: 'Bottom left', bottom_right: 'Bottom right'};
+
 function openCardBadgesModal() {
     closeAppearanceModal();
     _cbLoad();
@@ -702,18 +688,6 @@ function openCardBadgesModal() {
 function closeCardBadgesModal() {
     document.getElementById('cardBadgesModal').style.display = 'none';
 }
-
-// Native <select> elements need initCustomSelect() (OS-level popups otherwise
-// stay visible when pywebview loses focus) -- done once at page load, since
-// this modal is present on every page via base.html, rather than re-running
-// (and double-wrapping) it each time the modal opens.
-let _cbSlotSelects = {};
-document.addEventListener('DOMContentLoaded', () => {
-    ['top_left', 'top_right', 'bottom_left', 'bottom_right'].forEach(c => {
-        const native = document.getElementById('cb-slot-' + c);
-        if (native) _cbSlotSelects[c] = initCustomSelect(native) || native;
-    });
-});
 
 async function _cbLoad() {
     try {
@@ -728,13 +702,51 @@ async function _cbLoad() {
         const r2 = await fetch('/api/available-platforms').then(r => r.json());
         _cbAvailablePlatforms = r2.status === 'success' ? r2.platforms : [];
     } catch (e) { _cbAvailablePlatforms = []; }
-    _cbRenderSlots();
+    try {
+        const r3 = await fetch('/api/edit-button').then(r => r.json());
+        _cbEditButtonCorner = (r3.status === 'success' && r3.edit_button.corner) || 'top_right';
+    } catch (e) { _cbEditButtonCorner = 'top_right'; }
+    _cbRenderCornerGrid();
     _cbRenderSections();
 }
 
+// Rebuilt fresh every time the modal opens -- which corner is reserved
+// depends on the live edit-button setting, so this can't be static markup.
+// Fresh <select> nodes each call means no double-wrapping concern for
+// initCustomSelect() (unlike a one-time page-load init for static selects).
+let _cbSlotSelects = {};
+function _cbRenderCornerGrid() {
+    const grid = document.getElementById('cb-corner-grid');
+    grid.innerHTML = '';
+    _cbSlotSelects = {};
+    ['top_left', 'top_right', 'bottom_left', 'bottom_right'].forEach((corner, i) => {
+        const label = _CB_CORNER_LABELS[corner];
+        if (corner === _cbEditButtonCorner) {
+            const div = document.createElement('div');
+            div.className = 'cb-corner-disabled';
+            div.dataset.tooltip = 'Reserved for the edit button';
+            div.textContent = `${label}: reserved`;
+            grid.appendChild(div);
+            return;
+        }
+        const sel = document.createElement('select');
+        sel.className = 'co-select cb-corner-select';
+        sel.dataset.modalRow = i < 2 ? 0 : 1;
+        sel.innerHTML = `
+            <option value="">${label}: None</option>
+            <option value="installed">${label}: Installed</option>
+            <option value="platform">${label}: Platform</option>
+        `;
+        sel.value = _cbSlots[corner] || '';
+        sel.addEventListener('change', () => _cbSetSlot(corner, sel.value));
+        grid.appendChild(sel);
+        _cbSlotSelects[corner] = initCustomSelect(sel) || sel;
+    });
+}
+
 function _cbRenderSlots() {
-    ['top_left', 'top_right', 'bottom_left', 'bottom_right'].forEach(c => {
-        const sel = _cbSlotSelects[c] || document.getElementById('cb-slot-' + c);
+    Object.keys(_cbSlotSelects).forEach(c => {
+        const sel = _cbSlotSelects[c];
         if (sel) sel.value = _cbSlots[c] || '';
     });
 }

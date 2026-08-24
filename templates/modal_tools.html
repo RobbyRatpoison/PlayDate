@@ -618,6 +618,24 @@
                 </div>
             </div>
         </div>
+        <div class="hub-section">
+            <div class="hub-section-label">Edit Button</div>
+            <div style="padding:8px 10px;">
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                    <button id="ap-editbtn-home"    class="ap-outline-toggle" onclick="apToggleEditButton('home')"    data-modal-row="8">Home</button>
+                    <button id="ap-editbtn-library" class="ap-outline-toggle" onclick="apToggleEditButton('library')" data-modal-row="8">Library</button>
+                    <button id="ap-editbtn-pick6"   class="ap-outline-toggle" onclick="apToggleEditButton('pick6')"   data-modal-row="8">Pick 6</button>
+                </div>
+                <select id="ap-editbtn-corner" class="nav-dropdown" data-modal-row="9" data-picker-title="Edit Button Corner"
+                        onchange="apSetEditButtonCorner(this.value)" style="width:100%; height:2.25rem;">
+                    <option value="top_left">Top left</option>
+                    <option value="top_right">Top right</option>
+                    <option value="bottom_left">Bottom left</option>
+                    <option value="bottom_right">Bottom right</option>
+                </select>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px;">Whichever corner this is in becomes unavailable for card badges.</div>
+            </div>
+        </div>
     </div>
 </div>
 

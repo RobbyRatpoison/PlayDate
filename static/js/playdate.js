@@ -112,6 +112,21 @@ function renderCardBadges(game, cfg) {
     return html;
 }
 
+// Shared edit-button overlay renderer for Library/Home/Pick 6 (see
+// EDIT_BUTTON config, GET/POST /api/edit-button). cfg is null/falsy when
+// this page's edit_button.pages.<page> is off, matching how CARD_BADGES is
+// injected as null when disabled for a page -- caller doesn't need to
+// separately check the enabled flag. Corner is whichever one isn't reserved
+// for card badges (they evict each other from a shared corner server-side).
+function renderEditButton(appid, cfg) {
+    if (!cfg || !cfg.corner) return '';
+    return `<div class="card-edit-overlay card-edit-${cfg.corner}" onclick="event.stopPropagation()">
+        <button class="status-tag"
+            style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;"
+            onclick="event.stopPropagation();openEditModalById(${appid})">✎</button>
+    </div>`;
+}
+
 /**
  * Format a playtime value (stored as minutes) as a human-readable hours string.
  * e.g. 75 → "1.2 hrs", 12345 → "205.8 hrs"

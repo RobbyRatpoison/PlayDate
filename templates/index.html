@@ -512,6 +512,7 @@ async function _reloadLastPlayedShelves() {
                              onload="_shelfImgLoad(this)"
                              onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                         <div class="no-art-name">${escHtml(g.name)}</div>
+                        ${renderEditButton(g.appid, window.EDIT_BUTTON)}
                         ${renderCardBadges(g, window.CARD_BADGES)}
                     </div>
                 </div>`;
@@ -562,6 +563,7 @@ async function shuffleShelf(shelfId, labelEl) {
                          onload="_shelfImgLoad(this)"
                          onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                     <div class="no-art-name">${escHtml(g.name)}</div>
+                    ${renderEditButton(g.appid, window.EDIT_BUTTON)}
                     ${renderCardBadges(g, window.CARD_BADGES)}
                 </div>
             </div>`;
@@ -579,6 +581,7 @@ const _builtinFilters = {{ filter_options | tojson }};
 const _savedFilters   = {{ saved_filters | tojson }};
 const OUTLINE_COLORS  = {{ outline_colors | tojson }};
 window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('home', True) else none) | tojson }};
+window.EDIT_BUTTON = {{ (state.edit_button if state.get('edit_button', {}).get('pages', {}).get('home', False) else none) | tojson }};
 // Merged filter list for the dropdown: built-ins first, then saved
 const _filters = {
     ..._builtinFilters,
@@ -1552,19 +1555,24 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('sem-filter'));
     initCustomSelect(document.getElementById('sem-sort'));
     initCustomSelect(document.getElementById('sem-sort-dir'));
-    // Card badges for server-rendered shelf cards -- the JS rebuild paths
-    // (shuffleShelf, _reloadLastPlayedShelves, install-poll refill) call
-    // renderCardBadges() directly when building their own markup; the
-    // initial Jinja-rendered cards need this one-time pass instead, using
-    // the data-platform attribute those cards already carry. Appended inside
-    // .shelf-capsule-inner (not .shelf-capsule-wrap) -- that inner element is
-    // what's actually scaled down (0.95) at rest and grown (1.0) on hover, so
-    // badges need to scale together with it or they visually float outside
-    // the shrunk artwork until hovered.
-    if (window.CARD_BADGES) {
+    // Card badges + edit button for server-rendered shelf cards -- the JS
+    // rebuild paths (shuffleShelf, _reloadLastPlayedShelves, install-poll
+    // refill) call renderCardBadges()/renderEditButton() directly when
+    // building their own markup; the initial Jinja-rendered cards need this
+    // one-time pass instead, using the data-appid/data-platform attributes
+    // those cards already carry. Appended inside .shelf-capsule-inner (not
+    // .shelf-capsule-wrap) -- that inner element is what's actually scaled
+    // down (0.95) at rest and grown (1.0) on hover, so badges need to scale
+    // together with it or they visually float outside the shrunk artwork
+    // until hovered. The edit button doesn't have that problem (it's only
+    // ever visible once hover/gamepad-focus has already grown the inner
+    // element), but lives in the same place for a single insertion point.
+    if (window.CARD_BADGES || window.EDIT_BUTTON) {
         document.querySelectorAll('.shelf-capsule-wrap').forEach(wrap => {
             const inner = wrap.querySelector('.shelf-capsule-inner');
-            if (inner) inner.insertAdjacentHTML('beforeend', renderCardBadges({platform: wrap.dataset.platform}, window.CARD_BADGES));
+            if (!inner) return;
+            if (window.EDIT_BUTTON) inner.insertAdjacentHTML('beforeend', renderEditButton(wrap.dataset.appid, window.EDIT_BUTTON));
+            if (window.CARD_BADGES) inner.insertAdjacentHTML('beforeend', renderCardBadges({platform: wrap.dataset.platform}, window.CARD_BADGES));
         });
     }
 });
@@ -1626,6 +1634,7 @@ setInterval(async () => {
                                 onload="_shelfImgLoad(this)"
                                 onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
                             <div class="no-art-name">${escHtml(g.name)}</div>
+                            ${renderEditButton(g.appid, window.EDIT_BUTTON)}
                             ${renderCardBadges(g, window.CARD_BADGES)}
                         </div>`;
                         grid.appendChild(wrap);

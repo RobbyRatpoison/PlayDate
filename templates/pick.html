@@ -555,6 +555,7 @@
 <script>
 const _activeFilterName = {{ filter_name | tojson }};
 window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('pick6', True) else none) | tojson }};
+window.EDIT_BUTTON = {{ (state.edit_button if state.get('edit_button', {}).get('pages', {}).get('pick6', False) else none) | tojson }};
 
 function _pickFilterLinkColor() {
     const el = document.getElementById('pick-filter-link');
@@ -743,6 +744,7 @@ function makeCard(game, reason, boundsRelaxed, outlineColor) {
         <div class="result-art" onclick="launchGame(${appid})" style="cursor:pointer;">
             <img class="result-cover" src="${localSrc}" alt="${escaped}">
             <div class="no-art-name">${escaped}</div>
+            ${renderEditButton(appid, window.EDIT_BUTTON)}
             ${renderCardBadges(game, window.CARD_BADGES)}
         </div>
         <div class="result-info">

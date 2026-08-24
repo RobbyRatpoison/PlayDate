@@ -331,27 +331,6 @@
         .game-card.hovered {
             outline-color: var(--accent);
         }
-        .game-overlay {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            display: none;
-            z-index: 10;
-        }
-        .game-card.hovered .game-overlay {
-            display: block;
-        }
-        .status-tag {
-            font-size: var(--edit-btn-size, 1.8rem);
-            padding: 2px 6px;
-            border-radius: 3px;
-            text-transform: uppercase;
-        }
-        .status-tag:hover {
-            background: var(--accent) !important;
-            color: #1b2838 !important;
-            border-color: var(--accent) !important;
-        }
 
         .capsule-container {
             position: absolute;
@@ -967,6 +946,7 @@
     window._artOrientation = '{{ state.get("artwork_orientation", "vertical") }}';
     window._requireDblClick = {{ state.get('require_double_click_launch', false) | tojson }};
     window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('library', True) else none) | tojson }};
+    window.EDIT_BUTTON = {{ (state.edit_button if state.get('edit_button', {}).get('pages', {}).get('library', True) else none) | tojson }};
     window._groupBy = {{ group_by | tojson }};
     window._initialCardHeight = {{ state.get('card_height', 200) }};
     window._serverFilterTree = {{ state.filter_tree | tojson if state.filter_tree else 'null' }};

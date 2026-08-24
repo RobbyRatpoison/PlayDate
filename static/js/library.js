@@ -251,11 +251,7 @@
                     <span>${escHtml(game.name || '')}</span>
                     <span class="no-art-platform">${escHtml((window._PLAT_LABELS && window._PLAT_LABELS[game.platform]) || game.platform || '')}</span>
                 </div>
-                <div class="game-overlay" onclick="event.stopPropagation()">
-                    <button class="status-tag"
-                        style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);cursor:pointer;"
-                        onclick="event.stopPropagation();openEditModalById(${game.appid})">✎</button>
-                </div>
+                ${renderEditButton(game.appid, window.EDIT_BUTTON)}
                 ${renderCardBadges(game, window.CARD_BADGES)}
             </div>`;
         CARD_HTML_CACHE.set(game.appid, html);

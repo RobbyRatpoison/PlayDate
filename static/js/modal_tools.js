@@ -3444,6 +3444,8 @@ async function themeDeleteNamed(name) {
     } catch (e) {}
 }
 
+let _apEditButtonCornerSelect = null;
+
 document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('source-table'));
     initCustomSelect(document.getElementById('appid-col'));
@@ -3452,6 +3454,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomSelect(document.getElementById('pag-refresh-select'));
     _pagSlowScroll(document.getElementById('pag-wins-tags'));
     _pagSlowScroll(document.getElementById('pag-all-tags'));
+    const editBtnCornerNative = document.getElementById('ap-editbtn-corner');
+    if (editBtnCornerNative) _apEditButtonCornerSelect = initCustomSelect(editBtnCornerNative) || editBtnCornerNative;
 });
 
 // Tag pill boxes are short (a couple lines tall) but hold many tags — a
@@ -3772,6 +3776,7 @@ function openAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'flex';
     _apLoadOutlines().then(() => _apSyncOutlineButtons(_apOutlineEnabled));
     _apLoadBadges().then(() => _apSyncBadgesButtons(_apBadgesEnabled));
+    _apLoadEditButton().then(() => _apSyncEditButtonButtons(_apEditButtonEnabled, _apEditButtonCorner));
 }
 function closeAppearanceModal() {
     document.getElementById('appearance-modal').style.display = 'none';
@@ -3875,6 +3880,56 @@ async function apToggleBadges(key) {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({card_badges: badges}),
+        });
+    } catch (e) { /* ignore */ }
+}
+
+let _apEditButtonEnabled = null;
+let _apEditButtonCorner = null;
+
+async function _apLoadEditButton() {
+    if (_apEditButtonEnabled !== null) return;
+    try {
+        const r = await fetch('/api/edit-button').then(r => r.json());
+        if (r.status === 'success') {
+            _apEditButtonEnabled = r.edit_button.pages || {library: true, home: false, pick6: false};
+            _apEditButtonCorner  = r.edit_button.corner || 'top_right';
+        }
+    } catch (e) { /* ignore */ }
+    if (!_apEditButtonEnabled) _apEditButtonEnabled = {library: true, home: false, pick6: false};
+    if (!_apEditButtonCorner) _apEditButtonCorner = 'top_right';
+}
+
+function _apSyncEditButtonButtons(enabled, corner) {
+    ['library', 'home', 'pick6'].forEach(k => {
+        const btn = document.getElementById('ap-editbtn-' + k);
+        if (btn) btn.classList.toggle('ap-outline-on', !!enabled[k]);
+    });
+    const sel = _apEditButtonCornerSelect || document.getElementById('ap-editbtn-corner');
+    if (sel) sel.value = corner;
+}
+
+async function apToggleEditButton(key) {
+    if (!_apEditButtonEnabled) _apEditButtonEnabled = {library: true, home: false, pick6: false};
+    _apEditButtonEnabled[key] = !_apEditButtonEnabled[key];
+    _apSyncEditButtonButtons(_apEditButtonEnabled, _apEditButtonCorner || 'top_right');
+    await _apSaveEditButton();
+}
+
+async function apSetEditButtonCorner(corner) {
+    _apEditButtonCorner = corner;
+    await _apSaveEditButton();
+}
+
+async function _apSaveEditButton() {
+    try {
+        await fetch('/api/edit-button', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({edit_button: {
+                pages: _apEditButtonEnabled || {library: true, home: false, pick6: false},
+                corner: _apEditButtonCorner || 'top_right',
+            }}),
         });
     } catch (e) { /* ignore */ }
 }

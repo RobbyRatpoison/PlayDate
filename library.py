@@ -1181,7 +1181,39 @@ def save_card_badges():
             seen.add(feature)
     with _state_lock:
         state = _load_state_unlocked()
+        # The edit button's corner always wins -- defensively clear a badge
+        # slot there too, in case this request predates a corner move the
+        # client hasn't caught up to yet.
+        eb_corner = state.get('edit_button', {}).get('corner')
+        if eb_corner and (badges.get('slots') or {}).get(eb_corner):
+            badges['slots'][eb_corner] = None
         state['card_badges'] = badges
+        _write_state_atomic(state)
+    return jsonify({'status': 'success'})
+
+@library_bp.route('/api/edit-button', methods=['GET'])
+def get_edit_button():
+    state = load_state()
+    return jsonify({'status': 'success', 'edit_button': state.get('edit_button', {})})
+
+@library_bp.route('/api/edit-button', methods=['POST'])
+def save_edit_button():
+    from config import _state_lock, _load_state_unlocked, _write_state_atomic
+    data = request.json or {}
+    eb = data.get('edit_button')
+    if eb is None:
+        return jsonify({'status': 'error', 'message': 'Missing edit_button'}), 400
+    if eb.get('corner') not in ('top_left', 'top_right', 'bottom_left', 'bottom_right'):
+        return jsonify({'status': 'error', 'message': 'Invalid corner'}), 400
+    with _state_lock:
+        state = _load_state_unlocked()
+        # Claiming this corner evicts whatever badge feature was there.
+        corner = eb['corner']
+        badges = state.get('card_badges') or {}
+        if (badges.get('slots') or {}).get(corner):
+            badges['slots'][corner] = None
+            state['card_badges'] = badges
+        state['edit_button'] = eb
         _write_state_atomic(state)
     return jsonify({'status': 'success'})
 

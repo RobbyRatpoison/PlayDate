@@ -272,6 +272,17 @@ DEFAULT_CARD_BADGES = {
     },
 }
 
+# Which corner the game-card edit-pencil button sits in, and which pages show
+# it at all -- was hardcoded to Library-only, top-right. Global corner choice
+# (not per-page) so it's simple to reason about alongside card badges, which
+# share the same 4 corners: whichever corner the edit button occupies is
+# reserved and unavailable in the Card Badges modal, and vice versa --
+# assigning either one to a corner evicts whatever the other had there.
+DEFAULT_EDIT_BUTTON = {
+    "corner": "top_right",
+    "pages": {"library": True, "home": False, "pick6": False},
+}
+
 
 def resolve_outline_rule_where(rule, saved_filters):
     """Return a SQL WHERE string for a card outline rule, or None if unresolvable."""
@@ -718,6 +729,12 @@ def _load_state_unlocked():
     if 'card_badges' not in state:
         import copy
         state['card_badges'] = copy.deepcopy(DEFAULT_CARD_BADGES)
+        dirty = True
+
+    # Seed edit_button with defaults on first run
+    if 'edit_button' not in state:
+        import copy
+        state['edit_button'] = copy.deepcopy(DEFAULT_EDIT_BUTTON)
         dirty = True
 
     if dirty:
