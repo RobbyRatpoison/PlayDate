@@ -1,5 +1,6 @@
 """Standalone eyedropper: takes a screenshot, shows a fullscreen tkinter overlay,
 prints the picked hex color to stdout, or exits with code 1 on cancel/error."""
+import os
 import sys
 import threading
 import tkinter as tk
@@ -10,8 +11,76 @@ SPEED_MAX = 12     # pixels per tick at full stick deflection
 TICK_MS   = 16     # ~60 fps gamepad poll interval
 
 
+def _grab_via_portal():
+    """Screen grab via the XDG Desktop Portal Screenshot API -- the only way
+    to capture the screen under Wayland. ImageGrab.grab() calls XGetImage()
+    on the X11 root window, which XWayland does not back with real
+    composited screen content (confirmed on a real KDE Plasma Wayland
+    session: X connects fine, but the grab itself fails with X error 8,
+    BadMatch) -- granting more X11 access can't fix this, it's not a
+    permissions problem. Requires PyGObject, already a hard dependency of
+    this app's Linux renderer (main.py/gtk4webview.py)."""
+    import time
+    import gi
+    gi.require_version('Gio', '2.0')
+    gi.require_version('GLib', '2.0')
+    from gi.repository import Gio, GLib
+    from urllib.parse import unquote, urlparse
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    sender = bus.get_unique_name()[1:].replace('.', '_')
+    token = f'playdate_shot_{int(time.time() * 1000)}'
+    request_path = f'/org/freedesktop/portal/desktop/request/{sender}/{token}'
+
+    loop = GLib.MainLoop()
+    result = {}
+
+    def on_response(_conn, _sender, _path, _iface, _signal, params, *_args):
+        code, results = params.unpack()
+        result['code'] = code
+        result['results'] = results
+        loop.quit()
+
+    sub_id = bus.signal_subscribe(
+        'org.freedesktop.portal.Desktop', 'org.freedesktop.portal.Request', 'Response',
+        request_path, None, Gio.DBusSignalFlags.NONE, on_response,
+    )
+    try:
+        bus.call_sync(
+            'org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop',
+            'org.freedesktop.portal.Screenshot', 'Screenshot',
+            GLib.Variant('(sa{sv})', ('', {
+                'handle_token': GLib.Variant('s', token),
+                'interactive': GLib.Variant('b', False),
+            })),
+            None, Gio.DBusCallFlags.NONE, -1, None,
+        )
+        GLib.timeout_add_seconds(30, loop.quit)
+        loop.run()
+    finally:
+        bus.signal_unsubscribe(sub_id)
+
+    if result.get('code') != 0:
+        raise RuntimeError('Screenshot portal request failed or was cancelled')
+    uri = (result.get('results') or {}).get('uri')
+    if not uri:
+        raise RuntimeError('Screenshot portal returned no uri')
+
+    path = unquote(urlparse(uri).path)
+    img = Image.open(path)
+    img.load()  # force full decode now -- the backing file may be temporary/portal-managed
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+    return img
+
+
 def main():
-    screenshot = ImageGrab.grab()
+    try:
+        screenshot = ImageGrab.grab()
+    except Exception:
+        screenshot = _grab_via_portal()
     sw, sh = screenshot.size
 
     result  = [None]
