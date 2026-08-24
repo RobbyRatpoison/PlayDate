@@ -73,6 +73,14 @@ modules:
       - ./configure --prefix=/app --enable-shared --disable-rpath
       - make
       - make install-binaries install-libraries install-headers
+      # Tcl's own install rules leave libtcl8.6.so at mode 555 (no write
+      # bit). flatpak-builder's post-install debuginfo extraction opens
+      # installed .so files for writing (to split out .debug info) and
+      # fails with "Permission denied" on a read-only file -- confirmed on
+      # a real build, not just a local sandbox quirk. Neither `strip: true`
+      # nor `no-debuginfo: true` sidesteps this; the fix is just making the
+      # files writable ourselves before flatpak-builder's own pass runs.
+      - find /app/lib -name '*.so' -exec chmod u+w {} +
     sources:
       - type: archive
         url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.14/tcl8.6.14-src.tar.gz
@@ -86,6 +94,8 @@ modules:
       - ./configure --prefix=/app --enable-shared --disable-rpath --with-tcl=/app/lib
       - make
       - make install-binaries install-libraries install-headers
+      # Same read-only-install issue as the tcl module above.
+      - find /app/lib -name '*.so' -exec chmod u+w {} +
     sources:
       - type: archive
         url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.14/tk8.6.14-src.tar.gz
