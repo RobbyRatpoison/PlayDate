@@ -99,22 +99,25 @@ SAFE_COLUMNS = {
 
 # Virtual sort columns: names that expand to SQL expressions.
 # Games with no data (expr IS NULL) are always sorted last regardless of direction.
-# Dict values may be a plain string (direction-agnostic) or {'asc': expr, 'desc': expr}
-# for columns where ascending and descending use different aggregations.
+# Each maps to a single expression — ASC/DESC just reorders it, it doesn't change
+# which expression runs (unlike the old combined hltb_min/max toggle).
 _HLTB_MIN_EXPR = (
     "CASE WHEN NULLIF(hltb_main, 0) IS NULL AND NULLIF(hltb_extras, 0) IS NULL AND NULLIF(hltb_completionist, 0) IS NULL THEN NULL "
     "ELSE MIN(COALESCE(NULLIF(hltb_main, 0), 999999999), COALESCE(NULLIF(hltb_extras, 0), 999999999), COALESCE(NULLIF(hltb_completionist, 0), 999999999)) "
     "END"
 )
-# DESC uses MAX so "longest game" means the most content, not just the longest main story.
-# COALESCE(NULLIF(col,0), 0) treats zero/null as 0 so they lose to any real value.
+# "Longest game" means the most content, not just the longest main story.
 _HLTB_MAX_EXPR = (
     "CASE WHEN NULLIF(hltb_main, 0) IS NULL AND NULLIF(hltb_extras, 0) IS NULL AND NULLIF(hltb_completionist, 0) IS NULL THEN NULL "
     "ELSE MAX(COALESCE(NULLIF(hltb_main, 0), 0), COALESCE(NULLIF(hltb_extras, 0), 0), COALESCE(NULLIF(hltb_completionist, 0), 0)) "
     "END"
 )
 VIRTUAL_SORT_COLS = {
-    'hltb_min': {'asc': _HLTB_MIN_EXPR, 'desc': _HLTB_MAX_EXPR},
+    'hltb_main': "NULLIF(hltb_main, 0)",
+    'hltb_extras': "NULLIF(hltb_extras, 0)",
+    'hltb_completionist': "NULLIF(hltb_completionist, 0)",
+    'hltb_min': _HLTB_MIN_EXPR,
+    'hltb_max': _HLTB_MAX_EXPR,
 }
 
 import re as _re
@@ -404,11 +407,7 @@ def library():
         sort_col = 'RANDOM()'
         sort_ord = ''
     elif sort_col in VIRTUAL_SORT_COLS:
-        _vcol = VIRTUAL_SORT_COLS[sort_col]
-        if isinstance(_vcol, dict):
-            _expr = _vcol['desc'] if sort_ord == 'DESC' else _vcol['asc']
-        else:
-            _expr = _vcol
+        _expr = VIRTUAL_SORT_COLS[sort_col]
         sort_col = f"CASE WHEN ({_expr}) IS NULL THEN 1 ELSE 0 END, ({_expr})"
     elif sort_col not in SAFE_COLUMNS:
         sort_col = 'name'

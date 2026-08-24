@@ -20,7 +20,11 @@ SORT_COLUMNS = {
     "date_added":          "Date Added",
     "review_percentage":   "Review Score",
     "weighted_percentage": "Weighted Score",
-    "hltb_min":            "HLTB Time",
+    "hltb_main":           "HLTB: Main Story",
+    "hltb_extras":         "HLTB: Main + Extras",
+    "hltb_completionist":  "HLTB: Completionist",
+    "hltb_min":            "HLTB: Shortest",
+    "hltb_max":            "HLTB: Longest",
     "total_reviews":       "Total Reviews",
     "RANDOM()":            "Random",
 }
@@ -106,7 +110,7 @@ def _build_shelf_query(shelf, saved_filters, state):
         if sort_col == 'RANDOM()':
             order = 'RANDOM()'
         elif sort_col in VIRTUAL_SORT_COLS:
-            expr = VIRTUAL_SORT_COLS[sort_col]['asc' if sort_dir == 'ASC' else 'desc']
+            expr = VIRTUAL_SORT_COLS[sort_col]
             order = f"({expr}) {sort_dir}"
         else:
             order = f"{sort_col} {sort_dir}"

@@ -27,7 +27,11 @@
                 <option value="date_added" {{ 'selected' if state.sort == 'date_added' }}>Date Added</option>
                 <option value="review_percentage" {{ 'selected' if state.sort == 'review_percentage' }}>Review Score</option>
                 <option value="weighted_percentage" {{ 'selected' if state.sort == 'weighted_percentage' }}>Weighted Score</option>
-                <option value="hltb_min" {{ 'selected' if state.sort == 'hltb_min' }}>HLTB Time</option>
+                <option value="hltb_main" {{ 'selected' if state.sort == 'hltb_main' }}>HLTB: Main Story</option>
+                <option value="hltb_extras" {{ 'selected' if state.sort == 'hltb_extras' }}>HLTB: Main + Extras</option>
+                <option value="hltb_completionist" {{ 'selected' if state.sort == 'hltb_completionist' }}>HLTB: Completionist</option>
+                <option value="hltb_min" {{ 'selected' if state.sort == 'hltb_min' }}>HLTB: Shortest</option>
+                <option value="hltb_max" {{ 'selected' if state.sort == 'hltb_max' }}>HLTB: Longest</option>
                 <option value="total_reviews" {{ 'selected' if state.sort == 'total_reviews' }}>Total Reviews</option>
                 <option value="random" {{ 'selected' if state.sort == 'random' }}>Random</option>
             </select>

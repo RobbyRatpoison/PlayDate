@@ -182,7 +182,11 @@
         date_added:          'DESC',
         review_percentage:   'DESC',
         weighted_percentage: 'DESC',
+        hltb_main:           'ASC',
+        hltb_extras:         'ASC',
+        hltb_completionist:  'ASC',
         hltb_min:            'ASC',
+        hltb_max:            'ASC',
         total_reviews:       'DESC',
     };
     function updateSort(column) {
@@ -307,16 +311,22 @@
             }
             case 'playtime_forever':
                 return fmtHours(game.playtime_forever);
-            case 'hltb_min': {
-                // Not a real column — library.py's ORDER BY computes this on
+            case 'hltb_main':
+            case 'hltb_extras':
+            case 'hltb_completionist': {
+                const mins = game[CURRENT_SORT];
+                return mins > 0 ? fmtHours(mins) : '—';
+            }
+            case 'hltb_min':
+            case 'hltb_max': {
+                // Not real columns — library.py's ORDER BY computes these on
                 // the fly from the three HLTB times (main/extras/completionist),
-                // MIN for ascending ("shortest") and MAX for descending
-                // ("most content"), treating 0/missing as no data. Mirror that
-                // exact logic here since the browser only has the raw fields.
+                // treating 0/missing as no data. Mirror that logic here since
+                // the browser only has the raw fields.
                 const real = [game.hltb_main, game.hltb_extras, game.hltb_completionist]
                     .filter(v => v > 0);
                 if (!real.length) return '—';
-                const mins = CURRENT_ORDER === 'DESC' ? Math.max(...real) : Math.min(...real);
+                const mins = CURRENT_SORT === 'hltb_max' ? Math.max(...real) : Math.min(...real);
                 return fmtHours(mins);
             }
             case 'review_percentage':

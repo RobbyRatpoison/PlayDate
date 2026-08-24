@@ -737,6 +737,18 @@ def _load_state_unlocked():
         state['edit_button'] = copy.deepcopy(DEFAULT_EDIT_BUTTON)
         dirty = True
 
+    # Migrate the old combined hltb_min sort: DESC used to mean "longest to
+    # 100%" (it ran a MAX expression), now hltb_min always means shortest and
+    # that behavior lives under the new hltb_max option. ASC's meaning is
+    # unchanged, so only DESC selections need rewriting.
+    if state.get('sort') == 'hltb_min' and state.get('order') == 'DESC':
+        state['sort'] = 'hltb_max'
+        dirty = True
+    for _shelf in state.get('shelves', []):
+        if isinstance(_shelf, dict) and _shelf.get('sort_col') == 'hltb_min' and (_shelf.get('sort_dir') or 'DESC') == 'DESC':
+            _shelf['sort_col'] = 'hltb_max'
+            dirty = True
+
     if dirty:
         _write_state_atomic(state)
     return state
