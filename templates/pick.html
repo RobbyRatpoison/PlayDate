@@ -532,14 +532,15 @@
             </div>
 
             <!-- Completion status filters -->
+            {%- set active_statuses = state.get('pick6_statuses') or ['Never Played', 'Unfinished', 'Beaten', 'Completed'] -%}
             <div class="control-row">
                 <div class="control-label">Status</div>
                 <div class="status-filters" id="status-filters">
-                    <button class="status-btn active" data-status="Never Played" onclick="toggleStatus(this)">Never Played</button>
-                    <button class="status-btn active" data-status="Unfinished"   onclick="toggleStatus(this)">Unfinished</button>
-                    <button class="status-btn active" data-status="Beaten"        onclick="toggleStatus(this)">Beaten</button>
-                    <button class="status-btn active" data-status="Completed"     onclick="toggleStatus(this)">Completed</button>
-                    <button class="status-btn"        data-status="Won't Play"   onclick="toggleStatus(this)">Won't Play</button>
+                    <button class="status-btn {{ 'active' if 'Never Played' in active_statuses }}" data-status="Never Played" onclick="toggleStatus(this)">Never Played</button>
+                    <button class="status-btn {{ 'active' if 'Unfinished' in active_statuses }}"   data-status="Unfinished"   onclick="toggleStatus(this)">Unfinished</button>
+                    <button class="status-btn {{ 'active' if 'Beaten' in active_statuses }}"        data-status="Beaten"        onclick="toggleStatus(this)">Beaten</button>
+                    <button class="status-btn {{ 'active' if 'Completed' in active_statuses }}"     data-status="Completed"     onclick="toggleStatus(this)">Completed</button>
+                    <button class="status-btn {{ 'active' if "Won't Play" in active_statuses }}"  data-status="Won't Play"   onclick="toggleStatus(this)">Won't Play</button>
                 </div>
             </div>
         </div>
@@ -584,6 +585,13 @@ function toggleStatus(btn) {
     // Ensure at least one status remains active
     const active = [...document.querySelectorAll('.status-btn.active')];
     if (active.length === 0) btn.classList.add('active');
+
+    // Persist as the new default for next time — deliberately not called from
+    // applyStatusAvailability()'s auto-deactivation, so a status that's
+    // temporarily greyed out (filter change, empty library bucket) never
+    // overwrites what the user actually chose.
+    const activeStatuses = [...document.querySelectorAll('.status-btn.active')].map(b => b.dataset.status);
+    savePreference({ pick6_statuses: activeStatuses });
 }
 
 // Grey out status buttons that couldn't produce a pick either way: a status

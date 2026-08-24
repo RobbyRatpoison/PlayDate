@@ -1007,6 +1007,9 @@ def save_state(updates):
         if "pagywosg_comp_defaults" in updates:
             _valid_cs = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
             state["pagywosg_comp_defaults"] = [s for s in (updates["pagywosg_comp_defaults"] or []) if s in _valid_cs]
+        if "pick6_statuses" in updates:
+            _valid_cs = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
+            state["pick6_statuses"] = [s for s in (updates["pick6_statuses"] or []) if s in _valid_cs]
         if "gamepad_enabled" in updates:
             state["gamepad_enabled"] = bool(updates["gamepad_enabled"])
         if "gamepad_suppress_on_launch" in updates:
