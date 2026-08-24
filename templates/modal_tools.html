@@ -637,6 +637,19 @@
             </div>
         </div>
         <div class="hub-section">
+            <div class="hub-section-label">Grid View</div>
+            <div style="padding:8px 10px;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary);">
+                    <input type="checkbox" id="require-dblclick-cb"
+                           {% if require_double_click_launch %}checked{% endif %}
+                           onchange="sendStateUpdate({require_double_click_launch: this.checked})"
+                           style="width:auto; margin:0;" data-modal-row="19">
+                    Require double-click to launch/install
+                </label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">Off by default — a single click launches instantly. Turn this on to avoid accidental launches from a stray click.</div>
+            </div>
+        </div>
+        <div class="hub-section">
             <div class="hub-section-label">Completion Sync</div>
             <div style="padding:8px 10px;">
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary);">

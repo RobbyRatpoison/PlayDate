@@ -55,17 +55,6 @@
                    style="flex:1; min-width:6rem;">
         </div>
 
-        <!-- Require double-click to launch (grid mode) -->
-        <div data-modal-row="2" style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:0.25rem;"
-             onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;vmSetDblClick(cb.checked);">
-            <input type="checkbox" id="vm-dblclick-cb"
-                   {% if state.get('require_double_click_launch') %}checked{% endif %}
-                   onclick="event.stopPropagation();vmSetDblClick(this.checked);"
-                   style="width:auto; margin:0;">
-            <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer; flex:1;">Require double-click to launch/install (grid view)</label>
-        </div>
-        <div style="font-size:0.75rem; color:#8f98a0; margin:0 0 1.25rem 28px;">Off by default — a single click launches instantly. Turn this on to avoid accidental launches from a stray click.</div>
-
         <!-- Group By -->
         <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1.25rem;">
             <span style="color:#8f98a0; font-size:0.82rem; min-width:4.5rem; flex-shrink:0;">Group by</span>
@@ -156,7 +145,6 @@ let _vmPendSort = null;
 let _vmPendOrder = null;
 let _vmPendView = null;
 let _vmPendGroupBy = undefined; // undefined = unchanged
-let _vmPendDblClick = undefined; // undefined = unchanged
 const _vmServerOrder = '{{ state.order if state is defined and state.order is defined else "ASC" }}';
 
 function _vmSyncViewButtons(mode) {
@@ -171,9 +159,6 @@ function openViewModal() {
     _vmPendOrder = null;
     _vmPendView = null;
     _vmPendGroupBy = undefined;
-    _vmPendDblClick = undefined;
-    const dblClickCb = document.getElementById('vm-dblclick-cb');
-    if (dblClickCb) dblClickCb.checked = typeof window._requireDblClick !== 'undefined' ? !!window._requireDblClick : false;
 
     // Reset order button to server state
     const orderBtn = document.querySelector('.order-btn');
@@ -220,10 +205,6 @@ function vmSetGroupBy(val) {
     _vmPendGroupBy = val || null;
 }
 
-function vmSetDblClick(checked) {
-    _vmPendDblClick = checked;
-}
-
 async function applyViewModal() {
     const updates = {};
 
@@ -231,7 +212,6 @@ async function applyViewModal() {
     if (_vmPendOrder !== null) updates.order = _vmPendOrder;
     if (_vmPendView !== null) updates.artwork_orientation = _vmPendView;
     if (_vmPendGroupBy !== undefined) updates.group_by = _vmPendGroupBy;
-    if (_vmPendDblClick !== undefined) updates.require_double_click_launch = _vmPendDblClick;
 
     if (Object.keys(updates).length === 0) {
         closeViewModal();
