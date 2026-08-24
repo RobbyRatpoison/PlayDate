@@ -111,10 +111,14 @@ modules:
   # entirely. Pulls the exact CPython tag matching org.gnome.Platform//50's
   # bundled Python (3.13.14 -- check `flatpak run --command=python3
   # org.gnome.Sdk//50 -c "import sys; print(sys.version)"` before bumping
-  # the runtime version, and update the tag below to match). Also copies
-  # the pure-Python Lib/tkinter/ package. SITE is computed instead of
-  # hardcoded so this doesn't silently break if the site-packages path
-  # ever changes.
+  # the runtime version, and update the tag and SITE path below to match).
+  # Also copies the pure-Python Lib/tkinter/ package. SITE is hardcoded to
+  # /app rather than computed via sysconfig -- inside the build sandbox,
+  # `python3` resolves to the SDK's own /usr interpreter, so
+  # sysconfig.get_path('platlib') reports /usr's (read-only) site-packages,
+  # not /app's -- confirmed on a real build ("Read-only file system"). At
+  # actual runtime the sandbox merges /usr (runtime) and /app (this build's
+  # output) so both site-packages dirs end up on sys.path regardless.
   - name: tkinter
     buildsystem: simple
     strip: true
@@ -123,7 +127,7 @@ modules:
       - make -j$(nproc)
       - |
         set -e
-        SITE=$(python3 -c "import sysconfig; print(sysconfig.get_path('platlib'))")
+        SITE=/app/lib/python3.13/site-packages
         SO=$(find . -maxdepth 2 -name '_tkinter.cpython-*.so' | head -1)
         test -n "$SO"
         mkdir -p "$SITE"
