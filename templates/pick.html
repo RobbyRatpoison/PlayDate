@@ -324,15 +324,15 @@
         background-image: inherit; background-size: cover; background-position: center;
         filter: blur(10px) brightness(0.7); z-index: 0;
     }
-    .result-art img {
+    .result-art .result-cover {
         position: relative; z-index: 1;
         width: 100%;
         height: 100%;
         object-fit: contain;
         display: block;
     }
-    .result-art.needs-blur img { transform: scale(0.95); }
-    .result-art.no-art img { visibility: hidden; }
+    .result-art.needs-blur .result-cover { transform: scale(0.95); }
+    .result-art.no-art .result-cover { visibility: hidden; }
     .result-art .no-art-name {
         display: none; position: absolute; inset: 0; z-index: 2;
         align-items: center; justify-content: center; text-align: center;
@@ -410,8 +410,8 @@
     .smart-bounds-info { font-size: 0.78rem; color: #8f98a0; font-style: italic; }
 
     .result-card.bounds-relaxed { border-color: #3a4a5e; }
-    .result-card.bounds-relaxed .result-art img { filter: grayscale(1); transition: filter 0.2s; }
-    .result-card.bounds-relaxed:hover .result-art img { filter: grayscale(0); }
+    .result-card.bounds-relaxed .result-art .result-cover { filter: grayscale(1); transition: filter 0.2s; }
+    .result-card.bounds-relaxed:hover .result-art .result-cover { filter: grayscale(0); }
 
     #bounds-warn {
         display: none;
@@ -741,7 +741,7 @@ function makeCard(game, reason, boundsRelaxed, outlineColor) {
     if (outlineColor) card.style.setProperty('--outline-color', outlineColor);
     card.innerHTML = `
         <div class="result-art" onclick="launchGame(${appid})" style="cursor:pointer;">
-            <img src="${localSrc}" alt="${escaped}">
+            <img class="result-cover" src="${localSrc}" alt="${escaped}">
             <div class="no-art-name">${escaped}</div>
             ${renderCardBadges(game, window.CARD_BADGES)}
         </div>
@@ -749,7 +749,7 @@ function makeCard(game, reason, boundsRelaxed, outlineColor) {
             <div class="result-title">${escaped}</div>
             ${reason ? `<div class="result-reason">${escHtml(reason)}</div>` : ''}
         </div>`;
-    const img = card.querySelector('.result-art img');
+    const img = card.querySelector('.result-cover');
     const art = card.querySelector('.result-art');
     img.onload = function() { applyBlurArt(this, art); };
     img.onerror = function() {
