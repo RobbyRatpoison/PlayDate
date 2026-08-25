@@ -113,6 +113,24 @@ const TUTORIAL_SECTIONS = [
         ],
     },
     {
+        id: 'blaeo',
+        title: 'BLAEO',
+        steps: [
+            {
+                title: 'What is BLAEO?',
+                body: `<p>BLAEO (Backlog Assassins) is a community site for tracking your backlog completion status and custom lists. If you keep it up to date, PlayDate can sync those changes into your library instead of you re-entering them by hand.</p>`,
+            },
+            {
+                title: 'Running a sync',
+                body: `<p>Open the hamburger menu's <strong>Community Tools</strong> section and click <strong>Sync BLAEO</strong>. PlayDate fetches your BLAEO profile and shows a preview of proposed changes - completion status updates, list renames, additions, and removals.</p>`,
+            },
+            {
+                title: 'Reviewing changes',
+                body: `<p>Nothing is written until you choose. Check off which proposed changes to keep, then <strong>Apply Selected</strong> - or <strong>Discard</strong> to skip the sync entirely.</p>`,
+            },
+        ],
+    },
+    {
         id: 'plugins',
         title: 'Plugins',
         steps: [
