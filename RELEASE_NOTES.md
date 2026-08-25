@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.7.6
+## v1.8.0
 ### New
 
 - Library sort by HLTB time now has separate options for Main Story, Main + Extras, Completionist, Shortest, and Longest. (suggested by greatmastermario)
