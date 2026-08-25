@@ -270,6 +270,35 @@ DEFAULT_CARD_BADGES = {
         "installed": None,  # filename under static/img/badges/, or None if not uploaded
         "platform": {},     # {platform_id: filename}
     },
+    # achievement_percent/review_score are text badges (no uploaded art): color
+    # comes from whichever threshold band's "min" is the highest one <= the
+    # game's value. Bands are sorted by min at render time, not stored sorted,
+    # so band order here doesn't matter. A game with no achievement/review data
+    # renders no badge at all rather than guessing a color for it.
+    "achievement_percent": {
+        "thresholds": [
+            {"min": 0, "color": "#e74c3c"},
+            {"min": 50, "color": "#f1c40f"},
+            {"min": 90, "color": "#2ecc71"},
+        ],
+    },
+    "review_score": {
+        "mode": "weighted",  # "raw" (review_percentage) | "weighted" (weighted_percentage)
+        "thresholds": [
+            {"min": 0, "color": "#e74c3c"},
+            {"min": 50, "color": "#f1c40f"},
+            {"min": 80, "color": "#2ecc71"},
+        ],
+    },
+    # hltb is a plain-duration text badge (fmtHours() formatting, default pill
+    # color -- no thresholds, unlike achievement_percent/review_score). "mode"
+    # picks which of the 3 raw columns (or a MIN/MAX across them) to show; see
+    # index.py's SORT_COLUMNS for the same main/extras/completionist/min/max
+    # split and library.py's _HLTB_MIN_EXPR/_HLTB_MAX_EXPR for the 0=unset rule
+    # shared with this badge's client-side equivalent.
+    "hltb": {
+        "mode": "main",  # "main" | "extras" | "completionist" | "shortest" | "longest"
+    },
 }
 
 # Which corner the game-card edit-pencil button sits in, and which pages show
@@ -734,6 +763,15 @@ def _load_state_unlocked():
         import copy
         state['card_badges'] = copy.deepcopy(DEFAULT_CARD_BADGES)
         dirty = True
+
+    # Backfill achievement_percent/review_score onto card_badges dicts that
+    # predate those features (added after card_badges itself, so the "not in
+    # state" seed above won't touch an install that already has card_badges).
+    for _cb_key in ('achievement_percent', 'review_score', 'hltb'):
+        if _cb_key not in state['card_badges']:
+            import copy
+            state['card_badges'][_cb_key] = copy.deepcopy(DEFAULT_CARD_BADGES[_cb_key])
+            dirty = True
 
     # Seed edit_button with defaults on first run
     if 'edit_button' not in state:

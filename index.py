@@ -260,6 +260,20 @@ def index():
     )
 
 
+def _shelf_row_to_game(r):
+    """Row -> dict for shuffle/refill responses. Carries the achievement/review/
+    HLTB columns (beyond the original appid/name/installed/status/platform set)
+    so renderCardBadges() can show achievement_percent/review_score/hltb badges
+    on these JS-rebuilt cards the same as it does on the initial Jinja render."""
+    return {
+        'appid': r[0], 'name': r[1], 'installed': r[2] or 0,
+        'completion_status': r[3] or '', 'platform': r[4] or 'steam',
+        'total_achievements': r[5], 'unlocked_achievements': r[6],
+        'review_percentage': r[7], 'weighted_percentage': r[8], 'total_reviews': r[9],
+        'hltb_main': r[10], 'hltb_extras': r[11], 'hltb_completionist': r[12],
+    }
+
+
 @index_bp.route('/api/shuffle-shelf/<shelf_id>')
 def shuffle_shelf(shelf_id):
     try:
@@ -277,12 +291,14 @@ def shuffle_shelf(shelf_id):
         limit = shelf.get('limit', 10)
         db = get_db()
         rows = db.execute(
-            f"SELECT appid, name, installed, completion_status, platform FROM games "
-            f"WHERE {where} ORDER BY RANDOM() LIMIT ?",
+            f"SELECT appid, name, installed, completion_status, platform, "
+            f"total_achievements, unlocked_achievements, review_percentage, weighted_percentage, total_reviews, "
+            f"hltb_main, hltb_extras, hltb_completionist "
+            f"FROM games WHERE {where} ORDER BY RANDOM() LIMIT ?",
             (limit,)
         ).fetchall()
         db.close()
-        games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or '', 'platform': r[4] or 'steam'} for r in rows]
+        games = [_shelf_row_to_game(r) for r in rows]
         from library import _compute_outline_colors
         _outlines_cfg = state.get('card_outlines', {})
         outline_map = (
@@ -315,22 +331,25 @@ def refill_shelf(shelf_id):
             return jsonify({'status': 'success', 'games': []})
 
         limit = int(shelf.get('limit', 10))
+        _cols = ("appid, name, installed, completion_status, platform, "
+                 "total_achievements, unlocked_achievements, review_percentage, weighted_percentage, total_reviews, "
+                 "hltb_main, hltb_extras, hltb_completionist")
         db = get_db()
         if exclude_appids:
             placeholders = ','.join('?' * len(exclude_appids))
             rows = db.execute(
-                f"SELECT appid, name, installed, completion_status, platform FROM games "
+                f"SELECT {_cols} FROM games "
                 f"WHERE ({where}) AND appid NOT IN ({placeholders}) ORDER BY {order} LIMIT ?",
                 (*exclude_appids, limit)
             ).fetchall()
         else:
             rows = db.execute(
-                f"SELECT appid, name, installed, completion_status, platform FROM games "
+                f"SELECT {_cols} FROM games "
                 f"WHERE {where} ORDER BY {order} LIMIT ?",
                 (limit,)
             ).fetchall()
         db.close()
-        games = [{'appid': r[0], 'name': r[1], 'installed': r[2] or 0, 'completion_status': r[3] or '', 'platform': r[4] or 'steam'} for r in rows]
+        games = [_shelf_row_to_game(r) for r in rows]
         return jsonify({'status': 'success', 'games': games})
     except Exception as e:
         log.exception(f"refill_shelf error for {shelf_id}: {e}")

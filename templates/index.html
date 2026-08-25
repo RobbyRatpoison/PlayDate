@@ -370,7 +370,7 @@
             {% endif %}
             <div class="shelf-grid">
                 {% for game in shelf.games %}
-                <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
+                <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" data-total-achievements="{{ game.total_achievements or 0 }}" data-unlocked-achievements="{{ game.unlocked_achievements or 0 }}" data-review-percentage="{{ game.review_percentage if game.review_percentage is not none else '' }}" data-weighted-percentage="{{ game.weighted_percentage if game.weighted_percentage is not none else '' }}" data-total-reviews="{{ game.total_reviews or 0 }}" data-hltb-main="{{ game.hltb_main or 0 }}" data-hltb-extras="{{ game.hltb_extras or 0 }}" data-hltb-completionist="{{ game.hltb_completionist or 0 }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                     <div class="shelf-capsule-inner">
                         <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                              onload="_shelfImgLoad(this)"
@@ -419,7 +419,7 @@
         </span>{% endif %}
         <div class="shelf-grid">
             {% for game in shelf.games %}
-            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
+            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" data-total-achievements="{{ game.total_achievements or 0 }}" data-unlocked-achievements="{{ game.unlocked_achievements or 0 }}" data-review-percentage="{{ game.review_percentage if game.review_percentage is not none else '' }}" data-weighted-percentage="{{ game.weighted_percentage if game.weighted_percentage is not none else '' }}" data-total-reviews="{{ game.total_reviews or 0 }}" data-hltb-main="{{ game.hltb_main or 0 }}" data-hltb-extras="{{ game.hltb_extras or 0 }}" data-hltb-completionist="{{ game.hltb_completionist or 0 }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                 <div class="shelf-capsule-inner">
                     <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                          onload="_shelfImgLoad(this)"
@@ -433,7 +433,7 @@
         {% if shelf.label %}<div class="shelf-label" id="label-{{ shelf.id }}">{{ shelf.label }}</div>{% endif %}
         <div class="shelf-grid">
             {% for game in shelf.games %}
-            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
+            <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" data-total-achievements="{{ game.total_achievements or 0 }}" data-unlocked-achievements="{{ game.unlocked_achievements or 0 }}" data-review-percentage="{{ game.review_percentage if game.review_percentage is not none else '' }}" data-weighted-percentage="{{ game.weighted_percentage if game.weighted_percentage is not none else '' }}" data-total-reviews="{{ game.total_reviews or 0 }}" data-hltb-main="{{ game.hltb_main or 0 }}" data-hltb-extras="{{ game.hltb_extras or 0 }}" data-hltb-completionist="{{ game.hltb_completionist or 0 }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                 <div class="shelf-capsule-inner">
                     <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                          onload="_shelfImgLoad(this)"
@@ -1573,7 +1573,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const inner = wrap.querySelector('.shelf-capsule-inner');
             if (!inner) return;
             if (window.EDIT_BUTTON) inner.insertAdjacentHTML('beforeend', renderEditButton(wrap.dataset.appid, window.EDIT_BUTTON));
-            if (window.CARD_BADGES) inner.insertAdjacentHTML('beforeend', renderCardBadges({platform: wrap.dataset.platform}, window.CARD_BADGES));
+            if (window.CARD_BADGES) {
+                const g = {
+                    platform: wrap.dataset.platform,
+                    total_achievements: wrap.dataset.totalAchievements,
+                    unlocked_achievements: wrap.dataset.unlockedAchievements,
+                    review_percentage: wrap.dataset.reviewPercentage,
+                    weighted_percentage: wrap.dataset.weightedPercentage,
+                    total_reviews: wrap.dataset.totalReviews,
+                    hltb_main: wrap.dataset.hltbMain,
+                    hltb_extras: wrap.dataset.hltbExtras,
+                    hltb_completionist: wrap.dataset.hltbCompletionist,
+                };
+                inner.insertAdjacentHTML('beforeend', renderCardBadges(g, window.CARD_BADGES));
+            }
         });
     }
 });

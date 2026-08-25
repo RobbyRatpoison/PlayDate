@@ -96,12 +96,50 @@ function escHtml(s) {
         .replace(/'/g, '&#39;');
 }
 
+// Picks a threshold band's color for a value: the highest band whose "min"
+// is <= value (bands need not arrive pre-sorted). Returns null if there's no
+// band at or below value (e.g. an empty/malformed threshold list), meaning
+// the caller should render no badge rather than guess a color.
+function _cardBadgeThresholdColor(thresholds, value) {
+    if (!thresholds || !thresholds.length || value === null || value === undefined || isNaN(value)) return null;
+    let color = null;
+    thresholds.slice().sort((a, b) => a.min - b.min).forEach(band => {
+        if (value >= band.min) color = band.color;
+    });
+    return color;
+}
+
+// Black or white text, whichever contrasts better against a user-chosen
+// badge background color.
+function _cardBadgeContrastColor(hex) {
+    const h = (hex || '').replace('#', '');
+    if (h.length !== 6) return '#fff';
+    const r = parseInt(h.substr(0, 2), 16), g = parseInt(h.substr(2, 2), 16), b = parseInt(h.substr(4, 2), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.6 ? '#111' : '#fff';
+}
+
+// Picks the HLTB minutes for a badge's configured mode. Mirrors library.py's
+// _HLTB_MIN_EXPR/_HLTB_MAX_EXPR: 0 means "not set" for a given time-type, so
+// it's excluded from shortest/longest the same way NULLIF(col, 0) excludes
+// it in SQL. Returns null (render nothing) rather than 0 when unknown.
+function _cardBadgeHltbMinutes(game, mode) {
+    if (!game) return null;
+    if (mode === 'main') return Number(game.hltb_main) || null;
+    if (mode === 'extras') return Number(game.hltb_extras) || null;
+    if (mode === 'completionist') return Number(game.hltb_completionist) || null;
+    const vals = [Number(game.hltb_main) || 0, Number(game.hltb_extras) || 0, Number(game.hltb_completionist) || 0].filter(v => v > 0);
+    if (!vals.length) return null;
+    return mode === 'longest' ? Math.max(...vals) : Math.min(...vals);
+}
+
 // Shared card-badges renderer for Library/Home/Pick 6 (see CARD_BADGES config,
-// GET/POST /api/card-badges). Only the "platform" feature is game-dependent
-// (it needs the game's own platform value); "installed" badges are rendered
-// unconditionally when configured and an icon exists, with visibility left to
-// a CSS rule keyed off the ancestor's data-installed attribute -- lets a live
-// install-status flip (e.g. Home's polling loop) just work with no re-render.
+// GET/POST /api/card-badges). "platform"/"achievement_percent"/"review_score"/
+// "hltb" are game-dependent (they read fields off the game object); "installed"
+// badges are rendered unconditionally when configured and an icon exists,
+// with visibility left to a CSS rule keyed off the ancestor's data-installed
+// attribute -- lets a live install-status flip (e.g. Home's polling loop)
+// just work with no re-render.
 function renderCardBadges(game, cfg) {
     if (!cfg || !cfg.slots) return '';
     let html = '';
@@ -119,6 +157,27 @@ function renderCardBadges(game, cfg) {
                 const label = (window._PLAT_LABELS && window._PLAT_LABELS[plat]) || plat;
                 html += `<span class="card-badge card-badge-${corner} card-badge-text">${escHtml(label)}</span>`;
             }
+        } else if (feature === 'achievement_percent') {
+            const total = Number(game && game.total_achievements) || 0;
+            if (total > 0) {
+                const unlocked = Number(game.unlocked_achievements) || 0;
+                const pct = Math.round(100 * unlocked / total);
+                const color = _cardBadgeThresholdColor((cfg.achievement_percent || {}).thresholds, pct);
+                if (color) html += `<span class="card-badge card-badge-${corner} card-badge-text" style="background:${color};color:${_cardBadgeContrastColor(color)};">${pct}%</span>`;
+            }
+        } else if (feature === 'review_score') {
+            const totalReviews = Number(game && game.total_reviews) || 0;
+            if (totalReviews > 0) {
+                const mode = (cfg.review_score || {}).mode === 'raw' ? 'raw' : 'weighted';
+                const pct = Math.round(Number(mode === 'raw' ? game.review_percentage : game.weighted_percentage));
+                if (!isNaN(pct)) {
+                    const color = _cardBadgeThresholdColor((cfg.review_score || {}).thresholds, pct);
+                    if (color) html += `<span class="card-badge card-badge-${corner} card-badge-text" style="background:${color};color:${_cardBadgeContrastColor(color)};">${pct}%</span>`;
+                }
+            }
+        } else if (feature === 'hltb') {
+            const minutes = _cardBadgeHltbMinutes(game, (cfg.hltb || {}).mode || 'main');
+            if (minutes) html += `<span class="card-badge card-badge-${corner} card-badge-text">${fmtHours(minutes)}</span>`;
         }
     });
     return html;
