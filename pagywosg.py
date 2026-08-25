@@ -18,6 +18,21 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
+# Events are numbered sequentially, one per month, with no public id-to-date
+# formula from pagywosg.xyz. Anchored at the actual first event rather than an
+# arbitrary later one so the formula also works for past lookups. Verified
+# against the live API (events 1-87, 2026-08-24): every single event lines up
+# with its expected calendar month -- no skipped months anywhere.
+PAGYWOSG_EPOCH_EVENT_ID = 1
+PAGYWOSG_EPOCH_YEAR = 2019
+PAGYWOSG_EPOCH_MONTH = 6  # June -- "June 2019 - Through the eyes of a child", event #1
+
+
+def pagywosg_event_id(year, month):
+    """PAGYWOSG event id for a given year/month, anchored at event 1 = June 2019."""
+    months_since_epoch = (year - PAGYWOSG_EPOCH_YEAR) * 12 + (month - PAGYWOSG_EPOCH_MONTH)
+    return PAGYWOSG_EPOCH_EVENT_ID + months_since_epoch
+
 from config import BASE_DIR
 
 log = logging.getLogger(__name__)
@@ -701,9 +716,8 @@ def pagywosg_auto():
     from database import get_db
     from datetime import date
 
-    # Anchor: event 83 = April 2026
     today = date.today()
-    event_id = 83 + (today.year - 2026) * 12 + (today.month - 4)
+    event_id = pagywosg_event_id(today.year, today.month)
     if request.args.get('next'):
         event_id += 1
 
@@ -894,7 +908,7 @@ def pagywosg_quals_data():
     from datetime import date, datetime as _datetime
 
     today     = date.today()
-    event_id  = 83 + (today.year - 2026) * 12 + (today.month - 4)
+    event_id  = pagywosg_event_id(today.year, today.month)
 
     cached = _pagywosg_quals_cache.get(event_id)
     if cached:

@@ -1,5 +1,6 @@
-"""PAGYWOSG event id formula (event 83 = April 2026), via the category scanner's
-_current_event_id() — the same anchor pagywosg.py's pagywosg_auto() uses inline."""
+"""PAGYWOSG event id formula (event 1 = June 2019, the site's actual first
+event), via the category scanner's _current_event_id(), which calls the same
+pagywosg.pagywosg_event_id() that pagywosg_auto()/pagywosg_quals_data() use."""
 import importlib.util
 import os
 from datetime import date
@@ -22,7 +23,8 @@ def scan_tool():
 
 
 @pytest.mark.parametrize("year,month,expected", [
-    (2026, 4, 83),    # the anchor
+    (2019, 6, 1),     # the anchor -- actual first event
+    (2026, 4, 83),    # cross-checked against the live event history
     (2026, 5, 84),
     (2026, 3, 82),
     (2026, 12, 91),
