@@ -112,12 +112,22 @@ _HLTB_MAX_EXPR = (
     "ELSE MAX(COALESCE(NULLIF(hltb_main, 0), 0), COALESCE(NULLIF(hltb_extras, 0), 0), COALESCE(NULLIF(hltb_completionist, 0), 0)) "
     "END"
 )
+# Games with no achievements at all (total_achievements 0/NULL) have nothing
+# meaningful to sort by here, so they're excluded the same way HLTB's no-data
+# games are -- always last, regardless of direction. CAST guards against a
+# handful of rows storing '' instead of NULL/0: SQLite ranks TEXT above any
+# INTEGER, so a bare "total_achievements > 0" treats '' as satisfying it.
+_ACHIEVEMENT_PERCENT_EXPR = "CASE WHEN CAST(total_achievements AS INTEGER) > 0 THEN (100.0 * CAST(unlocked_achievements AS INTEGER) / CAST(total_achievements AS INTEGER)) ELSE NULL END"
+_ACHIEVEMENT_REMAINING_EXPR = "CASE WHEN CAST(total_achievements AS INTEGER) > 0 THEN (CAST(total_achievements AS INTEGER) - CAST(unlocked_achievements AS INTEGER)) ELSE NULL END"
+
 VIRTUAL_SORT_COLS = {
     'hltb_main': "NULLIF(hltb_main, 0)",
     'hltb_extras': "NULLIF(hltb_extras, 0)",
     'hltb_completionist': "NULLIF(hltb_completionist, 0)",
     'hltb_min': _HLTB_MIN_EXPR,
     'hltb_max': _HLTB_MAX_EXPR,
+    'achievement_percent': _ACHIEVEMENT_PERCENT_EXPR,
+    'achievement_remaining': _ACHIEVEMENT_REMAINING_EXPR,
 }
 
 import re as _re

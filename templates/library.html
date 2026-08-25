@@ -651,7 +651,7 @@
     </style>
     {% set _non_default_sort = state.sort not in ('name', '') or state.order != 'ASC' %}
     {% set _has_plat_filter = hidden_platforms | length > 0 %}
-    {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_main': 'HLTB: Main Story', 'hltb_extras': 'HLTB: Main + Extras', 'hltb_completionist': 'HLTB: Completionist', 'hltb_min': 'HLTB: Shortest', 'hltb_max': 'HLTB: Longest', 'total_reviews': 'Total Reviews', 'random': 'Random'} -%}
+    {%- set _sort_labels = {'name': 'Alphabetical', 'playtime_forever': 'Hours Played', 'release_date': 'Release Date', 'last_played': 'Recently Played', 'date_added': 'Date Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'hltb_main': 'HLTB: Main Story', 'hltb_extras': 'HLTB: Main + Extras', 'hltb_completionist': 'HLTB: Completionist', 'hltb_min': 'HLTB: Shortest', 'hltb_max': 'HLTB: Longest', 'achievement_percent': 'Achievement %', 'achievement_remaining': 'Achievements Remaining', 'total_reviews': 'Total Reviews', 'random': 'Random'} -%}
     {%- set _group_labels = {'installed': 'Installed', 'completion_status': 'Completion', 'release_date': 'Release Year', 'date_added': 'Year Added', 'review_percentage': 'Review Score', 'weighted_percentage': 'Weighted Score', 'platform': 'Platform'} -%}
     {%- set _plat_labels = platform_labels() -%}
     {%- set ns = namespace(filter_label=none, has_real_filter=false, search_term=none) -%}

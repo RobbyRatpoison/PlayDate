@@ -187,6 +187,8 @@
         hltb_completionist:  'ASC',
         hltb_min:            'ASC',
         hltb_max:            'ASC',
+        achievement_percent:   'DESC',
+        achievement_remaining: 'ASC',
         total_reviews:       'DESC',
     };
     function updateSort(column) {
@@ -333,6 +335,15 @@
             case 'weighted_percentage': {
                 const pct = game[CURRENT_SORT];
                 return (pct || pct === 0) ? `${pct}%` : '—';
+            }
+            case 'achievement_percent':
+            case 'achievement_remaining': {
+                const total = game.total_achievements;
+                if (!(total > 0)) return '—';
+                const unlocked = game.unlocked_achievements || 0;
+                return CURRENT_SORT === 'achievement_percent'
+                    ? `${Math.round(100 * unlocked / total)}%`
+                    : `${total - unlocked} left`;
             }
             case 'total_reviews': {
                 const n = game.total_reviews || 0;
