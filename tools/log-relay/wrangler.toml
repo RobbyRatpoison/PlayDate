@@ -1,0 +1,10 @@
+name = "playdate-log-relay"
+main = "src/worker.js"
+compatibility_date = "2026-08-25"
+
+# Created via `wrangler kv namespace create RATE_LIMIT`, then paste the
+# resulting id below. Optional -- the Worker fails open (no rate limiting,
+# but still template-only content) if this binding is missing.
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT"
+# id = "REPLACE_ME"

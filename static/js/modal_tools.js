@@ -89,7 +89,8 @@ function submitLog() {
         })
         .catch(err => {
             status.className = 'tool-status error';
-            status.textContent = `✘ ${err.message}`;
+            const msg = err.message || 'Something went wrong.';
+            status.textContent = `✘ ${msg}${/try again|wait \d/i.test(msg) ? '' : ' Please try again.'}`;
         })
         .finally(() => {
             btn.disabled = false;
