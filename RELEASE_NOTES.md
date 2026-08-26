@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.8.1
+## v1.8.1 - 2026-08-26
 ### Improvements
 
 - Log submission failure messages now consistently suggest trying again.
