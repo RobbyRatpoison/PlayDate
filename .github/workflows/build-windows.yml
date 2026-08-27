@@ -178,11 +178,18 @@ jobs:
       # run -- --force-clean below only wipes the final merged build-dir
       # output tree, not this. Slow, source-built deps (tcl, tk, the
       # from-source CPython used to build _tkinter) otherwise recompile from
-      # scratch on every single push, beta or stable. Keyed on the manifest
-      # + pip requirements so any real change still rebuilds what changed;
-      # restore-keys falls back to the most recent cache on a miss so an
-      # in-progress manifest edit still reuses whatever earlier modules
-      # (e.g. tcl/tk) didn't change, rather than losing the whole cache.
+      # scratch (~5 min). Keyed on the manifest + pip requirements so any real
+      # change still rebuilds what changed; restore-keys falls back to the
+      # most recent cache on a miss so an in-progress manifest edit still
+      # reuses whatever earlier modules (e.g. tcl/tk) didn't change.
+      #
+      # This job is tag-triggered, and GitHub Actions cache is partitioned by
+      # ref -- a tag run can only read its own ref's caches or main's, and
+      # nothing here ever runs on main, so this cache would ALWAYS miss on a
+      # release/beta build. flatpak-cache.yml exists solely to populate these
+      # two caches (this one + the runtime one above) on the main scope so
+      # this step actually gets a hit. Keep the manifest-patch step, the
+      # cache keys, and the runtime-version read in sync between the two files.
       - name: Cache flatpak-builder state
         uses: actions/cache@v4
         with:

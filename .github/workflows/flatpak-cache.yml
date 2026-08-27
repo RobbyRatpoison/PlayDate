@@ -1,0 +1,111 @@
+name: Warm Flatpak build cache
+
+# The real build (build-windows.yml "Build Releases") is triggered by version
+# tags. GitHub Actions cache is partitioned by GITHUB_REF, and a run can only
+# restore caches from its own ref or the default branch (main) -- so every
+# `vX.Y.Z` / `vX.Y.Z-beta.N` tag build gets a cold cache and recompiles
+# tcl + tk + tkinter from source (~5 min of the ~8 min job), because nothing
+# ever populates a flatpak-builder cache on `refs/heads/main`.
+#
+# This workflow does exactly that: it runs the same manifest-patch + cache +
+# flatpak-builder steps as the real job, on main, so the `flatpak-builder-*`
+# and `flatpak-runtime-*` caches exist in the one scope tag builds can read.
+# It produces no bundle, no release, no artifact -- only the caches.
+#
+# Runs: on a main push that touches the manifest or the flatpak requirements
+# (the only things that change what gets built); twice a week to stay ahead
+# of the 7-day cache eviction during quiet periods; and on demand.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'flatpak/io.github.robbyratpoison.PlayDate.yml'
+      - 'requirements-flatpak.txt'
+      - '.github/workflows/flatpak-cache.yml'
+  schedule:
+    - cron: '0 4 * * 1,4'
+  workflow_dispatch:
+
+# One warm-up at a time; a newer push supersedes an in-progress run.
+concurrency:
+  group: flatpak-cache
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    name: Build & cache flatpak modules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Identical to build-windows.yml's step of the same name -- the cache
+      # key below hashes this file, so the patch must match byte-for-byte for
+      # the real build to get a hit.
+      - name: Point manifest at the CI checkout
+        shell: python
+        run: |
+          path = "flatpak/io.github.robbyratpoison.PlayDate.yml"
+          old = (
+              "      - type: git\n"
+              "        url: https://github.com/RobbyRatpoison/PlayDate.git\n"
+              "        tag: v1.5.21\n"
+              "        dest: src"
+          )
+          new = (
+              "      - type: dir\n"
+              "        path: ..\n"
+              "        dest: src\n"
+              "        skip:\n"
+              "          - flatpak\n"
+              "          - .git\n"
+              "          - .venv\n"
+              "          - __pycache__\n"
+              "          - webview_storage"
+          )
+          with open(path) as f:
+              content = f.read()
+          assert content.count(old) == 1, "manifest git-source block not found or not unique — update this step to match build-windows.yml"
+          content = content.replace(old, new)
+          with open(path, "w") as f:
+              f.write(content)
+          print("Patched manifest to build from the CI checkout")
+
+      - name: Install flatpak tooling
+        timeout-minutes: 5
+        env:
+          NEEDRESTART_MODE: a
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Read runtime version
+        id: runtime_ver
+        run: |
+          ver=$(grep '^runtime-version:' flatpak/io.github.robbyratpoison.PlayDate.yml | sed "s/runtime-version: *//; s/[\"']//g")
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Flatpak runtime and SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-runtime-gnome-${{ steps.runtime_ver.outputs.version }}
+
+      - name: Install GNOME runtime and SDK
+        run: flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
+
+      - name: Cache flatpak-builder state
+        uses: actions/cache@v4
+        with:
+          path: .flatpak-builder
+          key: flatpak-builder-${{ hashFiles('flatpak/io.github.robbyratpoison.PlayDate.yml', 'requirements-flatpak.txt') }}
+          restore-keys: |
+            flatpak-builder-
+
+      - name: Build with flatpak-builder (populates .flatpak-builder)
+        run: |
+          mkdir -p flatpak/repo
+          flatpak-builder --user --repo=flatpak/repo --force-clean \
+            flatpak/build-dir flatpak/io.github.robbyratpoison.PlayDate.yml

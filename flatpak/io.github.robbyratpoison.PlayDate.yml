@@ -71,7 +71,7 @@ modules:
     strip: true
     build-commands:
       - ./configure --prefix=/app --enable-shared --disable-rpath
-      - make
+      - make -j$(nproc)
       - make install-binaries install-libraries install-headers
       # Tcl's own install rules leave libtcl8.6.so at mode 555 (no write
       # bit). flatpak-builder's post-install debuginfo extraction opens
@@ -92,7 +92,7 @@ modules:
     strip: true
     build-commands:
       - ./configure --prefix=/app --enable-shared --disable-rpath --with-tcl=/app/lib
-      - make
+      - make -j$(nproc)
       - make install-binaries install-libraries install-headers
       # Same read-only-install issue as the tcl module above.
       - find /app/lib -name '*.so' -exec chmod u+w {} +
