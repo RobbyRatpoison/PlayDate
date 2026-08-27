@@ -906,20 +906,41 @@
             try {
                 const resp = await fetch('/api/check-update', { method: 'POST' });
                 const data = await resp.json();
-                if (typeof _checkPluginUpdates === 'function') _checkPluginUpdates();
-                if (data.update_available) {
+                // Await the plugin check so its result can feed the verdict below --
+                // otherwise a plugin-only update would still report "up to date".
+                let pu = { standalone: false, gated: false, names: [] };
+                if (typeof _checkPluginUpdates === 'function') {
+                    try { pu = (await _checkPluginUpdates()) || pu; } catch (e) {}
+                }
+                if (data.error) {
+                    label.textContent = 'Check for Updates';
+                    status.textContent = `Check failed: ${data.error}`;
+                    // Errors stay visible until the next check attempt: a 4s auto-clear
+                    // made a real failure indistinguishable from nothing having happened.
+                    status.className = 'hamburger-status error';
+                } else if (data.update_available) {
                     _setUpdateAvailable(data.latest_version, data.is_portable);
                     status.textContent = '';
                     status.className = 'hamburger-status';
+                } else if (pu.standalone) {
+                    label.textContent = 'Check for Updates';
+                    status.textContent = pu.names.length === 1
+                        ? `Plugin update available (${pu.names[0]}) — open Plugins`
+                        : `${pu.names.length} plugin updates available — open Plugins`;
+                    status.className = 'hamburger-status success';
+                    // The orange dot on the Plugins menu item is the persistent cue;
+                    // clear the text after a bit so it can't go stale.
+                    setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 8000);
+                } else if (pu.gated) {
+                    label.textContent = 'Check for Updates';
+                    status.textContent = 'A plugin update needs a newer PlayDate version';
+                    status.className = 'hamburger-status success';
+                    setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 8000);
                 } else {
                     label.textContent = 'Check for Updates';
-                    status.textContent = data.error ? `Check failed: ${data.error}` : "You're up to date!";
-                    status.className = 'hamburger-status ' + (data.error ? 'error' : 'success');
-                    // Errors stay visible until the next check attempt: a 4s auto-clear
-                    // made a real failure indistinguishable from nothing having happened.
-                    if (!data.error) {
-                        setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 4000);
-                    }
+                    status.textContent = "You're up to date!";
+                    status.className = 'hamburger-status success';
+                    setTimeout(() => { status.textContent = ''; status.className = 'hamburger-status'; }, 4000);
                 }
             } catch (e) {
                 label.textContent = 'Check for Updates';

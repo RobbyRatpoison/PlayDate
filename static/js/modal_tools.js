@@ -4860,7 +4860,14 @@ async function _checkPluginUpdates() {
         if (anyStandalone) {
             document.getElementById('update-dot')?.classList.add('visible');
         }
-    } catch(e) { /* silent */ }
+        return {
+            standalone: anyStandalone,
+            gated: anyGated,
+            names: window._pendingPluginUpdates.filter(p => !p.requires_core).map(p => p.id),
+        };
+    } catch(e) {
+        return { standalone: false, gated: false, names: [] };
+    }
 }
 
 function _renderPlatformPriorityList() {
