@@ -57,12 +57,51 @@ If your plugin needs a separate launcher application (e.g. Epic Games Store, EA 
 "launcher": {
   "required": true,
   "name": "Epic Games Store",
-  "exe_name": "EpicGamesLauncher.exe",
-  "config_paths": ["~/.config/Epic/EpicGamesLauncher", "~/.wine-epic/drive_c/..."]
+  "exe_name": "EpicGamesLauncher.exe"
 }
 ```
 
 Set `"required": false` (or omit the field entirely) if your plugin can launch games without a separate launcher process. Core reads this field to drive launcher configuration UI -- no code changes are needed in the plugin itself beyond declaring it.
+
+### `launcher.installer` field (optional) -- automated Wine-based launcher install
+
+If your launcher can be installed unattended under Wine, declare an `installer` block and core will drive the whole install through `runners/launcher_installer.py` from a "Configure Launcher" button -- no plugin code needed:
+
+```json
+"launcher": {
+  "required": true,
+  "name": "My Launcher",
+  "exe_name": "MyLauncher.exe",
+  "installer": {
+    "url": "https://example.com/MyLauncherInstaller.exe",
+    "type": "exe",
+    "winearch": "win64",
+    "win_version": "win10",
+    "winetricks": ["d3dcompiler_43", "corefonts"],
+    "post_install_files": [
+      {"path": "AppData\\Local\\My Launcher\\settings.yaml", "content": "overlay:\n  enabled: false"}
+    ],
+    "post_install_dlls": ["files/lib/wine/x86_64-windows/some.dll"],
+    "install_path": "Program Files (x86)\\My Launcher",
+    "env": {"SOME_VAR": "1"}
+  }
+}
+```
+
+Fields (all but `url` optional):
+- `url` -- installer download URL.
+- `type` -- `"msi"` (default), `"exe"` (run interactively -- the user completes the setup window), or `"extract"` (bypass the installer entirely and 7z-extract its payload directly into the prefix at `install_path`; for installers that refuse to run at all without admin rights under Wine).
+- `winearch` -- `"win64"` (default) or `"win32"`.
+- `win_version` -- if set, writes `HKCU\Software\Wine\Version` to this value (e.g. `"win10"`) right after prefix creation.
+- `winetricks` -- list of verbs installed (in order) before the installer runs. Proton wine automatically falls back to system `wine` for this step (winetricks and Proton's own wine binary don't mix).
+- `post_install_files` -- list of `{"path": ..., "content": ...}` written into the Wine user profile directory (`path` relative to it, backslashes accepted) after winetricks but *before* the installer runs -- for pre-seeding a config file the installer or first-run would otherwise create with different defaults (e.g. disabling an overlay before it ever gets a chance to inject itself).
+- `post_install_dlls` -- list of paths (relative to the detected Proton build's root, e.g. `files/lib/wine/x86_64-windows/xyz.dll`) copied into the prefix's `system32` after the installer completes.
+- `install_path` -- required for `type: "extract"` (destination under `drive_c`, backslashes accepted); unused for `msi`/`exe`.
+- `env` -- extra environment variables merged in for every step (prefix creation, winetricks, install).
+
+`exe_name` (used to verify the install actually succeeded) is read from `launcher.exe_name` if not also set directly on `installer`.
+
+Progress is tracked through phases (`creating_prefix` -> `downloading` -> `installing` -> `verifying` -> `done`), pollable via `GET /api/launcher-install/<platform_id>/status` -- no plugin-side polling code needed, the built-in Configure Launcher UI handles it.
 
 The optional `source` field enables update checking. Set it to `github:owner/repo` pointing to the GitHub repository where releases are published. PlayDate compares the installed `version` against the latest release tag (stripping a leading `v`) and surfaces an update link in the Plugins modal when a newer version is available. Updates download and overwrite the plugin folder in-place; a restart is required to load the new code.
 
@@ -75,6 +114,8 @@ If your plugin relies on a lifecycle method, field, or behavior introduced in a 
 ```
 
 At startup, `load_all()` compares this against the running PlayDate version. If the installed core is older, the plugin is **not imported or registered** — it fails safely instead of crashing on a missing method/field or throwing at import time. It still shows up in the Plugins modal with a "needs PlayDate X.Y.Z" message (fetched from `GET /api/plugins/incompatible`) and can still be uninstalled from there; only `register()` and everything after it in `load_all()` is skipped. Omit the field if your plugin has no minimum version requirement.
+
+This is also enforced earlier, at install/update time: installing a zip, a GitHub URL, or clicking Update in the Plugins modal all funnel through the same install path, which rejects the install outright with a user-facing error if your declared `min_core_version` exceeds the user's current PlayDate version — it won't silently install and then fail to load on next restart. If you're bumping `min_core_version` alongside new PlayDate release requirements, be aware that a plugin update released the same day as the PlayDate version it requires is deliberately not blocked by the "install updates then update core" bundled flow (it compares against the *target* core version being installed, not the currently-running one).
 
 ## __init__.py — the plugin class
 
@@ -164,6 +205,18 @@ class MyPlugin:
         Optional. Called by GET /api/game-description/<appid> for non-Steam games.
         Return a plain-text description string, or None if unavailable.
         Core falls back to the Steam store API when this is not implemented.
+        """
+        pass
+
+    def resync_installed(self):
+        """
+        Optional. Re-check installed-flag/install_path for every game on this
+        platform (whatever your own on_startup()/install-watcher sync function
+        already does — just call it here too). Called after a backup restore,
+        and by bulk_rescrape_games() for every non-Steam platform it touched,
+        once metadata that rescrape() just fetched could newly make install
+        detection succeed for a game your own filesystem watcher never fired
+        on (it wasn't a filesystem event, so the watcher wouldn't catch it).
         """
         pass
 
@@ -471,11 +524,13 @@ def sync_install_status():
 _watcher = PluginInstallWatcher('myplugin', sync_install_status)
 
 def start_watcher(watch_path):
-    _watcher.start(watch_path)   # no-op if already running or path missing
+    _watcher.start(watch_path)   # no-op if already running
 
 def stop_watcher():
     _watcher.stop()
 ```
+
+If `watch_path` doesn't exist yet when `start()` is called (e.g. a fresh prefix with nothing installed), it retries every 30s until the path appears, then attaches for good — you don't need to handle that case yourself or re-call `start()` later.
 
 The sync callback pattern:
 
@@ -523,6 +578,10 @@ from runners.wine import find_wine_binary, list_prefixes, create_prefix, run_in_
 # Open a Windows protocol URL (e.g. com.epicgames.launcher://...) inside a prefix
 launch_protocol_url(prefix_path, url, wine_bin=None)
 ```
+
+`launch_protocol_url()` and `run_in_prefix()` already handle Proton/umu-run routing, an already-running-session for the same prefix, and native-Wayland preference internally — plugins don't need to special-case any of that themselves.
+
+If your plugin needs to know whether a real game (not just an idle launcher client) is currently running under its prefix before doing something disruptive (e.g. before ending/restarting a Wine session), use `runners.wine.list_prefix_processes(prefix_path)` — it returns `[(pid, argv0), ...]` for every process tied to that prefix, correctly matching both the bare prefix path and its Proton `<prefix>/pfx` subdirectory. Match `argv0` against your own game-install-path convention rather than an exclusion list of known launcher process names — an exclusion list breaks the moment an unrelated process (e.g. a container helper) also carries the prefix's `WINEPREFIX` env var.
 
 ## Checking for a plugin in templates
 
