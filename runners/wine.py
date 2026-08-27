@@ -5,10 +5,36 @@ runners/wine.py — Shared Wine helpers for plugins that need to run Windows exe
 import logging
 import os
 import subprocess
+import threading
 
 from runners.sandbox import host_is_executable, host_popen, host_run, host_which
 
 log = logging.getLogger(__name__)
+
+_prefix_locks = {}
+_prefix_locks_guard = threading.Lock()
+
+
+def _get_prefix_lock(prefix_path):
+    """One lock per prefix (by absolute path), created on first use. Guards
+    the already-running-session check/kill/relaunch decision in
+    launch_protocol_url() and run_in_prefix() -- confirmed live that without
+    this, rapid repeated launch clicks let multiple Flask request threads
+    race through that logic concurrently against the same prefix, each
+    acting on stale state: multiple umu-run containers ended up fighting
+    over the same prefix simultaneously, leaving stuck wineserver instances
+    behind and even crashing pressure-vessel itself with an internal
+    assertion failure (_srt_architecture_read_elf) from two containers
+    racing for the same resources. The lock only needs to hold for the
+    synchronous decide-and-dispatch step, not the launched process's whole
+    lifetime -- host_popen() returns immediately either way."""
+    with _prefix_locks_guard:
+        key = os.path.abspath(prefix_path)
+        lock = _prefix_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _prefix_locks[key] = lock
+        return lock
 
 _WINE_CANDIDATES = [
     'wine64',
@@ -81,6 +107,91 @@ def is_proton_wine(wine_bin):
         or 'Proton' in wine_bin
         or '/files/bin/wine' in wine_bin
     )
+
+
+def wine_user_dir(prefix):
+    """Resolve the prefix's real Windows user profile directory. Proton
+    prefixes always use 'steamuser'; vanilla Wine uses the real Unix
+    username. Falls back to scanning drive_c/users/ for whichever single
+    real profile exists, skipping the fixed system entries Wine always
+    creates."""
+    users_dir = os.path.join(prefix, 'drive_c', 'users')
+    for candidate in ('steamuser', os.environ.get('USER', '')):
+        if candidate and os.path.isdir(os.path.join(users_dir, candidate)):
+            return os.path.join(users_dir, candidate)
+    skip = {'Public', 'Default User', 'Default', 'All Users'}
+    try:
+        for name in os.listdir(users_dir):
+            if name not in skip and os.path.isdir(os.path.join(users_dir, name)):
+                return os.path.join(users_dir, name)
+    except OSError:
+        pass
+    return None
+
+
+def find_umu_run():
+    """Return the umu-run binary path if installed on the host, else None."""
+    return host_which('umu-run')
+
+
+def _proton_root(wine_bin):
+    """
+    Given a Proton wine64/wine binary (.../<ProtonDir>/files/bin/wine64),
+    return the Proton install root umu-run needs as PROTONPATH, or None if
+    wine_bin isn't actually a Proton install (no toolmanifest.vdf next to it).
+    """
+    if not is_proton_wine(wine_bin):
+        return None
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(wine_bin))))
+    if os.path.isfile(os.path.join(root, 'toolmanifest.vdf')):
+        return root
+    return None
+
+
+def _build_run(prefix_path, wine_bin, env_extra=None):
+    """
+    Return (cmd_prefix, env) for invoking wine -- preferring umu-run's Steam
+    Runtime container over a raw Proton wine64 invocation when both umu-run
+    and a real Proton build (with toolmanifest.vdf) are available. Confirmed
+    live that a raw `wine wineboot --init` can hang indefinitely (stuck in
+    wine.inf's InstallHinfSection, 0% CPU) regardless of which Proton/Wine-GE
+    build was used, while the identical operation through umu-run completes
+    cleanly -- this isn't about which wine build, it's the container umu-run
+    sets up around it. cmd_prefix is prepended to the target exe/args; env
+    already has WINEPREFIX and WINEDEBUG set.
+    """
+    umu = find_umu_run()
+    proton_root = _proton_root(wine_bin) if umu else None
+    if umu and proton_root:
+        env = dict(os.environ)
+        env['WINEPREFIX'] = prefix_path
+        env['WINEDEBUG']  = '-all'
+        env['GAMEID']     = 'umu-default'
+        env['PROTONPATH'] = proton_root
+        if env_extra:
+            env.update(env_extra)
+        return [umu], env
+
+    env = build_proton_env(wine_bin) if is_proton_wine(wine_bin) else _prefer_native_wayland(dict(os.environ))
+    env['WINEPREFIX'] = prefix_path
+    env['WINEDEBUG']  = '-all'
+    if env_extra:
+        env.update(env_extra)
+    return [wine_bin], env
+
+
+def _prefer_native_wayland(env):
+    """On a Wayland session, drop DISPLAY so Wine selects its native Wayland
+    driver instead of falling back to XWayland compatibility. Confirmed live
+    (KDE Plasma Wayland) that a self-contained, non-Proton Wine build left a
+    Chromium-based app's window slow and blank-white with clicks not
+    registering under XWayland, while native Wayland rendered and responded
+    correctly. Proton builds already force native Wayland internally
+    regardless of DISPLAY, so this only matters for plain wine invocations."""
+    if env.get('WAYLAND_DISPLAY') and 'DISPLAY' in env:
+        env = dict(env)
+        del env['DISPLAY']
+    return env
 
 
 def build_proton_env(wine_bin, base_env=None):
@@ -222,13 +333,12 @@ def create_prefix(prefix_path, wine_bin=None):
             raise RuntimeError('No Wine binary found. Install Wine to use this plugin.')
 
     os.makedirs(prefix_path, exist_ok=True)
-    env = dict(os.environ)
-    env['WINEPREFIX'] = prefix_path
-    env['WINEDEBUG'] = '-all'
+    cmd_prefix, env = _build_run(prefix_path, wine_bin)
 
-    log.info(f'Creating Wine prefix at {prefix_path} using {wine_bin}')
+    log.info(f'Creating Wine prefix at {prefix_path} using {wine_bin}'
+             + (' via umu-run' if cmd_prefix[0] != wine_bin else ''))
     host_run(
-        [wine_bin, 'wineboot', '--init'],
+        cmd_prefix + ['wineboot', '--init'],
         env=env,
         check=True,
         stdout=subprocess.DEVNULL,
@@ -253,22 +363,43 @@ def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None, cw
 
     Returns a subprocess.Popen object (caller should not wait -- game runs in background).
     Raises RuntimeError if no Wine binary is available.
+
+    Same already-running-session handling as launch_protocol_url() (see its
+    docstring for the deadlock this avoids) -- confirmed live that a native
+    game launch into a prefix with EA Desktop already running spawned a
+    second umu-run container whose wineserver blocked forever in
+    do_lock_file_wait, silently doing nothing (no error, no window) while
+    the original session stayed healthy. Since native launch is specifically
+    for bypassing the launcher client, ending its session first to free the
+    prefix is correct here, not just a workaround.
     """
     if wine_bin is None:
         wine_bin = find_wine_binary()
         if not wine_bin:
             raise RuntimeError('No Wine binary found. Install Wine to use this plugin.')
 
-    env = build_proton_env(wine_bin) if is_proton_wine(wine_bin) else dict(os.environ)
-    env['WINEPREFIX'] = prefix_path
-    if env_extra:
-        env.update(env_extra)
     if cwd is None:
         cwd = os.path.dirname(exe)
 
-    cmd = [wine_bin, exe] + (args or [])
-    log.info(f'Wine launch: {wine_bin} {exe}  (prefix={prefix_path}, cwd={cwd})')
-    return host_popen(cmd, env=env, cwd=cwd)
+    with _get_prefix_lock(prefix_path):
+        already_running = _prefix_has_running_process(prefix_path)
+        if already_running and not is_proton_wine(wine_bin):
+            env = _prefer_native_wayland(dict(os.environ))
+            env['WINEPREFIX'] = prefix_path
+            if env_extra:
+                env.update(env_extra)
+            cmd_prefix = [wine_bin]
+            log.info(f'Wine launch: {exe}  (prefix={prefix_path}, cwd={cwd}) direct — session already running')
+        else:
+            if already_running:
+                log.info(f'Wine launch: {exe} -- ending the existing Proton session for '
+                         f'{prefix_path} first (umu-run cannot safely join a live session)')
+                end_prefix_session(prefix_path, wine_bin)
+            cmd_prefix, env = _build_run(prefix_path, wine_bin, env_extra)
+            log.info(f'Wine launch: {" ".join(cmd_prefix)} {exe}  (prefix={prefix_path}, cwd={cwd})')
+
+        cmd = cmd_prefix + [exe] + (args or [])
+        return host_popen(cmd, env=env, cwd=cwd)
 
 
 def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None):
@@ -282,11 +413,141 @@ def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None):
         if not wine_bin:
             raise RuntimeError('No Wine binary found. Install Wine to use this plugin.')
 
-    env = build_proton_env(wine_bin) if is_proton_wine(wine_bin) else dict(os.environ)
-    env['WINEPREFIX'] = prefix_path
-    if env_extra:
-        env.update(env_extra)
+    with _get_prefix_lock(prefix_path):
+        already_running = _prefix_has_running_process(prefix_path)
+        if already_running and not is_proton_wine(wine_bin):
+            # A Wine session is already live for this prefix (e.g. the launcher
+            # is already open) -- signal it directly with a plain wine_bin call
+            # instead of bootstrapping a fresh umu-run container. Confirmed live
+            # that routing this through umu-run here deadlocks: the new
+            # container's wineserver blocks in do_lock_file_wait on the existing
+            # session's startup lock file instead of just delivering the deep
+            # link, so nothing happens until the running instance is closed.
+            # Only safe for a self-contained (non-Proton) build -- a bare Proton
+            # wine_bin can't run anything standalone (confirmed live: it crashes
+            # loading vkd3d/wined3d without the Steam Runtime umu-run provides),
+            # so a Proton prefix always needs the umu-run path below regardless
+            # of whether that risks the same deadlock.
+            env = _prefer_native_wayland(dict(os.environ))
+            env['WINEPREFIX'] = prefix_path
+            if env_extra:
+                env.update(env_extra)
+            cmd = [wine_bin, 'start', url]
+            log.info(f'Wine protocol launch: {url}  (prefix={prefix_path}) direct — session already running')
+        else:
+            if already_running:
+                # A bare Proton wine_bin can't signal a running session directly
+                # (crashes loading vkd3d/wined3d standalone) and a fresh umu-run
+                # invocation deadlocks trying to join the live one (see above).
+                # Ending the old session first is the only reliable way through --
+                # confirmed live that this is exactly what happens when the user
+                # manually closes the launcher and a fresh one opens correctly.
+                log.info(f'Wine protocol launch: {url} -- ending the existing Proton session for '
+                         f'{prefix_path} first (umu-run cannot safely join a live session)')
+                end_prefix_session(prefix_path, wine_bin)
+            cmd_prefix, env = _build_run(prefix_path, wine_bin, env_extra)
+            cmd = cmd_prefix + ['start', url]
+            log.info(f'Wine protocol launch: {url}  (prefix={prefix_path})'
+                     + (' via umu-run' if cmd_prefix[0] != wine_bin else ''))
 
-    cmd = [wine_bin, 'start', url]
-    log.info(f'Wine protocol launch: {url}  (prefix={prefix_path})')
-    return host_popen(cmd, env=env)
+        proc = host_popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        _log_output_async(proc, f'Wine protocol launch ({url})')
+        return proc
+
+
+def list_prefix_processes(prefix_path):
+    """Return [(pid, argv0), ...] for every running process whose WINEPREFIX
+    matches this prefix. argv0 is that process's own first argv entry (its
+    executable path, Windows-style backslashes for a Wine-hosted process).
+
+    Matches both prefix_path itself and prefix_path/pfx -- confirmed live
+    that a game launched through Proton/umu-run ends up with
+    WINEPREFIX=<prefix_path>/pfx/ (Steam's standard compatdata/<id>/pfx/
+    layout), distinct from the bare prefix_path PlayDate itself passes to
+    umu-run for the client/launcher process. Missing this match meant a
+    running game's own exe was invisible to the scan entirely."""
+    results = []
+    try:
+        abs_prefix = os.path.abspath(prefix_path)
+        abs_prefix_pfx = os.path.join(abs_prefix, 'pfx')
+        for pid in os.listdir('/proc'):
+            if not pid.isdigit():
+                continue
+            try:
+                with open(f'/proc/{pid}/environ', 'rb') as f:
+                    environ = f.read()
+            except OSError:
+                continue
+            matched = False
+            for entry in environ.split(b'\0'):
+                if entry.startswith(b'WINEPREFIX='):
+                    try:
+                        proc_prefix = os.path.abspath(
+                            entry[len(b'WINEPREFIX='):].decode('utf-8', 'replace'))
+                        matched = proc_prefix in (abs_prefix, abs_prefix_pfx)
+                    except OSError:
+                        matched = False
+                    break
+            if not matched:
+                continue
+            try:
+                with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                    argv = f.read().split(b'\0')
+                argv0 = argv[0].decode('utf-8', 'replace') if argv and argv[0] else ''
+            except OSError:
+                argv0 = ''
+            results.append((int(pid), argv0))
+    except OSError:
+        pass
+    return results
+
+
+def _prefix_has_running_process(prefix_path):
+    """True if a Wine session is already live for this prefix."""
+    return bool(list_prefix_processes(prefix_path))
+
+
+def end_prefix_session(prefix_path, wine_bin):
+    """Cleanly end whatever Wine session is running for this prefix (e.g. an
+    idle launcher window) via the standard `wineserver -k` shutdown, then
+    wait for it to actually exit. Needed before bootstrapping a fresh
+    umu-run launch against a Proton prefix that already has a live session --
+    umu-run cannot safely join an existing session (see launch_protocol_url),
+    so ending the old one first is the only reliable way to deliver a new
+    deep link."""
+    import time
+    wineserver_bin = os.path.join(os.path.dirname(wine_bin), 'wineserver')
+    if not os.path.isfile(wineserver_bin):
+        wineserver_bin = 'wineserver'
+    env = dict(os.environ)
+    env['WINEPREFIX'] = prefix_path
+    try:
+        host_run([wineserver_bin, '-k'], env=env, timeout=10,
+                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        log.warning(f'wineserver -k failed for {prefix_path}: {e}')
+    for _ in range(20):
+        if not _prefix_has_running_process(prefix_path):
+            return
+        time.sleep(0.5)
+    log.warning(f'Wine session for {prefix_path} still running 10s after wineserver -k')
+
+
+def _log_output_async(proc, label):
+    """Drain a fire-and-forget subprocess's stdout/stderr in the background
+    and log it once it exits, so callers that can't block on the Popen (e.g.
+    launch_protocol_url, invoked from a request thread) still get visibility
+    into failures instead of the output silently vanishing."""
+    import threading
+
+    def _drain():
+        try:
+            out, err = proc.communicate()
+        except Exception:
+            return
+        if out and out.strip():
+            log.info(f'{label}: stdout: {out.decode("utf-8", errors="replace")[:2000]}')
+        if err and err.strip():
+            log.warning(f'{label}: stderr: {err.decode("utf-8", errors="replace")[:2000]}')
+
+    threading.Thread(target=_drain, daemon=True).start()

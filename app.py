@@ -44,7 +44,7 @@ logging.basicConfig(level=logging.WARNING, handlers=[_handler_file, _handler_str
 for _name in ('__main__', 'app', 'config', 'database', 'library', 'index',
               'scrapers', 'utils', 'images', 'imports', 'pagywosg',
               'hltb', 'date_import', 'system', 'pick', 'backup', 'updater', 'pop_sync',
-              'runners.proton', 'runners.launcher_installer', 'plugins'):
+              'runners.proton', 'runners.launcher_installer', 'runners.wine', 'plugins'):
     logging.getLogger(_name).setLevel(logging.INFO)
 
 log = logging.getLogger(__name__)
