@@ -68,9 +68,9 @@ CLAUDE.md
 *.zip
 
 # --- Plugins ---
-# No plugin ships as source in this repo anymore -- every one (the six
-# formerly-bundled "official" plugins, the four still-unfinished ones, and
-# any third-party plugin installed via zip/GitHub) lives in the writable
+# No plugin ships as source in this repo anymore -- every one (the
+# first-party "official" catalog plugins, the still-unfinished beta ones,
+# and any third-party plugin installed via zip/GitHub) lives in the writable
 # plugins dir instead (plugins._user_plugins_dir(), which for a source
 # checkout resolves to this same physical plugins/ folder -- BASE_DIR is the
 # project root here). Only plugins/__init__.py itself is ever tracked, so a

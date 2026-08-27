@@ -59,6 +59,9 @@ OFFICIAL_PLUGINS = [
      'platform_status': {'windows': 'working',  'linux': 'working', 'mac': 'untested'}},
     {'id': 'itch_io',    'name': 'itch.io',       'source': 'RobbyRatpoison/playdate-plugin-itch-io',
      'platform_status': {'windows': 'working',  'linux': 'working', 'mac': 'untested'}},
+    {'id': 'ubisoft',    'name': 'Ubisoft Connect', 'source': 'RobbyRatpoison/playdate-plugin-ubisoft',
+     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'},
+     'notes': {'linux': 'Library sync, install, launch, and uninstall all work with no sign-in. Signing in is still blocked by Ubisoft bot detection but is not required.'}},
 ]
 
 # Unfinished/unconfirmed plugins -- never auto-reinstalled by
@@ -67,9 +70,6 @@ OFFICIAL_PLUGINS = [
 # "the user wants this back" signal the way it is for OFFICIAL_PLUGINS. Purely
 # opt-in via the catalog, same install mechanism as everything else.
 BETA_PLUGINS = [
-    {'id': 'ubisoft',      'name': 'Ubisoft Connect', 'source': 'RobbyRatpoison/playdate-plugin-ubisoft',
-     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'},
-     'notes': {'linux': 'Library sync, install, launch, and uninstall all work with no sign-in. Signing in is still blocked by Ubisoft bot detection but is not required.'}},
     {'id': 'amazon_games', 'name': 'Amazon Games',    'source': 'RobbyRatpoison/playdate-plugin-amazon-games',
      'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
     {'id': 'battle_net',   'name': 'Battle.net',      'source': 'RobbyRatpoison/playdate-plugin-battle-net',
