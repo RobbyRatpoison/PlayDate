@@ -965,7 +965,7 @@
                     pluginsBtn.style.display = '';
                     installBtn.textContent = 'Update PlayDate Only';
                     pluginsHint.style.display = '';
-                    pluginsHint.textContent = 'Also available: ' + pendingPlugins.map(p => `${p.id} v${p.latest_version}`).join(', ');
+                    pluginsHint.textContent = 'Also available: ' + pendingPlugins.map(p => `${p.id} v${p.latest_version}${p.requires_core ? ` (needs PlayDate ${p.requires_core})` : ''}`).join(', ');
                 } else {
                     pluginsBtn.style.display = 'none';
                     installBtn.textContent = 'Install Now';

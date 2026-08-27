@@ -4830,19 +4830,35 @@ async function _checkPluginUpdates() {
     try {
         const r = await fetch('/api/plugins/check-updates');
         const updates = await r.json();
-        let anyUpdate = false;
+        let anyStandalone = false;  // installable on its own right now
+        let anyGated = false;       // update exists but needs a newer core first
         window._pendingPluginUpdates = [];
         for (const u of updates) {
-            if (u.update_available) {
-                anyUpdate = true;
-                window._pendingPluginUpdates.push({ id: u.id, source: u.source, latest_version: u.latest_version });
-                const el = document.getElementById(`plugin-update-${u.id}`);
-                if (el) el.innerHTML = ` &middot; <a href="#" style="color:var(--accent);" onclick="event.preventDefault();_updatePlugin('${escHtml(u.id)}','${escHtml(u.source || '')}')">v${escHtml(u.latest_version)} available</a>`;
+            if (!u.update_available) continue;
+            if (u.requires_core) anyGated = true; else anyStandalone = true;
+            // Keep gated updates in the pending list: the "Update PlayDate &
+            // Plugins" flow installs them against the target core version, which
+            // clears their min_core_version requirement. Only the standalone
+            // update link is gated -- installing it on its own would fail the
+            // install-time min_core_version check.
+            window._pendingPluginUpdates.push({ id: u.id, source: u.source, latest_version: u.latest_version, requires_core: u.requires_core || null });
+            const el = document.getElementById(`plugin-update-${u.id}`);
+            if (!el) continue;
+            if (u.requires_core) {
+                el.innerHTML = ` &middot; <span style="color:#ffa500;" title="Update PlayDate to at least ${escHtml(u.requires_core)} to get this. The &quot;Update PlayDate &amp; Plugins&quot; button on the update prompt does both at once.">v${escHtml(u.latest_version)} &middot; needs PlayDate ${escHtml(u.requires_core)}</span>`;
+            } else {
+                el.innerHTML = ` &middot; <a href="#" style="color:var(--accent);" onclick="event.preventDefault();_updatePlugin('${escHtml(u.id)}','${escHtml(u.source || '')}')">v${escHtml(u.latest_version)} available</a>`;
             }
         }
-        if (anyUpdate) {
-            document.getElementById('update-dot')?.classList.add('visible');
+        if (anyStandalone || anyGated) {
             document.getElementById('plugin-update-dot')?.style.setProperty('visibility', 'visible');
+        }
+        // The global hamburger dot only for updates the user can act on directly.
+        // A gated plugin update is surfaced through the PlayDate-update prompt
+        // instead (which lights this dot on its own when a core update exists);
+        // lighting it here too would be a dead end when no core update is available.
+        if (anyStandalone) {
+            document.getElementById('update-dot')?.classList.add('visible');
         }
     } catch(e) { /* silent */ }
 }

@@ -117,6 +117,8 @@ At startup, `load_all()` compares this against the running PlayDate version. If 
 
 This is also enforced earlier, at install/update time: installing a zip, a GitHub URL, or clicking Update in the Plugins modal all funnel through the same install path, which rejects the install outright with a user-facing error if your declared `min_core_version` exceeds the user's current PlayDate version — it won't silently install and then fail to load on next restart. If you're bumping `min_core_version` alongside new PlayDate release requirements, be aware that a plugin update released the same day as the PlayDate version it requires is deliberately not blocked by the "install updates then update core" bundled flow (it compares against the *target* core version being installed, not the currently-running one).
 
+If a newer release of an already-installed plugin raises `min_core_version` past the user's current PlayDate, the Plugins modal shows it as "vX.Y.Z · needs PlayDate A.B.C" (not a clickable standalone update), but still offers it through the combined **Update PlayDate & Plugins** button on the update prompt, which installs it against the newer core.
+
 ## __init__.py — the plugin class
 
 `plugins/__init__.py` calls `mod.plugin` on your package, so `__init__.py` must expose a `plugin` singleton.

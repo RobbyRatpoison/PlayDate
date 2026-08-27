@@ -21,4 +21,5 @@
 - Fixed non-Steam games with a separate launcher client (Ubisoft Connect, EA App) silently failing to launch when that client was already running in the background, with no error shown.
 - Fixed clicking Launch or Install multiple times in quick succession on a non-Steam game potentially leaving that platform's Wine setup in a broken state until the launcher process was manually closed.
 - Fixed EA/Ubisoft install status sometimes not updating right after a bulk rescrape.
+- A plugin update that needs a newer PlayDate version is now marked as such in the Plugins list instead of appearing as a normal update that fails when clicked; it can still be installed via "Update PlayDate & Plugins".
 - EA App games now install, launch, and uninstall by simply opening EA App itself, same as Lutris — fixes a "you don't have access" error EA Desktop threw for some classic titles when PlayDate tried to trigger them directly.
