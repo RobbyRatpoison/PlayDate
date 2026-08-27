@@ -187,9 +187,14 @@ def game_running():
     if platform.system() != 'Linux':
         return jsonify({'running': None})
     try:
-        result = subprocess.run(
+        # host_run so this sees the host's process list -- under Flatpak, Steam
+        # and its games run host-side in a separate PID namespace, where a
+        # sandboxed pgrep would always come back empty (reported as
+        # 'not running', worse than the null the caller knows to fall back on).
+        from runners.sandbox import host_run
+        result = host_run(
             ['pgrep', '-f', 'reaper SteamLaunch'],
-            capture_output=True, timeout=3
+            capture_output=True, timeout=3,
         )
         return jsonify({'running': result.returncode == 0})
     except Exception:

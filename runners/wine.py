@@ -7,7 +7,7 @@ import os
 import subprocess
 import threading
 
-from runners.sandbox import host_is_executable, host_popen, host_run, host_which
+from runners.sandbox import IN_FLATPAK, host_is_executable, host_popen, host_run, host_which
 
 log = logging.getLogger(__name__)
 
@@ -465,16 +465,29 @@ def list_prefix_processes(prefix_path):
     WINEPREFIX=<prefix_path>/pfx/ (Steam's standard compatdata/<id>/pfx/
     layout), distinct from the bare prefix_path PlayDate itself passes to
     umu-run for the client/launcher process. Missing this match meant a
-    running game's own exe was invisible to the scan entirely."""
+    running game's own exe was invisible to the scan entirely.
+
+    Inside Flatpak the scan reads the *host's* /proc via flatpak-spawn
+    --host: Wine runs host-side in a separate PID namespace (see
+    runners/sandbox.py), so the sandbox's own /proc only ever contains
+    PlayDate itself. Without this the whole already-running-session /
+    running-game detection silently no-ops under Flatpak."""
+    abs_prefix = os.path.abspath(prefix_path)
+    abs_prefix_pfx = os.path.join(abs_prefix, 'pfx')
+    if IN_FLATPAK:
+        return _list_prefix_processes_host(abs_prefix, abs_prefix_pfx)
+    return _scan_proc_for_prefix('/proc', abs_prefix, abs_prefix_pfx)
+
+
+def _scan_proc_for_prefix(proc_root, abs_prefix, abs_prefix_pfx):
+    """Walk a /proc tree, matching each process's WINEPREFIX env var."""
     results = []
     try:
-        abs_prefix = os.path.abspath(prefix_path)
-        abs_prefix_pfx = os.path.join(abs_prefix, 'pfx')
-        for pid in os.listdir('/proc'):
+        for pid in os.listdir(proc_root):
             if not pid.isdigit():
                 continue
             try:
-                with open(f'/proc/{pid}/environ', 'rb') as f:
+                with open(f'{proc_root}/{pid}/environ', 'rb') as f:
                     environ = f.read()
             except OSError:
                 continue
@@ -491,7 +504,7 @@ def list_prefix_processes(prefix_path):
             if not matched:
                 continue
             try:
-                with open(f'/proc/{pid}/cmdline', 'rb') as f:
+                with open(f'{proc_root}/{pid}/cmdline', 'rb') as f:
                     argv = f.read().split(b'\0')
                 argv0 = argv[0].decode('utf-8', 'replace') if argv and argv[0] else ''
             except OSError:
@@ -499,6 +512,37 @@ def list_prefix_processes(prefix_path):
             results.append((int(pid), argv0))
     except OSError:
         pass
+    return results
+
+
+def _list_prefix_processes_host(abs_prefix, abs_prefix_pfx):
+    """Flatpak: scan the host's /proc via flatpak-spawn --host. Emits one
+    `<pid>\\t<argv0>` line per matching process. Prefix values are passed as
+    positional args ($1/$2) so paths with spaces need no escaping."""
+    script = (
+        'for e in /proc/[0-9]*/environ; do '
+        '[ -r "$e" ] || continue; '
+        'd=${e%/environ}; pid=${d#/proc/}; '
+        'wp=$(tr "\\0" "\\n" 2>/dev/null < "$e" | sed -n "s/^WINEPREFIX=//p" | head -n1); '
+        'wp=${wp%/}; '
+        '[ "$wp" = "$1" ] || [ "$wp" = "$2" ] || continue; '
+        'a=$(tr "\\0" "\\n" 2>/dev/null < "$d/cmdline" | head -n1); '
+        'printf "%s\\t%s\\n" "$pid" "$a"; '
+        'done'
+    )
+    try:
+        r = subprocess.run(
+            ['flatpak-spawn', '--host', 'sh', '-c', script, 'sh', abs_prefix, abs_prefix_pfx],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10,
+        )
+    except Exception as e:
+        log.warning(f'list_prefix_processes: host /proc scan failed: {e}')
+        return []
+    results = []
+    for line in r.stdout.decode('utf-8', 'replace').splitlines():
+        pid, _, argv0 = line.partition('\t')
+        if pid.isdigit():
+            results.append((int(pid), argv0))
     return results
 
 
