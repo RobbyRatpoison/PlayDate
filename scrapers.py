@@ -2119,6 +2119,19 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
 
     _sweep_achievement_completion_status()
 
+    # Non-Steam metadata (e.g. EA's content_id) can enable a plugin's install
+    # detection to succeed for games it couldn't previously match -- tell
+    # each touched plugin to re-check now instead of waiting on its own
+    # startup sync or a filesystem event that may never come for a game
+    # already installed before this rescrape.
+    for platform in {p for p in platform_map.values() if p != 'steam'}:
+        plugin = _plugins_mod.get_for_platform(platform)
+        if plugin is not None and hasattr(plugin, 'resync_installed'):
+            try:
+                plugin.resync_installed()
+            except Exception as e:
+                log.error(f"[bulk_rescrape] resync_installed failed for {platform}: {e}")
+
     counts['aborted'] = backoff.aborted
     return counts
 
