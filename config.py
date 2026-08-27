@@ -1301,6 +1301,15 @@ def launcher_uninstall_route(platform_id):
     if prefix:
         try:
             if os.path.isdir(prefix):
+                # End any live Wine session first -- deleting the prefix out
+                # from under a running launcher/wineserver (or racing a fresh
+                # wineboot right after, as the Reinstall button does) leaves a
+                # corrupt prefix that loops on next launch.
+                try:
+                    from runners.wine import end_prefix_session
+                    end_prefix_session(prefix, cfg.get('wine_bin') or None)
+                except Exception as e:
+                    log.warning('Launcher uninstall [%s]: could not end Wine session: %s', platform_id, e)
                 shutil.rmtree(prefix)
                 removed = True
                 log.info('Launcher uninstall [%s]: deleted prefix %s', platform_id, prefix)

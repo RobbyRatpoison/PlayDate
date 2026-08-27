@@ -222,6 +222,19 @@ class MyPlugin:
         """
         pass
 
+    def on_launcher_installed(self, prefix, wine_bin):
+        """
+        Optional. Called by the generic launcher installer
+        (runners/launcher_installer.py) right after your launcher's installer
+        finishes, before the install is reported done. Use it to fix up the
+        freshly-installed launcher inside `prefix` — e.g. apply a vendor
+        self-update the installer staged but can't run under Wine, which would
+        otherwise loop the launcher on first start. `wine_bin` is the binary
+        the install used (may be None). Only fires for plugins with a
+        `launcher.installer` block in plugin.json.
+        """
+        pass
+
     def extra_info(self, appid, platform, platform_id):
         """
         Optional. Called by GET /api/game-extra-info/<appid>, for EVERY loaded

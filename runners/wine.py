@@ -507,30 +507,38 @@ def _prefix_has_running_process(prefix_path):
     return bool(list_prefix_processes(prefix_path))
 
 
-def end_prefix_session(prefix_path, wine_bin):
+def end_prefix_session(prefix_path, wine_bin=None):
     """Cleanly end whatever Wine session is running for this prefix (e.g. an
-    idle launcher window) via the standard `wineserver -k` shutdown, then
-    wait for it to actually exit. Needed before bootstrapping a fresh
-    umu-run launch against a Proton prefix that already has a live session --
-    umu-run cannot safely join an existing session (see launch_protocol_url),
-    so ending the old one first is the only reliable way to deliver a new
-    deep link."""
+    idle launcher window) via the standard `wineserver -k -w` shutdown, which
+    kills every process in the session and blocks until the server itself has
+    exited. Needed before:
+      - bootstrapping a fresh umu-run launch against a Proton prefix that
+        already has a live session (umu-run cannot safely join one -- see
+        launch_protocol_url), and
+      - deleting or re-bootstrapping a prefix (launcher uninstall/reinstall):
+        rmtree/wineboot over files a live wineserver still holds open leaves a
+        corrupt prefix behind.
+
+    `-w` is what makes this reliable inside Flatpak, where the process poll
+    below can't see host-side Wine processes (separate PID namespace)."""
     import time
-    wineserver_bin = os.path.join(os.path.dirname(wine_bin), 'wineserver')
-    if not os.path.isfile(wineserver_bin):
-        wineserver_bin = 'wineserver'
+    if wine_bin is None:
+        wine_bin = find_wine_binary() or ''
+    wineserver_bin = os.path.join(os.path.dirname(wine_bin), 'wineserver') if wine_bin else ''
+    if not wineserver_bin or not host_is_executable(wineserver_bin):
+        wineserver_bin = host_which('wineserver') or 'wineserver'
     env = dict(os.environ)
     env['WINEPREFIX'] = prefix_path
     try:
-        host_run([wineserver_bin, '-k'], env=env, timeout=10,
+        host_run([wineserver_bin, '-k', '-w'], env=env, timeout=20,
                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        log.warning(f'wineserver -k failed for {prefix_path}: {e}')
-    for _ in range(20):
+        log.warning(f'wineserver -k -w failed for {prefix_path}: {e}')
+    for _ in range(10):
         if not _prefix_has_running_process(prefix_path):
             return
         time.sleep(0.5)
-    log.warning(f'Wine session for {prefix_path} still running 10s after wineserver -k')
+    log.warning(f'Wine session for {prefix_path} still shows processes after wineserver -k -w')
 
 
 def _log_output_async(proc, label):

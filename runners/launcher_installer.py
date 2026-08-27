@@ -75,6 +75,19 @@ def _finish(platform_id, prefix, wine_bin):
     if wine_bin:
         cfg['wine_bin'] = wine_bin
     save_launcher_config(platform_id, cfg)
+
+    # Optional plugin fixup of the freshly-installed launcher in its prefix --
+    # e.g. Epic applies a launcher self-update the MSI staged but can't run
+    # itself under Wine, which otherwise loops the launcher on first start.
+    try:
+        import plugins
+        plugin = plugins.get_for_platform(platform_id)
+        if plugin is not None and hasattr(plugin, 'on_launcher_installed'):
+            _set(platform_id, 'verifying', 'Finalizing launcher setup...')
+            plugin.on_launcher_installed(prefix, wine_bin)
+    except Exception as e:
+        log.warning('Launcher install [%s]: on_launcher_installed hook failed: %s', platform_id, e)
+
     with _lock:
         _states[platform_id].update({
             'phase': 'done', 'detail': 'Launcher installed successfully.', 'done': True, 'error': None,
@@ -167,6 +180,15 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
     # completes cleanly every time. See runners.wine._build_run.
     _set(platform_id, 'creating_prefix', 'Creating Wine prefix...')
     try:
+        if os.path.isdir(prefix):
+            # A leftover Wine session (launcher still running, or a prior
+            # install that looped) holding this prefix open would make the
+            # wineboot below run against a half-live prefix. Clear it first.
+            try:
+                from runners.wine import end_prefix_session
+                end_prefix_session(prefix, wb)
+            except Exception as e:
+                log.warning('Launcher install [%s]: could not end stale Wine session: %s', platform_id, e)
         os.makedirs(prefix, exist_ok=True)
         cmd_prefix, env = _build_run(prefix, wb, extra_env)
         env['WINEARCH'] = winearch
