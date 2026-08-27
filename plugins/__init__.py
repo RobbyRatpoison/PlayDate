@@ -67,7 +67,8 @@ OFFICIAL_PLUGINS = [
 # opt-in via the catalog, same install mechanism as everything else.
 BETA_PLUGINS = [
     {'id': 'ubisoft',      'name': 'Ubisoft Connect', 'source': 'RobbyRatpoison/playdate-plugin-ubisoft',
-     'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
+     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'},
+     'notes': {'linux': 'Library sync, install, launch, and uninstall all work with no sign-in. Signing in is still blocked by Ubisoft bot detection but is not required.'}},
     {'id': 'amazon_games', 'name': 'Amazon Games',    'source': 'RobbyRatpoison/playdate-plugin-amazon-games',
      'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
     {'id': 'battle_net',   'name': 'Battle.net',      'source': 'RobbyRatpoison/playdate-plugin-battle-net',

@@ -10,7 +10,7 @@
 - Fixed some Wine-based plugin installs hanging indefinitely during setup.
 - Fixed some Wine-based plugin installs never finishing after the installer itself had already completed.
 - Fixed winetricks dependency installation failing for some Proton-based Wine installs.
-- The Ubisoft Connect plugin now works on Linux — library sync, install, launch, and uninstall — with no sign-in required. Games owned only through a linked Steam account are skipped, since Ubisoft Connect can't install or launch those itself.
+- The Ubisoft Connect plugin now works on Linux — library sync, install, launch, and uninstall — with no sign-in required. It likely works on Windows too and is ready for testing there. Games owned only through a linked Steam account are skipped, since Ubisoft Connect can't install or launch those itself.
 - Fixed cover art on the Home and Pick 6 pages not refreshing after art changes until a full cache clear.
 - Fixed EA/Ubisoft install status sometimes not updating right after a bulk rescrape.
 - Fixed "Reinstall Launcher" for a plugin sometimes leaving the launcher in a broken restart loop; the old Wine session is now shut down before the prefix is deleted or rebuilt.
