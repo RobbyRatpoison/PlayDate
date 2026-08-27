@@ -2045,12 +2045,30 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
 
             platform = platform_map.get(appid, 'steam')
             try:
-                plugin = _plugins_mod.get_for_platform(platform)
-                if plugin is not None and hasattr(plugin, 'rescrape'):
-                    # ── Plugin-handled game ───────────────────────────────────
-                    meta = plugin.rescrape(appid)
-                    if meta:
-                        update_game_data(appid, **meta)
+                if platform != 'steam':
+                    # ── Non-Steam game ───────────────────────────────────────
+                    plugin = _plugins_mod.get_for_platform(platform)
+                    meta = {}
+                    if plugin is not None and hasattr(plugin, 'rescrape'):
+                        meta = plugin.rescrape(appid) or {}
+
+                    # Borrow the Steam-only fields (tags, review score, ...) the
+                    # plugin can't provide -- gap-fill only, plugin data wins.
+                    # Shares the Steam rate-limit gate with the Steam branch.
+                    if not backoff.wait_ready(cancel_event):
+                        return
+                    try:
+                        from metadata import backfill_metadata
+                        backfilled = backfill_metadata(appid) or {}
+                    except RateLimitedError:
+                        raise
+                    except Exception as e:
+                        log.warning(f"[bulk_rescrape] metadata backfill failed for {appid}: {e}")
+                        backfilled = {}
+
+                    combined = {**backfilled, **meta}
+                    if combined:
+                        update_game_data(appid, **combined)
                         with lock:
                             counts['done'] += 1
                         if progress_cb:

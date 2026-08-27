@@ -177,6 +177,9 @@
                 <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--accent);">
                     Sync Data
                 </button>
+                <button type="button" onclick="fillMetadataFromSteam()" id="meta-fill-btn" class="nav-btn" data-modal-row="0" style="display:none; height: auto; padding: 0.5rem 1rem; border: 1px solid var(--border);" title="Look up this game on Steam (via PCGamingWiki) and fill in any missing tags, review score, genres, developer/publisher and release date.">
+                    Fill from Steam
+                </button>
                 <button type="button" onclick="openInstallDir()" id="install-dir-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--border);">
                     Open Folder
                 </button>
@@ -871,6 +874,12 @@ const achLink = document.getElementById('achievements-link');
             metaBtn.textContent          = _api?.sync_label || 'Sync Steam Data';
             metaBtn.dataset.platform     = game.platform || 'steam';
         }
+        const fillBtn = document.getElementById('meta-fill-btn');
+        if (fillBtn) {
+            fillBtn.style.display = isSteam ? 'none' : '';
+            fillBtn.textContent   = 'Fill from Steam';
+            fillBtn.disabled      = false;
+        }
         ['steam-help-link', 'achievements-link'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = isSteam ? '' : 'none';
@@ -1281,6 +1290,60 @@ const achLink = document.getElementById('achievements-link');
             btn.textContent = "Failed";
         } finally {
             setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+        }
+    }
+
+    // Non-Steam games: look the game up on Steam (PCGamingWiki first) and fill
+    // in whatever metadata fields are still blank. Only touches the fields the
+    // server reports it filled, so in-progress edits to other fields survive.
+    async function fillMetadataFromSteam(force) {
+        const appid = document.getElementById('edit-appid').value;
+        const btn = document.getElementById('meta-fill-btn');
+        const orig = force ? 'Fill from Steam' : btn.textContent;
+        btn.textContent = 'Looking up…';
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/api/metadata/backfill/${appid}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ force: !!force }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.status === 429) { btn.textContent = 'Steam busy — retry'; return; }
+            if (data.status !== 'success') { btn.textContent = data.message || 'Failed'; return; }
+
+            const g = data.data || {};
+            const setters = {
+                developers:          () => safeSet('edit-dev', g.developers),
+                publishers:          () => safeSet('edit-pub', g.publishers),
+                release_date:        () => safeSet('edit-rel', g.release_date),
+                is_free:             () => safeSet('edit-is-free', g.is_free ?? 0),
+                tags:                () => pillInputSet('edit-tags',       'edit-tags-box',       g.tags),
+                genres:              () => pillInputSet('edit-genres',     'edit-genres-box',     g.genres),
+                categories:          () => pillInputSet('edit-categories', 'edit-categories-box', g.categories),
+                review_score:        () => safeSet('edit-review-score', g.review_score),
+                review_percentage:   () => safeSet('edit-review-percentage', g.review_percentage),
+                weighted_percentage: () => safeSet('edit-weighted-pct', g.weighted_percentage),
+                total_reviews:       () => safeSet('edit-total-reviews', g.total_reviews),
+                positive_reviews:    () => safeSet('edit-positive-reviews', g.positive_reviews),
+            };
+            (data.filled || []).forEach(f => setters[f] && setters[f]());
+
+            if (data.outcome === 'no_match') {
+                btn.textContent = 'No Steam match';
+            } else if (data.outcome === 'unconfirmed') {
+                btn.textContent = 'Uncertain match';
+                confirm('Found a possible Steam match, but the name is only a partial fit. Fill from it anyway?')
+                    .then(ok => { if (ok) fillMetadataFromSteam(true); });
+            } else if ((data.filled || []).length) {
+                btn.textContent = `Filled ${data.filled.length} field${data.filled.length === 1 ? '' : 's'}`;
+            } else {
+                btn.textContent = 'Nothing was missing';
+            }
+        } catch (e) {
+            btn.textContent = 'Failed';
+        } finally {
+            setTimeout(() => { btn.textContent = orig || 'Fill from Steam'; btn.disabled = false; }, 2600);
         }
     }
 

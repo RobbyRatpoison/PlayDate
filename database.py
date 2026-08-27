@@ -141,7 +141,8 @@ def init_db():
         'platform_slug': 'TEXT',         # Platform store slug for building store URLs (e.g. GOG slug 'the_witcher_3_wild_hunt')
         'platform_ns': 'TEXT',           # Platform-specific namespace (e.g. Epic catalog namespace)
         'platform_appname': 'TEXT',      # Platform-internal app/launch name distinct from store slug (e.g. Epic appName)
-        'steam_appid': 'INTEGER',        # Steam AppID resolved via PCGW for non-Steam games (NULL = not yet looked up)
+        'steam_appid': 'INTEGER',        # Steam AppID resolved via PCGW/Steam-search for non-Steam games (NULL = not yet looked up); see metadata.py
+        'meta_backfill_fetched': 'TEXT', # non-Steam metadata backfill outcome: '0'/NULL = never, YYYY-MM-DD = done, 'no_match', 'unconfirmed'
         'install_path': 'TEXT',          # Local install directory (non-Steam games)
         'wine_prefix': 'TEXT',           # Path to Wine/Proton prefix (Windows games)
         'runner_path': 'TEXT',           # Path to Proton binary used for this game

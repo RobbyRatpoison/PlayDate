@@ -37,6 +37,7 @@ Flask + pywebview hybrid. Waitress WSGI (8 threads). `main.py` starts Flask in a
 | `utils.py` | Steam path detection, install sync, filesystem watcher, VDF parsing, `validate_user_path()` |
 | `images.py` | `images_bp` — cover art: Steam manifest → CDN → SteamGridDB fallback chain |
 | `hltb.py` | `hltb_bp` — HowLongToBeat match/select/confirm routes (scraping itself lives in `scrapers.py`) |
+| `metadata.py` | `metadata_bp` — non-Steam metadata backfill: resolve to a Steam AppID (PCGamingWiki → Steam search), gap-fill from the Steam scrapers |
 | `date_import.py` | `date_import_bp` — pending-date polling + bulk date import queue for `steam_date_import.user.js` |
 | `system.py` | `system_bp` — launch games, open paths in the OS file manager, process-running checks |
 | `backup.py` | `backup_bp` — full backup/restore zip, CSV export |
@@ -128,6 +129,14 @@ Three types: vertical capsule, horizontal header, icon. Steam asset manifest fet
 - **Icon**: SGDB icon → Steam hash
 
 All JPEG 95; RGBA/WEBP converted to RGB. Cached locally; not re-fetched unless deleted.
+
+### Non-Steam Metadata Backfill (`metadata.py`, added v1.9.0)
+
+`metadata_bp` — fills the fields non-Steam plugins can't provide (tags, review score, categories, and any missing genres/dev/pub/release date) by resolving the game to a Steam AppID and reusing the *existing* Steam scrapers.
+
+- **`resolve_steam_appid(name) -> (appid|None, confidence)`**: PCGamingWiki first (`list=search` for the page → `action=parse&section=0` → regex `|steam appid` out of the Infobox game wikitext; follows one `#REDIRECT` hop). Falls back to Steam `storesearch` gated by a stdlib `difflib` ratio. Confidence: `'pcgw'` / `'confirmed'` (>= 0.90) apply immediately; `'maybe'` (0.72–0.90) is stored as `unconfirmed`; `'retry'` means PCGW was throttled and there was only a weak Steam guess — record nothing, try next run. **PCGW throttles hard** — `_pcgw_get()` serialises requests (1.5s min gap) and stands down for 180s on a 429.
+- **`backfill_metadata(appid, *, force=False)`**: resolves + caches `games.steam_appid`, runs `fetch_store_data`/`fetch_review_data`/`fetch_tag_data`, returns a dict for `update_game_data` containing **only fields currently empty on the game** (plugin data always wins). Never touches name, achievements, playtime, or art. Records the outcome in `games.meta_backfill_fetched` (`0`/NULL = never, YYYY-MM-DD = done, `no_match`, `unconfirmed`). `force=True` applies a `maybe` match and re-runs an already-done game.
+- **Runs from**: `bulk_rescrape_games()` for every non-Steam game (after `plugin.rescrape()`, sharing the Steam rate-limit gate), and `POST /api/metadata/backfill/<appid>` — the edit modal's "Fill from Steam" button (non-Steam games only).
 
 ### Filesystem Watcher
 On ACF change, resets all Steam `installed` flags to 0 then bulk-sets found appids to 1. Filters out Proton/SteamLinuxRuntime/Steamworks entries by reading ACF content.
