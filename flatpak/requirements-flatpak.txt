@@ -29,3 +29,5 @@ RapidFuzz==3.14.3
 python-dotenv==1.2.2
 watchdog==6.0.0
 vdf==3.4
+# Ubisoft Connect plugin (config_parser.py) -- see note in ../requirements.txt
+PyYAML==6.0.3

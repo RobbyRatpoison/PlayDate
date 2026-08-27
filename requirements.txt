@@ -37,3 +37,8 @@ RapidFuzz==3.14.3
 python-dotenv==1.2.2
 watchdog==6.0.0
 vdf==3.4
+# Used only by the Ubisoft Connect plugin (config_parser.py) to decode the
+# YAML game descriptors in Ubisoft Connect's local catalog cache. Kept here
+# because plugins have no per-plugin dependency mechanism -- a core grep for
+# `import yaml` won't find it. Don't drop it in a "manually from imports" pass.
+PyYAML==6.0.3
