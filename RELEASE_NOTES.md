@@ -16,3 +16,4 @@
 - Fixed "Reinstall Launcher" for a plugin sometimes leaving the launcher in a broken restart loop; the old Wine session is now shut down before the prefix is deleted or rebuilt.
 - A plugin update that needs a newer PlayDate version is now marked as such in the Plugins list instead of appearing as a normal update that fails when clicked; it can still be installed via "Update PlayDate & Plugins".
 - EA App games now install, launch, and uninstall by opening EA App itself, the same approach Lutris uses.
+- Updated a bundled networking library (used for HowLongToBeat lookups) to pick up security fixes.
