@@ -1593,7 +1593,12 @@ if __name__ == '__main__':
     # 7. Start webview event loop (icon= sets _NET_WM_ICON via pywebview's renderer)
     log.info("Launching PlayDate window")
     _icon = ICON_PATH if os.path.exists(ICON_PATH) else None
-    webview.start(debug=False, storage_path=os.path.join(BASE_DIR, 'webview_storage'), icon=_icon)
+    # Leave pywebview in its default private_mode (ephemeral, memory-only
+    # WebKit context, no on-disk cookies/localStorage). Persisting storage
+    # was tried as part of getting the Ubisoft login popup past its bot
+    # detection and didn't help -- that block is DataDome-side -- so there's
+    # no reason to keep writing a browser profile to disk.
+    webview.start(debug=False, icon=_icon)
 
     # 8. Clean exit
     log.info("Window closed. PlayDate exiting.")
