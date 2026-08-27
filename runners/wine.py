@@ -346,7 +346,8 @@ def create_prefix(prefix_path, wine_bin=None):
     )
 
 
-def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None, cwd=None):
+def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None, cwd=None,
+                  restart_session_if_running=False):
     """
     Launch a Windows executable inside a Wine prefix.
 
@@ -360,18 +361,14 @@ def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None, cw
                   that omitting this breaks a real game, which failed to
                   find its own relative-path data files when the process
                   inherited PlayDate's cwd instead)
+    restart_session_if_running : see launch_protocol_url(). Default False --
+                  a live session here is usually another running game that
+                  must not be killed. Pass True only when this call is meant
+                  to replace a specific launcher client whose session is safe
+                  to end first (Ubisoft Connect).
 
     Returns a subprocess.Popen object (caller should not wait -- game runs in background).
     Raises RuntimeError if no Wine binary is available.
-
-    Same already-running-session handling as launch_protocol_url() (see its
-    docstring for the deadlock this avoids) -- confirmed live that a native
-    game launch into a prefix with EA Desktop already running spawned a
-    second umu-run container whose wineserver blocked forever in
-    do_lock_file_wait, silently doing nothing (no error, no window) while
-    the original session stayed healthy. Since native launch is specifically
-    for bypassing the launcher client, ending its session first to free the
-    prefix is correct here, not just a workaround.
     """
     if wine_bin is None:
         wine_bin = find_wine_binary()
@@ -383,30 +380,50 @@ def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None, cw
 
     with _get_prefix_lock(prefix_path):
         already_running = _prefix_has_running_process(prefix_path)
-        if already_running and not is_proton_wine(wine_bin):
-            env = _prefer_native_wayland(dict(os.environ))
+        proton = is_proton_wine(wine_bin)
+
+        if not already_running:
+            cmd_prefix, env = _build_run(prefix_path, wine_bin, env_extra)
+            log.info(f'Wine launch: {" ".join(cmd_prefix)} {exe}  (prefix={prefix_path}, cwd={cwd})')
+        elif restart_session_if_running and proton:
+            log.info(f'Wine launch: {exe} -- ending the existing Proton session for '
+                     f'{prefix_path} first, then cold-starting')
+            end_prefix_session(prefix_path, wine_bin)
+            cmd_prefix, env = _build_run(prefix_path, wine_bin, env_extra)
+        else:
+            # Live session, caller does not want it killed (default). For a
+            # plain game prefix that live session is another running game --
+            # never kill it. Add this process to the session with a plain
+            # `wine` call (no container). PROVISIONAL for Proton: verify the
+            # exe actually runs/renders joined to a umu-started session
+            # without the Steam Runtime around it; if not, that caller needs
+            # restart_session_if_running=True.
+            env = build_proton_env(wine_bin) if proton else _prefer_native_wayland(dict(os.environ))
             env['WINEPREFIX'] = prefix_path
             if env_extra:
                 env.update(env_extra)
             cmd_prefix = [wine_bin]
-            log.info(f'Wine launch: {exe}  (prefix={prefix_path}, cwd={cwd}) direct — session already running')
-        else:
-            if already_running:
-                log.info(f'Wine launch: {exe} -- ending the existing Proton session for '
-                         f'{prefix_path} first (umu-run cannot safely join a live session)')
-                end_prefix_session(prefix_path, wine_bin)
-            cmd_prefix, env = _build_run(prefix_path, wine_bin, env_extra)
-            log.info(f'Wine launch: {" ".join(cmd_prefix)} {exe}  (prefix={prefix_path}, cwd={cwd})')
+            log.info(f'Wine launch: {exe}  (prefix={prefix_path}, cwd={cwd}) '
+                     f'direct into live session (proton={proton})')
 
         cmd = cmd_prefix + [exe] + (args or [])
         return host_popen(cmd, env=env, cwd=cwd)
 
 
-def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None):
+def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None,
+                        restart_session_if_running=False):
     """
     Open a Windows protocol URL (e.g. com.epicgames.launcher://...) inside a Wine
     prefix using `wine start <url>`. Returns a subprocess.Popen object.
     Raises RuntimeError if no Wine binary is found.
+
+    restart_session_if_running: when a Wine session is already live for this
+        prefix AND it's a Proton wine_bin, end that session and cold-start a
+        fresh one before delivering the URL. Default False -- most launchers
+        (Epic, EA) accept a deep link into the running instance via a plain
+        `wine start`, and for a plain game prefix a live session is another
+        running game that must not be killed. Set True only for a launcher
+        confirmed not to accept deep links while running (Ubisoft Connect).
     """
     if wine_bin is None:
         wine_bin = find_wine_binary()
@@ -415,40 +432,47 @@ def launch_protocol_url(prefix_path, url, wine_bin=None, env_extra=None):
 
     with _get_prefix_lock(prefix_path):
         already_running = _prefix_has_running_process(prefix_path)
-        if already_running and not is_proton_wine(wine_bin):
-            # A Wine session is already live for this prefix (e.g. the launcher
-            # is already open) -- signal it directly with a plain wine_bin call
-            # instead of bootstrapping a fresh umu-run container. Confirmed live
-            # that routing this through umu-run here deadlocks: the new
-            # container's wineserver blocks in do_lock_file_wait on the existing
-            # session's startup lock file instead of just delivering the deep
-            # link, so nothing happens until the running instance is closed.
-            # Only safe for a self-contained (non-Proton) build -- a bare Proton
-            # wine_bin can't run anything standalone (confirmed live: it crashes
-            # loading vkd3d/wined3d without the Steam Runtime umu-run provides),
-            # so a Proton prefix always needs the umu-run path below regardless
-            # of whether that risks the same deadlock.
-            env = _prefer_native_wayland(dict(os.environ))
-            env['WINEPREFIX'] = prefix_path
-            if env_extra:
-                env.update(env_extra)
-            cmd = [wine_bin, 'start', url]
-            log.info(f'Wine protocol launch: {url}  (prefix={prefix_path}) direct — session already running')
-        else:
-            if already_running:
-                # A bare Proton wine_bin can't signal a running session directly
-                # (crashes loading vkd3d/wined3d standalone) and a fresh umu-run
-                # invocation deadlocks trying to join the live one (see above).
-                # Ending the old session first is the only reliable way through --
-                # confirmed live that this is exactly what happens when the user
-                # manually closes the launcher and a fresh one opens correctly.
-                log.info(f'Wine protocol launch: {url} -- ending the existing Proton session for '
-                         f'{prefix_path} first (umu-run cannot safely join a live session)')
-                end_prefix_session(prefix_path, wine_bin)
+        proton = is_proton_wine(wine_bin)
+
+        if not already_running:
+            # Cold start -- full container (umu-run for Proton).
             cmd_prefix, env = _build_run(prefix_path, wine_bin, env_extra)
             cmd = cmd_prefix + ['start', url]
             log.info(f'Wine protocol launch: {url}  (prefix={prefix_path})'
                      + (' via umu-run' if cmd_prefix[0] != wine_bin else ''))
+        elif restart_session_if_running and proton:
+            # Ubisoft Connect's Chromium UI: confirmed live that delivering a
+            # deep link to an already-running Proton session does not work by
+            # any lightweight means (bare `wine start` can't signal it, a fresh
+            # umu-run invocation deadlocks in do_lock_file_wait joining the live
+            # session). Ending the old session and cold-starting is the only
+            # reliable path -- and correct here, since Ubisoft re-forwards the
+            # link to the fresh launcher on startup.
+            log.info(f'Wine protocol launch: {url} -- ending the existing Proton session for '
+                     f'{prefix_path} first, then cold-starting')
+            end_prefix_session(prefix_path, wine_bin)
+            cmd_prefix, env = _build_run(prefix_path, wine_bin, env_extra)
+            cmd = cmd_prefix + ['start', url]
+        else:
+            # A session is already live and the caller does NOT want it killed
+            # (default -- Epic/EA don't need a restart to receive a deep link,
+            # and for a plain game prefix a "running session" is another game
+            # that must not be killed). Signal the live session directly with a
+            # lightweight `wine start` -- no container. For Proton this uses
+            # build_proton_env for the DLL/lib paths but does not go through
+            # umu-run (which would deadlock).
+            # PROVISIONAL for Proton: `wine start <url>` is IPC to the running
+            # wineserver and shouldn't need the Steam Runtime the way a real
+            # standalone launch does -- but verify live that the deep link
+            # actually reaches the running launcher. If it doesn't, that
+            # plugin should pass restart_session_if_running=True.
+            env = build_proton_env(wine_bin) if proton else _prefer_native_wayland(dict(os.environ))
+            env['WINEPREFIX'] = prefix_path
+            if env_extra:
+                env.update(env_extra)
+            cmd = [wine_bin, 'start', url]
+            log.info(f'Wine protocol launch: {url}  (prefix={prefix_path}) '
+                     f'direct into live session (proton={proton})')
 
         proc = host_popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         _log_output_async(proc, f'Wine protocol launch ({url})')

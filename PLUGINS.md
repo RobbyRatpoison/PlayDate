@@ -594,7 +594,7 @@ from runners.wine import find_wine_binary, list_prefixes, create_prefix, run_in_
 launch_protocol_url(prefix_path, url, wine_bin=None)
 ```
 
-`launch_protocol_url()` and `run_in_prefix()` already handle Proton/umu-run routing, an already-running-session for the same prefix, and native-Wayland preference internally — plugins don't need to special-case any of that themselves.
+`launch_protocol_url()` and `run_in_prefix()` already handle Proton/umu-run routing, an already-running-session for the same prefix, and native-Wayland preference internally — plugins don't need to special-case any of that themselves. By default, when a session is already live they deliver into it with a plain `wine start`/`wine` call and never kill it. Pass `restart_session_if_running=True` only if your launcher is confirmed *not* to accept a deep link while running (Ubisoft Connect is the only one so far) — that ends the live session and cold-starts a fresh one.
 
 If your plugin needs to know whether a real game (not just an idle launcher client) is currently running under its prefix before doing something disruptive (e.g. before ending/restarting a Wine session), use `runners.wine.list_prefix_processes(prefix_path)` — it returns `[(pid, argv0), ...]` for every process tied to that prefix, correctly matching both the bare prefix path and its Proton `<prefix>/pfx` subdirectory. Match `argv0` against your own game-install-path convention rather than an exclusion list of known launcher process names — an exclusion list breaks the moment an unrelated process (e.g. a container helper) also carries the prefix's `WINEPREFIX` env var.
 

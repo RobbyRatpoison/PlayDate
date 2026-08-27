@@ -47,7 +47,8 @@ _incompatible_plugins: dict = {}
 # detail rather than something a plugin author browsing that repo needs.
 OFFICIAL_PLUGINS = [
     {'id': 'ea_app',     'name': 'EA App',        'source': 'RobbyRatpoison/playdate-plugin-ea-app',
-     'platform_status': {'windows': 'untested', 'linux': 'broken',  'mac': 'untested'}},
+     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'},
+     'notes': {'linux': 'Install, launch, and uninstall open EA App itself (same as Lutris); EA App runs under Wine via the bundled installer.'}},
     {'id': 'epic_games', 'name': 'Epic Games',    'source': 'RobbyRatpoison/playdate-plugin-epic-games',
      'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'}},
     {'id': 'gog',        'name': 'GOG',           'source': 'RobbyRatpoison/playdate-plugin-gog',
