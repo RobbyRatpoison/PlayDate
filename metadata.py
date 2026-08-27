@@ -9,12 +9,20 @@ game to a Steam AppID and borrows the rest from the existing Steam scraper
 pipeline (`scrapers.fetch_store_data` / `fetch_review_data` / `fetch_tag_data`).
 
 Resolution order:
-  1. PCGamingWiki — search for the page, parse `|steam appid` out of the
-     Infobox game template wikitext. Authoritative when it has an entry.
+  1. PCGamingWiki — search for the page, parse the {{Infobox game}} wikitext.
+     If it has a `|steam appid`, use that (best case → full Steam data below).
+     Otherwise still keep what the infobox has: developers, publishers,
+     genres, modes (→ Single-player / Multi-player categories), and the
+     earliest release date. This is what covers store-exclusive classics
+     that were never on Steam at all.
   2. Steam store search — `store/api/storesearch`, best result gated by a
-     stdlib difflib name-similarity ratio. >= HIGH → treated as confirmed;
-     LOW..HIGH → stored as `unconfirmed` (needs a manual confirm before
-     anything is written); below LOW → no match.
+     stdlib difflib name-similarity ratio. >= _SIM_CONFIRMED → confirmed;
+     _SIM_MAYBE.._SIM_CONFIRMED → `unconfirmed` (needs a manual confirm before
+     anything is written); below → no match.
+
+When a Steam AppID is resolved, `scrapers.fetch_store_data / fetch_review_data
+/ fetch_tag_data` provide the metadata (tags + reviews included); the PCGW box
+only backfills whatever Steam happened to be missing.
 
 Only ever *fills gaps* — a field the plugin already populated is left alone.
 Never touches name, achievements, playtime, or art. The resolved Steam AppID
@@ -77,10 +85,22 @@ def _similar(a, b):
 # ── PCGamingWiki ─────────────────────────────────────────────────────────────
 
 _PCGW_API = 'https://www.pcgamingwiki.com/w/api.php'
-# `|steam appid = 12345` in the Infobox game template. `steam appid side` (DLC /
-# alternate editions) uses the same prefix, so require the `=` right after.
+# Fields inside the {{Infobox game}} template wikitext. `steam appid side` (DLC /
+# alternate editions) shares the prefix, so `steam appid` needs the `=` right after.
 _INFOBOX_APPID_RE = re.compile(r'\|\s*steam[ _]?appid\s*=\s*(\d+)', re.I)
-_REDIRECT_RE = re.compile(r'^\s*#redirect\s*\[\[\s*([^\]|#]+)', re.I)
+_GOGID_RE         = re.compile(r'\|\s*gogcom id\s*=\s*(\d+)', re.I)
+_REDIRECT_RE      = re.compile(r'^\s*#redirect\s*\[\[\s*([^\]|#]+)', re.I)
+# {{Infobox game/row/developer|Name}} / {{...publisher|Name|note}} -- first param
+_DEV_ROW_RE  = re.compile(r'\{\{\s*Infobox game/row/developer\s*\|\s*([^}|]+?)\s*(?:\||\}\})', re.I)
+_PUB_ROW_RE  = re.compile(r'\{\{\s*Infobox game/row/publisher\s*\|\s*([^}|]+?)\s*(?:\||\}\})', re.I)
+# {{Infobox game/row/taxonomy/genres | A, B }} -- one comma-separated param
+_TAX_GENRES_RE = re.compile(r'\{\{\s*Infobox game/row/taxonomy/genres\s*\|\s*([^}]*?)\s*\}\}', re.I)
+_TAX_MODES_RE  = re.compile(r'\{\{\s*Infobox game/row/taxonomy/modes\s*\|\s*([^}]*?)\s*\}\}', re.I)
+# {{Infobox game/row/date|Platform|Date string|wrapper=...}} -- second param
+_DATE_ROW_RE = re.compile(r'\{\{\s*Infobox game/row/date\s*\|\s*[^|]+\|\s*([^}|]+?)\s*(?:\||\}\})', re.I)
+
+# PCGamingWiki's "modes" taxonomy -> the closest Steam category label.
+_MODE_TO_CATEGORY = {'singleplayer': 'Single-player', 'multiplayer': 'Multi-player'}
 
 # PCGamingWiki throttles hard -- confirmed live it 429s after ~20 quick hits.
 # Serialise our requests with a minimum gap, and on a 429 stand down entirely
@@ -155,30 +175,76 @@ def _pcgw_section0_wikitext(title, session):
     return data.get('parse', {}).get('wikitext', {}).get('*', '')
 
 
-def _pcgw_steam_appid(name, session):
-    """Steam AppID (int) from the PCGamingWiki infobox for `name`; None if PCGW
-    has the game but no Steam AppID; _PCGW_UNAVAILABLE if PCGW couldn't answer."""
+def _pcgw_parse_date(s):
+    """PCGamingWiki dates come at varying precision ('March 28, 1997',
+    'September 1995', '1994'). Return a UTC unix timestamp for the start of
+    that period, or None."""
+    from datetime import datetime, timezone
+    s = re.sub(r'<ref.*', '', s or '', flags=re.S).strip().strip(',').strip()
+    for fmt in ('%B %d, %Y', '%b %d, %Y', '%B %Y', '%b %Y', '%Y'):
+        try:
+            return int(datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp())
+        except ValueError:
+            continue
+    return None
+
+
+def _pcgw_infobox(name, session):
+    """Parsed {{Infobox game}} for `name` -- a dict with any of
+    `steam_appid`, `gog_id`, `developers`, `publishers`, `genres`,
+    `categories`, `release_date` that PCGamingWiki has (comma-joined, no
+    spaces, matching the DB convention). None if there's no matching page;
+    _PCGW_UNAVAILABLE if PCGW couldn't answer."""
     title = _pcgw_find_page(name, session)
     if title is _PCGW_UNAVAILABLE:
         return _PCGW_UNAVAILABLE
     if not title:
         return None
-    wikitext = _pcgw_section0_wikitext(title, session)
-    if wikitext is _PCGW_UNAVAILABLE:
+    wt = _pcgw_section0_wikitext(title, session)
+    if wt is _PCGW_UNAVAILABLE:
         return _PCGW_UNAVAILABLE
-    # Many name variants ("Dragon Age 2", "Dragon Age Origins") are redirect
-    # stubs -- follow one hop to the real page.
-    redir = _REDIRECT_RE.match(wikitext)
+    # Name variants ("Dragon Age 2", "Dragon Age Origins") are redirect stubs.
+    redir = _REDIRECT_RE.match(wt)
     if redir:
         title = redir.group(1).strip()
-        wikitext = _pcgw_section0_wikitext(title, session)
-        if wikitext is _PCGW_UNAVAILABLE:
+        wt = _pcgw_section0_wikitext(title, session)
+        if wt is _PCGW_UNAVAILABLE:
             return _PCGW_UNAVAILABLE
-    m = _INFOBOX_APPID_RE.search(wikitext)
+
+    box = {'_title': title}
+
+    m = _INFOBOX_APPID_RE.search(wt)
     if m:
-        log.info('PCGW: %r -> %s (steam appid %s)', name, title, m.group(1))
-        return int(m.group(1))
-    return None
+        box['steam_appid'] = int(m.group(1))
+    m = _GOGID_RE.search(wt)
+    if m:
+        box['gog_id'] = m.group(1)
+
+    devs = list(dict.fromkeys(d.strip() for d in _DEV_ROW_RE.findall(wt) if d.strip()))
+    pubs = list(dict.fromkeys(p.strip() for p in _PUB_ROW_RE.findall(wt) if p.strip()))
+    if devs:
+        box['developers'] = ','.join(devs)
+    if pubs:
+        box['publishers'] = ','.join(pubs)
+
+    gm = _TAX_GENRES_RE.search(wt)
+    if gm and gm.group(1).strip():
+        box['genres'] = ','.join(g.strip() for g in gm.group(1).split(',') if g.strip())
+    mm = _TAX_MODES_RE.search(wt)
+    if mm and mm.group(1).strip():
+        cats = list(dict.fromkeys(
+            c for c in (_MODE_TO_CATEGORY.get(x.strip().lower()) for x in mm.group(1).split(','))
+            if c))
+        if cats:
+            box['categories'] = ','.join(cats)
+
+    dates = [d for d in (_pcgw_parse_date(x) for x in _DATE_ROW_RE.findall(wt)) if d]
+    if dates:
+        box['release_date'] = min(dates)  # earliest platform = original release
+
+    log.info('PCGW: %r -> %s  %s', name, title,
+             {k: v for k, v in box.items() if k != '_title'} or '(page found, no infobox data)')
+    return box
 
 
 # ── Steam store search ──────────────────────────────────────────────────────
@@ -195,37 +261,49 @@ def _steam_search_candidates(name, session):
         return []
 
 
-def resolve_steam_appid(name):
-    """(appid | None, confidence) where confidence is
-    'pcgw' | 'confirmed' | 'maybe' | 'none' | 'retry'.
+def _resolve(name):
+    """(steam_appid | None, confidence, pcgw_box | None).
 
-    'retry' -- PCGamingWiki was unreachable and Steam search only had a weak
-    guess; don't record anything, try again on the next run.
+    confidence: 'pcgw' | 'confirmed' | 'maybe' | 'none' | 'retry'.
+      pcgw       -- Steam AppID straight from a PCGamingWiki infobox
+      confirmed  -- Steam search, name matches closely (>= _SIM_CONFIRMED)
+      maybe      -- Steam search, partial name match (park as 'unconfirmed')
+      none       -- nothing found (PCGW may still return a box with dev/pub/etc.)
+      retry      -- PCGW was throttled and Steam only had a weak guess
+
+    pcgw_box carries whatever PCGamingWiki had (dev/pub/genres/modes/release),
+    used to gap-fill a game that has a PCGW page but no Steam counterpart.
     """
     if not name or not name.strip():
-        return None, 'none'
+        return None, 'none', None
     session = _mw_session()
 
-    pcgw = _pcgw_steam_appid(name, session)
-    if isinstance(pcgw, int):
-        return pcgw, 'pcgw'
-    pcgw_down = pcgw is _PCGW_UNAVAILABLE
+    box = _pcgw_infobox(name, session)
+    pcgw_down = box is _PCGW_UNAVAILABLE
+    if pcgw_down:
+        box = None
+    if box and box.get('steam_appid'):
+        return box['steam_appid'], 'pcgw', box
 
     candidates = _steam_search_candidates(name, session)
-    if not candidates:
-        return (None, 'retry') if pcgw_down else (None, 'none')
-    best = max(candidates, key=lambda c: _similar(name, c['name']))
-    score = _similar(name, best['name'])
-    log.info('Steam search: %r -> %r (%s) score %.2f', name, best['name'], best['id'], score)
-    if score >= _SIM_CONFIRMED:
-        return best['id'], 'confirmed'
-    if pcgw_down:
-        # A fuzzy Steam guess isn't worth locking in while PCGW (the better
-        # source) is just temporarily throttled.
-        return None, 'retry'
-    if score >= _SIM_MAYBE:
-        return best['id'], 'maybe'
-    return None, 'none'
+    if candidates:
+        best = max(candidates, key=lambda c: _similar(name, c['name']))
+        score = _similar(name, best['name'])
+        log.info('Steam search: %r -> %r (%s) score %.2f', name, best['name'], best['id'], score)
+        if score >= _SIM_CONFIRMED:
+            return best['id'], 'confirmed', box
+        if not pcgw_down and score >= _SIM_MAYBE:
+            return best['id'], 'maybe', box
+
+    if pcgw_down and not box:
+        return None, 'retry', None
+    return None, 'none', box
+
+
+def resolve_steam_appid(name):
+    """(appid | None, confidence) -- see _resolve()."""
+    appid, confidence, _ = _resolve(name)
+    return appid, confidence
 
 
 # ── Backfill ────────────────────────────────────────────────────────────────
@@ -262,41 +340,68 @@ def backfill_metadata(appid, *, force=False):
 
     today = date.today().isoformat()
     steam_appid = row['steam_appid']
+    pcgw_box = None
     if not steam_appid or force:
-        steam_appid, confidence = resolve_steam_appid(row['name'])
+        steam_appid, confidence, pcgw_box = _resolve(row['name'])
         if confidence == 'retry':
             return None  # PCGW throttled -- leave it for the next run
-        if not steam_appid:
-            return {'meta_backfill_fetched': 'no_match'}
         if confidence == 'maybe' and not force:
             # Remember the candidate but don't write anything from it yet.
             return {'steam_appid': steam_appid, 'meta_backfill_fetched': 'unconfirmed'}
 
-    from scrapers import fetch_store_data, fetch_review_data, fetch_tag_data
-    store   = fetch_store_data(steam_appid) or {}
-    store.pop('type', None)
-    store.pop('name', None)
-    reviews = fetch_review_data(steam_appid) or {}
-    tags    = fetch_tag_data(steam_appid) or {}
+    def _gap(field):
+        return _empty(row[field])
 
-    out = {'steam_appid': steam_appid, 'meta_backfill_fetched': today}
+    out = {'meta_backfill_fetched': today}
 
-    for field in ('developers', 'publishers', 'genres', 'categories'):
-        if _empty(row[field]) and not _empty(store.get(field)):
-            out[field] = store[field]
-    if _empty(row['tags']) and not _empty(tags.get('tags')):
-        out['tags'] = tags['tags']
-    if row['release_date'] is None and store.get('release_date') is not None:
-        out['release_date'] = store['release_date']
-    if row['is_free'] is None and 'is_free' in store:
-        out['is_free'] = store['is_free']
-    # The review set only makes sense as a group, and only if the game has no
-    # score at all — a plugin that provided one (GOG) keeps it.
-    if _empty(row['review_score']) and reviews.get('total_reviews'):
-        out.update(reviews)
+    if steam_appid:
+        # A real Steam page -- richest source (tags + reviews + the rest).
+        out['steam_appid'] = steam_appid
+        from scrapers import fetch_store_data, fetch_review_data, fetch_tag_data
+        store   = fetch_store_data(steam_appid) or {}
+        store.pop('type', None)
+        store.pop('name', None)
+        reviews = fetch_review_data(steam_appid) or {}
+        tags    = fetch_tag_data(steam_appid) or {}
+
+        for field in ('developers', 'publishers', 'genres', 'categories'):
+            if _gap(field) and not _empty(store.get(field)):
+                out[field] = store[field]
+        if _gap('tags') and not _empty(tags.get('tags')):
+            out['tags'] = tags['tags']
+        if row['release_date'] is None and store.get('release_date') is not None:
+            out['release_date'] = store['release_date']
+        if row['is_free'] is None and 'is_free' in store:
+            out['is_free'] = store['is_free']
+        # Review set is a group, only if the game has no score at all.
+        if _gap('review_score') and reviews.get('total_reviews'):
+            out.update(reviews)
+        # Anything Steam didn't have, take from the PCGW box if we fetched one.
+        if pcgw_box:
+            for field in ('developers', 'publishers', 'genres', 'categories'):
+                if field not in out and _gap(field) and pcgw_box.get(field):
+                    out[field] = pcgw_box[field]
+
+    elif pcgw_box:
+        # No Steam page, but PCGamingWiki has the game -- fill dev/pub/genres/
+        # modes/release from the infobox. No tags or review score to be had.
+        for field in ('developers', 'publishers', 'genres', 'categories'):
+            if _gap(field) and pcgw_box.get(field):
+                out[field] = pcgw_box[field]
+        if row['release_date'] is None and pcgw_box.get('release_date'):
+            out['release_date'] = pcgw_box['release_date']
+
+    else:
+        return {'meta_backfill_fetched': 'no_match'}
 
     filled = [k for k in out if k not in ('steam_appid', 'meta_backfill_fetched')]
-    log.info('backfill %s (steam %s): filled %s', appid, steam_appid, filled or '(nothing — all fields already set)')
+    if not filled and not steam_appid:
+        # PCGW page existed but had nothing usable -- record as no_match so we
+        # don't keep re-fetching it.
+        return {'meta_backfill_fetched': 'no_match'}
+    log.info('backfill %s (%s): filled %s', appid,
+             f'steam {steam_appid}' if steam_appid else 'pcgw-only',
+             filled or '(nothing new)')
     return out
 
 

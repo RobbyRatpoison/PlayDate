@@ -13,7 +13,31 @@ from metadata import (
     _INFOBOX_APPID_RE,
     _REDIRECT_RE,
     _SIM_PCGW,
+    _DEV_ROW_RE,
+    _PUB_ROW_RE,
+    _TAX_GENRES_RE,
+    _TAX_MODES_RE,
+    _DATE_ROW_RE,
+    _pcgw_parse_date,
 )
+
+
+_SAMPLE_INFOBOX = """{{Infobox game
+|developers   =
+{{Infobox game/row/developer|Bullfrog Productions}}
+|publishers   =
+{{Infobox game/row/publisher|Electronic Arts}}
+{{Infobox game/row/publisher|Sold Out Software|Re-release}}
+|release dates=
+{{Infobox game/row/date|DOS|March 28, 1997}}
+{{Infobox game/row/date|Windows|April 12, 2012|wrapper=DOSBox}}
+{{Infobox game/row/date|OS X|September 1995}}
+|taxonomy     =
+{{Infobox game/row/taxonomy/modes             | Singleplayer, Multiplayer }}
+{{Infobox game/row/taxonomy/genres            | Building, Simulation }}
+|steam appid  =
+|gogcom id    = 1207659026
+}}"""
 
 
 @pytest.mark.parametrize("raw,expected", [
@@ -87,3 +111,43 @@ def test_redirect_match(wikitext, target):
 
 def test_redirect_no_match_on_real_page():
     assert _REDIRECT_RE.match("{{Infobox game\n|title = Real Page\n}}") is None
+
+
+# ── {{Infobox game}} field extraction ───────────────────────────────────────
+
+def test_infobox_developers_publishers():
+    assert _DEV_ROW_RE.findall(_SAMPLE_INFOBOX) == ["Bullfrog Productions"]
+    # publisher rows: name only, the '|Re-release' note is dropped
+    assert _PUB_ROW_RE.findall(_SAMPLE_INFOBOX) == ["Electronic Arts", "Sold Out Software"]
+
+
+def test_infobox_taxonomy_rows():
+    assert _TAX_GENRES_RE.search(_SAMPLE_INFOBOX).group(1) == "Building, Simulation"
+    assert _TAX_MODES_RE.search(_SAMPLE_INFOBOX).group(1) == "Singleplayer, Multiplayer"
+
+
+def test_infobox_date_rows_second_param_only():
+    # platform (first param) is skipped; wrapper=/ref= trailers are not captured
+    assert _DATE_ROW_RE.findall(_SAMPLE_INFOBOX) == [
+        "March 28, 1997", "April 12, 2012", "September 1995",
+    ]
+
+
+@pytest.mark.parametrize("raw,y,m,d", [
+    ("March 28, 1997",  1997, 3, 28),
+    ("September 1995",   1995, 9, 1),
+    ("1994",             1994, 1, 1),
+    ("Feb 1994",         1994, 2, 1),
+])
+def test_pcgw_parse_date(raw, y, m, d):
+    import datetime
+    ts = _pcgw_parse_date(raw)
+    assert ts is not None
+    got = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
+    assert (got.year, got.month, got.day) == (y, m, d)
+
+
+def test_pcgw_parse_date_junk():
+    assert _pcgw_parse_date("TBA") is None
+    assert _pcgw_parse_date("") is None
+    assert _pcgw_parse_date(None) is None
