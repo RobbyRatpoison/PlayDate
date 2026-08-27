@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.8.2
+## v1.8.2 - 2026-08-27
 ### Improvements
 
 - Simplified connecting a Ubisoft account — it's optional and rarely needed, since most Ubisoft Connect features now work without signing in.
