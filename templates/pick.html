@@ -556,6 +556,7 @@
 </div>
 
 <script>
+const _imgV = Date.now(); // cache-buster, matching library.js
 const _activeFilterName = {{ filter_name | tojson }};
 window.CARD_BADGES = {{ (state.card_badges if state.get('card_badges', {}).get('enabled', {}).get('pick6', True) else none) | tojson }};
 window._requireDblClick = {{ state.get('require_double_click_launch', false) | tojson }};
@@ -788,7 +789,7 @@ async function pickGame() {
 
 function makeCard(game, reason, boundsRelaxed, outlineColor) {
     const appid = game.appid;
-    const localSrc = `/static/img/library/vertical/${appid}.jpg`;
+    const localSrc = `/static/img/library/vertical/${appid}.jpg?v=${_imgV}`;
     const steamSrc = `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${appid}/library_600x900.jpg`;
     const escaped = escHtml(game.name || '');
 

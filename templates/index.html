@@ -372,7 +372,7 @@
                 {% for game in shelf.games %}
                 <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" data-total-achievements="{{ game.total_achievements or 0 }}" data-unlocked-achievements="{{ game.unlocked_achievements or 0 }}" data-review-percentage="{{ game.review_percentage if game.review_percentage is not none else '' }}" data-weighted-percentage="{{ game.weighted_percentage if game.weighted_percentage is not none else '' }}" data-total-reviews="{{ game.total_reviews or 0 }}" data-hltb-main="{{ game.hltb_main or 0 }}" data-hltb-extras="{{ game.hltb_extras or 0 }}" data-hltb-completionist="{{ game.hltb_completionist or 0 }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                     <div class="shelf-capsule-inner">
-                        <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
+                        <img src="/static/img/library/vertical/{{ game.appid }}.jpg?v={{ cache_v }}" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                              onload="_shelfImgLoad(this)"
                              onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
                         <div class="no-art-name">{{ game.name | e }}</div>
@@ -421,7 +421,7 @@
             {% for game in shelf.games %}
             <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" data-total-achievements="{{ game.total_achievements or 0 }}" data-unlocked-achievements="{{ game.unlocked_achievements or 0 }}" data-review-percentage="{{ game.review_percentage if game.review_percentage is not none else '' }}" data-weighted-percentage="{{ game.weighted_percentage if game.weighted_percentage is not none else '' }}" data-total-reviews="{{ game.total_reviews or 0 }}" data-hltb-main="{{ game.hltb_main or 0 }}" data-hltb-extras="{{ game.hltb_extras or 0 }}" data-hltb-completionist="{{ game.hltb_completionist or 0 }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                 <div class="shelf-capsule-inner">
-                    <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
+                    <img src="/static/img/library/vertical/{{ game.appid }}.jpg?v={{ cache_v }}" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                          onload="_shelfImgLoad(this)"
                          onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
                     <div class="no-art-name">{{ game.name | e }}</div>
@@ -435,7 +435,7 @@
             {% for game in shelf.games %}
             <div class="shelf-capsule-wrap" data-appid="{{ game.appid }}" data-installed="{{ game.installed or 0 }}" data-name="{{ game.name | e }}" data-status="{{ game.completion_status or "" }}" data-platform="{{ game.platform or 'steam' }}" data-total-achievements="{{ game.total_achievements or 0 }}" data-unlocked-achievements="{{ game.unlocked_achievements or 0 }}" data-review-percentage="{{ game.review_percentage if game.review_percentage is not none else '' }}" data-weighted-percentage="{{ game.weighted_percentage if game.weighted_percentage is not none else '' }}" data-total-reviews="{{ game.total_reviews or 0 }}" data-hltb-main="{{ game.hltb_main or 0 }}" data-hltb-extras="{{ game.hltb_extras or 0 }}" data-hltb-completionist="{{ game.hltb_completionist or 0 }}" {{ 'ondblclick' if state.get('require_double_click_launch') else 'onclick' }}="launchGame({{ game.appid }})"{% if outline_colors is defined and outline_colors.get(game.appid | string) %} style="--outline-color:{{ outline_colors[game.appid | string] }}"{% endif %}>
                 <div class="shelf-capsule-inner">
-                    <img src="/static/img/library/vertical/{{ game.appid }}.jpg" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
+                    <img src="/static/img/library/vertical/{{ game.appid }}.jpg?v={{ cache_v }}" alt="{{ game.name }}" class="shelf-capsule" draggable="false"
                          onload="_shelfImgLoad(this)"
                          onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{{ game.appid }}/library_600x900.jpg';">
                     <div class="no-art-name">{{ game.name | e }}</div>
@@ -481,6 +481,8 @@
 <div id="dedup-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:599;" onclick="closeDedupPanel()"></div>
 
 <script>
+const _imgV = Date.now(); // cache-buster for JS-rendered cards (shuffle/refill), matching library.js
+
 async function _reloadLastPlayedShelves() {
     const targets = _shelves.filter(s => s.sort_col === 'last_played');
     for (const shelf of targets) {
@@ -506,7 +508,7 @@ async function _reloadLastPlayedShelves() {
                      data-platform="${(g.platform||'steam')}"
                      ${launchClickAttr(g.appid)}${oc ? ` style="--outline-color:${oc}"` : ''}>
                     <div class="shelf-capsule-inner">
-                        <img src="/static/img/library/vertical/${g.appid}.jpg"
+                        <img src="/static/img/library/vertical/${g.appid}.jpg?v=${_imgV}"
                              alt="${g.name.replace(/"/g,'&quot;')}"
                              class="shelf-capsule" draggable="false"
                              onload="_shelfImgLoad(this)"
@@ -557,7 +559,7 @@ async function shuffleShelf(shelfId, labelEl) {
                  data-platform="${g.platform || 'steam'}"
                  ${launchClickAttr(g.appid)}${oc ? ` style="--outline-color:${oc}"` : ''}>
                 <div class="shelf-capsule-inner">
-                    <img src="/static/img/library/vertical/${g.appid}.jpg"
+                    <img src="/static/img/library/vertical/${g.appid}.jpg?v=${_imgV}"
                          alt="${g.name.replace(/"/g,'&quot;')}"
                          class="shelf-capsule" draggable="false"
                          onload="_shelfImgLoad(this)"
@@ -1640,7 +1642,7 @@ setInterval(async () => {
                         wrap.dataset.status = g.completion_status || '';
                         wrap.dataset.platform = g.platform || 'steam';
                         wrap.setAttribute(window._requireDblClick ? 'ondblclick' : 'onclick', `launchGame(${g.appid})`);
-                        const imgSrc = `/static/img/library/vertical/${g.appid}.jpg`;
+                        const imgSrc = `/static/img/library/vertical/${g.appid}.jpg?v=${_imgV}`;
                         wrap.innerHTML = `<div class="shelf-capsule-inner">
                             <img src="${imgSrc}"
                                 alt="${g.name.replace(/"/g, '&quot;')}"

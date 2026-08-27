@@ -812,9 +812,9 @@
 
         // Reset and populate artwork panels
         _artCurrentTab = 'vertical';
-        _loadArtPanel('vertical',   `/static/img/library/vertical/${parseInt(game.appid)}.jpg`,   game.vertical_art_source);
-        _loadArtPanel('horizontal', `/static/img/library/horizontal/${parseInt(game.appid)}.jpg`, game.horizontal_art_source);
-        _loadArtPanel('icon',       `/static/img/library/icons/${parseInt(game.appid)}.jpg`,      game.icon_source);
+        _loadArtPanel('vertical',   `/static/img/library/vertical/${parseInt(game.appid)}.jpg?v=${Date.now()}`,   game.vertical_art_source);
+        _loadArtPanel('horizontal', `/static/img/library/horizontal/${parseInt(game.appid)}.jpg?v=${Date.now()}`, game.horizontal_art_source);
+        _loadArtPanel('icon',       `/static/img/library/icons/${parseInt(game.appid)}.jpg?v=${Date.now()}`,      game.icon_source);
         openArtTab('vertical');
 
         const storeLink  = document.getElementById('store-link');

@@ -1,6 +1,7 @@
 import logging
 import re
 import sqlite3
+import time
 from flask import Blueprint, jsonify, render_template, request
 from config import load_state, get_default_shelves, BUILTIN_FILTERS
 from database import get_db
@@ -257,6 +258,7 @@ def index():
         edit_mode=edit_mode,
         available_platforms=available_platforms,
         outline_colors=outline_colors,
+        cache_v=int(time.time()),
     )
 
 
