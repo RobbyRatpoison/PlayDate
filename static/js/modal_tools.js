@@ -2653,6 +2653,8 @@ function _blRemoveRowsFromState(appids) {
 // ── STEAM JUNK FINDER ────────────────────────────────────────────────────────
 let _sjunkCandidates      = [];  // title-pattern matches only
 let _sjunkOwnedCandidates = [];  // no-longer-owned matches only
+let _sjunkDeepCandidates  = [];  // deep plugin scan matches
+let _sjunkDeepBusy        = false;
 
 function openSteamJunkModal() {
     document.getElementById('steam-junk-modal').style.display = 'flex';
@@ -2682,6 +2684,14 @@ async function _loadSteamJunkScan() {
     ownedEmpty.style.display = 'none';
     ownNote.style.display = 'none';
     document.getElementById('sjunk-action-status').textContent = '';
+    // reset the deep-scan section (it only runs on demand)
+    _sjunkDeepCandidates = [];
+    document.getElementById('sjunk-deep-results').style.display = 'none';
+    document.getElementById('sjunk-deep-empty').style.display = 'none';
+    document.getElementById('sjunk-deep-status').textContent = '';
+    _sjunkDeepBusy = false;
+    const _ddb = document.getElementById('sjunk-deep-btn');
+    if (_ddb) { _ddb.style.opacity = ''; _ddb.textContent = 'Run Deep Scan'; }
 
     try {
         const res  = await fetch('/api/steam-junk-scan');
@@ -2733,7 +2743,7 @@ async function _loadSteamJunkScan() {
                 style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border);">
                 <input type="checkbox" class="sjunk-cb" data-appid="${c.appid}" style="width:auto;margin:0;flex-shrink:0;" onclick="event.stopPropagation()">
                 <span style="color:var(--text-primary); font-size:0.85rem; flex:1;">${escHtml(c.name)}</span>
-                <span style="color:var(--text-secondary); font-size:0.75rem; font-family:monospace;">${c.appid}</span>
+                ${c.platform && c.platform !== 'steam' ? `<span style="color:var(--text-secondary); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; border:1px solid var(--border); border-radius:3px; padding:1px 4px; white-space:nowrap;">${escHtml((window._PLAT_LABELS && window._PLAT_LABELS[c.platform]) || c.platform)}</span>` : ''}
                 <span style="color:var(--text-secondary); font-size:0.72rem; white-space:nowrap;">[${c.reasons.map(escHtml).join(', ')}]</span>
             </div>`).join('');
         results.style.display = 'block';
@@ -2833,6 +2843,98 @@ async function _sjunkOwnedDelete() {
                 document.querySelector(`#sjunk-owned-list .sjunk-owned-cb[data-appid="${appid}"]`)?.closest('[data-modal-row]')?.remove();
             });
         }
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+async function _sjunkDeepScan() {
+    if (_sjunkDeepBusy) return;
+    _sjunkDeepBusy = true;
+    const btn     = document.getElementById('sjunk-deep-btn');
+    const status  = document.getElementById('sjunk-deep-status');
+    const empty   = document.getElementById('sjunk-deep-empty');
+    const results = document.getElementById('sjunk-deep-results');
+    const list    = document.getElementById('sjunk-deep-list');
+    btn.style.opacity = '0.5';
+    btn.textContent = 'Scanning…';
+    status.className = 'tool-status info';
+    status.textContent = 'Contacting store plugins…';
+    empty.style.display = 'none';
+    results.style.display = 'none';
+    try {
+        const res  = await fetch('/api/steam-junk-scan/deep');
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message || 'scan failed');
+        _sjunkDeepCandidates = data.results || [];
+        const errs = data.errors || [];
+        status.className = errs.length ? 'tool-status warn' : 'tool-status';
+        status.textContent = errs.length
+            ? `Some plugins could not be checked: ${errs.map(e => e.platform).join(', ')}`
+            : '';
+        if (_sjunkDeepCandidates.length === 0) {
+            empty.style.display = 'block';
+        } else {
+            document.getElementById('sjunk-deep-select-all').checked = false;
+            list.innerHTML = _sjunkDeepCandidates.map((c, i) => `
+                <div data-modal-row="sjunk-deep-${i}" onclick="var cb=this.querySelector('.sjunk-deep-cb');cb.checked=!cb.checked;"
+                    style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border);">
+                    <input type="checkbox" class="sjunk-deep-cb" data-appid="${c.appid}" style="width:auto;margin:0;flex-shrink:0;" onclick="event.stopPropagation()">
+                    <span style="color:var(--text-primary); font-size:0.85rem; flex:1;">${escHtml(c.name)}</span>
+                    <span style="color:var(--text-secondary); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; border:1px solid var(--border); border-radius:3px; padding:1px 4px; white-space:nowrap;">${escHtml((window._PLAT_LABELS && window._PLAT_LABELS[c.platform]) || c.platform)}</span>
+                    <span style="color:var(--text-secondary); font-size:0.72rem; white-space:nowrap;">[${escHtml(c.reason)}]</span>
+                </div>`).join('');
+            results.style.display = 'block';
+        }
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    } finally {
+        _sjunkDeepBusy = false;
+        btn.style.opacity = '';
+        btn.textContent = 'Run Deep Scan Again';
+    }
+}
+
+function _sjunkDeepToggleAll(checked) {
+    document.getElementById('sjunk-deep-select-all').checked = checked;
+    document.querySelectorAll('#sjunk-deep-list .sjunk-deep-cb').forEach(cb => cb.checked = checked);
+}
+
+async function _sjunkDeepAction() {
+    const selected = [...document.querySelectorAll('#sjunk-deep-list .sjunk-deep-cb:checked')]
+        .map(cb => parseInt(cb.dataset.appid, 10));
+    if (selected.length === 0) { alert('No games selected.'); return; }
+    const ok = await confirmCustom(
+        `Delete and blacklist ${selected.length} selected game(s)? Blacklisted entries won't be re-imported on the next sync.`,
+        'Confirm', 'Cancel'
+    );
+    if (!ok) return;
+
+    const status = document.getElementById('sjunk-action-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Working…';
+    try {
+        const res  = await fetch('/api/steam-junk-scan/blacklist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids: selected })
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+        status.className = 'tool-status success';
+        status.textContent = `✔ Blacklisted ${data.count}.`;
+        _sjunkDeepCandidates = _sjunkDeepCandidates.filter(c => !selected.includes(c.appid));
+        if (_sjunkDeepCandidates.length === 0) {
+            document.getElementById('sjunk-deep-results').style.display = 'none';
+            document.getElementById('sjunk-deep-empty').style.display = 'block';
+        } else {
+            selected.forEach(appid => {
+                document.querySelector(`#sjunk-deep-list .sjunk-deep-cb[data-appid="${appid}"]`)?.closest('[data-modal-row]')?.remove();
+            });
+        }
+        _blacklistLoaded = false;
     } catch (e) {
         status.className = 'tool-status error';
         status.textContent = '✘ ' + e.message;

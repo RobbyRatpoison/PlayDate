@@ -1475,7 +1475,11 @@ def blacklist_bulk_remove():
 # by hand against real examples), so title text is the only lever. Matching is
 # intentionally broad since results are only ever a human-reviewed suggestion list,
 # never auto-applied.
-_STEAM_JUNK_PATTERNS = [
+# Title patterns that flag a library entry as probably-not-a-real-game. Applied
+# to every platform (Steam betas, Humble sneak-peek/prototype drops, plugin
+# soundtrack/dev-kit entries), so the scan is name-only and each hit is
+# reviewed before removal.
+_JUNK_PATTERNS = [
     (re.compile(r'\bbeta\b', re.I), 'beta'),
     (re.compile(r'\balpha\b', re.I), 'alpha'),
     (re.compile(r'\b(public|closed|open)\s+test(ing)?\b', re.I), 'public/closed test'),
@@ -1487,11 +1491,22 @@ _STEAM_JUNK_PATTERNS = [
     (re.compile(r'\bthe\s+movie\b', re.I), 'documentary/movie'),
     (re.compile(r'\bdemo\b', re.I), 'demo'),
     (re.compile(r'\btrial\b', re.I), 'trial'),
+    (re.compile(r'\bprototype\b', re.I), 'prototype'),
+    (re.compile(r'\bsneak\s?peek\b', re.I), 'sneak peek'),
+    (re.compile(r'\bsource\s?code\b', re.I), 'source code'),
+    (re.compile(r'\b(dev|mod)\s?kit\b', re.I), 'dev/mod kit'),
+    (re.compile(r'\bSDK\b'), 'SDK'),
+    (re.compile(r'\bsoundtrack\b', re.I), 'soundtrack'),
+    (re.compile(r'\b(art\s?book|artbook)\b', re.I), 'artbook'),
+    (re.compile(r'\bOST\b'), 'soundtrack (OST)'),
 ]
 
+# Back-compat alias for older state.
+_STEAM_JUNK_PATTERNS = _JUNK_PATTERNS
 
-def _steam_junk_match_reasons(name):
-    return [label for pat, label in _STEAM_JUNK_PATTERNS if pat.search(name or '')]
+
+def _junk_match_reasons(name):
+    return [label for pat, label in _JUNK_PATTERNS if pat.search(name or '')]
 
 
 @library_bp.route('/api/steam-junk-scan', methods=['GET'])
@@ -1507,15 +1522,16 @@ def steam_junk_scan():
                 "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
             ).fetchall()}
             rows = db.execute(
-                "SELECT appid, name, is_free, playtime_forever FROM games WHERE platform = 'steam' ORDER BY name"
+                "SELECT appid, name, platform, is_free, playtime_forever FROM games ORDER BY name"
             ).fetchall()
         finally:
             db.close()
 
+        steam_rows = [r for r in rows if (r['platform'] or 'steam') == 'steam']
         not_owned_ids = set()
 
-        # Step 1: ownership check against the Steam Web API (skipped, not
-        # errored, when no API key is configured -- same "optional key"
+        # Step 1: ownership check against the Steam Web API (Steam only; skipped,
+        # not errored, when no API key is configured -- same "optional key"
         # convention as populate).
         ownership = {'checked': False, 'error': None}
         account = get_active_account()
@@ -1524,7 +1540,7 @@ def steam_junk_scan():
             if result['status'] == 'success':
                 ownership['checked'] = True
                 owned = result['appids']
-                for row in rows:
+                for row in steam_rows:
                     appid = row['appid']
                     if str(appid) in blacklisted or appid in dismissed:
                         continue
@@ -1544,20 +1560,23 @@ def steam_junk_scan():
             else:
                 ownership['error'] = result['message']
 
-        owned_candidates = [{'appid': r['appid'], 'name': r['name']} for r in rows if r['appid'] in not_owned_ids]
+        owned_candidates = [{'appid': r['appid'], 'name': r['name']} for r in steam_rows if r['appid'] in not_owned_ids]
 
-        # Step 2: local title-pattern heuristics (always available). A game
-        # already flagged as no-longer-owned doesn't also need blacklisting
-        # -- it can't be re-added by Populate since it's off the account
-        # entirely -- so it's excluded here rather than double-listed.
+        # Step 2: local title-pattern heuristics, every platform (always
+        # available). A game already flagged as no-longer-owned doesn't also
+        # need blacklisting -- it can't be re-added by Populate since it's off
+        # the account entirely -- so it's excluded here rather than double-listed.
         pattern_candidates = []
         for row in rows:
             appid = row['appid']
             if str(appid) in blacklisted or appid in dismissed or appid in not_owned_ids:
                 continue
-            reasons = _steam_junk_match_reasons(row['name'])
+            reasons = _junk_match_reasons(row['name'])
             if reasons:
-                pattern_candidates.append({'appid': appid, 'name': row['name'], 'reasons': reasons})
+                pattern_candidates.append({
+                    'appid': appid, 'name': row['name'],
+                    'platform': row['platform'] or 'steam', 'reasons': reasons,
+                })
 
         return jsonify({
             'status': 'success',
@@ -1619,6 +1638,48 @@ def steam_junk_scan_whitelist():
         return jsonify({"status": "success", "count": len(appids)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@library_bp.route('/api/steam-junk-scan/deep', methods=['GET'])
+def library_junk_deep_scan():
+    """Ask each plugin that implements scan_junk() which of its own games its
+    filters would now reject (DLC, soundtracks, non-game apps, dev kits) --
+    catches clean-named junk the title patterns can't. Each plugin call may hit
+    its store API, so this is opt-in (a button), not part of the fast scan."""
+    import plugins as _plugins
+    state     = load_state()
+    dismissed = {int(a) for a in (state.get('steam_junk_whitelist') or [])}
+
+    db = get_db()
+    try:
+        blacklisted = {row[0] for row in db.execute(
+            "SELECT platform_id FROM blacklist WHERE platform_id IS NOT NULL"
+        ).fetchall()}
+    finally:
+        db.close()
+
+    results, errors = [], []
+    for pid, plugin in _plugins.loaded().items():
+        fn = getattr(plugin, 'scan_junk', None)
+        if not callable(fn):
+            continue
+        try:
+            for item in (fn() or []):
+                appid = int(item['appid'])
+                if appid in dismissed or str(appid) in blacklisted:
+                    continue
+                results.append({
+                    'appid': appid,
+                    'name': item.get('name') or '',
+                    'platform': getattr(plugin, 'platform', pid),
+                    'reason': item.get('reason') or 'not a game',
+                })
+        except Exception as e:
+            log.warning(f"scan_junk ({pid}): {e}")
+            errors.append({'platform': getattr(plugin, 'platform', pid), 'error': str(e)})
+
+    results.sort(key=lambda r: (r['platform'], r['name'].lower()))
+    return jsonify({'status': 'success', 'results': results, 'errors': errors})
 
 @library_bp.route('/api/detect-duplicates', methods=['POST'])
 def detect_duplicates():

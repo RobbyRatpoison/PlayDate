@@ -1508,7 +1508,7 @@
             <button onclick="closeBlacklistModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
         <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">Blacklisted games are permanently skipped by "Populate PlayDate". To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
-        <button class="nav-btn" data-modal-row="find-steam-junk" onclick="openSteamJunkModal()" style="margin-bottom:14px;">Find Steam Junk</button>
+        <button class="nav-btn" data-modal-row="find-steam-junk" onclick="openSteamJunkModal()" style="margin-bottom:14px;">Find Library Junk</button>
         <div id="blacklist-status" class="tool-status"></div>
         <input id="blacklist-search" type="text" placeholder="Search by name…"
             style="width:100%; box-sizing:border-box; margin-bottom:12px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:0.88rem; display:none;"
@@ -1529,16 +1529,16 @@
     </div>
 </div>
 
-<!-- ── STEAM JUNK FINDER MODAL (sub-modal of Blacklist Manager) ── -->
+<!-- ── LIBRARY JUNK FINDER MODAL (sub-modal of Blacklist Manager) ── -->
 <div id="steam-junk-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeSteamJunkModal();">
     <div class="modal-content" style="width:min(680px,95vw); max-height:85vh; overflow-y:auto;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Find Steam Junk</h2>
+            <h2 style="margin:0; color:var(--text-primary);">Find Library Junk</h2>
             <button onclick="closeSteamJunkModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
         <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">
-            Scans your library for two different kinds of problem entries, reviewed and actioned separately below.
-            Nothing here is a sure thing &mdash; review each list before removing anything.
+            Scans your library for entries that probably aren't real games. Nothing here is a sure thing, so
+            review each list before removing anything.
         </p>
         <div id="sjunk-status" class="tool-status"></div>
 
@@ -1568,10 +1568,10 @@
         <div class="hub-section">
             <div class="hub-section-label">Title-Pattern Matches</div>
             <p style="color:var(--text-secondary); font-size:0.83rem; margin:2px 0 8px;">
-                Steam doesn't tag beta clients, movie/documentary entries, or bundle placeholders any differently
-                from real games, so this scans titles for common patterns instead. Blacklisted items are
-                permanently skipped by "Populate PlayDate"; whitelisted items are just dismissed from this list
-                and won't be suggested again.
+                Stores don't tag beta clients, demos, prototypes, soundtracks, or dev kits any differently
+                from real games, so this scans titles across every platform for common patterns. Blacklisted
+                items are permanently skipped on re-import; whitelisted items are just dismissed from this
+                list and won't be suggested again.
             </p>
             <div id="sjunk-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No candidates found.</div>
             <div id="sjunk-results" style="display:none;">
@@ -1583,6 +1583,28 @@
                 <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
                     <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('blacklist')" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Blacklist Selected</button>
                     <button class="nav-btn" data-modal-row="sjunk-footer" onclick="_sjunkAction('whitelist')">Whitelist Selected</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="hub-section">
+            <div class="hub-section-label">Deep Plugin Scan</div>
+            <p style="color:var(--text-secondary); font-size:0.83rem; margin:2px 0 8px;">
+                Asks each store plugin (GOG, Epic, Humble&hellip;) to re-check its own games against its
+                current filters. Catches DLC, soundtracks, and non-game apps whose names look
+                perfectly normal. Contacts each store, so it can take a minute.
+            </p>
+            <button id="sjunk-deep-btn" class="nav-btn" data-modal-row="sjunk-deep-btn" onclick="_sjunkDeepScan()" style="margin-bottom:8px;">Run Deep Scan</button>
+            <div id="sjunk-deep-status" class="tool-status" style="margin-bottom:6px;"></div>
+            <div id="sjunk-deep-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No junk found by plugins.</div>
+            <div id="sjunk-deep-results" style="display:none;">
+                <div data-modal-row="sjunk-deep-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_sjunkDeepToggleAll(cb.checked);" style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border); margin-bottom:6px;">
+                    <input type="checkbox" id="sjunk-deep-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_sjunkDeepToggleAll(this.checked)">
+                    <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
+                </div>
+                <div id="sjunk-deep-list"></div>
+                <div style="margin-top:10px;">
+                    <button class="nav-btn" data-modal-row="sjunk-deep-footer" onclick="_sjunkDeepAction()" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Blacklist Selected</button>
                 </div>
             </div>
         </div>

@@ -222,6 +222,23 @@ class MyPlugin:
         """
         pass
 
+    def scan_junk(self):
+        """
+        Optional. Called by the Blacklist Manager's "Find Library Junk" →
+        "Deep Plugin Scan" (GET /api/steam-junk-scan/deep). Re-check every
+        imported game on this platform against your current import filters and
+        return the ones that now look like non-games (DLC, soundtracks, dev
+        kits, store apps) that a forward filter would reject but that were
+        imported before it existed.
+
+        Return a list of {'appid': int, 'name': str, 'reason': str}. Restrict
+        to untouched rows (no playtime, not installed, 'Never Played', not a
+        manually-marked duplicate) — the user picks which to delete + blacklist.
+        May call your store API; keep it read-only. Return [] if not connected.
+        Core dedupes against the blacklist and the junk-scan whitelist for you.
+        """
+        pass
+
     def on_launcher_installed(self, prefix, wine_bin):
         """
         Optional. Called by the generic launcher installer
@@ -627,6 +644,7 @@ If your plugin needs to know whether a real game (not just an idle launcher clie
 - [ ] `launch_game(appid)` implemented so the Play button works (returns a status dict); use `install_poller` key (not platform-named flags) when installation is triggered
 - [ ] `rescrape(appid)` implemented if the platform has a metadata API (enables bulk rescrape)
 - [ ] `fetch_description(appid, platform_id)` implemented if the platform has a description API
+- [ ] `scan_junk()` implemented if the platform's store distinguishes non-games your import filter drops (enables the Blacklist Manager's deep scan)
 - [ ] `extra_info(appid, platform, platform_id)` implemented if the plugin has supplemental info to show in the library detail pane (any platform, not just your own)
 - [ ] `context_menu_items` added to `js_api()` if the plugin adds right-click menu actions for its games
 - [ ] `on_game_launched(appid, platform)` / `on_library_updated()` implemented if the plugin needs to react to launches or library refreshes
