@@ -1886,15 +1886,22 @@ const achLink = document.getElementById('achievements-link');
         }
     }
 
+    function _hltbError(msg) {
+        _hltbEls('edit-hltb-times').forEach(el => { el.textContent = msg; el.style.color = '#e06c4a'; });
+        if (typeof showLaunchToast === 'function') showLaunchToast(msg);
+    }
+
     function _refreshHLTB(btn) {
         if (!_hltbAppid) return;
         btn.textContent = '...';
         btn.disabled = true;
         fetch(`/api/hltb/${_hltbAppid}`, {method: 'POST'})
-            .then(r => r.json())
+            .then(r => r.json().catch(() => ({})))
             .then(data => {
                 if (data.status === 'success') _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                else _hltbError(data.message || 'Re-scrape failed. Try again.');
             })
+            .catch(() => _hltbError('Re-scrape failed (network error).'))
             .finally(() => { btn.textContent = 'Re-scrape'; btn.disabled = false; });
     }
 
@@ -1903,10 +1910,17 @@ const achLink = document.getElementById('achievements-link');
         btn.textContent = '...';
         btn.disabled = true;
         fetch(`/api/hltb/${_hltbAppid}/confirm`, {method: 'POST'})
-            .then(r => r.json())
+            .then(r => r.json().catch(() => ({})))
             .then(data => {
-                if (data.status === 'success') _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                if (data.status === 'success') {
+                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                    if (data.cleared && typeof showLaunchToast === 'function')
+                        showLaunchToast(data.message || 'HLTB has no time data for that entry.');
+                } else {
+                    _hltbError(data.message || 'Confirm failed. Try again.');
+                }
             })
+            .catch(() => _hltbError('Confirm failed (network error).'))
             .finally(() => { btn.textContent = 'Confirm'; btn.disabled = false; });
     }
 
@@ -2009,6 +2023,13 @@ const achLink = document.getElementById('achievements-link');
         });
     }
 
+    // Bare HLTB id, or a full URL in any of HLTB's forms (/game/13157, /game?id=13157).
+    function _hltbParseIdEdit(raw) {
+        if (!raw) return null;
+        let m = raw.match(/(?:\/game[/?](?:id=)?)(\d+)/i) || raw.match(/^\s*(\d+)\s*$/);
+        return m ? parseInt(m[1], 10) : null;
+    }
+
     function _selectHLTBMatch(hltbId, score, matchedName) {
         if (!_hltbAppid) return;
         fetch(`/api/hltb/${_hltbAppid}/select`, {
@@ -2016,13 +2037,16 @@ const achLink = document.getElementById('achievements-link');
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({hltb_id: hltbId, hltb_match_score: score})
         })
-            .then(r => r.json())
+            .then(r => r.json().catch(() => ({})))
             .then(data => {
                 if (data.status === 'success') {
                     _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
                     _renderHLTB({...(_hltbGame || {}), ...(data.data || {}), hltb_matched_name: matchedName});
+                } else {
+                    _hltbError(data.message || 'Could not apply that match. Try again.');
                 }
-            });
+            })
+            .catch(() => _hltbError('Could not apply that match (network error).'));
     }
 
     function _selectHLTBById() {
@@ -2031,25 +2055,26 @@ const achLink = document.getElementById('achievements-link');
         if (!input) return;
         const raw = input.value.trim();
         if (!raw) return;
-        const match = raw.match(/(?:game\/)?(\d+)/);
-        if (!match) { input.style.borderColor = 'var(--color-danger)'; return; }
+        const hltbId = _hltbParseIdEdit(raw);
+        if (!hltbId) { input.style.borderColor = 'var(--color-danger)'; _hltbError('Enter an HLTB game ID or URL.'); return; }
         input.style.borderColor = '';
-        const hltbId = parseInt(match[1], 10);
         input.disabled = true;
         fetch(`/api/hltb/${_hltbAppid}/select`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({hltb_id: hltbId, hltb_match_score: null})
         })
-            .then(r => r.json())
+            .then(r => r.json().catch(() => ({})))
             .then(data => {
                 if (data.status === 'success') {
                     _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
                     _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
                 } else {
                     input.style.borderColor = 'var(--color-danger)';
+                    _hltbError(data.message || 'Could not apply that HLTB ID.');
                 }
             })
+            .catch(() => { input.style.borderColor = 'var(--color-danger)'; _hltbError('Could not apply that HLTB ID (network error).'); })
             .finally(() => { input.disabled = false; });
     }
 

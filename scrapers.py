@@ -412,6 +412,18 @@ def _protondb_worker(normal_q, priority_q, cancel_event, today, progress_cb):
 
 # ── HLTB fetch functions ──────────────────────────────────────────────────────
 
+# Sentinel returned by fetch_hltb_data / fetch_hltb_by_id when HowLongToBeat
+# itself could not be reached (network error, or their search API changed and
+# every request 404s). Callers MUST NOT clear stored HLTB data on this result.
+# it means "unknown", not "no match".
+HLTB_UNREACHABLE = object()
+
+
+class _HltbUnreachable(Exception):
+    """Internal: raised inside bulk workers so an HLTB outage is handled as a
+    transient failure instead of wiping the game's stored match."""
+
+
 _STEAM_HLTB_MAP = None  # {steam_appid_str: hltb_id_int}
 
 def _load_steam_hltb_map():
@@ -498,7 +510,12 @@ def fetch_hltb_data(name, threshold=75):
         from howlongtobeatpy import HowLongToBeat
 
         def _search(query):
+            # howlongtobeatpy returns None when the HTTP request itself failed
+            # (couldn't reach HLTB / API moved), and [] when it reached HLTB but
+            # found nothing. Keep those two cases distinct.
             results = HowLongToBeat(0.0).search(query, similarity_case_sensitive=False)
+            if results is None:
+                return HLTB_UNREACHABLE, 0
             if not results:
                 return None, 0
             b = max(results, key=lambda r: r.similarity)
@@ -506,6 +523,8 @@ def fetch_hltb_data(name, threshold=75):
 
         cleaned = _hltb_clean_name(name)
         best, score = _search(cleaned)
+        if best is HLTB_UNREACHABLE:
+            return HLTB_UNREACHABLE
         parens_fallback_used = False
 
         # Single secondary pass: try edition-stripped and paren-stripped variants
@@ -527,6 +546,8 @@ def fetch_hltb_data(name, threshold=75):
             best_effective = score
             for query, penalised in candidates:
                 alt_best, alt_score = _search(query)
+                if alt_best is HLTB_UNREACHABLE:
+                    continue
                 effective = alt_score - (15 if penalised else 0)
                 if alt_best and effective > best_effective:
                     best, score, parens_fallback_used = alt_best, alt_score, penalised
@@ -566,9 +587,17 @@ def fetch_hltb_by_id(name, hltb_id):
     """
     Fetch HLTB data for a specific game ID. Tries search_from_id first (direct
     lookup, works for compilations), falls back to name search if that fails.
-    Returns dict with hltb_matched_name + times, or None on total failure.
+
+    Returns:
+      - dict with times + 'times_available': True  on success
+      - dict with 'times_available': False          when HLTB was reached but the
+        id has no usable time data (safe to clear the stored match)
+      - HLTB_UNREACHABLE                             when HLTB could not be reached
+        at all (caller must keep whatever is already stored)
     """
     from howlongtobeatpy import HowLongToBeat
+
+    reached_hltb = False
 
     # Try direct lookup first — works for compilations and anything not in search
     try:
@@ -584,20 +613,28 @@ def fetch_hltb_by_id(name, hltb_id):
     except Exception as e:
         log.warning(f"[hltb] search_from_id failed for id={hltb_id}: {e}")
 
-    # Fall back to name search (in case search_from_id is unreliable for some entries)
+    # Fall back to name search (in case search_from_id is unreliable for some entries).
+    # A None result here means the request itself failed; [] means HLTB answered
+    # but had nothing.
     try:
         results = HowLongToBeat(0.0).search(name, similarity_case_sensitive=False)
-        match = next((r for r in (results or []) if r.game_id == hltb_id), None)
-        if match:
-            return {
-                'hltb_matched_name':  match.game_name,
-                'hltb_main':          _hours_to_minutes(match.main_story),
-                'hltb_extras':        _hours_to_minutes(match.main_extra),
-                'hltb_completionist': _hours_to_minutes(match.completionist),
-                'times_available':    True,
-            }
+        if results is not None:
+            reached_hltb = True
+            match = next((r for r in results if r.game_id == hltb_id), None)
+            if match:
+                return {
+                    'hltb_matched_name':  match.game_name,
+                    'hltb_main':          _hours_to_minutes(match.main_story),
+                    'hltb_extras':        _hours_to_minutes(match.main_extra),
+                    'hltb_completionist': _hours_to_minutes(match.completionist),
+                    'times_available':    True,
+                }
     except Exception as e:
         log.warning(f"[hltb] name search fallback failed for '{name}' id={hltb_id}: {e}")
+
+    if not reached_hltb:
+        log.warning(f"[hltb] could not reach HLTB to confirm id={hltb_id}")
+        return HLTB_UNREACHABLE
 
     log.info(f"[hltb] id={hltb_id} not found by any method; storing ID only")
     return {
@@ -660,6 +697,11 @@ def _hltb_worker(normal_q, priority_q, cancel_event, today, threshold, progress_
 
         try:
             info = fetch_hltb_data(row['name'], threshold=threshold)
+            if info is HLTB_UNREACHABLE:
+                # transient: leave hltb_fetched as-is so startup catch-up retries later
+                log.warning(f"[hltb] HLTB unreachable, skipping {appid} for now")
+                time.sleep(2.0)
+                continue
             if info:
                 update_game_data(appid, **info)
             else:
@@ -2335,11 +2377,15 @@ def sync_hltb_unfetched():
                 hltb_id = steam_hltb_map.get(str(appid))
                 if hltb_id:
                     info = fetch_hltb_by_id(name, hltb_id)
+                    if info is HLTB_UNREACHABLE:
+                        raise _HltbUnreachable()
                     info.pop('times_available', None)
                     update_game_data(appid, hltb_id=hltb_id, hltb_fetched=today,
                                      hltb_match_score=100, **info)
                 else:
                     info = fetch_hltb_data(name, threshold=threshold)
+                    if info is HLTB_UNREACHABLE:
+                        raise _HltbUnreachable()
                     if info:
                         update_game_data(appid, **info)
                     else:
@@ -2349,6 +2395,11 @@ def sync_hltb_unfetched():
                                          hltb_completionist=None)
                 with lock:
                     counts['done'] += 1
+            except _HltbUnreachable:
+                # HLTB down: leave hltb_fetched untouched so the next startup retries
+                with lock:
+                    counts['failed'] += 1
+                time.sleep(1.0)
             except Exception as e:
                 log.error(f"[sync_hltb_unfetched] Error for appid {appid}: {e}")
                 with lock:
@@ -2597,11 +2648,15 @@ def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
                 hltb_id = steam_hltb_map.get(str(appid))
                 if hltb_id:
                     info = fetch_hltb_by_id(name, hltb_id)
+                    if info is HLTB_UNREACHABLE:
+                        raise _HltbUnreachable()
                     info.pop('times_available', None)
                     update_game_data(appid, hltb_id=hltb_id, hltb_fetched=today_str,
                                      hltb_match_score=100, **info)
                 else:
                     info = fetch_hltb_data(name, threshold=threshold)
+                    if info is HLTB_UNREACHABLE:
+                        raise _HltbUnreachable()
                     if info:
                         update_game_data(appid, **info)
                     else:
@@ -2613,6 +2668,13 @@ def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
                     counts['done'] += 1
                 if progress_cb:
                     progress_cb('done', appid, total)
+            except _HltbUnreachable:
+                # HLTB is down / API moved: count as failed but leave stored data alone
+                with lock:
+                    counts['failed'] += 1
+                if progress_cb:
+                    progress_cb('failed', appid, total)
+                time.sleep(1.0)
             except Exception as e:
                 log.error(f"[bulk_hltb] Error for {appid}: {e}")
                 with lock:
@@ -2623,6 +2685,84 @@ def bulk_hltb_scrape_games(appids, cancel_event, progress_cb):
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures_wait([pool.submit(worker) for _ in range(2)])
+
+    return counts
+
+
+def bulk_hltb_confirm_matches(appids, cancel_event, progress_cb):
+    """
+    Confirm a batch of pending HLTB matches by re-fetching times for each game's
+    stored hltb_id. Mirrors the single-game /api/hltb/<appid>/confirm route so a
+    "confirm all above threshold" run survives navigating away from the modal.
+
+    On an HLTB outage the stored match is left untouched (counted as failed, and
+    the whole run aborts after a short streak). A genuine reached-but-no-times
+    result clears that game to 'no_match'.
+    Returns {done, failed, cleared[, aborted, error]}.
+    """
+    from datetime import datetime
+
+    db = get_db()
+    rows = {r['appid']: r for r in db.execute(
+        f"SELECT appid, name, hltb_id, COALESCE(duplicate_of, appid) AS canonical "
+        f"FROM games WHERE appid IN ({','.join('?' * len(appids))})", appids
+    ).fetchall()}
+    db.close()
+
+    today  = datetime.now().strftime('%Y-%m-%d')
+    counts = {'done': 0, 'failed': 0, 'cleared': 0}
+    unreachable_streak = 0
+
+    for appid in appids:
+        if cancel_event and cancel_event.is_set():
+            break
+        row = rows.get(appid)
+        if not row or not row['hltb_id']:
+            counts['failed'] += 1
+            if progress_cb:
+                progress_cb('failed', appid, len(appids))
+            continue
+
+        try:
+            result = fetch_hltb_by_id(row['name'], row['hltb_id'])
+        except Exception as e:
+            log.error(f"[bulk_hltb_confirm] {appid}: {e}")
+            result = HLTB_UNREACHABLE
+
+        if result is HLTB_UNREACHABLE:
+            unreachable_streak += 1
+            counts['failed'] += 1
+            if progress_cb:
+                progress_cb('failed', appid, len(appids))
+            if unreachable_streak >= 5:
+                log.warning("[bulk_hltb_confirm] HLTB unreachable, aborting run")
+                counts['aborted'] = True
+                counts['error']   = 'HowLongToBeat is unreachable. Your matches were kept.'
+                return counts
+            time.sleep(1.5)
+            continue
+        unreachable_streak = 0
+
+        times_available = result.pop('times_available', True)
+        if times_available:
+            hltb_data = {**result, 'hltb_fetched': today}
+            update_game_data(appid, **hltb_data)
+            db2 = get_db()
+            for d in db2.execute(
+                "SELECT appid FROM games WHERE duplicate_of=? AND appid!=?",
+                (str(row['canonical']), appid)
+            ).fetchall():
+                update_game_data(d['appid'], **hltb_data)
+            db2.close()
+            counts['done'] += 1
+        else:
+            update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
+                             hltb_matched_name=None, hltb_match_score=None,
+                             hltb_main=None, hltb_extras=None, hltb_completionist=None)
+            counts['cleared'] += 1
+        if progress_cb:
+            progress_cb('done', appid, len(appids))
+        time.sleep(0.5)
 
     return counts
 

@@ -997,7 +997,7 @@ def bulk_op_start():
     types  = data.get('types', ['vertical', 'horizontal', 'icon'])
     source = data.get('source', 'auto')
 
-    if op not in ('rescrape', 'art', 'protondb', 'hltb'):
+    if op not in ('rescrape', 'art', 'protondb', 'hltb', 'hltb_confirm'):
         return jsonify({'status': 'error', 'message': 'Invalid op'}), 400
 
     if scope == 'all':
@@ -1008,6 +1008,19 @@ def bulk_op_start():
     elif scope == 'no_match' and op == 'hltb':
         db     = get_db()
         rows   = db.execute("SELECT appid FROM games WHERE hltb_fetched = 'no_match'").fetchall()
+        db.close()
+        appids = [r['appid'] for r in rows]
+    elif op == 'hltb_confirm':
+        try:
+            threshold = int(data.get('threshold', 75))
+        except (TypeError, ValueError):
+            threshold = 75
+        db     = get_db()
+        rows   = db.execute(
+            "SELECT appid FROM games WHERE hltb_fetched = 'unconfirmed' "
+            "AND hltb_id IS NOT NULL AND COALESCE(hltb_match_score, 0) >= ?",
+            (threshold,)
+        ).fetchall()
         db.close()
         appids = [r['appid'] for r in rows]
 
@@ -1031,7 +1044,9 @@ def bulk_op_start():
                 _bulk_op_state['rate_limit_hit'] = True
 
     def _run():
-        from scrapers import bulk_rescrape_games, bulk_art_scrape_games, bulk_protondb_scrape_games, bulk_hltb_scrape_games
+        from scrapers import (bulk_rescrape_games, bulk_art_scrape_games,
+                              bulk_protondb_scrape_games, bulk_hltb_scrape_games,
+                              bulk_hltb_confirm_matches)
         try:
             if op == 'rescrape':
                 result = bulk_rescrape_games(appids, _bulk_op_cancel, _progress)
@@ -1039,6 +1054,8 @@ def bulk_op_start():
                 result = bulk_art_scrape_games(appids, types, source, _bulk_op_cancel, _progress)
             elif op == 'protondb':
                 result = bulk_protondb_scrape_games(appids, _bulk_op_cancel, _progress)
+            elif op == 'hltb_confirm':
+                result = bulk_hltb_confirm_matches(appids, _bulk_op_cancel, _progress)
             else:
                 result = bulk_hltb_scrape_games(appids, _bulk_op_cancel, _progress)
             with _bulk_op_lock:

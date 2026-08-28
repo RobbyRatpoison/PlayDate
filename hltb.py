@@ -62,7 +62,7 @@ def select_hltb(appid):
     hltb_id  = data.get('hltb_id')
     if not hltb_id:
         return jsonify({'status': 'error', 'message': 'hltb_id required'}), 400
-    from scrapers import fetch_hltb_by_id
+    from scrapers import fetch_hltb_by_id, HLTB_UNREACHABLE
     from datetime import datetime
     db  = get_db()
     row = db.execute("SELECT name FROM games WHERE appid=?", (appid,)).fetchone()
@@ -71,8 +71,9 @@ def select_hltb(appid):
         return jsonify({'status': 'error', 'message': 'Game not found'}), 404
     today  = datetime.now().strftime('%Y-%m-%d')
     result = fetch_hltb_by_id(row['name'], hltb_id)
-    if result is None:
-        return jsonify({'status': 'error', 'message': 'Could not reach HLTB'}), 500
+    if result is HLTB_UNREACHABLE:
+        return jsonify({'status': 'error', 'unreachable': True,
+                        'message': "Couldn't reach HowLongToBeat. Nothing was changed. Try again shortly."}), 502
     times_available = result.pop('times_available', True)
     score = data.get('hltb_match_score')
     if times_available:
@@ -83,11 +84,12 @@ def select_hltb(appid):
                                  'hltb_match_score': score, 'hltb_fetched': today}})
     else:
         # ID exists in HLTB DB but times couldn't be retrieved — don't confirm
-        return jsonify({'status': 'error', 'message': 'Could not fetch times for this ID'}), 500
+        return jsonify({'status': 'error',
+                        'message': 'HowLongToBeat has no time data for that entry.'}), 502
 
 @hltb_bp.route('/api/hltb/<int:appid>', methods=['POST'])
 def rescrape_hltb(appid):
-    from scrapers import fetch_hltb_data
+    from scrapers import fetch_hltb_data, HLTB_UNREACHABLE
     from config import load_state
     db   = get_db()
     row  = db.execute("SELECT name FROM games WHERE appid=?", (appid,)).fetchone()
@@ -96,6 +98,9 @@ def rescrape_hltb(appid):
         return jsonify({'status': 'error', 'message': 'Game not found'}), 404
     threshold = load_state().get('hltb_match_threshold', 75)
     info = fetch_hltb_data(row['name'], threshold=threshold)
+    if info is HLTB_UNREACHABLE:
+        return jsonify({'status': 'error', 'unreachable': True,
+                        'message': "Couldn't reach HowLongToBeat. Existing data kept. Try again shortly."}), 502
     if info:
         update_game_data(appid, **info)
     else:
@@ -106,17 +111,21 @@ def rescrape_hltb(appid):
 
 @hltb_bp.route('/api/hltb/<int:appid>/confirm', methods=['POST'])
 def confirm_hltb(appid):
-    from scrapers import fetch_hltb_by_id
+    from scrapers import fetch_hltb_by_id, HLTB_UNREACHABLE
     from datetime import datetime
     db  = get_db()
     row = db.execute("SELECT name, hltb_id FROM games WHERE appid=?", (appid,)).fetchone()
     db.close()
     if not row:
         return jsonify({'status': 'error', 'message': 'Game not found'}), 404
+    if not row['hltb_id']:
+        return jsonify({'status': 'error', 'message': 'No HLTB match to confirm.'}), 400
     today  = datetime.now().strftime('%Y-%m-%d')
-    result = fetch_hltb_by_id(row['name'], row['hltb_id']) if row['hltb_id'] else None
-    if result is None:
-        return jsonify({'status': 'error', 'message': 'No HLTB ID stored'}), 400
+    result = fetch_hltb_by_id(row['name'], row['hltb_id'])
+    if result is HLTB_UNREACHABLE:
+        # Do NOT touch the stored match. HLTB is just unreachable right now.
+        return jsonify({'status': 'error', 'unreachable': True,
+                        'message': "Couldn't reach HowLongToBeat. Your match was kept. Try again shortly."}), 502
     times_available = result.pop('times_available', True)
     if times_available:
         hltb_data = {**result, 'hltb_fetched': today}
@@ -129,12 +138,15 @@ def confirm_hltb(appid):
         db2.close()
         return jsonify({'status': 'success', 'data': hltb_data})
     else:
-        # ID lookup failed — clear to no_match so the game surfaces in the review tab
+        # HLTB was reached, but the stored ID has no usable time data. Clear to
+        # no_match so the game surfaces in the review tab.
         cleared = {'hltb_fetched': 'no_match', 'hltb_id': None,
                    'hltb_matched_name': None, 'hltb_match_score': None,
                    'hltb_main': None, 'hltb_extras': None, 'hltb_completionist': None}
         update_game_data(appid, **cleared)
-        return jsonify({'status': 'success', 'data': cleared})
+        return jsonify({'status': 'success', 'cleared': True,
+                        'message': 'HowLongToBeat has no time data for that entry. Moved to no match.',
+                        'data': cleared})
 
 @hltb_bp.route('/api/hltb/<int:appid>', methods=['DELETE'])
 def delete_hltb(appid):

@@ -520,7 +520,7 @@
         });
 
         // ── Bulk operation progress indicator ────────────────────────────────
-        const _BULK_OP_LABELS = { rescrape: 'RE-SCRAPE', art: 'ART FETCH', protondb: 'PROTONDB', hltb: 'HLTB' };
+        const _BULK_OP_LABELS = { rescrape: 'RE-SCRAPE', art: 'ART FETCH', protondb: 'PROTONDB', hltb: 'HLTB', hltb_confirm: 'HLTB CONFIRM' };
         let _bulkProgressPoller = null;
 
         function _updateBulkProgressBtn(opType, done, total) {
