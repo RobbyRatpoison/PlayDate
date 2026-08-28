@@ -3,7 +3,7 @@
 ## v1.9.0
 ### New
 
-- Non-Steam games (EA, Ubisoft, Epic, GOG, etc.) can now fill in missing metadata — tags, review score, genres, developer/publisher, release date — from the matching Steam page, found via PCGamingWiki. Runs as part of a bulk rescrape, or per-game from the edit window.
+- Non-Steam games (EA, Ubisoft, Epic, GOG, etc.) can now fill in missing metadata — tags, review score, genres, developer/publisher, release date — from the matching Steam page, found via PCGamingWiki. Runs as part of a bulk rescrape, or per-game from the edit window. An exact name match on Steam is now always preferred, PCGamingWiki pages are looked up by title first (more reliable than its search), and games that were delisted from Steam still get developer/genre/release info from PCGamingWiki instead of a wrong guess.
 
 ### Fixed
 

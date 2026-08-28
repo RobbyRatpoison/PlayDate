@@ -50,6 +50,8 @@ _UA = ('PlayDate/1.9 (game library manager; '
 
 # Similarity thresholds (difflib ratio, 0..1).
 _SIM_PCGW      = 0.72   # min title match to trust a PCGamingWiki page
+# Infobox fields worth preferring over a weak Steam name-guess.
+_USEFUL_BOX_KEYS = ('developers', 'publishers', 'genres', 'categories', 'release_date')
 _SIM_CONFIRMED = 0.90   # Steam-search: apply immediately
 _SIM_MAYBE     = 0.72   # Steam-search: store as 'unconfirmed', wait for the user
 
@@ -150,19 +152,39 @@ def _pcgw_get(session, params):
 
 
 def _pcgw_find_page(name, session):
-    """Best-matching PCGamingWiki page title for `name`, None if no good match,
-    or _PCGW_UNAVAILABLE if PCGW couldn't be reached."""
+    """(page title, section-0 wikitext) for the best PCGamingWiki match, or
+    (None, None) if no good match, or _PCGW_UNAVAILABLE if PCGW couldn't be
+    reached."""
+    clean = _clean_query(name)
+
+    # 1. Exact page title. PCGW article titles usually match the game name, and
+    #    its fulltext search regularly buries the real page under partial-title
+    #    hits ("Syndicate" -> "Steampunk Syndicate", "Crash Time 4: The
+    #    Syndicate", ...). A direct title hit with an {{Infobox game}} is
+    #    authoritative.
+    wt = _pcgw_section0_wikitext(clean, session)
+    if wt is _PCGW_UNAVAILABLE:
+        return _PCGW_UNAVAILABLE
+    if wt and '{{infobox game' in wt.lower():
+        return clean, wt
+
+    # 2. Fulltext search fallback.
     data = _pcgw_get(session, {
         'action': 'query', 'list': 'search', 'format': 'json',
-        'srsearch': _clean_query(name), 'srlimit': 6, 'srprop': '',
+        'srsearch': clean, 'srlimit': 6, 'srprop': '',
     })
     if data is _PCGW_UNAVAILABLE:
         return _PCGW_UNAVAILABLE
     hits = data.get('query', {}).get('search', [])
     if not hits:
-        return None
+        return None, None
     best = max(hits, key=lambda h: _similar(name, h['title']))
-    return best['title'] if _similar(name, best['title']) >= _SIM_PCGW else None
+    if _similar(name, best['title']) < _SIM_PCGW:
+        return None, None
+    wt = _pcgw_section0_wikitext(best['title'], session)
+    if wt is _PCGW_UNAVAILABLE:
+        return _PCGW_UNAVAILABLE
+    return best['title'], wt
 
 
 def _pcgw_section0_wikitext(title, session):
@@ -195,14 +217,12 @@ def _pcgw_infobox(name, session):
     `categories`, `release_date` that PCGamingWiki has (comma-joined, no
     spaces, matching the DB convention). None if there's no matching page;
     _PCGW_UNAVAILABLE if PCGW couldn't answer."""
-    title = _pcgw_find_page(name, session)
-    if title is _PCGW_UNAVAILABLE:
+    found = _pcgw_find_page(name, session)
+    if found is _PCGW_UNAVAILABLE:
         return _PCGW_UNAVAILABLE
+    title, wt = found
     if not title:
         return None
-    wt = _pcgw_section0_wikitext(title, session)
-    if wt is _PCGW_UNAVAILABLE:
-        return _PCGW_UNAVAILABLE
     # Name variants ("Dragon Age 2", "Dragon Age Origins") are redirect stubs.
     redir = _REDIRECT_RE.match(wt)
     if redir:
@@ -287,12 +307,24 @@ def _resolve(name):
 
     candidates = _steam_search_candidates(name, session)
     if candidates:
+        # An exact normalised-name match wins outright, wherever Steam ranked it
+        # (its search often buries the real game under sequels/DLC/soundtracks).
+        want = _norm(name)
+        exact = next((c for c in candidates if _norm(c['name']) == want), None)
+        if exact:
+            log.info('Steam search: %r -> exact %r (%s)', name, exact['name'], exact['id'])
+            return exact['id'], 'confirmed', box
         best = max(candidates, key=lambda c: _similar(name, c['name']))
         score = _similar(name, best['name'])
         log.info('Steam search: %r -> %r (%s) score %.2f', name, best['name'], best['id'], score)
         if score >= _SIM_CONFIRMED:
             return best['id'], 'confirmed', box
         if not pcgw_down and score >= _SIM_MAYBE:
+            # A PCGW page carrying real metadata beats a weak, differently-named
+            # Steam guess (delisted classics: "Syndicate (1993)" -> "Pizza
+            # Syndicate"): take the PCGW data, drop the maybe.
+            if box and any(box.get(k) for k in _USEFUL_BOX_KEYS):
+                return None, 'none', box
             return best['id'], 'maybe', box
 
     if pcgw_down and not box:
@@ -353,6 +385,10 @@ def backfill_metadata(appid, *, force=False):
         return _empty(row[field])
 
     out = {'meta_backfill_fetched': today}
+    # A forced re-resolve that no longer lands on a Steam page must clear the
+    # stale candidate id (e.g. a parked 'maybe' that PCGW has since overridden).
+    if row['steam_appid'] and not steam_appid:
+        out['steam_appid'] = None
 
     if steam_appid:
         # A real Steam page -- richest source (tags + reviews + the rest).
@@ -392,13 +428,15 @@ def backfill_metadata(appid, *, force=False):
             out['release_date'] = pcgw_box['release_date']
 
     else:
-        return {'meta_backfill_fetched': 'no_match'}
+        return {'meta_backfill_fetched': 'no_match',
+                **({'steam_appid': None} if row['steam_appid'] else {})}
 
     filled = [k for k in out if k not in ('steam_appid', 'meta_backfill_fetched')]
     if not filled and not steam_appid:
         # PCGW page existed but had nothing usable -- record as no_match so we
         # don't keep re-fetching it.
-        return {'meta_backfill_fetched': 'no_match'}
+        return {'meta_backfill_fetched': 'no_match',
+                **({'steam_appid': None} if row['steam_appid'] else {})}
     log.info('backfill %s (%s): filled %s', appid,
              f'steam {steam_appid}' if steam_appid else 'pcgw-only',
              filled or '(nothing new)')
