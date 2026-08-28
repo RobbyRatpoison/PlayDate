@@ -59,23 +59,34 @@ _TM_RE          = re.compile(r'[™®©℠]')          # ™ ® © ℠
 _YEAR_SUFFIX_RE = re.compile(r'\s*\((?:19|20)\d{2}\)\s*$')
 _NONWORD_RE     = re.compile(r'[^\w\s]', re.UNICODE)
 _WS_RE          = re.compile(r'\s+')
+# Distribution-channel noise Humble/GOG append to a title (not part of the real
+# name): "Aragami DRM-free", "Foo (DRM-Free)", "Bar - DRM-free build",
+# "Baz Windows DRM-Free", "Gunmetal Arcadia Zero (Humble Original)".
+_DIST_NOISE_RE  = re.compile(
+    r'\s*[\-–(]?\s*'
+    r'(?:(?:windows|win32|win64|macos|mac|osx|linux)\s+)?'
+    r'(?:drm[\s\-]?free(?:\s+build)?|humble(?:\s+bundle)?\s+original)'
+    r'\s*\)?\s*$', re.I)
 
 
 def _clean_query(name):
-    """Light cleanup for search terms: drop trademark glyphs and a trailing
-    (YYYY) disambiguator, collapse whitespace. Keeps case and inner
-    punctuation — search engines want those."""
-    n = _YEAR_SUFFIX_RE.sub('', _TM_RE.sub('', name or ''))
+    """Light cleanup for search terms: drop trademark glyphs, a trailing (YYYY)
+    disambiguator, and Humble/GOG distribution suffixes ("DRM-free", "Humble
+    Original"); collapse whitespace. Keeps case and inner punctuation — search
+    engines want those."""
+    n = _DIST_NOISE_RE.sub('', _YEAR_SUFFIX_RE.sub('', _TM_RE.sub('', name or '')))
     return _WS_RE.sub(' ', n).strip()
 
 
 def _norm(name):
-    """Normalise a title for comparison: drop trademark glyphs and a trailing
-    (YYYY) disambiguator, flatten punctuation to spaces, lowercase. Deliberately
-    keeps edition words ('Ultimate', 'Legendary') — those are real, distinct
-    products and shouldn't collapse together."""
+    """Normalise a title for comparison: drop trademark glyphs, a trailing
+    (YYYY) disambiguator, and Humble/GOG distribution suffixes, flatten
+    punctuation to spaces, lowercase. Deliberately keeps edition words
+    ('Ultimate', 'Legendary') — those are real, distinct products and shouldn't
+    collapse together."""
     n = _TM_RE.sub('', name or '')
     n = _YEAR_SUFFIX_RE.sub('', n)
+    n = _DIST_NOISE_RE.sub('', n)
     n = _NONWORD_RE.sub(' ', n)
     return _WS_RE.sub(' ', n).strip().lower()
 

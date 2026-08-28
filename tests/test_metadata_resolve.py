@@ -64,6 +64,13 @@ def test_norm_keeps_edition_words():
     ("Peggle®",                "Peggle"),
     ("Prince of Persia: The Sands of Time™", "Prince of Persia: The Sands of Time"),  # inner ':' kept
     ("Far Cry® 3",             "Far Cry 3"),
+    ("Aragami DRM-free",       "Aragami"),            # Humble distribution suffix
+    ("Bleed 2 (DRM-Free)",     "Bleed 2"),
+    ("Desert Child - DRM-free", "Desert Child"),
+    ("Headlander Windows DRM-Free", "Headlander"),
+    ("Train Valley 2 - DRM-free build", "Train Valley 2"),
+    ("Gunmetal Arcadia Zero (Humble Original)", "Gunmetal Arcadia Zero"),
+    ("Half-Life 2",            "Half-Life 2"),        # 'free' alone is not a match
 ])
 def test_clean_query(raw, expected):
     assert _clean_query(raw) == expected
