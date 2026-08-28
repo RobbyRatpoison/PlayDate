@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.9.0
+## v1.9.0 - 2026-08-28
 ### New
 
 - Non-Steam games can backfill missing metadata (tags, reviews, genres, dev/publisher, release date) from their Steam page via PCGamingWiki; itch.io exclusives fall back to their itch store page. Runs automatically in the background after launch, or on demand from Bulk Tools > Re-scrape.
