@@ -520,7 +520,7 @@
         });
 
         // ── Bulk operation progress indicator ────────────────────────────────
-        const _BULK_OP_LABELS = { rescrape: 'RE-SCRAPE', art: 'ART FETCH', protondb: 'PROTONDB', hltb: 'HLTB', hltb_confirm: 'HLTB CONFIRM' };
+        const _BULK_OP_LABELS = { rescrape: 'RE-SCRAPE', art: 'ART FETCH', protondb: 'PROTONDB', hltb: 'HLTB', hltb_confirm: 'HLTB CONFIRM', metadata: 'METADATA' };
         let _bulkProgressPoller = null;
 
         function _updateBulkProgressBtn(opType, done, total) {
@@ -648,6 +648,26 @@
                     _showBlaeoErrorNotification();
                 }
             } catch(e) {}
+        })();
+
+        // The server can start a bulk op on its own shortly after launch (the
+        // metadata catch-up, 20-90s + earlier sync steps after boot), by which
+        // time the one-shot resume IIFE above has already run. Poll slowly for
+        // the first ~13 min so the top-bar indicator picks it up without a reload.
+        (function _watchStartupBulkOps() {
+            if (!_configExists) return;
+            const deadline = Date.now() + 13 * 60 * 1000;
+            const iv = setInterval(async () => {
+                if (Date.now() > deadline || _bulkProgressPoller) { clearInterval(iv); return; }
+                try {
+                    const op = await fetch('/api/bulk-op/status').then(r => r.json());
+                    if (op.running) {
+                        clearInterval(iv);
+                        _updateBulkProgressBtn(op.op, op.done + op.failed, op.total);
+                        _startBulkProgressPoller();
+                    }
+                } catch (e) {}
+            }, 15000);
         })();
 
         // ── Store name review notification ───────────────────────────────────

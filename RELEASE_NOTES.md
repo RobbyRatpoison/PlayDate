@@ -3,15 +3,15 @@
 ## v1.9.0
 ### New
 
-- Non-Steam games (EA, Ubisoft, Epic, GOG, etc.) can fill in missing metadata — tags, review score, genres, developer, publisher, release date — from their Steam page, found via PCGamingWiki. Runs during a bulk rescrape or per-game from the edit window. itch.io exclusives fall back to their itch store page for genre and tags.
-- "Find Steam Junk" is now "Find Library Junk": the title scan (betas, demos, prototypes, soundtracks, dev kits) covers every platform, plus a Deep Plugin Scan that asks each store for DLC and non-game apps.
+- Non-Steam games can backfill missing metadata (tags, reviews, genres, dev/publisher, release date) from their Steam page via PCGamingWiki; itch.io exclusives fall back to their itch store page. Runs automatically in the background after launch, or on demand from Bulk Tools > Re-scrape.
+- "Find Steam Junk" is now "Find Library Junk": title scan covers every platform, plus a Deep Plugin Scan for store DLC and non-game apps.
 
 ### Improvements
 
-- HLTB "Confirm all above threshold" runs as a background job that keeps going if you leave the page.
+- HLTB "Confirm all above threshold" runs as a background job that survives leaving the page.
 
 ### Fixes
 
-- HowLongToBeat lookups work again after their search API changed; pasting a game ID or full URL both work.
-- An unreachable HowLongToBeat no longer wipes a game's stored HLTB match.
-- Cleaner plugin imports: Humble skips Android-only mobile games and bundled software (VEGAS Pro, etc.), Epic skips browsers and dev kits, and Humble Monthly / Choice games now show their real developer instead of "Humble Bundle".
+- HowLongToBeat lookups work again after their search API changed.
+- An unreachable HowLongToBeat no longer wipes a game's stored match.
+- Cleaner plugin imports: Humble skips mobile-only games and bundled software, Epic skips browsers and dev kits, Humble Monthly/Choice games show their real developer.

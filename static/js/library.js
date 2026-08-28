@@ -963,10 +963,7 @@ function openBulkEditModal(tab = 'edit') {
         document.getElementById('brs-status').className = '';
         document.getElementById('brs-progress').style.display = 'none';
         document.getElementById('brs-stop-btn').style.display = 'none';
-        document.getElementById('brs-start-meta-btn').disabled = false;
-        document.getElementById('brs-start-art-btn').disabled  = false;
-        const _pdbBtn = document.getElementById('brs-start-protondb-btn');
-        if (_pdbBtn) _pdbBtn.disabled = false;
+        _brsSetStartBtnsDisabled(false);
     }
 
     // Reset date tab (only if not running)
@@ -1217,6 +1214,16 @@ function onBulkRescrapeScopeChange() {
     }
 }
 
+// Enable/disable every re-scrape-tab start button in one call, so a new op button
+// automatically participates in every disable site.
+function _brsSetStartBtnsDisabled(disabled) {
+    ['brs-start-meta-btn', 'brs-start-art-btn', 'brs-start-hltb-btn',
+     'brs-start-protondb-btn', 'brs-start-metadata-btn'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.disabled = disabled;
+    });
+}
+
 async function startBulkOp(op) {
     if (_bulkOpPollInterval) return;
 
@@ -1253,16 +1260,16 @@ async function startBulkOp(op) {
         payload.source = document.querySelector('input[name="brs-source"]:checked')?.value || 'auto';
     }
 
-    const opLabel = op === 'rescrape' ? 'Re-scrape store data' : op === 'protondb' ? 'Fetch ProtonDB data' : op === 'hltb' ? 'Fetch HLTB data' : 'Scrape artwork';
-    const suffix  = scope === 'all' ? '\n\nThis will process your entire library and may take a long time.' : '';
+    const opLabel = op === 'rescrape' ? 'Re-scrape store data' : op === 'protondb' ? 'Fetch ProtonDB data'
+                  : op === 'hltb' ? 'Fetch HLTB data' : op === 'metadata' ? 'Backfill missing metadata'
+                  : 'Scrape artwork';
+    let suffix = scope === 'all' ? '\n\nThis will process your entire library and may take a long time.' : '';
+    if (op === 'metadata') {
+        suffix += '\n\nOnly non-Steam games still missing metadata are processed, one request every few seconds.';
+    }
     if (!await confirm(`${opLabel} for ${displayCount} game${displayCount !== 1 ? 's' : ''}?${suffix}`)) return;
 
-    document.getElementById('brs-start-meta-btn').disabled = true;
-    document.getElementById('brs-start-art-btn').disabled  = true;
-    const protondbBtn = document.getElementById('brs-start-protondb-btn');
-    if (protondbBtn) protondbBtn.disabled = true;
-    const hltbBtn = document.getElementById('brs-start-hltb-btn');
-    if (hltbBtn) hltbBtn.disabled = true;
+    _brsSetStartBtnsDisabled(true);
     const stopBtn = document.getElementById('brs-stop-btn');
     stopBtn.style.display = '';
     stopBtn.disabled = false;
@@ -1274,7 +1281,7 @@ async function startBulkOp(op) {
     const progressLabel = document.getElementById('brs-progress-label');
     progress.style.display = 'block';
     progressBar.style.width = '0%';
-    progressLabel.textContent = `0 / ${displayCount}`;
+    progressLabel.textContent = `0 / ${displayCount ?? '…'}`;
 
     try {
         const res  = await fetch('/api/bulk-op/start', {
@@ -1285,8 +1292,7 @@ async function startBulkOp(op) {
         if (d.status !== 'success') {
             status.className = 'bulk-status-error';
             status.textContent = '✘ ' + (d.message || 'Failed to start.');
-            document.getElementById('brs-start-meta-btn').disabled = false;
-            document.getElementById('brs-start-art-btn').disabled  = false;
+            _brsSetStartBtnsDisabled(false);
             stopBtn.style.display = 'none';
             return;
         }
@@ -1294,12 +1300,7 @@ async function startBulkOp(op) {
     } catch (e) {
         status.className = 'bulk-status-error';
         status.textContent = '✘ Network error.';
-        document.getElementById('brs-start-meta-btn').disabled = false;
-        document.getElementById('brs-start-art-btn').disabled  = false;
-        const _pdbBtn = document.getElementById('brs-start-protondb-btn');
-        if (_pdbBtn) _pdbBtn.disabled = false;
-        const _hltbBtn2 = document.getElementById('brs-start-hltb-btn');
-        if (_hltbBtn2) _hltbBtn2.disabled = false;
+        _brsSetStartBtnsDisabled(false);
         stopBtn.style.display = 'none';
         return;
     }
@@ -1335,12 +1336,14 @@ function _pollBulkOp() {
                 if (d.result?.error) {
                     status.className = 'bulk-status-error';
                     status.textContent = '✘ Error: ' + d.result.error;
+                } else if (d.op === 'metadata') {
+                    status.className = d.done > 0 ? 'bulk-status-success' : '';
+                    status.textContent = `✔ Done — ${d.done} filled${d.failed ? `, ${d.failed} not matched` : ''}${d.result?.capped ? ' (batch cap hit, more will run at next startup)' : ''}.`;
                 } else {
                     status.className = d.done > 0 ? 'bulk-status-success' : '';
                     status.textContent = `✔ Done — ${d.done} updated${d.failed ? `, ${d.failed} failed` : ''}${d.aborted ? ' (rate limit exhausted)' : ''}.`;
                 }
-                document.getElementById('brs-start-meta-btn').disabled = false;
-                document.getElementById('brs-start-art-btn').disabled  = false;
+                _brsSetStartBtnsDisabled(false);
                 document.getElementById('brs-stop-btn').style.display  = 'none';
             }
         } catch (e) { /* ignore */ }
@@ -1464,12 +1467,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('brs-progress').style.display = 'block';
             document.getElementById('brs-progress-bar').style.width = pct + '%';
             document.getElementById('brs-progress-label').textContent = `${done} / ${op.total}`;
-            document.getElementById('brs-start-meta-btn').disabled = true;
-            document.getElementById('brs-start-art-btn').disabled  = true;
-            const pdbBtn  = document.getElementById('brs-start-protondb-btn');
-            if (pdbBtn)  pdbBtn.disabled  = true;
-            const hltbBtn = document.getElementById('brs-start-hltb-btn');
-            if (hltbBtn) hltbBtn.disabled = true;
+            _brsSetStartBtnsDisabled(true);
             const stopBtn = document.getElementById('brs-stop-btn');
             stopBtn.style.display = '';
             stopBtn.disabled = false;

@@ -997,7 +997,7 @@ def bulk_op_start():
     types  = data.get('types', ['vertical', 'horizontal', 'icon'])
     source = data.get('source', 'auto')
 
-    if op not in ('rescrape', 'art', 'protondb', 'hltb', 'hltb_confirm'):
+    if op not in ('rescrape', 'art', 'protondb', 'hltb', 'hltb_confirm', 'metadata'):
         return jsonify({'status': 'error', 'message': 'Invalid op'}), 400
 
     if scope == 'all':
@@ -1023,6 +1023,27 @@ def bulk_op_start():
         ).fetchall()
         db.close()
         appids = [r['appid'] for r in rows]
+    elif op == 'metadata':
+        # Honour the scope selector, then narrow to games that actually still
+        # need a backfill pass (non-Steam, not already done). 'all' = every
+        # pending non-Steam game; 'filtered'/'selected' = the passed appids
+        # intersected with that pending set.
+        from scrapers import _METADATA_PENDING_SQL, _METADATA_PENDING_WHERE
+        db = get_db()
+        if scope == 'all':
+            rows = db.execute(_METADATA_PENDING_SQL).fetchall()
+        else:
+            ids = [int(a) for a in appids]
+            if ids:
+                ph   = ','.join('?' * len(ids))
+                rows = db.execute(
+                    f"SELECT appid FROM games WHERE {_METADATA_PENDING_WHERE} "
+                    f"AND appid IN ({ph}) ORDER BY appid", ids
+                ).fetchall()
+            else:
+                rows = []
+        db.close()
+        appids = [r['appid'] for r in rows]
 
     appids = [int(a) for a in appids]
     if not appids:
@@ -1030,6 +1051,8 @@ def bulk_op_start():
 
     _bulk_op_cancel.clear()
     with _bulk_op_lock:
+        if _bulk_op_state['running']:   # re-check under the lock (startup catch-up may have grabbed the slot)
+            return jsonify({'status': 'error', 'message': 'Already running'}), 400
         _bulk_op_state.update(running=True, op=op, total=len(appids),
                               done=0, failed=0, rate_limit_hit=False,
                               aborted=False, result=None)
@@ -1046,7 +1069,7 @@ def bulk_op_start():
     def _run():
         from scrapers import (bulk_rescrape_games, bulk_art_scrape_games,
                               bulk_protondb_scrape_games, bulk_hltb_scrape_games,
-                              bulk_hltb_confirm_matches)
+                              bulk_hltb_confirm_matches, bulk_backfill_metadata)
         try:
             if op == 'rescrape':
                 result = bulk_rescrape_games(appids, _bulk_op_cancel, _progress)
@@ -1056,6 +1079,8 @@ def bulk_op_start():
                 result = bulk_protondb_scrape_games(appids, _bulk_op_cancel, _progress)
             elif op == 'hltb_confirm':
                 result = bulk_hltb_confirm_matches(appids, _bulk_op_cancel, _progress)
+            elif op == 'metadata':
+                result = bulk_backfill_metadata(appids, _bulk_op_cancel, _progress)
             else:
                 result = bulk_hltb_scrape_games(appids, _bulk_op_cancel, _progress)
             with _bulk_op_lock:

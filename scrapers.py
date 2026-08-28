@@ -2767,6 +2767,181 @@ def bulk_hltb_confirm_matches(appids, cancel_event, progress_cb):
     return counts
 
 
+# ── Non-Steam metadata backfill ──────────────────────────────────────────────
+
+# A non-Steam game that still needs a metadata backfill pass. 'retry' is
+# future-proofing -- nothing writes it to the column today.
+_METADATA_PENDING_WHERE = (
+    "COALESCE(platform, 'steam') <> 'steam' "
+    "AND (meta_backfill_fetched IS NULL OR meta_backfill_fetched IN ('0', 'retry'))"
+)
+_METADATA_PENDING_SQL = f"SELECT appid FROM games WHERE {_METADATA_PENDING_WHERE} ORDER BY appid"
+
+
+def _backfill_batch(appids, cancel_event, progress_cb=None, *,
+                    per_session_cap=None, per_session_seconds=None,
+                    inter_delay=3.0, pause_event=None):
+    """Sequentially backfill Steam-only metadata for a list of non-Steam games.
+
+    Shared by sync_metadata_backfill (capped startup catch-up) and
+    bulk_backfill_metadata (uncapped manual bulk op).
+
+    Per appid: metadata.backfill_metadata(appid) -> update_game_data(**result).
+    Sleeps `inter_delay` between games (on top of the global PCGW 1.5s lock).
+    Stops early on cancel, after `per_session_cap` games attempted, or after
+    `per_session_seconds` wall-clock. Unreached games keep their NULL/'0'/'retry'
+    meta_backfill_fetched and resume on the next run.
+
+    `pause_event` (set == ok to run): the auto path passes _populate_idle so it
+    yields to a running populate; the manual op passes None.
+
+    RateLimitedError from backfill_metadata -> pause once (retry_after capped at
+    300s, else 30s), retry the appid once, then count it failed. PCGW throttling
+    never reaches here -- backfill_metadata handles it internally (returns None,
+    writes nothing, row stays pending).
+
+    Returns {done, failed, attempted, capped, aborted}.
+    """
+    from metadata import backfill_metadata
+
+    total     = len(appids)
+    counts    = {'done': 0, 'failed': 0}
+    attempted = 0
+    capped    = False
+    aborted   = False
+    start     = time.monotonic()
+
+    for appid in appids:
+        if cancel_event and cancel_event.is_set():
+            break
+        if per_session_cap is not None and attempted >= per_session_cap:
+            capped = True
+            break
+        if per_session_seconds is not None and (time.monotonic() - start) >= per_session_seconds:
+            capped = True
+            break
+        if pause_event is not None and not pause_event.is_set():
+            log.info("_backfill_batch: waiting for populate to finish.")
+            pause_event.wait()
+            if cancel_event and cancel_event.is_set():
+                break
+
+        attempted += 1
+        for attempt in range(2):
+            try:
+                result = backfill_metadata(appid)
+                if result:
+                    update_game_data(appid, **result)
+                    counts['done'] += 1
+                    if progress_cb:
+                        progress_cb('done', appid, total)
+                else:
+                    counts['failed'] += 1
+                    if progress_cb:
+                        progress_cb('failed', appid, total)
+                break
+            except RateLimitedError as e:
+                if attempt == 0:
+                    delay = min(e.retry_after, 300) if e.retry_after else 30
+                    log.warning("_backfill_batch: rate limited at %s, pausing %.0fs.", appid, delay)
+                    if progress_cb:
+                        progress_cb('rate_limit', {'delay': delay}, total)
+                    if cancel_event and cancel_event.wait(delay):
+                        aborted = True
+                        break
+                    if not cancel_event:
+                        time.sleep(delay)
+                else:
+                    log.error("_backfill_batch: retry failed for %s (rate limited again)", appid)
+                    counts['failed'] += 1
+                    if progress_cb:
+                        progress_cb('failed', appid, total)
+            except Exception as e:
+                log.warning("_backfill_batch: error for %s -- %s", appid, e)
+                counts['failed'] += 1
+                if progress_cb:
+                    progress_cb('failed', appid, total)
+                break
+        if aborted:
+            break
+
+        if cancel_event:
+            if cancel_event.wait(inter_delay):
+                break
+        else:
+            time.sleep(inter_delay)
+
+    return {**counts, 'attempted': attempted, 'capped': capped, 'aborted': aborted}
+
+
+def sync_metadata_backfill():
+    """Startup catch-up: backfill Steam-only metadata for non-Steam games added
+    outside a full bulk rescrape (plugins, emulators).
+
+    Routes through the shared _bulk_op_state slot as op='metadata' so it reuses
+    the top-bar progress/cancel UI. Defers to the next launch if a bulk op is
+    already running. Politeness: 20-90s randomized start delay, ~3s between games,
+    per-session cap (~10 min OR ~120 games) with column-based resume.
+    """
+    import random
+    from library import _bulk_op_state, _bulk_op_lock, _bulk_op_cancel
+
+    with _bulk_op_lock:
+        if _bulk_op_state['running']:
+            log.info("sync_metadata_backfill: a bulk op is running, deferring.")
+            return
+
+    if _bulk_op_cancel.wait(random.uniform(20, 90)):   # interruptible on shutdown
+        return
+
+    db   = get_db()
+    rows = db.execute(_METADATA_PENDING_SQL).fetchall()
+    db.close()
+    if not rows:
+        log.info("sync_metadata_backfill: nothing pending.")
+        return
+    appids = [r['appid'] for r in rows]
+    log.info("sync_metadata_backfill: %d game(s) pending.", len(appids))
+
+    with _bulk_op_lock:
+        if _bulk_op_state['running']:   # a user op may have started during the delay
+            return
+        _bulk_op_cancel.clear()
+        _bulk_op_state.update(running=True, op='metadata', total=len(appids),
+                              done=0, failed=0, rate_limit_hit=False,
+                              aborted=False, result=None)
+
+    def _cb(event, _data, _total):
+        with _bulk_op_lock:
+            if event == 'done':
+                _bulk_op_state['done'] += 1
+            elif event == 'failed':
+                _bulk_op_state['failed'] += 1
+            elif event == 'rate_limit':
+                _bulk_op_state['rate_limit_hit'] = True
+
+    try:
+        result = _backfill_batch(appids, _bulk_op_cancel, _cb,
+                                 per_session_cap=120, per_session_seconds=600,
+                                 inter_delay=3.0, pause_event=_populate_idle)
+        with _bulk_op_lock:
+            _bulk_op_state['result']  = result
+            _bulk_op_state['aborted'] = result.get('aborted', False)
+        log.info("sync_metadata_backfill: done=%s failed=%s capped=%s / %d",
+                 result['done'], result['failed'], result['capped'], len(appids))
+    finally:
+        with _bulk_op_lock:
+            _bulk_op_state['running'] = False
+
+
+def bulk_backfill_metadata(appids, cancel_event, progress_cb):
+    """Manual 'Backfill Missing Metadata' bulk op. Full pending list, no
+    per-session cap. Metadata only -- no art / achievement refetch.
+    Returns _backfill_batch's result dict ({done, failed, attempted, capped, aborted}).
+    """
+    return _backfill_batch(appids, cancel_event, progress_cb, inter_delay=3.0)
+
+
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 @blaeo_bp.route('/sync-blaeo')

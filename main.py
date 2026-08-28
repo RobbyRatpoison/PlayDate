@@ -1465,13 +1465,18 @@ if __name__ == '__main__':
     #     unfetched HLTB data and migrate store release dates silently in the same thread.
     def _run_playtime_sync():
         from config import get_active_account
-        from scrapers import sync_recent_playtime, sync_hltb_unfetched, sync_store_release_dates, sync_store_names, sync_steam_collections
+        from scrapers import (sync_recent_playtime, sync_hltb_unfetched, sync_store_release_dates,
+                              sync_store_names, sync_steam_collections, sync_metadata_backfill)
         _account = get_active_account()
         sync_steam_collections((_account or {}).get('steam_id'))
         sync_recent_playtime()
         sync_hltb_unfetched()
         sync_store_release_dates()
         sync_store_names()
+        try:
+            sync_metadata_backfill()
+        except Exception as e:
+            log.warning(f"Startup metadata backfill failed: {e}")
 
     threading.Thread(target=_run_playtime_sync, daemon=True).start()
     log.info("Playtime sync started in background.")
@@ -1574,9 +1579,11 @@ if __name__ == '__main__':
     def _on_closing():
         populate_cancel.set()   # stop any running populate before the process exits
         from scrapers import _store_date_migration_cancel, _store_name_migration_cancel, _populate_idle
+        from library import _bulk_op_cancel
         _store_date_migration_cancel.set()
         _store_name_migration_cancel.set()
-        _populate_idle.set()  # unblock sync_store_names if it's waiting
+        _bulk_op_cancel.set()  # stop an in-progress metadata backfill / bulk op
+        _populate_idle.set()   # unblock sync_store_names / _backfill_batch if they're waiting
         _save_window_state(_tracked)
 
     window.events.maximized += _on_maximized
