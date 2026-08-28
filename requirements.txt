@@ -19,7 +19,7 @@ pythonnet==3.1.0rc0
 # HTTP & scraping
 requests==2.33.1
 beautifulsoup4==4.14.3
-howlongtobeatpy==1.0.21
+howlongtobeatpy==1.0.23
 aiohttp==3.14.3
 aiounittest==1.5.0
 fake-useragent==2.2.0
