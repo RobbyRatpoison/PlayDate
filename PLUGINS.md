@@ -222,6 +222,22 @@ class MyPlugin:
         """
         pass
 
+    def store_page_metadata(self, url):
+        """
+        Optional. Called by metadata.backfill_metadata() as its LAST fallback
+        tier, only for a game that resolved to neither a Steam page nor a
+        PCGamingWiki page (i.e. a store exclusive). Scrape genre / tags /
+        release date from the store's own HTML page (`url` = the game's
+        platform_slug). Return a dict for update_game_data (any of
+        `genres`, `categories`, `tags`, `release_date`), or {} on failure.
+
+        Only itch.io implements this — its API exposes none of the page
+        taxonomy. Filter tags to the library's existing vocabulary
+        (`SELECT tags FROM games`) rather than importing raw store tags, so the
+        tag set stays consistent instead of accumulating store-specific cruft.
+        """
+        pass
+
     def scan_junk(self):
         """
         Optional. Called by the Blacklist Manager's "Find Library Junk" →

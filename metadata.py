@@ -355,6 +355,21 @@ def _empty(v):
     return v is None or (isinstance(v, str) and not v.strip())
 
 
+def _store_page_metadata(platform, slug):
+    """Ask the platform's plugin to scrape genre/tags/release from its own store
+    page (only itch.io implements store_page_metadata). Returns {} otherwise."""
+    if not slug:
+        return {}
+    try:
+        import plugins as _plugins
+        plugin = _plugins.get(platform)
+        fn = getattr(plugin, 'store_page_metadata', None) if plugin else None
+        return (fn(slug) or {}) if callable(fn) else {}
+    except Exception as e:
+        log.warning('store_page_metadata(%s): %s', platform, e)
+        return {}
+
+
 def backfill_metadata(appid, *, force=False):
     """Fill missing metadata for one non-Steam game from its Steam counterpart.
 
@@ -371,8 +386,9 @@ def backfill_metadata(appid, *, force=False):
 
     db = get_db()
     row = db.execute(
-        "SELECT name, platform, steam_appid, meta_backfill_fetched, developers, "
-        "publishers, genres, categories, tags, release_date, review_score, is_free "
+        "SELECT name, platform, platform_slug, steam_appid, meta_backfill_fetched, "
+        "developers, publishers, genres, categories, tags, release_date, "
+        "review_score, is_free "
         "FROM games WHERE appid = ?", (appid,)
     ).fetchone()
     db.close()
@@ -438,18 +454,26 @@ def backfill_metadata(appid, *, force=False):
         if row['release_date'] is None and pcgw_box.get('release_date'):
             out['release_date'] = pcgw_box['release_date']
 
-    else:
-        return {'meta_backfill_fetched': 'no_match',
-                **({'steam_appid': None} if row['steam_appid'] else {})}
+    # Last tier: the platform's own store page (itch.io implements this). Only
+    # when there's no Steam page -- Steam tags/genres are always richer. Gap-
+    # fills whatever's still missing, including after a PCGW-only match (PCGW
+    # never carries tags). itch exclusives have no other source at all.
+    if not steam_appid:
+        page = _store_page_metadata(row['platform'], row['platform_slug'])
+        for field in ('genres', 'categories', 'tags'):
+            if field not in out and _gap(field) and page.get(field):
+                out[field] = page[field]
+        if 'release_date' not in out and row['release_date'] is None and page.get('release_date'):
+            out['release_date'] = page['release_date']
 
     filled = [k for k in out if k not in ('steam_appid', 'meta_backfill_fetched')]
     if not filled and not steam_appid:
-        # PCGW page existed but had nothing usable -- record as no_match so we
-        # don't keep re-fetching it.
+        # Reached nothing usable anywhere -- record as no_match so we don't keep
+        # re-fetching it.
         return {'meta_backfill_fetched': 'no_match',
                 **({'steam_appid': None} if row['steam_appid'] else {})}
     log.info('backfill %s (%s): filled %s', appid,
-             f'steam {steam_appid}' if steam_appid else 'pcgw-only',
+             f'steam {steam_appid}' if steam_appid else 'pcgw/page-only',
              filled or '(nothing new)')
     return out
 
