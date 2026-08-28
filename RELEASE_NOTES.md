@@ -9,6 +9,7 @@
 ### Improvements
 
 - HLTB "Confirm all above threshold" runs as a background job that survives leaving the page.
+- PAGYWOSG builder recognizes "Game with X in the title" categories.
 
 ### Fixes
 

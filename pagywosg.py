@@ -465,9 +465,9 @@ def classify_category(base, base_appids, icaio_ga_dict, icaio_wl_dict, santa_gif
     if m:
         return _title_words(m.group(1))
 
-    # "Game with X or Y in the name" — same word-match intent as "game title
-    # with X, Y" above, just different phrasing.
-    m = re.search(r'\bwith\s+(.+?)\s+in\s+(?:the|its|their)\s+name\b', base, re.I)
+    # "Game with X or Y in the name" / "Game with Book in the title" — same
+    # word-match intent as "game title with X, Y" above, just different phrasing.
+    m = re.search(r'\bwith\s+(.+?)\s+in\s+(?:the|its|their)\s+(?:name|title)\b', base, re.I)
     if m:
         return _title_words(m.group(1))
 

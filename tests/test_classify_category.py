@@ -121,6 +121,15 @@ def test_title_word_list_splits_on_commas_and_or():
     assert all(r['op'] == 'title_word' for r in results)
 
 
+def test_word_in_title_phrasing_is_whole_word():
+    assert_cond(one('Game with Book in the title'), 'name', 'title_word', 'Book')
+    assert_cond(one('Game with Library in the title'), 'name', 'title_word', 'Library')
+
+
+def test_word_in_name_phrasing_is_whole_word():
+    assert_cond(one('Game with Dragon in the name'), 'name', 'title_word', 'Dragon')
+
+
 def test_letters_all_required():
     assert_cond(one('Name including the letters R, U, O and K'),
                 'name', 'contains_all', 'RUOK')
