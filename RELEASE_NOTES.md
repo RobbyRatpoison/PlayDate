@@ -14,3 +14,4 @@
 
 - HowLongToBeat lookups work again after their search API changed; pasting a game ID or full URL both work.
 - An unreachable HowLongToBeat no longer wipes a game's stored HLTB match.
+- Cleaner plugin imports: Humble skips Android-only mobile games and bundled software (VEGAS Pro, etc.), Epic skips browsers and dev kits, and Humble Monthly / Choice games now show their real developer instead of "Humble Bundle".
