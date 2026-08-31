@@ -755,9 +755,25 @@ def sg_adopt():
             'installed': 1 if installed_ids and appid in installed_ids else 0,
             'icon_hash': '',
         }], int(_t.time()))
+        fields = {}
         rd = info.get('steam_release_date') or info.get('original_release_date')
         if rd:
-            update_game_data(appid, release_date=rd)
+            fields['release_date'] = rd
+        # Achievement counts still come from the Web API for a delisted game —
+        # GetPlayerAchievements is keyed by appid, not by store listing.
+        try:
+            from scrapers import fetch_cheevo_data
+            cheevo = fetch_cheevo_data(appid) or {}
+            if cheevo.get('total_achievements'):
+                fields['total_achievements'] = cheevo['total_achievements']
+                fields['unlocked_achievements'] = cheevo.get('unlocked_achievements', 0)
+                fields['cheevos_fetched'] = _t.strftime('%Y-%m-%d')
+                if cheevo.get('completion_status') and playtime > 0:
+                    fields['completion_status'] = cheevo['completion_status']
+        except Exception as e:
+            log.warning(f"[steamgifts] adopt: achievement fetch failed: {e}")
+        if fields:
+            update_game_data(appid, **fields)
         db = get_db()
         _adopt_into_group(appid, db)
         db.commit()
