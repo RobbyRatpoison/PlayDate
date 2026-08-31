@@ -373,6 +373,196 @@ function _blaeoResultHtml(data) {
     return html;
 }
 
+// ── SteamGifts wins ──
+let _sgWinsPoll = null;
+
+function _sgWinsRelDate(iso) {
+    if (!iso) return 'never';
+    const d = new Date(iso);
+    if (isNaN(d)) return 'never';
+    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return 'today';
+    if (days === 1) return 'yesterday';
+    if (days < 30) return `${days} days ago`;
+    return d.toISOString().slice(0, 10);
+}
+
+async function _sgWinsShowIdle() {
+    const s = document.getElementById('sgwins-status');
+    if (!s || _sgWinsPoll) return;
+    try {
+        const st = await (await fetch('/api/steamgifts/wins/status')).json();
+        if (st.active) { _sgWinsAttachPoll(); return; }
+        s.className = 'tool-status';
+        const who = st.configured_username ? `as <b>${escHtml(st.configured_username)}</b>` : '(username auto-detected on first run)';
+        s.innerHTML = `<div style="font-size:0.8rem;color:var(--text-secondary);">`
+            + `${st.stored_wins || 0} win${st.stored_wins === 1 ? '' : 's'} tracked ${who}`
+            + ` &middot; last sync ${_sgWinsRelDate(st.last_sync_public)}</div>`
+            + _sgWinsUnmatchedHtml(st.unmatched_count || 0);
+    } catch (e) { /* PlayDate not reachable from itself? ignore */ }
+}
+
+function _sgWinsUnmatchedHtml(count) {
+    if (!count) return '';
+    return `<div style="margin-top:5px;">`
+        + `<span onclick="_sgWinsToggleUnmatched(this)" style="cursor:pointer;font-size:0.78rem;color:var(--accent);">`
+        + `${count} win${count === 1 ? '' : 's'} not in your library &#x25BE;</span>`
+        + `<div class="sgwins-unmatched" style="display:none;margin-top:4px;"></div></div>`;
+}
+
+async function _sgWinsAdopt(btn, code) {
+    btn.disabled = true;
+    btn.textContent = 'Adding…';
+    try {
+        const r = await fetch('/api/steamgifts/wins/adopt', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+        });
+        const d = await r.json();
+        if (d.status === 'ok') {
+            const row = btn.closest('div');
+            if (row) row.style.opacity = '0.5';
+            btn.textContent = d.already_present ? 'In library' : 'Added';
+        } else {
+            btn.textContent = 'Failed';
+            btn.title = d.message || '';
+            btn.disabled = false;
+        }
+    } catch (e) {
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+    }
+}
+
+async function _sgWinsToggleUnmatched(el) {
+    const box = el.parentElement.querySelector('.sgwins-unmatched');
+    if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+    box.style.display = '';
+    if (box.dataset.loaded) return;
+    box.textContent = 'Loading…';
+    try {
+        const d = await (await fetch('/api/steamgifts/wins/unmatched')).json();
+        const rows = d.unmatched || [];
+        let html = '';
+        for (const r of rows) {
+            const gv = r.code
+                ? `<a href="https://www.steamgifts.com/giveaway/${escHtml(r.code)}/" target="_blank" style="color:inherit;text-decoration:underline;">${escHtml(r.name || r.code)}</a>`
+                : escHtml(r.name || '(unknown)');
+            const add = r.adoptable && r.code
+                ? ` <button onclick="_sgWinsAdopt(this,'${escHtml(r.code)}')" style="font-size:0.68rem;padding:1px 6px;margin-left:4px;background:#4b6f9c;color:#fff;border:none;border-radius:3px;cursor:pointer;">Add to library</button>`
+                : '';
+            html += `<div style="font-size:0.76rem;padding:2px 0;line-height:1.35;">`
+                + `${gv}${add}<br><span style="color:var(--text-secondary);">${escHtml(r.reason || '')}</span></div>`;
+        }
+        box.innerHTML = html || '<div style="font-size:0.76rem;color:var(--text-secondary);">Nothing to show yet — run a sync.</div>';
+        box.dataset.loaded = '1';
+    } catch (e) {
+        box.textContent = 'Could not load the list.';
+    }
+}
+
+async function syncSteamGiftsWins() {
+    const btn = document.getElementById('sgwins-btn');
+    const s   = document.getElementById('sgwins-status');
+    btn.disabled = true;
+    s.className = 'tool-status info';
+
+    let st;
+    try {
+        st = await (await fetch('/api/steamgifts/wins/status')).json();
+    } catch (e) {
+        s.className = 'tool-status error';
+        s.textContent = '✘ Could not reach PlayDate.';
+        btn.disabled = false;
+        return;
+    }
+    if (st.active) {
+        s.textContent = 'A sync is already running…';
+        _sgWinsAttachPoll();
+        return;
+    }
+
+    const user = st.configured_username;
+    const full = document.getElementById('sgwins-full').checked ? '&full=1' : '';
+    const base = user
+        ? `https://www.steamgifts.com/user/${encodeURIComponent(user)}/giveaways/won`
+        : 'https://www.steamgifts.com/giveaways/won';
+    const url = `${base}?playdate_sync=1${full}`;
+
+    // Open SteamGifts in the system browser (pywebview intercepts target=_blank)
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+    s.innerHTML = 'Opened SteamGifts in a new tab. Keep it open — it closes itself when done.'
+        + '<div style="font-size:0.76rem;color:var(--text-secondary);margin-top:4px;">'
+        + 'Needs the PlayDate Date Importer userscript, and you signed in to SteamGifts.</div>';
+    _sgWinsAttachPoll({ waitingForScript: true });
+}
+
+function _sgWinsAttachPoll(opts) {
+    opts = opts || {};
+    if (_sgWinsPoll) clearInterval(_sgWinsPoll);
+    const btn = document.getElementById('sgwins-btn');
+    const s   = document.getElementById('sgwins-status');
+    const started = Date.now();
+    let sawScript = false;
+
+    _sgWinsPoll = setInterval(async () => {
+        let st;
+        try { st = await (await fetch('/api/steamgifts/wins/status')).json(); }
+        catch (e) { return; }
+
+        if (st.script_connected || st.active) sawScript = true;
+
+        if (!sawScript && opts.waitingForScript && Date.now() - started > 30000) {
+            clearInterval(_sgWinsPoll); _sgWinsPoll = null;
+            s.className = 'tool-status error';
+            s.innerHTML = '✘ The userscript did not respond. Check that the '
+                + '<a href="https://raw.githubusercontent.com/RobbyRatpoison/PlayDate-Library-Manager/main/steam_date_import.user.js" target="_blank" style="color:inherit;text-decoration:underline;">PlayDate Date Importer</a>'
+                + ' is installed and enabled for steamgifts.com.';
+            btn.disabled = false;
+            return;
+        }
+
+        if (st.finished) {
+            clearInterval(_sgWinsPoll); _sgWinsPoll = null;
+            btn.disabled = false;
+            if (st.error) {
+                s.className = 'tool-status error';
+                s.textContent = '✘ ' + st.error;
+                return;
+            }
+            const sm = st.summary || {};
+            s.className = 'tool-status success';
+            let html = `<div>&#x2714; ${sm.games_in_group || 0} game${sm.games_in_group === 1 ? '' : 's'} in &#x201C;Won on SteamGifts&#x201D;.</div>`;
+            const bits = [];
+            if (sm.new_wins)        bits.push(`${sm.new_wins} new win${sm.new_wins === 1 ? '' : 's'}`);
+            if (sm.groups_added)    bits.push(`${sm.groups_added} added to group`);
+            if (sm.groups_removed)  bits.push(`${sm.groups_removed} removed`);
+            if (bits.length) html += `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${bits.join(' &middot; ')}</div>`;
+            html += _sgWinsUnmatchedHtml((sm.unmatched || []).length);
+            if (sm.groups_added || sm.groups_removed) {
+                html += '<div style="font-size:0.76rem;color:var(--text-secondary);margin-top:4px;">Reloading…</div>';
+                setTimeout(() => window.location.reload(), 1500);
+            }
+            s.innerHTML = html;
+            return;
+        }
+
+        if (st.active) {
+            s.className = 'tool-status info';
+            if (st.phase === 'private') {
+                s.textContent = `Verifying received status… (${st.private_pages || 0} page${st.private_pages === 1 ? '' : 's'})`;
+            } else {
+                const n = st.new_wins || 0;
+                s.textContent = `Reading won giveaways… page ${st.public_pages || 1}`
+                    + (n ? ` — ${n} new` : '');
+            }
+        }
+    }, 2000);
+}
+
 // ── PAGYWOSG ──
 let _pagAllTags = [];
 let _pagWinsTags = [];
@@ -5239,9 +5429,13 @@ async function openCommunityModal() {
             status.textContent = '✘ ' + state.error;
         }
     } catch(e) {}
+    _sgWinsShowIdle();
 }
 function closeCommunityModal() {
     document.getElementById('community-modal').style.display = 'none';
+    // The SteamGifts sync keeps running in its own tab; the poll re-attaches
+    // next time the modal opens via _sgWinsShowIdle().
+    if (_sgWinsPoll) { clearInterval(_sgWinsPoll); _sgWinsPoll = null; }
 }
 function openDataModal() {
     document.getElementById('data-modal').style.display = 'flex';

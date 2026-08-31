@@ -91,8 +91,9 @@ def _extract_backup_zip(raw: bytes, logger):
             logger.info(f"Restore: wrote {len(data)} bytes -> {dest}")
             restored.append(arcname)
 
-        # Per-account group sources: group_sources_*.json
-        for arcname in [n for n in names if n.startswith('group_sources_') and n.endswith('.json')]:
+        # Per-account group sources + SteamGifts wins: *_*.json
+        for arcname in [n for n in names if n.endswith('.json') and
+                        (n.startswith('group_sources_') or n.startswith('steamgifts_wins_'))]:
             dest = _safe_dest(arcname)
             if not dest:
                 continue
@@ -217,6 +218,8 @@ def _fill_backup_zip(zf, include_art):
             shutil.rmtree(tmp_dir, ignore_errors=True)
     for gs_path in _glob.glob(os.path.join(BASE_DIR, 'group_sources_*.json')):
         zf.write(gs_path, os.path.basename(gs_path))
+    for sg_path in _glob.glob(os.path.join(BASE_DIR, 'steamgifts_wins_*.json')):
+        zf.write(sg_path, os.path.basename(sg_path))
     if include_art:
         art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
         if os.path.isdir(art_dir):

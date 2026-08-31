@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         PlayDate Date Importer
 // @namespace    playdate
-// @version      2.8
-// @description  Imports Steam activation dates, GOG purchase dates, and EA purchase dates into PlayDate
+// @version      2.9
+// @description  Imports Steam activation dates, GOG/EA purchase dates, and SteamGifts wins into PlayDate
 // @match        https://help.steampowered.com/*
 // @match        https://www.gog.com/en/account/settings/orders*
 // @match        https://myaccount.ea.com/am/ui/payment-wallet/order-history*
+// @match        https://www.steamgifts.com/giveaways/won*
+// @match        https://www.steamgifts.com/user/*/giveaways/won*
 // @updateURL    https://raw.githubusercontent.com/RobbyRatpoison/PlayDate-Library-Manager/main/steam_date_import.user.js
 // @downloadURL  https://raw.githubusercontent.com/RobbyRatpoison/PlayDate-Library-Manager/main/steam_date_import.user.js
 // @license      MIT
@@ -20,6 +22,14 @@
     if (window.location.hostname === 'myaccount.ea.com' &&
         window.location.pathname.includes('/payment-wallet/order-history')) {
         runEA();
+        return;
+    }
+
+    // SteamGifts wins — button-triggered, or auto when PlayDate opens the tab
+    // with ?playdate_sync=1. Has its own trigger, not ?ref=playdate.
+    if (window.location.hostname === 'www.steamgifts.com' &&
+        window.location.pathname.includes('/giveaways/won')) {
+        runSteamGifts();
         return;
     }
 
@@ -576,6 +586,194 @@
                 showResult('Could not reach PlayDate — make sure it is running.', false);
             }
         });
+    }
+
+    // =========================================================================
+    // SteamGifts — scrape won giveaways and send to PlayDate
+    //   public  /user/<name>/giveaways/won   (25/page) — all fields
+    //   private /giveaways/won               (50/page) — received state only
+    // The backend parses the HTML; this script only fetches pages (past
+    // Cloudflare, in the user's real session) and POSTs them to localhost.
+    // =========================================================================
+    function runSteamGifts() {
+        const SG      = 'http://localhost:5000';
+        const sgParams = new URLSearchParams(window.location.search);
+        const auto    = sgParams.get('playdate_sync') === '1';
+        const PAGE_DELAY = 1500;
+
+        function pd(method, path, body) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method, url: SG + path,
+                    headers: { 'Content-Type': 'application/json' },
+                    data: body !== undefined ? JSON.stringify(body) : undefined,
+                    onload: r => {
+                        try { resolve(JSON.parse(r.responseText)); }
+                        catch (e) { reject(new Error(`bad response from PlayDate (${r.status})`)); }
+                    },
+                    onerror: reject, ontimeout: reject,
+                });
+            });
+        }
+
+        // Logged-in SteamGifts username from the nav avatar link
+        function loggedInUser() {
+            const a = document.querySelector('a.nav__avatar-outer-wrap[href^="/user/"]');
+            return a ? a.getAttribute('href').split('/user/')[1].replace(/\/.*$/, '') : null;
+        }
+        // Username whose won page we're on (public), else the logged-in user
+        function viewingUser() {
+            const m = window.location.pathname.match(/^\/user\/([^/]+)\/giveaways\/won/);
+            return m ? decodeURIComponent(m[1]) : loggedInUser();
+        }
+
+        async function fetchPage(url) {
+            const r = await fetch(url, { credentials: 'include' });
+            if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
+            return r.text();
+        }
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        // ── UI ────────────────────────────────────────────────────────────────
+        function overlay() {
+            const o = document.createElement('div');
+            o.id = 'pd-sg-overlay';
+            Object.assign(o.style, {
+                position: 'fixed', inset: '0', background: 'rgba(10,15,25,0.93)',
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', zIndex: '99999', color: '#c7d5e0',
+                fontFamily: "'Segoe UI', sans-serif", gap: '12px',
+            });
+            o.innerHTML = `
+                <div style="font-size:1.05rem;font-weight:600;color:#66c0f4;">PlayDate — Importing SteamGifts Wins</div>
+                <div id="pd-sg-status" style="font-size:0.85rem;color:#8f98a0;max-width:440px;text-align:center;">Starting…</div>
+                <div style="width:320px;background:#1a2332;border-radius:4px;height:6px;overflow:hidden;">
+                    <div id="pd-sg-bar" style="background:#66c0f4;height:100%;width:0%;transition:width 0.35s;"></div>
+                </div>
+                <div id="pd-sg-note" style="font-size:0.72rem;color:#3a4a5a;">Don't close this tab</div>`;
+            document.body.appendChild(o);
+            return o;
+        }
+        function setStatus(msg, pct, colour) {
+            const s = document.getElementById('pd-sg-status');
+            if (s) { s.textContent = msg; if (colour) s.style.color = colour; }
+            if (pct !== undefined) {
+                const b = document.getElementById('pd-sg-bar');
+                if (b) b.style.width = Math.max(0, Math.min(100, pct)) + '%';
+            }
+        }
+
+        async function run() {
+            overlay();
+            let session;
+            try {
+                session = await pd('POST', '/api/steamgifts/wins/session', {
+                    logged_in_as: loggedInUser() || '',
+                    viewing:      viewingUser() || '',
+                    full_refresh: sgParams.get('full') === '1',
+                    pass2:        sgParams.get('pass2') !== '0',   // opt-out only
+                });
+            } catch (e) {
+                setStatus('Could not reach PlayDate. Make sure it is running.', 0, '#ff4d4d');
+                return;
+            }
+            if (session.status !== 'ok') {
+                setStatus(session.message || 'PlayDate rejected the request.', 0, '#ff4d4d');
+                return;
+            }
+
+            const origin   = 'https://www.steamgifts.com';
+            const base      = origin + session.public_url;   // /user/<name>/giveaways/won
+            const onPage1   = window.location.pathname === session.public_url && !sgParams.get('page');
+
+            // ── Public pass ──────────────────────────────────────────────────
+            // SteamGifts' pagination nav never carries the true last page, so
+            // the backend decides when to stop (res.more) from the total count
+            // or the presence of a Next link.
+            let page = 1, pages = null;
+            const SAFETY_MAX = 400;
+            while (page <= SAFETY_MAX) {
+                setStatus(`Reading won giveaways… page ${page}${pages ? ' / ' + pages : ''}`,
+                          pages ? (page / pages) * 45 : 5);
+                let html;
+                try {
+                    html = (page === 1 && onPage1)
+                        ? document.documentElement.outerHTML
+                        : await fetchPage(`${base}/search?page=${page}`);
+                } catch (e) {
+                    setStatus(`Failed to load page ${page}: ${e.message}`, undefined, '#ff4d4d');
+                    return;
+                }
+                let res;
+                try {
+                    res = await pd('POST', '/api/steamgifts/wins/page',
+                                   { phase: 'public', page, html });
+                } catch (e) {
+                    setStatus('Lost contact with PlayDate.', undefined, '#ff4d4d');
+                    return;
+                }
+                pages = res.pages || pages;
+                if (!res.more) break;
+                page++;
+                await sleep(PAGE_DELAY);
+            }
+
+            // ── Private pass (opt-in, matching account only) ─────────────────
+            if (session.mode === 'full' && session.pass2) {
+                let plan;
+                try { plan = await pd('GET', '/api/steamgifts/wins/pass2-plan'); }
+                catch (e) { plan = { pages: [] }; }
+                const pages = (plan && plan.pages) || [];
+                for (let i = 0; i < pages.length; i++) {
+                    setStatus(`Verifying received status… (${i + 1}/${pages.length})`,
+                              50 + (i / Math.max(1, pages.length)) * 40);
+                    let html;
+                    try { html = await fetchPage(`${origin}/giveaways/won/search?page=${pages[i]}`); }
+                    catch (e) { continue; }
+                    try {
+                        await pd('POST', '/api/steamgifts/wins/page',
+                                 { phase: 'private', page: pages[i], html });
+                    } catch (e) { /* keep going */ }
+                    if (i < pages.length - 1) await sleep(PAGE_DELAY);
+                }
+            } else if (session.mode === 'degraded') {
+                document.getElementById('pd-sg-note').textContent =
+                    `Signed in as ${loggedInUser() || 'someone else'} — log in as ${session.username} to verify received-status and capture invite-only links`;
+            }
+
+            // ── Finish ───────────────────────────────────────────────────────
+            setStatus('Applying to your library…', 92);
+            let done;
+            try { done = await pd('POST', '/api/steamgifts/wins/finish', {}); }
+            catch (e) { setStatus('Apply failed — check PlayDate.', undefined, '#ff4d4d'); return; }
+            const s = (done && done.summary) || {};
+            setStatus(
+                `Done — ${s.games_in_group || 0} game${s.games_in_group === 1 ? '' : 's'} in "Won on SteamGifts"`
+                + (s.new_wins ? `, ${s.new_wins} new` : '')
+                + (s.unresolved_refs ? `, ${s.unresolved_refs} unresolved` : ''),
+                100, '#66c0f4');
+            const note = document.getElementById('pd-sg-note');
+            if (note && !auto) note.textContent = 'You can close this tab.';
+            if (auto) setTimeout(() => window.close(), 4000);
+        }
+
+        if (auto) {
+            run();
+            return;
+        }
+
+        // Manual: a button in the page heading
+        const host = document.querySelector('.page__heading') || document.body;
+        const btn = document.createElement('div');
+        btn.className = 'page__heading__button';
+        btn.textContent = 'Sync wins → PlayDate';
+        Object.assign(btn.style, {
+            cursor: 'pointer', background: '#4b6f9c', color: '#fff',
+            padding: '5px 12px', borderRadius: '4px', fontSize: '0.85rem',
+            display: 'inline-block', marginLeft: '8px',
+        });
+        btn.addEventListener('click', () => { btn.remove(); run(); });
+        host.appendChild(btn);
     }
 
 })();

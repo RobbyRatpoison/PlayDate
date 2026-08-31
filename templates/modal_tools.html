@@ -758,8 +758,17 @@
             </div>
         </div>
         <div class="hub-section">
+            <div class="hub-section-label">SteamGifts</div>
+            <button id="sgwins-btn" class="settings-item" data-modal-row="4" onclick="syncSteamGiftsWins()">Sync SteamGifts Wins</button>
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.8rem; color:var(--text-secondary); padding:6px 10px 0;">
+                <input id="sgwins-full" type="checkbox" style="width:auto; margin:0;" data-modal-row="5">
+                Full refresh (re-check every win, prune stale)
+            </label>
+            <div id="sgwins-status" class="tool-status" style="margin-top:4px;padding:0 10px;max-height:min(280px,40vh);overflow-y:auto;"></div>
+        </div>
+        <div class="hub-section">
             <div class="hub-section-label">Play or Pay</div>
-            <button id="pop-sync-btn" class="settings-item" data-modal-row="4" onclick="runPopSync()">Sync Play or Pay Picks</button>
+            <button id="pop-sync-btn" class="settings-item" data-modal-row="6" onclick="runPopSync()">Sync Play or Pay Picks</button>
             <div id="pop-sync-status" class="tool-status" style="margin-top:4px;padding:0 10px;"></div>
         </div>
     </div>

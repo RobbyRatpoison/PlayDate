@@ -1,18 +1,13 @@
 # Release Notes
 
-## v1.9.1 - 2026-08-30
+## v1.9.2
+
 ### New
 
-- Find and remove duplicate library entries — the same store game imported into the library more than once.
-
-### Improvements
-
-- Metadata backfill now covers Steam games, not just non-Steam ones.
+- Import your SteamGifts wins into a "Won on SteamGifts" group, using the Date Importer userscript. Captures win date, gifter and point cost, and checks received status.
+- Manually add a SteamGifts win to your library when Steam no longer lists the game as owned.
 
 ### Fixes
 
-- Metadata backfill retries games that were tried before but still have missing fields.
-- Renaming a game re-runs its metadata match.
-- HowLongToBeat "Confirm all above threshold" no longer freezes partway through when the site is slow.
-- Games marked as having no HowLongToBeat page stay that way after a restart.
-- Server error messages no longer expose internal details.
+- Scrape New Games no longer fails with "Could not reach Steam" when a Steam API key is set.
+- PAGYWOSG "personal" categories now follow the active account when more than one Steam account shares a PC.

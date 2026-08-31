@@ -29,7 +29,7 @@ def api_error(message, status=500, *, exc=None, log_label=None):
         log.error("%s: %s", log_label or message, exc, exc_info=True)
     return jsonify({"status": "error", "message": message}), status
 
-__version__ = "1.9.1"
+__version__ = "1.9.2"
 # Full tag this build came from (e.g. "1.6.5-beta.2"), overwritten by CI —
 # __version__ above is always the bare X.Y.Z (stripped of any -beta/-rc
 # suffix, since Inno Setup/display code assume that), so it alone can't tell
@@ -534,7 +534,7 @@ def inject_config_status():
         existing_steam_id=active.get('steam_id', ''),
         existing_api_key=active.get('api_key', ''),
         existing_sgdb_key=config.get('sgdb_key', ''),
-        existing_sg_username=config.get('sg_username', ''),
+        existing_sg_username=(active.get('sg_username') or config.get('sg_username') or ''),
         accounts_list=accounts_list,
         active_steam_id=active_id or '',
         initial_fullscreen=state.get('fullscreen', False),
@@ -569,6 +569,10 @@ def _save_config_data(data):
         json.dump(data, f, indent=4)
     os.replace(tmp, CONFIG_PATH)
 
+def save_config_data(data):
+    """Public wrapper around the atomic config writer for other modules."""
+    _save_config_data(data)
+
 def get_active_account():
     """Returns the active account dict {steam_id, api_key, label}, or None."""
     config = load_config()
@@ -576,6 +580,38 @@ def get_active_account():
         return None
     active_id = config.get('active_account', '')
     return config.get('accounts', {}).get(active_id)
+
+
+def get_sg_username() -> str:
+    """The SteamGifts username for the active account.
+
+    Preferred storage is per-account (accounts[<id>]['sg_username']) so a
+    shared PC with two Steam accounts tracks two SG identities; falls back to
+    a legacy top-level 'sg_username' key (older configs / restored backups).
+    """
+    cfg = load_config() or {}
+    active_id = cfg.get('active_account', '')
+    acct = cfg.get('accounts', {}).get(active_id) or {}
+    return (acct.get('sg_username') or cfg.get('sg_username') or '').strip()
+
+
+def normalize_sg_username():
+    """Idempotent migration, safe to run every startup and after a backup
+    restore: fold a legacy top-level 'sg_username' into the active account,
+    then drop the top-level key. Not version-gated — a restored old config
+    just re-heals for whichever account is active at restore time."""
+    cfg = load_config()
+    if not cfg:
+        return
+    top = (cfg.get('sg_username') or '').strip()
+    if not top:
+        return
+    active_id = cfg.get('active_account', '')
+    acct = cfg.get('accounts', {}).get(active_id)
+    if acct is not None and not (acct.get('sg_username') or '').strip():
+        acct['sg_username'] = top
+    cfg.pop('sg_username', None)
+    _save_config_data(cfg)
 
 def get_active_db_path():
     config = load_config()
@@ -1195,7 +1231,13 @@ def save_sg_username():
     config_data = load_config()
     if not config_data:
         return jsonify({'status': 'error', 'message': 'Not configured'}), 400
-    config_data['sg_username'] = username
+    active_id = config_data.get('active_account', '')
+    acct = config_data.get('accounts', {}).get(active_id)
+    if acct is not None:
+        acct['sg_username'] = username
+        config_data.pop('sg_username', None)   # retire the legacy top-level key
+    else:
+        config_data['sg_username'] = username
     _save_config_data(config_data)
     return jsonify({'status': 'success'})
 

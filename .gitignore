@@ -8,6 +8,7 @@ santa_gifts.json
 emulators.json
 *_cache.json
 group_sources_*.json
+steamgifts_wins_*.json
 pagywosg_scan_decisions.json
 
 # --- Claude Code ---

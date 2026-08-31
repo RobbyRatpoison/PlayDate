@@ -71,6 +71,7 @@ from diagnostics import diagnostics_bp
 from updater import updater_bp, _startup_update_check
 from notifications import notifications_bp, _startup_notification_check
 from scrapers import blaeo_bp
+from steamgifts import steamgifts_bp
 from pagywosg import pagywosg_bp
 from pop_sync import pop_bp
 from imports import imports_bp
@@ -120,6 +121,7 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(updater_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(blaeo_bp)
+    app.register_blueprint(steamgifts_bp)
     app.register_blueprint(pagywosg_bp)
     app.register_blueprint(pop_bp)
     app.register_blueprint(imports_bp)
@@ -129,12 +131,14 @@ def create_app(template_folder=None, static_folder=None):
     # Adds CORS + Private Network Access headers to every response when the
     # request originates from the Steam help domain.  Covers both simple GETs
     # and preflight OPTIONS requests without needing per-route handling.
+    _USERSCRIPT_HOSTS = {'help.steampowered.com', 'www.steamgifts.com'}
+
     @app.after_request
     def _userscript_cors(response):
         from urllib.parse import urlparse
         origin = request.headers.get('Origin', '')
         _o = urlparse(origin)
-        if _o.scheme == 'https' and _o.hostname == 'help.steampowered.com':
+        if _o.scheme == 'https' and _o.hostname in _USERSCRIPT_HOSTS:
             response.headers['Access-Control-Allow-Origin']          = origin
             response.headers['Access-Control-Allow-Headers']         = 'Content-Type'
             response.headers['Access-Control-Allow-Methods']         = 'GET, POST, OPTIONS'
@@ -394,6 +398,14 @@ def create_app(template_folder=None, static_folder=None):
             for q in queues.values():
                 q.put(appid)
         return jsonify({"status": "ok"})
+
+    # Fold a legacy top-level sg_username into the active account (idempotent,
+    # re-heals after an old-backup restore).
+    try:
+        from config import normalize_sg_username
+        normalize_sg_username()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"sg_username normalize failed: {e}")
 
     # ── Background update check on startup ───────────────────────────────────
     threading.Thread(target=_startup_update_check, daemon=True).start()

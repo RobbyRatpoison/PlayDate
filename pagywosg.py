@@ -855,8 +855,8 @@ def pagywosg_auto():
 
     def _serialise_pool(pool_dict, tags, conds):
         redundant = _redundant_set(pool_dict, tags, conds)
-        from config import load_config
-        sg_username = (load_config() or {}).get('sg_username', '').strip().lower()
+        from config import get_sg_username
+        sg_username = get_sg_username().lower()
         # Group appids by contributing category label for labeled appid_list nodes.
         # Only include appids present in the user's library — no point embedding
         # thousands of unowned game IDs in the saved filter.
@@ -942,8 +942,8 @@ def pagywosg_quals_data():
 
     _icaio_ga_dict, _icaio_wl_dict, _santa_gift_dict = load_supplements()
     _default_personal = set(load_personal_defaults(event_id))
-    from config import load_config
-    sg_username = (load_config() or {}).get('sg_username', '').strip().lower()
+    from config import get_sg_username
+    sg_username = get_sg_username().lower()
 
     conds    = []
     verified = {}
