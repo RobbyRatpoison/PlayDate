@@ -9,7 +9,7 @@ import subprocess
 
 from flask import Blueprint, jsonify, request
 
-from config import BASE_DIR
+from config import BASE_DIR, api_error
 from database import get_db
 from utils import find_steam_path, sync_local_install_status, record_launch, consume_install_dirty
 
@@ -24,7 +24,7 @@ def update_installed():
         count = sync_local_install_status()
         return jsonify({"status": "success", "count": count})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @system_bp.route('/api/open-url', methods=['POST'])
 def open_url_route():
@@ -43,7 +43,7 @@ def open_url_route():
             subprocess.Popen(['cmd', '/c', 'start', '', url])
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @system_bp.route('/api/open-install-dir/<appid>', methods=['POST'])
 def open_install_dir(appid):
@@ -94,7 +94,7 @@ def open_install_dir(appid):
             subprocess.Popen(['explorer', path])
         return jsonify({"status": "success", "path": path})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @system_bp.route('/api/open-base-dir', methods=['POST'])
 def open_base_dir():
@@ -108,7 +108,7 @@ def open_base_dir():
             subprocess.Popen(['explorer', BASE_DIR])
         return jsonify({"status": "success", "path": BASE_DIR})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @system_bp.route('/api/launch/<appid>', methods=['POST'])
 def launch_game(appid):

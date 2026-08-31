@@ -765,7 +765,7 @@ def _run_scan(emu_id: str, platform_id: str):
                 log.warning(f'Emulators: art fetch failed for {name!r}: {e}')
     except Exception as e:
         log.error(f'emulators scan error: {e}', exc_info=True)
-        _scan_state.update({'running': False, 'status': '', 'error': str(e)})
+        _scan_state.update({'running': False, 'status': '', 'error': 'Scan failed. Check playdate.log for details.'})
 
 
 def _run_scan_all():
@@ -801,7 +801,7 @@ def _run_scan_all():
                 log.warning(f'Emulators: art fetch failed for {name!r}: {e}')
     except Exception as e:
         log.error(f'emulators scan all error: {e}', exc_info=True)
-        _scan_state.update({'running': False, 'status': '', 'error': str(e)})
+        _scan_state.update({'running': False, 'status': '', 'error': 'Scan failed. Check playdate.log for details.'})
 
 
 # ── Launch ──────────────────────────────────────────────────────────────────
@@ -942,8 +942,8 @@ def launch_game(appid: int) -> dict:
         log.info(f'Emulators: launched {rom_path!r} via {binary}')
         return {'status': 'success'}
     except Exception as e:
-        log.error(f'Emulators: launch failed: {e}')
-        return {'status': 'error', 'message': str(e)}
+        log.error(f'Emulators: launch failed: {e}', exc_info=True)
+        return {'status': 'error', 'message': 'Launch failed. Check playdate.log for details.'}
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────

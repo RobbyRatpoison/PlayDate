@@ -3,7 +3,7 @@ import re
 import sqlite3
 import time
 from flask import Blueprint, jsonify, render_template, request
-from config import load_state, get_default_shelves, BUILTIN_FILTERS
+from config import load_state, get_default_shelves, BUILTIN_FILTERS, api_error
 from database import get_db
 
 log = logging.getLogger(__name__)
@@ -313,7 +313,7 @@ def shuffle_shelf(shelf_id):
         return jsonify({'status': 'success', 'games': games})
     except Exception as e:
         log.exception(f"shuffle_shelf error for {shelf_id}: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @index_bp.route('/api/refill-shelf/<shelf_id>', methods=['POST'])
 def refill_shelf(shelf_id):
@@ -355,7 +355,7 @@ def refill_shelf(shelf_id):
         return jsonify({'status': 'success', 'games': games})
     except Exception as e:
         log.exception(f"refill_shelf error for {shelf_id}: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @index_bp.route('/api/shelves', methods=['POST'])
 def save_shelves():
@@ -368,7 +368,7 @@ def save_shelves():
         return jsonify({"status": "success"})
     except Exception as e:
         log.exception("Failed to save shelves")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @index_bp.route('/api/shelves/reset', methods=['POST'])
 def reset_shelves():
@@ -378,4 +378,4 @@ def reset_shelves():
         return jsonify({"status": "success"})
     except Exception as e:
         log.exception("Failed to reset shelves")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)

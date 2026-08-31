@@ -8,6 +8,8 @@ import time
 
 from flask import Blueprint, jsonify, request
 
+from config import api_error
+
 log = logging.getLogger(__name__)
 
 plugins_bp = Blueprint('plugins', __name__)
@@ -678,10 +680,10 @@ def install_plugin():
         plugin_id, name = _install_plugin_zip(f.read())
         return jsonify({'status': 'success', 'plugin_id': plugin_id, 'name': name})
     except ValueError as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 400
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 400, exc=e)
     except Exception as e:
         log.error(f"Plugin install failed: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @plugins_bp.route('/api/plugins/install-from-github', methods=['POST'])
 def install_plugin_from_github():
@@ -705,10 +707,10 @@ def install_plugin_from_github():
         _plugin_update_cache.pop(plugin_id, None)
         return jsonify({'status': 'success', 'plugin_id': plugin_id, 'name': name, 'tag': tag})
     except ValueError as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 400
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 400, exc=e)
     except Exception as e:
         log.error(f"Plugin install from GitHub failed: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @plugins_bp.route('/api/plugins/check-updates')
 def check_plugin_updates():
@@ -812,11 +814,13 @@ def recheck_launcher_status(platform_id):
         return jsonify({'status': 'success', 'launcher_status': result})
     except Exception as e:
         log.error(f"launcher_status failed for {platform_id}: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @plugins_bp.route('/api/plugins/<plugin_id>/uninstall', methods=['POST'])
 def uninstall_plugin(plugin_id):
     import shutil
+    if not re.match(r'^[A-Za-z0-9_-]+$', plugin_id or ''):
+        return jsonify({'status': 'error', 'message': 'Invalid plugin id.'}), 400
     p            = get(plugin_id)
     incompatible = _incompatible_plugins.get(plugin_id)
     if not p and not incompatible:
@@ -870,4 +874,4 @@ def uninstall_plugin(plugin_id):
         return jsonify({'status': 'success'})
     except Exception as e:
         log.error(f"Plugin uninstall failed: {plugin_id} — {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)

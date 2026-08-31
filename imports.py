@@ -66,7 +66,8 @@ def _inspect_temp_db():
     except Exception as e:
         if os.path.exists(TEMP_DB_PATH):
             os.remove(TEMP_DB_PATH)
-        return jsonify({"status": "error", "message": f"Could not read database: {str(e)}"})
+        log.error("inspect DB failed: %s", e, exc_info=True)
+        return jsonify({"status": "error", "message": "Could not read that database. Check playdate.log for details."})
 
 
 def inspect_database(request_files):
@@ -276,7 +277,8 @@ def execute_import(data):
     except Exception as e:
         if os.path.exists(TEMP_DB_PATH):
             os.remove(TEMP_DB_PATH)
-        return jsonify({"status": "error", "message": f"Import error: {str(e)}"})
+        log.error("generic DB import failed: %s", e, exc_info=True)
+        return jsonify({"status": "error", "message": "Import failed. Check playdate.log for details."})
 
 
 def parse_playnite_dates(zip_path):
@@ -391,9 +393,9 @@ def import_playnite_dates():
         try:
             date_map = parse_playnite_dates(zip_path)
             log.info(f"Playnite import: parsed {len(date_map)} appid→date pairs")
-        except Exception as e:
+        except Exception:
             log.exception("Playnite import: parse failed")
-            _playnite_import_state.update({'status': 'error', 'error': f'Failed to parse backup: {e}'})
+            _playnite_import_state.update({'status': 'error', 'error': 'Failed to parse that backup. Check playdate.log for details.'})
             return
         if not date_map:
             log.warning("Playnite import: no Steam games with dates found")

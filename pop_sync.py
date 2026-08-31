@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import requests
 from flask import Blueprint, jsonify, request
 
-from config import BASE_DIR, get_active_account
+from config import BASE_DIR, get_active_account, api_error
 from database import get_db
 from library import bulk_edit_games
 
@@ -246,4 +246,4 @@ def pop_sync():
         return jsonify(result)
     except Exception as e:
         log.error(f"pop-sync failed: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)

@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 from flask import Blueprint, jsonify, request
 from images import download_vertical, download_horizontal, download_icon, _get_steam_assets, _sgdb_search_game_id, VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR
 from datetime import datetime, timezone
-from config import load_config, get_active_account
+from config import load_config, get_active_account, api_error
 from database import batch_insert_placeholder_games, update_game_data, get_db, add_to_blacklist
 from utils import get_locally_installed_appids, fetch_local_library, get_acf_names, parse_appinfo
 
@@ -805,7 +805,8 @@ def fetch_owned_appids():
     except requests.exceptions.JSONDecodeError:
         return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
     except Exception as e:
-        return {"status": "error", "message": f"Connection Error: {str(e)}"}
+        log.warning("Steam library fetch: connection error: %s", e)
+        return {"status": "error", "message": "Could not reach Steam. Check your connection and try again."}
 
 
 def _add_new(cancel_event=None, progress_cb=None):
@@ -844,7 +845,8 @@ def _add_new(cancel_event=None, progress_cb=None):
         except requests.exceptions.JSONDecodeError:
             return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
         except Exception as e:
-            return {"status": "error", "message": f"Connection Error: {str(e)}"}
+            log.warning("Steam library fetch: connection error: %s", e)
+        return {"status": "error", "message": "Could not reach Steam. Check your connection and try again."}
     else:
         log.info("No API key — reading library from localconfig.vdf.")
         local_games = fetch_local_library(steam_id)
@@ -1778,8 +1780,8 @@ def scrape_blaeo_games(today=None):
             return data
         return _blaeo_apply_all(data)
     except Exception as e:
-        log.error(f"BLAEO scraper error: {e}")
-        return {"status": "error", "message": str(e)}
+        log.error(f"BLAEO scraper error: {e}", exc_info=True)
+        return {"status": "error", "message": "BLAEO sync failed. Check playdate.log for details."}
 
 
 def get_blaeo_preview(today=None):
@@ -1798,8 +1800,8 @@ def get_blaeo_preview(today=None):
             "removals":       data['removals'],
         }
     except Exception as e:
-        log.error(f"BLAEO preview error: {e}")
-        return {"status": "error", "message": str(e)}
+        log.error(f"BLAEO preview error: {e}", exc_info=True)
+        return {"status": "error", "message": "BLAEO preview failed. Check playdate.log for details."}
 
 
 def apply_blaeo_changes(selections):
@@ -3021,7 +3023,7 @@ def sync_blaeo():
         result = scrape_blaeo_games()
         return jsonify(result)
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @blaeo_bp.route('/api/blaeo-start', methods=['POST'])
 def blaeo_start():
@@ -3069,7 +3071,7 @@ def blaeo_preview():
         result = get_blaeo_preview()
         return jsonify(result)
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @blaeo_bp.route('/api/blaeo-apply', methods=['POST'])
 def blaeo_apply():
@@ -3081,7 +3083,7 @@ def blaeo_apply():
                 _blaeo_sync_state['done'] = False
         return jsonify(result)
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @blaeo_bp.route('/api/blaeo-discard', methods=['POST'])
 def blaeo_discard():

@@ -4,7 +4,7 @@ import os
 import re
 import threading
 import time
-from config import load_state, BASE_DIR, BUILTIN_FILTERS, resolve_outline_rule_where
+from config import load_state, BASE_DIR, BUILTIN_FILTERS, resolve_outline_rule_where, api_error
 from database import get_db, add_to_blacklist, remove_from_blacklist, get_blacklist
 from utils import get_all_unique_groups, get_all_unique_tags, validate_user_path
 from flask import Blueprint, jsonify, render_template, request
@@ -591,7 +591,7 @@ def update_game():
             "unique_categories": get_all_unique_categories(),
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 
 def bulk_edit_games(data):
@@ -724,7 +724,7 @@ def bulk_edit_games(data):
         return jsonify({"status": "error", "message": "Invalid mode."}), 400
 
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 
 def bulk_distinct_values(data):
@@ -782,7 +782,7 @@ def bulk_distinct_values(data):
                     seen.add(v)
         return jsonify({"values": sorted(seen, key=str.lower)})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 
 # ── Additional routes ────────────────────────────────────────────────────────
@@ -888,7 +888,7 @@ def search_games():
         db.close()
         return jsonify([dict(r) for r in rows])
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/game/<int:appid>/set-duplicate', methods=['POST'])
 def set_duplicate(appid):
@@ -918,7 +918,7 @@ def set_duplicate(appid):
         invalidate_dup_cache()
         return jsonify({'status': 'ok'})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/game/<int:appid>')
 def get_game(appid):
@@ -935,7 +935,7 @@ def get_game(appid):
             return jsonify({"status": "success", "game": game})
         return jsonify({"status": "error", "message": "Game not found"}), 404
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/game-description/<int:appid>')
 def game_description(appid):
@@ -965,7 +965,7 @@ def game_description(appid):
                     desc = app_data.get('data', {}).get('short_description', '')
                     return jsonify({'status': 'success', 'description': desc})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
     return jsonify({'status': 'error', 'message': 'No description available'})
 
 @library_bp.route('/api/game-extra-info/<int:appid>')
@@ -991,7 +991,7 @@ def set_completion(appid):
         update_game_data(appid, completion_status=status)
         return jsonify({"status": "success", "completion_status": status})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/bulk-op/start', methods=['POST'])
 def bulk_op_start():
@@ -1100,7 +1100,7 @@ def bulk_op_start():
         except Exception as e:
             log.exception(f"bulk_op_start ({op}): {e}")
             with _bulk_op_lock:
-                _bulk_op_state['result'] = {'error': str(e)}
+                _bulk_op_state['result'] = {'error': 'The operation failed. Check playdate.log for details.'}
         finally:
             with _bulk_op_lock:
                 _bulk_op_state['running'] = False
@@ -1336,7 +1336,7 @@ def export_filter_file():
             json.dump({'playdate_filter': {'name': name, 'tree': tree}}, f, indent=2)
         return jsonify({'status': 'success'})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/read-filter-file', methods=['POST'])
 def read_filter_file():
@@ -1353,7 +1353,7 @@ def read_filter_file():
             return jsonify({'status': 'error', 'message': 'Invalid filter file.'}), 400
         return jsonify({'status': 'success', 'name': name, 'tree': tree})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Could not read file: {e}'}), 500
+        return api_error('Could not read file. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/delete-game/<int:appid>', methods=['DELETE'])
 def delete_game(appid):
@@ -1389,7 +1389,7 @@ def delete_game(appid):
 
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/bulk-delete', methods=['POST'])
 def bulk_delete():
@@ -1416,7 +1416,7 @@ def bulk_delete():
 
         return jsonify({"status": "success", "deleted": len(appids), "images_removed": deleted_imgs})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/store-names-pending', methods=['GET'])
 def store_names_pending():
@@ -1458,15 +1458,15 @@ def store_names_apply():
             os.remove(pending_path)
         return jsonify({'ok': True, 'remaining': len(remaining)})
     except Exception as e:
-        log.error(f"store_names_apply: {e}")
-        return jsonify({'ok': False, 'error': str(e)}), 500
+        log.error(f"store_names_apply: {e}", exc_info=True)
+        return jsonify({'ok': False, 'error': 'Could not apply store names. Check playdate.log for details.'}), 500
 
 @library_bp.route('/api/blacklist', methods=['GET'])
 def blacklist_get():
     try:
         return jsonify({"status": "success", "entries": get_blacklist()})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/blacklist/add', methods=['POST'])
 def blacklist_add():
@@ -1479,7 +1479,7 @@ def blacklist_add():
         add_to_blacklist(appid, name)
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/blacklist/remove', methods=['POST'])
 def blacklist_remove():
@@ -1491,7 +1491,7 @@ def blacklist_remove():
         remove_from_blacklist(appid)
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/blacklist/bulk-remove', methods=['POST'])
 def blacklist_bulk_remove():
@@ -1504,7 +1504,7 @@ def blacklist_bulk_remove():
             remove_from_blacklist(appid)
         return jsonify({"status": "success", "count": len(appids)})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 # Steam gives no structured signal for this (Store API `type` and appinfo.vdf's
 # common.type both just say "Game" for beta clients, movie entries, etc. -- confirmed
@@ -1621,7 +1621,7 @@ def steam_junk_scan():
             'ownership': ownership,
         })
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/steam-junk-scan/blacklist', methods=['POST'])
 def steam_junk_scan_blacklist():
@@ -1655,7 +1655,7 @@ def steam_junk_scan_blacklist():
         invalidate_unique_cache()
         return jsonify({"status": "success", "count": len(appids)})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @library_bp.route('/api/steam-junk-scan/whitelist', methods=['POST'])
 def steam_junk_scan_whitelist():
@@ -1673,7 +1673,7 @@ def steam_junk_scan_whitelist():
             _write_state_atomic(state)
         return jsonify({"status": "success", "count": len(appids)})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 
 @library_bp.route('/api/steam-junk-scan/deep', methods=['GET'])
@@ -1711,8 +1711,8 @@ def library_junk_deep_scan():
                     'reason': item.get('reason') or 'not a game',
                 })
         except Exception as e:
-            log.warning(f"scan_junk ({pid}): {e}")
-            errors.append({'platform': getattr(plugin, 'platform', pid), 'error': str(e)})
+            log.warning(f"scan_junk ({pid}): {e}", exc_info=True)
+            errors.append({'platform': getattr(plugin, 'platform', pid), 'error': 'scan failed (see playdate.log)'})
 
     results.sort(key=lambda r: (r['platform'], r['name'].lower()))
     return jsonify({'status': 'success', 'results': results, 'errors': errors})

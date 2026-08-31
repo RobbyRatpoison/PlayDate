@@ -3,6 +3,7 @@ CSV library export. Restore runs in a background thread and is polled —
 see CLAUDE.md's feedback on Flatpak portal-path timeouts for why."""
 import logging
 import os
+import shutil
 import sqlite3
 import tempfile
 import threading
@@ -10,7 +11,7 @@ import time
 
 from flask import Blueprint, jsonify, request
 
-from config import BASE_DIR, load_state, save_state
+from config import BASE_DIR, load_state, save_state, api_error
 from database import get_db
 from utils import validate_user_path
 
@@ -128,7 +129,7 @@ def _run_restore_thread(raw: bytes, logger):
         return
     except Exception as e:
         logger.exception(f"Restore: unexpected error -- {e}")
-        _restore_state.update({'status': 'error', 'error': f'Restore failed: {e}'})
+        _restore_state.update({'status': 'error', 'error': 'Restore failed. Check playdate.log for details.'})
         return
 
     logger.info(f"Restore: complete -- restored={restored}, skipped={skipped}")
@@ -202,15 +203,18 @@ def _fill_backup_zip(zf, include_art):
         # db, so it produces a transactionally consistent copy regardless of
         # concurrent writers -- unlike a raw zf.write() of the live file,
         # which could capture a torn mid-transaction snapshot.
-        tmp_path = tempfile.mktemp(suffix='.db')
+        # VACUUM INTO requires its target not to exist yet, so use a private
+        # temp dir and a fixed name inside it rather than a predictable
+        # mktemp() name in a world-writable location.
+        tmp_dir  = tempfile.mkdtemp(prefix='playdate-backup-')
+        tmp_path = os.path.join(tmp_dir, 'vacuum.db')
         try:
             conn = sqlite3.connect(db_path)
             conn.execute("VACUUM INTO ?", (tmp_path,))
             conn.close()
             zf.write(tmp_path, os.path.basename(db_path))
         finally:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
     for gs_path in _glob.glob(os.path.join(BASE_DIR, 'group_sources_*.json')):
         zf.write(gs_path, os.path.basename(gs_path))
     if include_art:
@@ -353,7 +357,7 @@ def backup_to_path():
             os.remove(tmp_path)
         except OSError:
             pass
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
     finally:
         _backup_in_progress.clear()
 
@@ -386,7 +390,7 @@ def export_csv():
         return send_file(byte_buf, mimetype='text/csv', as_attachment=True,
                          download_name=f'playdate_library_{ts}.csv')
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @backup_bp.route('/api/export-csv-to-path', methods=['POST'])
 def export_csv_to_path():
@@ -408,7 +412,7 @@ def export_csv_to_path():
         return jsonify({"status": "success", "path": save_path,
                         "size": size, "count": len(rows)})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @backup_bp.route('/api/current-filter')
 def current_filter():
@@ -459,7 +463,7 @@ def restore_from_path():
                 raw = fh.read()
         except Exception as e:
             log.warning(f"Restore-from-path: could not read file: {e}")
-            _restore_state.update({'status': 'error', 'error': f'Could not read file: {e}'})
+            _restore_state.update({'status': 'error', 'error': 'Could not read that file.'})
             return
         _run_restore_thread(raw, log)
 

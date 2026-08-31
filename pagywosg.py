@@ -33,7 +33,7 @@ def pagywosg_event_id(year, month):
     months_since_epoch = (year - PAGYWOSG_EPOCH_YEAR) * 12 + (month - PAGYWOSG_EPOCH_MONTH)
     return PAGYWOSG_EPOCH_EVENT_ID + months_since_epoch
 
-from config import BASE_DIR
+from config import BASE_DIR, api_error
 
 log = logging.getLogger(__name__)
 
@@ -724,7 +724,7 @@ def pagywosg_auto():
     try:
         event = fetch_event(event_id)
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Could not fetch event: {e}"}), 502
+        return api_error('Could not fetch event. Check playdate.log for details.', 502, exc=e)
 
     # Validate date range; try adjacent event on boundary days (skip for upcoming)
     today_str = today.isoformat()
@@ -919,7 +919,7 @@ def pagywosg_quals_data():
     try:
         event = fetch_event(event_id)
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 502
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 502, exc=e)
 
     month_label = today.strftime('%B %Y')
 
@@ -1091,7 +1091,7 @@ def games_by_group():
         db.close()
         return jsonify([dict(r) for r in rows])
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @pagywosg_bp.route('/api/games/groups')
 def games_groups():
@@ -1099,7 +1099,7 @@ def games_groups():
         from utils import get_all_unique_groups
         return jsonify(get_all_unique_groups())
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @pagywosg_bp.route('/api/pagywosg-tags')
 def pagywosg_tags():
@@ -1114,7 +1114,7 @@ def pagywosg_tags():
                 tag_set.add(tag)
         return jsonify({"status": "success", "tags": sorted(tag_set, key=str.lower)})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @pagywosg_bp.route('/api/pagywosg-pick', methods=['POST'])
 def pagywosg_pick():
@@ -1132,7 +1132,7 @@ def pagywosg_pick():
         rows = db.execute(f"SELECT appid, name FROM games WHERE {where}").fetchall()
         db.close()
     except Exception as e:
-        return jsonify({"status": "error", "message": f"Query error: {e}"}), 400
+        return api_error('Query error. Check playdate.log for details.', 400, exc=e)
     games = [dict(r) for r in rows]
     if not games:
         return jsonify({"status": "error", "message": "No games matched the selected criteria."})
@@ -1191,4 +1191,4 @@ def miam_sheet_data():
         return jsonify(data)
     except Exception as e:
         log.exception('MiaM sheet fetch failed')
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)

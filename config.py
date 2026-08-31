@@ -15,7 +15,21 @@ _state_lock = threading.Lock()
 
 config_bp = Blueprint('config', __name__)
 
-__version__ = "1.9.0"
+
+def api_error(message, status=500, *, exc=None, log_label=None):
+    """Return a JSON error response without leaking exception detail to the
+    client. When `exc` is passed, the full exception (with traceback) is written
+    to playdate.log server-side instead -- callers get a generic message.
+
+    Use this for every route-level `except` handler rather than putting
+    `str(e)` / a formatted exception into the response body (CodeQL
+    py/stack-trace-exposure, and it's just good hygiene given CORS is enabled
+    for the Steam help domain)."""
+    if exc is not None:
+        log.error("%s: %s", log_label or message, exc, exc_info=True)
+    return jsonify({"status": "error", "message": message}), status
+
+__version__ = "1.9.1"
 # Full tag this build came from (e.g. "1.6.5-beta.2"), overwritten by CI —
 # __version__ above is always the bare X.Y.Z (stripped of any -beta/-rc
 # suffix, since Inno Setup/display code assume that), so it alone can't tell
@@ -1315,7 +1329,7 @@ def launcher_uninstall_route(platform_id):
                 log.info('Launcher uninstall [%s]: deleted prefix %s', platform_id, prefix)
         except Exception as e:
             log.error('Launcher uninstall [%s]: failed to delete prefix %s: %s', platform_id, prefix, e)
-            return jsonify({'status': 'error', 'message': f'Failed to delete prefix: {e}'}), 500
+            return api_error('Failed to delete prefix. Check playdate.log for details.', 500, exc=e)
     config_data = load_config() or {}
     launchers = config_data.get('launchers', {})
     launchers.pop(platform_id, None)
@@ -1463,7 +1477,7 @@ def set_background():
         img.save(bg_path, 'JPEG', quality=92)
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @config_bp.route('/api/set-background-from-path', methods=['POST'])
 def set_background_from_path():
@@ -1484,7 +1498,7 @@ def set_background_from_path():
         img.save(bg_path, 'JPEG', quality=92)
         return jsonify({"status": "success"})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @config_bp.route('/api/preview-bg-from-path')
 def preview_bg_from_path():
@@ -1512,7 +1526,7 @@ def reset_background():
     except FileNotFoundError:
         pass
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
     return jsonify({"status": "success"})
 
 # ── Theme import/export ───────────────────────────────────────────────────
@@ -1534,7 +1548,7 @@ def theme_to_path():
             json.dump({"playdate_theme": clean}, f, indent=2)
         return jsonify({"status": "success", "path": save_path})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
 @config_bp.route('/api/read-theme-file', methods=['POST'])
 def read_theme_file():
@@ -1547,7 +1561,7 @@ def read_theme_file():
             text = f.read()
         return jsonify({'status': 'success', 'text': text})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Could not read file: {e}'}), 500
+        return api_error('Could not read file. Check playdate.log for details.', 500, exc=e)
 
 @config_bp.route('/api/active-steam-id')
 def active_steam_id():

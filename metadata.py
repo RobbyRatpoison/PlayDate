@@ -54,6 +54,7 @@ import requests
 from flask import Blueprint, jsonify, request
 
 from database import get_db, update_game_data
+from config import api_error
 
 log = logging.getLogger(__name__)
 
@@ -529,15 +530,17 @@ def backfill_route(appid):
 
     force = bool((request.get_json(silent=True) or {}).get('force'))
     try:
-        result = backfill_metadata(appid, force=force)
+        # An explicit click always re-attempts, even on a game already stamped
+        # done / no_match -- `force` only additionally controls fuzzy-match apply.
+        result = backfill_metadata(appid, force=force, rerun=True)
     except RateLimitedError:
         return jsonify({'status': 'error', 'message': 'Steam is rate-limiting requests — try again in a minute.'}), 429
     except Exception as e:
         log.error('backfill_route %s: %s', appid, e, exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
 
     if result is None:
-        return jsonify({'status': 'error', 'message': 'Not a non-Steam game, or already filled (use force).'}), 400
+        return jsonify({'status': 'error', 'message': 'Game not found, or a lookup source is temporarily throttled — try again shortly.'}), 400
 
     update_game_data(appid, **result)
 

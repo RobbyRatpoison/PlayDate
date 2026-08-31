@@ -147,7 +147,12 @@ def create_app(template_folder=None, static_folder=None):
     # to BASE_DIR (next to the .exe).  These routes serve those files from the
     # correct location so they're visible on Windows builds.
     import re
-    _SAFE_FILENAME_RE = re.compile(r'^[\w\-./]+$')
+    # One optional subdirectory, then a filename with a plain extension. No '.'
+    # inside a path segment, so '..' can't appear and traversal is impossible;
+    # the previous '^[\w\-./]+$' allowed '../../etc/passwd' through to
+    # send_from_directory (which blocked the send, but os.path.exists() above it
+    # still leaked file existence outside the intended directory).
+    _SAFE_FILENAME_RE = re.compile(r'^[\w\-]+(?:/[\w\-]+)?\.[A-Za-z0-9]+$')
 
     # Cover art URLs are cache-busted client-side via a ?v= timestamp query
     # param (bumped per-appid in _patchGameCard/_imgVersions whenever art

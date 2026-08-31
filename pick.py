@@ -8,6 +8,7 @@ import random
 from flask import Blueprint, jsonify, render_template, request
 
 from database import get_db
+from config import api_error
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ def pick_game():
         rows = db.execute(f"SELECT * FROM games WHERE {where}", params).fetchall()
     except Exception as e:
         db.close()
-        return jsonify({"status": "error", "message": f"Filter error: {e}"}), 400
+        return api_error('Filter error. Check playdate.log for details.', 400, exc=e)
 
     games = [dict(r) for r in rows]
 
@@ -457,7 +458,7 @@ def pick_status_counts():
             filtered_counts = _counts(filtered_where, filtered_params)
     except Exception as e:
         db.close()
-        return jsonify({"status": "error", "message": f"Filter error: {e}"}), 400
+        return api_error('Filter error. Check playdate.log for details.', 400, exc=e)
 
     db.close()
     return jsonify({

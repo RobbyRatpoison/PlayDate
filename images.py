@@ -1,11 +1,12 @@
 import logging
 import os
 import io
+import re
 import requests
 from urllib.parse import quote as url_quote, urlparse
 from urllib.request import url2pathname
 from PIL import Image
-from config import BASE_DIR, load_config
+from config import BASE_DIR, load_config, api_error
 from flask import Blueprint, jsonify, request
 
 log = logging.getLogger(__name__)
@@ -179,7 +180,7 @@ def download_vertical(appid, assets=None, source='auto', sgdb_id=None, game_name
     Pass game_name to enable Steam CDN fallback when SGDB has no images.
     """
     _ensure_dirs()
-    save_path = os.path.join(VERTICAL_DIR, f'{appid}.jpg')
+    save_path = os.path.join(VERTICAL_DIR, f'{int(appid)}.jpg')
     sgdb_key  = _get_sgdb_key()
 
     if source != 'sgdb' and not sgdb_id:
@@ -266,7 +267,7 @@ def download_horizontal(appid, assets=None, source='auto', sgdb_id=None, game_na
     Pass game_name to enable Steam CDN fallback when SGDB has no images.
     """
     _ensure_dirs()
-    save_path = os.path.join(HORIZONTAL_DIR, f'{appid}.jpg')
+    save_path = os.path.join(HORIZONTAL_DIR, f'{int(appid)}.jpg')
     sgdb_key  = _get_sgdb_key()
 
     if source != 'sgdb' and not sgdb_id:
@@ -346,7 +347,7 @@ def download_icon(appid, icon_hash, source='auto', sgdb_id=None, game_name=None)
     Pass game_name to enable SGDB icon lookup via Steam appid when the SGDB game id yields nothing.
     """
     _ensure_dirs()
-    save_path = os.path.join(ICONS_DIR, f'{appid}.jpg')
+    save_path = os.path.join(ICONS_DIR, f'{int(appid)}.jpg')
     sgdb_key  = _get_sgdb_key()
 
     if source != 'steam':
@@ -412,7 +413,7 @@ def download_from_url(appid, url, orientation):
         'icon':       ICONS_DIR,
     }
     save_dir = dir_map.get(orientation, VERTICAL_DIR)
-    save_path = os.path.join(save_dir, f'{appid}.jpg')
+    save_path = os.path.join(save_dir, f'{int(appid)}.jpg')
 
     parsed = urlparse(url)
     if parsed.scheme in ('', 'file'):
@@ -624,7 +625,7 @@ def clear_artwork():
         if os.path.exists(path):
             os.unlink(path)
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
     src_col = {'vertical': 'vertical_art_source', 'horizontal': 'horizontal_art_source', 'icon': 'icon_source'}
     update_game_data(appid, **{src_col[orientation]: None})
     return jsonify({'status': 'success'})
@@ -684,7 +685,17 @@ def _save_badge_icon_bytes(kind, data, platform_id=None):
     None on a decode/processing failure."""
     os.makedirs(BADGES_DIR, exist_ok=True)
     import time
-    filename = f"{platform_id if kind == 'platform' else 'installed'}_{int(time.time() * 1000)}.png"
+    if kind == 'platform':
+        # platform_id comes straight off the URL -- keep it to the same shape
+        # core validates platform strings against elsewhere so it can't wander
+        # out of BADGES_DIR or collide with a reserved name.
+        if not re.match(r'^[a-z][a-z0-9_]*$', platform_id or ''):
+            log.warning("badge icon: rejected platform_id %r", platform_id)
+            return None
+        stem = platform_id
+    else:
+        stem = 'installed'
+    filename = f"{stem}_{int(time.time() * 1000)}.png"
     save_path = os.path.join(BADGES_DIR, filename)
     if not save_badge_icon(data, save_path):
         return None

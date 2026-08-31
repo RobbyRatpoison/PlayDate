@@ -584,7 +584,8 @@ class PyWebviewAPI:
                         result.update({'status': 'error',
                                        'message': data.get('message', 'Connection failed')})
                 except Exception as e:
-                    result.update({'status': 'error', 'message': f'Exchange failed: {e}'})
+                    log.error('Auth code exchange failed: %s', e, exc_info=True)
+                    result.update({'status': 'error', 'message': 'Exchange failed. Check playdate.log for details.'})
                 try:
                     popup_ref[0].destroy()
                 except Exception:
@@ -876,7 +877,8 @@ class PyWebviewAPI:
                 popup.events.loaded += _on_loaded
                 popup.events.closed += _on_closed
             except Exception as e:
-                result.update({'status': 'error', 'message': f'Could not open login window: {e}'})
+                log.error('Could not open login window: %s', e, exc_info=True)
+                result.update({'status': 'error', 'message': 'Could not open login window. Check playdate.log for details.'})
                 _notify_main()
                 return
 

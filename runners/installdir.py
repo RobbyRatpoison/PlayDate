@@ -8,11 +8,14 @@ the shared get/set/open logic and Flask route registration so the same
 reimplemented per plugin.
 """
 
+import logging
 import os
 import subprocess
 import sys
 
 from config import load_config, _save_config_data
+
+log = logging.getLogger(__name__)
 
 
 def get_install_dir(plugin_id, default_dir):
@@ -39,13 +42,15 @@ def check_writable(path):
     try:
         os.makedirs(path, exist_ok=True)
     except OSError as e:
-        raise RuntimeError(f'Cannot create folder: {e}')
+        log.warning('check_writable: cannot create %r: %s', path, e)
+        raise RuntimeError('That folder could not be created.')
     probe = os.path.join(path, '.playdate_write_test')
     try:
         with open(probe, 'wb') as f:
             f.write(b'x')
     except OSError as e:
-        raise RuntimeError(f'Folder is not writable: {e}')
+        log.warning('check_writable: %r not writable: %s', path, e)
+        raise RuntimeError('That folder is not writable.')
     finally:
         try:
             os.remove(probe)

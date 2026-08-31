@@ -14,7 +14,7 @@ import time
 import requests
 from flask import Blueprint, jsonify, request
 
-from config import BASE_DIR, IN_FLATPAK, IS_PORTABLE, __version__, load_state, save_state
+from config import BASE_DIR, IN_FLATPAK, IS_PORTABLE, __version__, load_state, save_state, api_error
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def submit_log():
             with open(log_path, 'rb') as f:
                 log_bytes = f.read()
         except OSError as e:
-            return jsonify({"status": "error", "message": f"Could not read log file: {e}"}), 500
+            return api_error('Could not read log file. Check playdate.log for details.', 500, exc=e)
         if len(log_bytes) > MAX_LOG_BYTES:
             log_bytes = log_bytes[-MAX_LOG_BYTES:]
 
