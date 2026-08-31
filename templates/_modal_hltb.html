@@ -253,7 +253,7 @@ function _hltbRenderList() {
                 <div class="row-btns">
                     ${!isConfirmed ? `<button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" data-modal-row="${seq}" onclick="_hltbRowConfirm(${row.appid})">Confirm</button>` : ''}
                     <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px;" data-modal-row="${seq}" onclick="_hltbRowOtherMatch(${row.appid}, this)">Other match</button>
-                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; color:var(--text-secondary);" data-modal-row="${seq}" onclick="_hltbRowClear(${row.appid})">Clear</button>
+                    <button class="nav-btn" style="font-size:0.72rem; padding:2px 7px; color:var(--text-secondary);" data-modal-row="${seq}" onclick="_hltbRowClear(${row.appid})" title="No HowLongToBeat page for this game; stops auto-matching it">No page</button>
                 </div>
             </div>
             ${times ? `<div class="times" style="margin-top:3px;">${times}</div>` : ''}
@@ -345,10 +345,16 @@ async function _hltbRowConfirm(appid) {
 }
 
 async function _hltbRowClear(appid) {
+    // Marks the game as having no HLTB page ('no_match') so it stops being
+    // re-matched on every launch -- it moves to the "no match" section, not
+    // back to the pending queue.
     await fetch(`/api/hltb/${appid}`, {method:'DELETE'});
+    const row = _hltbMatches.find(r => r.appid === appid);
     _hltbMatches = _hltbMatches.filter(r => r.appid !== appid);
-    _hltbUnfetchedCount++;
+    if (row && !_hltbNoMatchGames.some(r => r.appid === appid))
+        _hltbNoMatchGames.push({appid, name: row.name});
     _hltbRenderList();
+    _hltbNotify('Marked as no HLTB page.');
 }
 
 async function _hltbRowOtherMatch(appid, btn) {

@@ -1,18 +1,14 @@
 # Release Notes
 
-## v1.9.0 - 2026-08-28
-### New
-
-- Non-Steam games can backfill missing metadata (tags, reviews, genres, dev/publisher, release date) from their Steam page via PCGamingWiki; itch.io exclusives fall back to their itch store page. Runs automatically in the background after launch, or on demand from Bulk Tools > Re-scrape.
-- "Find Steam Junk" is now "Find Library Junk": title scan covers every platform, plus a Deep Plugin Scan for store DLC and non-game apps.
+## v1.9.1
 
 ### Improvements
 
-- HLTB "Confirm all above threshold" runs as a background job that survives leaving the page.
-- PAGYWOSG builder recognizes "Game with X in the title" categories.
+- Metadata backfill now covers Steam games, not just non-Steam ones.
 
 ### Fixes
 
-- HowLongToBeat lookups work again after their search API changed.
-- An unreachable HowLongToBeat no longer wipes a game's stored match.
-- Cleaner plugin imports: Humble skips mobile-only games and bundled software, Epic skips browsers and dev kits, Humble Monthly/Choice games show their real developer.
+- Metadata backfill retries games that were tried before but still have missing fields.
+- Renaming a game re-runs its metadata match.
+- HowLongToBeat "Confirm all above threshold" no longer freezes partway through when the site is slow.
+- Games marked as having no HowLongToBeat page stay that way after a restart.

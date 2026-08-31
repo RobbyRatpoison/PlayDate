@@ -549,11 +549,19 @@ def update_game():
     from utils import get_all_unique_genres, get_all_unique_categories, invalidate_unique_cache
     try:
         old_groups_str = None
-        if 'groups' in data:
+        if 'groups' in data or 'name' in data:
             db = get_db()
-            old_row = db.execute("SELECT groups FROM games WHERE appid = ?", (appid,)).fetchone()
+            old_row = db.execute("SELECT groups, name, meta_backfill_fetched FROM games WHERE appid = ?", (appid,)).fetchone()
             db.close()
             old_groups_str = (old_row['groups'] if old_row else None) or ''
+            # A renamed game gets a fresh metadata backfill: the old resolution
+            # was keyed on the old name, so drop the stamp + cached Steam AppID
+            # and let the next startup sweep re-resolve from the new name.
+            new_name = (data.get('name') or '').strip()
+            if (old_row and new_name and new_name != (old_row['name'] or '')
+                    and old_row['meta_backfill_fetched'] not in (None, '0')):
+                data.setdefault('meta_backfill_fetched', '0')
+                data.setdefault('steam_appid', None)
         update_game_data(appid, **data)
         invalidate_unique_cache()
         if 'groups' in data:
@@ -1024,20 +1032,23 @@ def bulk_op_start():
         db.close()
         appids = [r['appid'] for r in rows]
     elif op == 'metadata':
-        # Honour the scope selector, then narrow to games that actually still
-        # need a backfill pass (non-Steam, not already done). 'all' = every
-        # pending non-Steam game; 'filtered'/'selected' = the passed appids
-        # intersected with that pending set.
-        from scrapers import _METADATA_PENDING_SQL, _METADATA_PENDING_WHERE
+        # Honour the scope selector, then narrow to games whose core metadata
+        # (developer / genres / tags) is genuinely still incomplete -- any
+        # platform, regardless of a prior backfill outcome. An explicit run
+        # re-attempts a game already stamped done / no_match (bulk_backfill_metadata
+        # passes rerun=True); it just won't bother with games that are already full.
+        from scrapers import _METADATA_INCOMPLETE_WHERE
         db = get_db()
         if scope == 'all':
-            rows = db.execute(_METADATA_PENDING_SQL).fetchall()
+            rows = db.execute(
+                f"SELECT appid FROM games WHERE {_METADATA_INCOMPLETE_WHERE} ORDER BY appid"
+            ).fetchall()
         else:
             ids = [int(a) for a in appids]
             if ids:
                 ph   = ','.join('?' * len(ids))
                 rows = db.execute(
-                    f"SELECT appid FROM games WHERE {_METADATA_PENDING_WHERE} "
+                    f"SELECT appid FROM games WHERE {_METADATA_INCOMPLETE_WHERE} "
                     f"AND appid IN ({ph}) ORDER BY appid", ids
                 ).fetchall()
             else:

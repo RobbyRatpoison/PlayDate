@@ -5,10 +5,13 @@ import scrapers
 
 def _run(monkeypatch, results, **kw):
     calls = []
-    monkeypatch.setattr('metadata.backfill_metadata', lambda appid: results.get(appid))
+    seen_kw = []
+    monkeypatch.setattr('metadata.backfill_metadata',
+                        lambda appid, **_kw: (seen_kw.append(_kw), results.get(appid))[1])
     monkeypatch.setattr(scrapers, 'update_game_data', lambda appid, **d: calls.append(appid))
     ev = kw.pop('cancel_event', threading.Event())
     out = scrapers._backfill_batch(list(results), ev, None, inter_delay=0, **kw)
+    _run.last_kw = seen_kw
     return out, calls
 
 
@@ -23,6 +26,13 @@ def test_per_session_cap(monkeypatch):
     out, _ = _run(monkeypatch, {i: {'meta_backfill_fetched': 'x'} for i in range(10)},
                   per_session_cap=4)
     assert out['attempted'] == 4 and out['capped'] is True
+
+
+def test_rerun_forwarded(monkeypatch):
+    _run(monkeypatch, {1: {'meta_backfill_fetched': 'x'}}, rerun=True)
+    assert _run.last_kw == [{'rerun': True}]
+    _run(monkeypatch, {1: {'meta_backfill_fetched': 'x'}})
+    assert _run.last_kw == [{'rerun': False}]
 
 
 def test_cancel(monkeypatch):

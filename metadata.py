@@ -1,12 +1,18 @@
 """
-metadata.py — `metadata_bp`: fill metadata gaps for non-Steam games by
-cross-referencing their Steam counterpart.
+metadata.py — `metadata_bp`: fill metadata gaps for any game (non-Steam games
+by cross-referencing their Steam counterpart; Steam games straight from their
+own store page plus a PCGamingWiki fallback for what Steam itself is missing).
 
 Non-Steam plugins (EA, Ubisoft, Epic, GOG, ...) can only provide what their
 own store API exposes — usually name, maybe genres/dev/pub/release date, and
 never Steam-style tags, review scores, or categories. This module resolves a
 game to a Steam AppID and borrows the rest from the existing Steam scraper
 pipeline (`scrapers.fetch_store_data` / `fetch_review_data` / `fetch_tag_data`).
+
+Steam games are handled too: a Steam game that a populate/rescrape left with
+missing developer / genres / tags is re-fetched from its own store page, and
+anything still blank (a delisted game whose store page is gone, say) is
+gap-filled from PCGamingWiki by name.
 
 Resolution order:
   1. PCGamingWiki — search for the page, parse the {{Infobox game}} wikitext.
@@ -24,10 +30,18 @@ When a Steam AppID is resolved, `scrapers.fetch_store_data / fetch_review_data
 / fetch_tag_data` provide the metadata (tags + reviews included); the PCGW box
 only backfills whatever Steam happened to be missing.
 
-Only ever *fills gaps* — a field the plugin already populated is left alone.
-Never touches name, achievements, playtime, or art. The resolved Steam AppID
-is cached in `games.steam_appid`; `games.meta_backfill_fetched` records the
-outcome ('0'/NULL = never, YYYY-MM-DD = done, 'no_match', 'unconfirmed').
+Only ever *fills gaps* — a field the plugin (or Steam populate) already
+populated is left alone. Never touches name, achievements, playtime, or art.
+The resolved Steam AppID is cached in `games.steam_appid`;
+`games.meta_backfill_fetched` records the outcome ('0'/NULL = never,
+YYYY-MM-DD = done, 'no_match', 'unconfirmed').
+
+`meta_backfill_fetched` gates only the automatic startup sweep — any explicit
+user action (the "Backfill Missing Metadata" bulk op, a bulk re-scrape, the
+edit modal's "Fill from Steam", or renaming a game) re-attempts regardless,
+gated purely on whether core fields are still empty. Renaming a game clears
+its `meta_backfill_fetched` and stale `steam_appid` so the next sweep
+re-resolves from the new name (see `library.update_game`).
 """
 
 import difflib
@@ -370,19 +384,29 @@ def _store_page_metadata(platform, slug):
         return {}
 
 
-def backfill_metadata(appid, *, force=False):
-    """Fill missing metadata for one non-Steam game from its Steam counterpart.
+def backfill_metadata(appid, *, force=False, rerun=False):
+    """Fill missing metadata for one game.
+
+    Non-Steam games are resolved to a Steam counterpart (PCGamingWiki, then
+    Steam search); Steam games use their own AppID directly and fall back to
+    PCGamingWiki for whatever their store page couldn't provide.
 
     Returns a dict ready for `update_game_data(**dict)` (always carrying
-    `meta_backfill_fetched`, and `steam_appid` once resolved), or None if the
-    game isn't found / is a Steam game. Raises `scrapers.RateLimitedError` if
-    Steam throttles — callers handle it (bulk_rescrape re-queues; the route
+    `meta_backfill_fetched`, and `steam_appid` once resolved for a non-Steam
+    game), or None if the game isn't found. Raises `scrapers.RateLimitedError`
+    if Steam throttles — callers handle it (bulk_rescrape re-queues; the route
     returns 429).
 
-    `force=True` applies a 'maybe' (fuzzy) match instead of parking it as
-    'unconfirmed', and re-runs even if already backfilled.
+    `rerun=True` re-attempts a game already stamped done / no_match / unconfirmed
+    (the automatic sweep never passes it — it filters on the column itself;
+    explicit user actions pass it). `force=True` additionally applies a 'maybe'
+    (fuzzy) Steam-search match instead of parking it as 'unconfirmed', and
+    implies `rerun`.
     """
     from datetime import date
+
+    if force:
+        rerun = True
 
     db = get_db()
     row = db.execute(
@@ -392,15 +416,21 @@ def backfill_metadata(appid, *, force=False):
         "FROM games WHERE appid = ?", (appid,)
     ).fetchone()
     db.close()
-    if not row or (row['platform'] or 'steam') == 'steam':
+    if not row:
         return None
-    if row['meta_backfill_fetched'] and row['meta_backfill_fetched'] not in ('0', 'unconfirmed') and not force:
+    is_steam = (row['platform'] or 'steam') == 'steam'
+    if row['meta_backfill_fetched'] and row['meta_backfill_fetched'] not in ('0', 'unconfirmed') and not rerun:
         return None  # already done
 
     today = date.today().isoformat()
     steam_appid = row['steam_appid']
     pcgw_box = None
-    if not steam_appid or force:
+    if is_steam:
+        steam_appid = appid  # it is its own Steam counterpart
+    elif not steam_appid or force or row['meta_backfill_fetched'] == 'unconfirmed':
+        # Re-resolve from the (possibly just-renamed) name. An 'unconfirmed' row
+        # is re-resolved every run rather than trusting its parked candidate id,
+        # so a bulk re-run never silently applies a fuzzy match.
         steam_appid, confidence, pcgw_box = _resolve(row['name'])
         if confidence == 'retry':
             return None  # PCGW throttled -- leave it for the next run
@@ -414,12 +444,13 @@ def backfill_metadata(appid, *, force=False):
     out = {'meta_backfill_fetched': today}
     # A forced re-resolve that no longer lands on a Steam page must clear the
     # stale candidate id (e.g. a parked 'maybe' that PCGW has since overridden).
-    if row['steam_appid'] and not steam_appid:
+    if not is_steam and row['steam_appid'] and not steam_appid:
         out['steam_appid'] = None
 
     if steam_appid:
         # A real Steam page -- richest source (tags + reviews + the rest).
-        out['steam_appid'] = steam_appid
+        if not is_steam:
+            out['steam_appid'] = steam_appid
         from scrapers import fetch_store_data, fetch_review_data, fetch_tag_data
         store   = fetch_store_data(steam_appid) or {}
         store.pop('type', None)
@@ -439,11 +470,22 @@ def backfill_metadata(appid, *, force=False):
         # Review set is a group, only if the game has no score at all.
         if _gap('review_score') and reviews.get('total_reviews'):
             out.update(reviews)
-        # Anything Steam didn't have, take from the PCGW box if we fetched one.
+        # Anything the Steam page still didn't have, take from PCGamingWiki.
+        # For a non-Steam game we may already hold a box from _resolve(); for a
+        # Steam game (or a non-Steam game with a pre-stored appid) fetch one now
+        # if any infobox-covered field is still blank -- this is the whole point
+        # of running a backfill on a Steam game (delisted store pages, etc).
+        _box_fields = ('developers', 'publishers', 'genres', 'categories')
+        if pcgw_box is None and any(f not in out and _gap(f) for f in _box_fields):
+            pcgw_box = _pcgw_infobox(row['name'], _mw_session())
+            if pcgw_box is _PCGW_UNAVAILABLE:
+                pcgw_box = None
         if pcgw_box:
-            for field in ('developers', 'publishers', 'genres', 'categories'):
+            for field in _box_fields:
                 if field not in out and _gap(field) and pcgw_box.get(field):
                     out[field] = pcgw_box[field]
+            if 'release_date' not in out and row['release_date'] is None and pcgw_box.get('release_date'):
+                out['release_date'] = pcgw_box['release_date']
 
     elif pcgw_box:
         # No Steam page, but PCGamingWiki has the game -- fill dev/pub/genres/

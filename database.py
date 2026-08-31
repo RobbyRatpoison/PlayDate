@@ -142,7 +142,7 @@ def init_db():
         'platform_ns': 'TEXT',           # Platform-specific namespace (e.g. Epic catalog namespace)
         'platform_appname': 'TEXT',      # Platform-internal app/launch name distinct from store slug (e.g. Epic appName)
         'steam_appid': 'INTEGER',        # Steam AppID resolved via PCGW/Steam-search for non-Steam games (NULL = not yet looked up); see metadata.py
-        'meta_backfill_fetched': 'TEXT', # non-Steam metadata backfill outcome: '0'/NULL = never, YYYY-MM-DD = done, 'no_match', 'unconfirmed'
+        'meta_backfill_fetched': 'TEXT', # metadata backfill outcome (any platform): '0'/NULL = never, YYYY-MM-DD = done, 'no_match', 'unconfirmed'. Gates only the auto startup sweep; explicit backfills re-attempt on missing fields alone. Renaming a game resets this to '0'.
         'install_path': 'TEXT',          # Local install directory (non-Steam games)
         'wine_prefix': 'TEXT',           # Path to Wine/Proton prefix (Windows games)
         'runner_path': 'TEXT',           # Path to Proton binary used for this game

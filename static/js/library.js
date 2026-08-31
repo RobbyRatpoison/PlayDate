@@ -1265,7 +1265,7 @@ async function startBulkOp(op) {
                   : 'Scrape artwork';
     let suffix = scope === 'all' ? '\n\nThis will process your entire library and may take a long time.' : '';
     if (op === 'metadata') {
-        suffix += '\n\nOnly non-Steam games still missing metadata are processed, one request every few seconds.';
+        suffix += '\n\nOnly games whose developer, genres or tags are still blank are processed, one request every few seconds.';
     }
     if (!await confirm(`${opLabel} for ${displayCount} game${displayCount !== 1 ? 's' : ''}?${suffix}`)) return;
 

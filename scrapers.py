@@ -424,6 +424,40 @@ class _HltbUnreachable(Exception):
     transient failure instead of wiping the game's stored match."""
 
 
+# Hard wall-clock cap for a single howlongtobeatpy call. The library's own
+# requests carry only a per-read timeout (60s, not a total), so a stalled or
+# slow-trickle connection blocks the calling thread indefinitely -- which
+# freezes a bulk run's progress bar and defeats bulk_hltb_confirm's
+# abort-after-N-unreachable guard (that guard only trips when a call *returns*
+# a failure). 75s comfortably covers a healthy-but-slow call (get-title +
+# bundle-scrape + auth + search, each a separate HTTP request).
+_HLTB_CALL_DEADLINE = 75
+
+def _hltb_bounded(fn, *args):
+    """Run one blocking howlongtobeatpy call under `_HLTB_CALL_DEADLINE`.
+
+    On deadline the (daemon) worker thread is abandoned -- it unwinds on its own
+    once its underlying socket read finally times out -- and `TimeoutError` is
+    raised. Every HLTB callsite already treats a failed call as 'unreachable'.
+    """
+    box, done = {}, threading.Event()
+
+    def _runner():
+        try:
+            box['v'] = fn(*args)
+        except Exception as e:   # re-raised in the caller thread
+            box['e'] = e
+        finally:
+            done.set()
+
+    threading.Thread(target=_runner, name='hltb-call', daemon=True).start()
+    if not done.wait(_HLTB_CALL_DEADLINE):
+        raise TimeoutError(f"howlongtobeatpy call exceeded {_HLTB_CALL_DEADLINE}s wall-clock")
+    if 'e' in box:
+        raise box['e']
+    return box['v']
+
+
 _STEAM_HLTB_MAP = None  # {steam_appid_str: hltb_id_int}
 
 def _load_steam_hltb_map():
@@ -513,7 +547,12 @@ def fetch_hltb_data(name, threshold=75):
             # howlongtobeatpy returns None when the HTTP request itself failed
             # (couldn't reach HLTB / API moved), and [] when it reached HLTB but
             # found nothing. Keep those two cases distinct.
-            results = HowLongToBeat(0.0).search(query, similarity_case_sensitive=False)
+            try:
+                results = _hltb_bounded(
+                    lambda: HowLongToBeat(0.0).search(query, similarity_case_sensitive=False))
+            except TimeoutError as e:
+                log.warning(f"[hltb] search timed out for {query!r}: {e}")
+                return HLTB_UNREACHABLE, 0
             if results is None:
                 return HLTB_UNREACHABLE, 0
             if not results:
@@ -601,7 +640,7 @@ def fetch_hltb_by_id(name, hltb_id):
 
     # Try direct lookup first — works for compilations and anything not in search
     try:
-        match = HowLongToBeat().search_from_id(hltb_id)
+        match = _hltb_bounded(HowLongToBeat().search_from_id, hltb_id)
         if match:
             return {
                 'hltb_matched_name':  match.game_name,
@@ -610,6 +649,9 @@ def fetch_hltb_by_id(name, hltb_id):
                 'hltb_completionist': _hours_to_minutes(match.completionist),
                 'times_available':    True,
             }
+    except TimeoutError as e:
+        log.warning(f"[hltb] search_from_id timed out for id={hltb_id}: {e}")
+        return HLTB_UNREACHABLE   # a stall here means HLTB is not answering; don't burn another deadline on the fallback
     except Exception as e:
         log.warning(f"[hltb] search_from_id failed for id={hltb_id}: {e}")
 
@@ -617,7 +659,8 @@ def fetch_hltb_by_id(name, hltb_id):
     # A None result here means the request itself failed; [] means HLTB answered
     # but had nothing.
     try:
-        results = HowLongToBeat(0.0).search(name, similarity_case_sensitive=False)
+        results = _hltb_bounded(
+            lambda: HowLongToBeat(0.0).search(name, similarity_case_sensitive=False))
         if results is not None:
             reached_hltb = True
             match = next((r for r in results if r.game_id == hltb_id), None)
@@ -629,6 +672,8 @@ def fetch_hltb_by_id(name, hltb_id):
                     'hltb_completionist': _hours_to_minutes(match.completionist),
                     'times_available':    True,
                 }
+    except TimeoutError as e:
+        log.warning(f"[hltb] name search fallback timed out for '{name}' id={hltb_id}: {e}")
     except Exception as e:
         log.warning(f"[hltb] name search fallback failed for '{name}' id={hltb_id}: {e}")
 
@@ -655,12 +700,14 @@ def search_hltb_results(name):
     try:
         from howlongtobeatpy import HowLongToBeat
         cleaned = _hltb_clean_name(name)
-        results = HowLongToBeat(0.0).search(cleaned, similarity_case_sensitive=False)
+        results = _hltb_bounded(
+            lambda: HowLongToBeat(0.0).search(cleaned, similarity_case_sensitive=False))
         # Fall back to punctuation-stripped query if the cleaned name found nothing
         if not results:
             stripped = _hltb_strip_edition(cleaned)
             if stripped != cleaned:
-                results = HowLongToBeat(0.0).search(stripped, similarity_case_sensitive=False)
+                results = _hltb_bounded(
+                    lambda: HowLongToBeat(0.0).search(stripped, similarity_case_sensitive=False))
         if not results:
             return []
 
@@ -2101,7 +2148,9 @@ def bulk_rescrape_games(appids, cancel_event, progress_cb):
                         return
                     try:
                         from metadata import backfill_metadata
-                        backfilled = backfill_metadata(appid) or {}
+                        # A re-scrape is an explicit refresh -- re-attempt even a
+                        # game already stamped done / no_match.
+                        backfilled = backfill_metadata(appid, rerun=True) or {}
                     except RateLimitedError:
                         raise
                     except Exception as e:
@@ -2713,7 +2762,7 @@ def bulk_hltb_confirm_matches(appids, cancel_event, progress_cb):
     counts = {'done': 0, 'failed': 0, 'cleared': 0}
     unreachable_streak = 0
 
-    for appid in appids:
+    for i, appid in enumerate(appids, 1):
         if cancel_event and cancel_event.is_set():
             break
         row = rows.get(appid)
@@ -2723,6 +2772,8 @@ def bulk_hltb_confirm_matches(appids, cancel_event, progress_cb):
                 progress_cb('failed', appid, len(appids))
             continue
 
+        log.info("[bulk_hltb_confirm] %d/%d appid=%s id=%s %r",
+                 i, len(appids), appid, row['hltb_id'], row['name'])
         try:
             result = fetch_hltb_by_id(row['name'], row['hltb_id'])
         except Exception as e:
@@ -2767,12 +2818,26 @@ def bulk_hltb_confirm_matches(appids, cancel_event, progress_cb):
     return counts
 
 
-# ── Non-Steam metadata backfill ──────────────────────────────────────────────
+# ── Metadata backfill ───────────────────────────────────────────────────────
 
-# A non-Steam game that still needs a metadata backfill pass. 'retry' is
-# future-proofing -- nothing writes it to the column today.
+# A game whose core metadata (developer / genres / tags) is still incomplete
+# and could plausibly be filled from Steam / PCGamingWiki / a store page. This
+# is the gate for every explicit backfill (the manual bulk op, a re-scrape) --
+# platform-agnostic, outcome-agnostic. Steam games qualify too: a populate that
+# hit a rate limit, or a delisted game, can leave these blank.
+_METADATA_INCOMPLETE_WHERE = (
+    "((developers IS NULL OR developers = '') "
+    " OR (genres IS NULL OR genres = '') "
+    " OR (tags IS NULL OR tags = ''))"
+)
+
+# The narrower gate for the *automatic* startup sweep: incomplete AND never
+# attempted (so it drains once and never re-hammers a game that legitimately
+# has nothing more to find). 'retry' is future-proofing -- nothing writes it
+# to the column today. Renaming a game resets meta_backfill_fetched to '0',
+# which puts it back in this set.
 _METADATA_PENDING_WHERE = (
-    "COALESCE(platform, 'steam') <> 'steam' "
+    f"{_METADATA_INCOMPLETE_WHERE} "
     "AND (meta_backfill_fetched IS NULL OR meta_backfill_fetched IN ('0', 'retry'))"
 )
 _METADATA_PENDING_SQL = f"SELECT appid FROM games WHERE {_METADATA_PENDING_WHERE} ORDER BY appid"
@@ -2780,13 +2845,14 @@ _METADATA_PENDING_SQL = f"SELECT appid FROM games WHERE {_METADATA_PENDING_WHERE
 
 def _backfill_batch(appids, cancel_event, progress_cb=None, *,
                     per_session_cap=None, per_session_seconds=None,
-                    inter_delay=3.0, pause_event=None):
-    """Sequentially backfill Steam-only metadata for a list of non-Steam games.
+                    inter_delay=3.0, pause_event=None, rerun=False):
+    """Sequentially backfill missing metadata for a list of games.
 
-    Shared by sync_metadata_backfill (capped startup catch-up) and
-    bulk_backfill_metadata (uncapped manual bulk op).
+    Shared by sync_metadata_backfill (capped startup catch-up, rerun=False) and
+    bulk_backfill_metadata (uncapped manual bulk op, rerun=True -- re-attempts a
+    game already stamped done / no_match).
 
-    Per appid: metadata.backfill_metadata(appid) -> update_game_data(**result).
+    Per appid: metadata.backfill_metadata(appid, rerun=rerun) -> update_game_data(**result).
     Sleeps `inter_delay` between games (on top of the global PCGW 1.5s lock).
     Stops early on cancel, after `per_session_cap` games attempted, or after
     `per_session_seconds` wall-clock. Unreached games keep their NULL/'0'/'retry'
@@ -2829,7 +2895,7 @@ def _backfill_batch(appids, cancel_event, progress_cb=None, *,
         attempted += 1
         for attempt in range(2):
             try:
-                result = backfill_metadata(appid)
+                result = backfill_metadata(appid, rerun=rerun)
                 if result:
                     update_game_data(appid, **result)
                     counts['done'] += 1
@@ -2875,8 +2941,11 @@ def _backfill_batch(appids, cancel_event, progress_cb=None, *,
 
 
 def sync_metadata_backfill():
-    """Startup catch-up: backfill Steam-only metadata for non-Steam games added
-    outside a full bulk rescrape (plugins, emulators).
+    """Startup catch-up: backfill missing metadata for any game still short of
+    core fields and never attempted -- non-Steam games added outside a full bulk
+    rescrape (plugins, emulators), plus Steam games a populate left incomplete
+    (rate-limited fetch, delisted store page). Drains once; a game that comes
+    back with nothing to add gets a date stamp and drops out of the pending set.
 
     Routes through the shared _bulk_op_state slot as op='metadata' so it reuses
     the top-bar progress/cancel UI. Defers to the next launch if a bulk op is
@@ -2936,10 +3005,12 @@ def sync_metadata_backfill():
 
 def bulk_backfill_metadata(appids, cancel_event, progress_cb):
     """Manual 'Backfill Missing Metadata' bulk op. Full pending list, no
-    per-session cap. Metadata only -- no art / achievement refetch.
+    per-session cap. Metadata only -- no art / achievement refetch. rerun=True:
+    the caller has already narrowed `appids` to games still missing core fields,
+    so re-attempt them regardless of a prior done / no_match stamp.
     Returns _backfill_batch's result dict ({done, failed, attempted, capped, aborted}).
     """
-    return _backfill_batch(appids, cancel_event, progress_cb, inter_delay=3.0)
+    return _backfill_batch(appids, cancel_event, progress_cb, inter_delay=3.0, rerun=True)
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────

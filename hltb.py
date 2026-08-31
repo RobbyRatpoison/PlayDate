@@ -150,6 +150,12 @@ def confirm_hltb(appid):
 
 @hltb_bp.route('/api/hltb/<int:appid>', methods=['DELETE'])
 def delete_hltb(appid):
-    update_game_data(appid, hltb_fetched='0', hltb_id=None, hltb_main=None,
-                     hltb_extras=None, hltb_completionist=None, hltb_match_score=None)
+    # "Clear" == "this game has no HowLongToBeat page" -> park it as 'no_match'
+    # so the startup catch-up stops re-fetching it and re-suggesting the same
+    # wrong match every launch. It stays in the modal's "no match" section and
+    # can still be retried there (search / Re-scrape). Setting it back to '0'
+    # (the old behaviour) just meant the suggestion came straight back.
+    update_game_data(appid, hltb_fetched='no_match', hltb_id=None,
+                     hltb_matched_name=None, hltb_match_score=None,
+                     hltb_main=None, hltb_extras=None, hltb_completionist=None)
     return jsonify({'status': 'success'})

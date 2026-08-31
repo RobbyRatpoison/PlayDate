@@ -177,8 +177,8 @@
                 <button type="button" onclick="fetchMetadata()" id="meta-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--accent);">
                     Sync Data
                 </button>
-                <button type="button" onclick="fillMetadataFromSteam()" id="meta-fill-btn" class="nav-btn" data-modal-row="0" style="display:none; height: auto; padding: 0.5rem 1rem; border: 1px solid var(--border);" title="Look up this game on Steam (via PCGamingWiki) and fill in any missing tags, review score, genres, developer/publisher and release date.">
-                    Fill from Steam
+                <button type="button" onclick="fillMetadataFromSteam()" id="meta-fill-btn" class="nav-btn" data-modal-row="0" style="display:none; height: auto; padding: 0.5rem 1rem; border: 1px solid var(--border);" title="Look up this game on Steam and PCGamingWiki and fill in any missing tags, review score, genres, developer/publisher and release date.">
+                    Fill Missing Data
                 </button>
                 <button type="button" onclick="openInstallDir()" id="install-dir-btn" class="nav-btn" data-modal-row="0" style="height: auto; padding: 0.5rem 1rem; border: 1px solid var(--border);">
                     Open Folder
@@ -311,8 +311,8 @@
                                         style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
                                     <button type="button" id="edit-hltb-other-i" onclick="_otherMatchHLTB(this)" data-modal-row="13"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
-                                    <button type="button" id="edit-hltb-clear-i" onclick="_clearHLTB(this)" data-modal-row="13"
-                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
+                                    <button type="button" id="edit-hltb-clear-i" onclick="_clearHLTB(this)" data-modal-row="13" title="No HowLongToBeat page for this game; stops auto-matching it"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">No page</button>
                                     <button type="button" id="edit-hltb-refresh-i" onclick="_refreshHLTB(this)" data-modal-row="13"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
                                 </div>
@@ -409,8 +409,8 @@
                                         style="display:none; font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Confirm</button>
                                     <button type="button" id="edit-hltb-other" onclick="_otherMatchHLTB(this)" data-modal-row="7"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Other match</button>
-                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB(this)" data-modal-row="7"
-                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Clear</button>
+                                    <button type="button" id="edit-hltb-clear" onclick="_clearHLTB(this)" data-modal-row="7" title="No HowLongToBeat page for this game; stops auto-matching it"
+                                        style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">No page</button>
                                     <button type="button" id="edit-hltb-refresh" onclick="_refreshHLTB(this)" data-modal-row="7"
                                         style="font-size:0.72rem; padding:2px 8px; background:transparent; color:#8f98a0; border:1px solid #2a475e; border-radius:4px; cursor:pointer;">Re-scrape</button>
                                 </div>
@@ -876,8 +876,11 @@ const achLink = document.getElementById('achievements-link');
         }
         const fillBtn = document.getElementById('meta-fill-btn');
         if (fillBtn) {
-            fillBtn.style.display = isSteam ? 'none' : '';
-            fillBtn.textContent   = 'Fill from Steam';
+            // Shown for every platform: a Steam game a populate left short of
+            // tags/genres (or a delisted one) gets gap-filled from its store
+            // page + PCGamingWiki, same as a non-Steam game.
+            fillBtn.style.display = '';
+            fillBtn.textContent   = 'Fill Missing Data';
             fillBtn.disabled      = false;
         }
         ['steam-help-link', 'achievements-link'].forEach(id => {
@@ -1293,13 +1296,14 @@ const achLink = document.getElementById('achievements-link');
         }
     }
 
-    // Non-Steam games: look the game up on Steam (PCGamingWiki first) and fill
-    // in whatever metadata fields are still blank. Only touches the fields the
-    // server reports it filled, so in-progress edits to other fields survive.
+    // Look the game up on Steam + PCGamingWiki and fill in whatever metadata
+    // fields are still blank (any platform -- for a Steam game it re-fetches the
+    // store page and falls back to PCGW). Only touches the fields the server
+    // reports it filled, so in-progress edits to other fields survive.
     async function fillMetadataFromSteam(force) {
         const appid = document.getElementById('edit-appid').value;
         const btn = document.getElementById('meta-fill-btn');
-        const orig = force ? 'Fill from Steam' : btn.textContent;
+        const orig = force ? 'Fill Missing Data' : btn.textContent;
         btn.textContent = 'Looking up…';
         btn.disabled = true;
         try {
@@ -1330,7 +1334,7 @@ const achLink = document.getElementById('achievements-link');
             (data.filled || []).forEach(f => setters[f] && setters[f]());
 
             if (data.outcome === 'no_match') {
-                btn.textContent = 'No Steam match';
+                btn.textContent = 'No match found';
             } else if (data.outcome === 'unconfirmed') {
                 btn.textContent = 'Uncertain match';
                 confirm('Found a possible Steam match, but the name is only a partial fit. Fill from it anyway?')
@@ -1343,7 +1347,7 @@ const achLink = document.getElementById('achievements-link');
         } catch (e) {
             btn.textContent = 'Failed';
         } finally {
-            setTimeout(() => { btn.textContent = orig || 'Fill from Steam'; btn.disabled = false; }, 2600);
+            setTimeout(() => { btn.textContent = orig || 'Fill Missing Data'; btn.disabled = false; }, 2600);
         }
     }
 
@@ -1926,9 +1930,11 @@ const achLink = document.getElementById('achievements-link');
 
     function _clearHLTB(btn) {
         if (!_hltbAppid) return;
+        // "No page" -> park as 'no_match' so the startup catch-up stops
+        // re-matching it. Retry later via Re-scrape / a manual search.
         _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
         fetch(`/api/hltb/${_hltbAppid}`, {method: 'DELETE'})
-            .then(() => _renderHLTB({...(_hltbGame || {}), hltb_id: null, hltb_fetched: null, hltb_main: null, hltb_extras: null, hltb_completionist: null, hltb_matched_name: null, hltb_match_score: null}));
+            .then(() => _renderHLTB({...(_hltbGame || {}), hltb_id: null, hltb_fetched: 'no_match', hltb_main: null, hltb_extras: null, hltb_completionist: null, hltb_matched_name: null, hltb_match_score: null}));
     }
 
     function _otherMatchHLTB(btn) {

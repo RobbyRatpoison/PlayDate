@@ -1202,10 +1202,11 @@
             <div style="background:#0e1923; border:1px solid #2a475e; border-radius:6px; padding:12px 14px; margin-bottom:10px;">
                 <div style="font-size:0.82rem; font-weight:bold; color:#c2c8cc; margin-bottom:8px; letter-spacing:0.04em;">STEAM METADATA</div>
                 <p style="font-size:0.78rem; color:#8f98a0; margin:0 0 10px;">
-                    Fills tags, review score, categories, and any missing genres / developer /
-                    publisher / release date for non-Steam games from their Steam counterpart.
-                    Runs automatically at startup &mdash; use this to catch up now. Respects the
-                    scope selector; only non-Steam games still missing metadata are processed.
+                    Fills tags, review score, categories, genres, developer / publisher and
+                    release date from Steam (or PCGamingWiki for anything Steam is missing).
+                    Runs automatically at startup for games never tried &mdash; this button
+                    re-attempts too. Respects the scope selector; only games whose developer,
+                    genres or tags are still blank are processed, any platform.
                 </p>
                 <button id="brs-start-metadata-btn" data-modal-row="2" onclick="startBulkOp('metadata')"
                     style="width:100%; padding:9px; font-size:0.85rem; font-weight:bold; background:var(--accent); color:#0e1621; border:none; border-radius:5px; cursor:pointer;">
