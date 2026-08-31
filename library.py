@@ -819,22 +819,34 @@ def scrape_single(appid):
                    if retry_after else "Steam is rate-limiting requests — try again shortly.")
         return jsonify({"status": "error", "message": message, "retry_after": retry_after}), 429
 
-    data_out = {
-        "developers":             store_data.get('developers', ''),
-        "publishers":             store_data.get('publishers', ''),
-        "release_date":           store_data.get('release_date', ''),
-        "genres":                 store_data.get('genres', ''),
-        "categories":             store_data.get('categories', ''),
-        "is_free":                store_data.get('is_free', 0),
-        "review_score":           review_data.get('review_score', ''),
-        "review_percentage":      review_data.get('review_percentage', ''),
-        "weighted_percentage":    review_data.get('weighted_percentage', ''),
-        "total_reviews":          review_data.get('total_reviews', ''),
-        "positive_reviews":       review_data.get('positive_reviews', ''),
-        "total_achievements":     cheevo_data.get('total_achievements', 0),
-        "unlocked_achievements":  cheevo_data.get('unlocked_achievements', 0),
-        "tags":                   tag_data.get('tags', '')
-    }
+    # Only emit a field when its source actually returned something. A delisted
+    # game's store page is gone, so fetch_store_data/review/tag come back empty
+    # — emitting '' for those would blank the fields the user already has (from
+    # a metadata backfill, say) once they hit Save. Omitted keys are left
+    # untouched by the edit form.
+    data_out = {}
+    if store_data:
+        data_out.update({
+            "developers":   store_data.get('developers', ''),
+            "publishers":   store_data.get('publishers', ''),
+            "release_date": store_data.get('release_date', ''),
+            "genres":       store_data.get('genres', ''),
+            "categories":   store_data.get('categories', ''),
+            "is_free":      store_data.get('is_free', 0),
+        })
+    if review_data:
+        data_out.update({
+            "review_score":        review_data.get('review_score', ''),
+            "review_percentage":   review_data.get('review_percentage', ''),
+            "weighted_percentage": review_data.get('weighted_percentage', ''),
+            "total_reviews":       review_data.get('total_reviews', ''),
+            "positive_reviews":    review_data.get('positive_reviews', ''),
+        })
+    if cheevo_data:
+        data_out["total_achievements"]    = cheevo_data.get('total_achievements', 0)
+        data_out["unlocked_achievements"] = cheevo_data.get('unlocked_achievements', 0)
+    if tag_data.get('tags'):
+        data_out["tags"] = tag_data['tags']
 
     # Playtime, last_played, name: prefer API, fall back to local Steam files
     local_entry = next((g for g in fetch_local_library(_account.get('steam_id') or _cfg.get('steam_id'))

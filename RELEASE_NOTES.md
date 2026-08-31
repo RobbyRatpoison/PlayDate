@@ -7,11 +7,8 @@
 - Import your SteamGifts wins into a "Won on SteamGifts" group, using the Date Importer userscript. Captures win date, gifter and point cost, and checks received status.
 - Manually add a SteamGifts win to your library when Steam no longer lists the game as owned.
 
-### Improvements
-
-- Sync Steam Data fills in the release date from local Steam files when a game's store page is gone.
-
 ### Fixes
 
 - Scrape New Games no longer fails with "Could not reach Steam" when a Steam API key is set.
+- Sync Steam Data handles delisted games: it keeps their existing details instead of blanking them, and fills release date and playtime from local Steam files.
 - PAGYWOSG "personal" categories now follow the active account when more than one Steam account shares a PC.
