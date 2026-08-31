@@ -846,7 +846,7 @@ def _add_new(cancel_event=None, progress_cb=None):
             return {"status": "error", "message": "Steam sent invalid data. Try again in a few minutes."}
         except Exception as e:
             log.warning("Steam library fetch: connection error: %s", e)
-        return {"status": "error", "message": "Could not reach Steam. Check your connection and try again."}
+            return {"status": "error", "message": "Could not reach Steam. Check your connection and try again."}
     else:
         log.info("No API key — reading library from localconfig.vdf.")
         local_games = fetch_local_library(steam_id)
