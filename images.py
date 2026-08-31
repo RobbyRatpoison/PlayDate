@@ -22,6 +22,17 @@ BADGES_DIR     = os.path.join(BASE_DIR, 'static', 'img', 'badges')
 BADGE_ICON_SIZE     = 128
 BADGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 
+_IMG_ROOT = os.path.realpath(os.path.join(BASE_DIR, 'static', 'img'))
+
+
+def _within_img_root(path: str) -> bool:
+    """Guard for the save_* helpers: the destination must resolve to somewhere
+    under static/img. Callers build save_path from an int() appid or a
+    regex-checked stem, so this only ever fails on a caller bug — but it keeps
+    a bad path from ever reaching os.replace/os.remove."""
+    resolved = os.path.realpath(path)
+    return resolved == _IMG_ROOT or resolved.startswith(_IMG_ROOT + os.sep)
+
 
 def _ensure_dirs():
     for d in (VERTICAL_DIR, HORIZONTAL_DIR, ICONS_DIR):
@@ -41,6 +52,9 @@ def save_badge_icon(image_bytes, save_path):
     cover art, so a JPEG's forced-opaque background would show as a visible
     square patch. Returns True on success, False on failure.
     """
+    if not _within_img_root(save_path):
+        log.warning("save_badge_icon: refused out-of-tree path %r", save_path)
+        return False
     tmp_path = save_path + '.tmp'
     try:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -64,6 +78,9 @@ def save_as_jpg(image_bytes, save_path):
     Converts any image format (PNG, WEBP, etc.) to JPG and saves it.
     Creates parent directories if needed. Returns True on success, False on failure.
     """
+    if not _within_img_root(save_path):
+        log.warning("save_as_jpg: refused out-of-tree path %r", save_path)
+        return False
     tmp_path = save_path + '.tmp'
     try:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)

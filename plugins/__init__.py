@@ -819,12 +819,21 @@ def recheck_launcher_status(platform_id):
 @plugins_bp.route('/api/plugins/<plugin_id>/uninstall', methods=['POST'])
 def uninstall_plugin(plugin_id):
     import shutil
+    # A plugin id is a single path segment: no separators, no dots, so it can
+    # never escape a plugin dir when joined below.
     if not re.match(r'^[A-Za-z0-9_-]+$', plugin_id or ''):
         return jsonify({'status': 'error', 'message': 'Invalid plugin id.'}), 400
     p            = get(plugin_id)
     incompatible = _incompatible_plugins.get(plugin_id)
     if not p and not incompatible:
         return jsonify({'status': 'error', 'message': 'Plugin not found'}), 404
+    _plugin_roots = [os.path.realpath(d) for d in
+                     (_user_plugins_dir(), os.path.dirname(os.path.abspath(__file__)))]
+
+    def _in_a_plugin_root(candidate):
+        rp = os.path.realpath(candidate)
+        return any(rp != root and rp.startswith(root + os.sep) for root in _plugin_roots)
+
     # Incompatible plugins were never registered, so _plugin_paths has no entry --
     # fall back to checking both the writable and (legacy) bundled locations.
     path = plugin_path(plugin_id)
@@ -834,7 +843,7 @@ def uninstall_plugin(plugin_id):
             if os.path.isdir(candidate):
                 path = candidate
                 break
-    if not path or not os.path.isdir(path):
+    if not path or not os.path.isdir(path) or not _in_a_plugin_root(path):
         return jsonify({'status': 'error', 'message': 'Plugin folder not found'}), 404
     platform = p.platform if p else incompatible.get('platform')
     data = request.get_json(silent=True) or {}

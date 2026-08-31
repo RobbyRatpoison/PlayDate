@@ -90,8 +90,11 @@ def register_install_dir_routes(bp, plugin_id, default_dir, on_change=None):
             return jsonify({'error': 'No path provided'}), 400
         try:
             check_writable(path)
-        except RuntimeError as e:
-            return jsonify({'error': str(e)}), 400
+        except RuntimeError:
+            # check_writable already logged the OS error; keep the response
+            # to a fixed, non-revealing message.
+            return jsonify({'error': 'That folder cannot be used — pick one that '
+                                     'exists and is writable.'}), 400
         set_install_dir(plugin_id, path)
         if on_change:
             on_change(path)

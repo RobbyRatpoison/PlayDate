@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_from_directory
+from werkzeug.security import safe_join
 import logging
 import threading
 import time
@@ -171,7 +172,8 @@ def create_app(template_folder=None, static_folder=None):
         if not _SAFE_FILENAME_RE.match(filename):
             return '', 400
         lib_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
-        if os.path.exists(os.path.join(lib_dir, filename)):
+        safe = safe_join(lib_dir, filename)
+        if safe and os.path.exists(safe):
             return send_from_directory(lib_dir, filename, max_age=_LIBRARY_IMG_MAX_AGE)
         # If the file is missing, check whether this game is a duplicate and
         # serve the canonical game's image instead.
@@ -183,7 +185,8 @@ def create_app(template_folder=None, static_folder=None):
                 dup_of = get_dup_cache().get(req_appid)
                 if dup_of:
                     canon_file = f"{parts[0]}/{dup_of}.{parts[1].rsplit('.', 1)[1]}"
-                    if os.path.exists(os.path.join(lib_dir, canon_file)):
+                    canon_safe = safe_join(lib_dir, canon_file)
+                    if canon_safe and os.path.exists(canon_safe):
                         return send_from_directory(lib_dir, canon_file, max_age=_LIBRARY_IMG_MAX_AGE)
             except (ValueError, Exception):
                 pass
@@ -194,7 +197,8 @@ def create_app(template_folder=None, static_folder=None):
         if not _SAFE_FILENAME_RE.match(filename):
             return '', 400
         bg_dir = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds')
-        if os.path.exists(os.path.join(bg_dir, filename)):
+        safe = safe_join(bg_dir, filename)
+        if safe and os.path.exists(safe):
             return send_from_directory(bg_dir, filename)
         # Fall back to the bundled default — a distinct filename from the
         # user-override path above so the two never collide on source installs,
@@ -211,7 +215,8 @@ def create_app(template_folder=None, static_folder=None):
         if not _SAFE_FILENAME_RE.match(filename):
             return '', 400
         badges_dir = os.path.join(BASE_DIR, 'static', 'img', 'badges')
-        if not os.path.exists(os.path.join(badges_dir, filename)):
+        safe = safe_join(badges_dir, filename)
+        if not safe or not os.path.exists(safe):
             return '', 404
         return send_from_directory(badges_dir, filename, max_age=_BADGE_IMG_MAX_AGE)
 
