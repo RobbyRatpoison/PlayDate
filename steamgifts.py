@@ -729,19 +729,35 @@ def sg_adopt():
             db.commit()
             return jsonify({'status': 'ok', 'appid': appid, 'already_present': True,
                             'group_added': group_added})
-        from database import batch_insert_placeholder_games
+        from database import batch_insert_placeholder_games, update_game_data
+        # Steam's own local files still know this game even when GetOwnedGames
+        # doesn't: appinfo.vdf for name + release date, localconfig.vdf for
+        # playtime / last played, the ACF manifests for installed state.
+        info = local = installed_ids = None
         try:
-            from utils import parse_appinfo
+            from utils import (parse_appinfo, fetch_local_library,
+                               get_locally_installed_appids)
             info = parse_appinfo().get(appid, {})
-        except Exception:
-            info = {}
+            acct = get_active_account() or {}
+            local = next((g for g in fetch_local_library(acct.get('steam_id'))
+                          if g['appid'] == appid), None)
+            installed_ids = get_locally_installed_appids()
+        except Exception as e:
+            log.warning(f"[steamgifts] adopt: local Steam file read failed: {e}")
+        info = info or {}
         name = info.get('name') or rec.get('name') or f'App {appid}'
+        playtime = (local or {}).get('playtime_forever') or 0
         import time as _t
         batch_insert_placeholder_games([{
-            'appid': appid, 'name': name, 'playtime_forever': 0,
-            'last_played': None, 'completion_status': 'Never Played',
-            'installed': 0, 'icon_hash': '',
+            'appid': appid, 'name': name, 'playtime_forever': playtime,
+            'last_played': (local or {}).get('last_played'),
+            'completion_status': 'Unfinished' if playtime > 0 else 'Never Played',
+            'installed': 1 if installed_ids and appid in installed_ids else 0,
+            'icon_hash': '',
         }], int(_t.time()))
+        rd = info.get('steam_release_date') or info.get('original_release_date')
+        if rd:
+            update_game_data(appid, release_date=rd)
         db = get_db()
         _adopt_into_group(appid, db)
         db.commit()
@@ -750,8 +766,9 @@ def sg_adopt():
 
     rec['appid'] = appid
     save_wins(store)
-    log.info(f"[steamgifts] adopted delisted win {code} -> appid {appid} ({name})")
-    return jsonify({'status': 'ok', 'appid': appid, 'name': name, 'added': True})
+    log.info(f"[steamgifts] adopted win {code} -> appid {appid} ({name}), playtime {playtime}m")
+    return jsonify({'status': 'ok', 'appid': appid, 'name': name, 'added': True,
+                    'playtime_forever': playtime})
 
 
 def _adopt_into_group(appid: int, db) -> bool:

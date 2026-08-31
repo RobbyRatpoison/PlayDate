@@ -837,7 +837,8 @@ def scrape_single(appid):
     }
 
     # Playtime, last_played, name: prefer API, fall back to local Steam files
-    local_entry = next((g for g in fetch_local_library(_cfg.get('steam_id')) if g['appid'] == appid), None)
+    local_entry = next((g for g in fetch_local_library(_account.get('steam_id') or _cfg.get('steam_id'))
+                        if g['appid'] == appid), None)
 
     playtime   = player_data.get('playtime_forever')
     last_played = player_data.get('last_played') or None
@@ -857,6 +858,13 @@ def scrape_single(appid):
         data_out['last_played'] = last_played
     if name:
         data_out['name'] = name
+
+    # Store page gone (delisted)? appinfo.vdf still carries the release date.
+    if not data_out.get('release_date'):
+        _ai = parse_appinfo().get(appid, {})
+        rd = _ai.get('steam_release_date') or _ai.get('original_release_date')
+        if rd:
+            data_out['release_date'] = rd
 
     # Convert timestamps to date strings for the frontend form
     from database import ts_to_date
