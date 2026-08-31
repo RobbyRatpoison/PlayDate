@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.9.2
-
+## v1.9.2 - 2026-08-31
 ### New
 
 - Import your SteamGifts wins into a "Won on SteamGifts" group, using the Date Importer userscript. Captures win date, gifter and point cost, and checks received status.
