@@ -780,11 +780,33 @@ def sg_adopt():
     finally:
         db.close()
 
+    # Cover art in the background — the Steam CDN and SteamGridDB still serve
+    # art by appid/name for a delisted game even when the store page is gone.
+    threading.Thread(target=_fetch_adopted_art, args=(appid, name), daemon=True).start()
+
     rec['appid'] = appid
     save_wins(store)
     log.info(f"[steamgifts] adopted win {code} -> appid {appid} ({name}), playtime {playtime}m")
     return jsonify({'status': 'ok', 'appid': appid, 'name': name, 'added': True,
                     'playtime_forever': playtime})
+
+
+def _fetch_adopted_art(appid: int, name: str):
+    try:
+        from datetime import date
+        from database import update_game_data
+        from images import (download_vertical, download_horizontal, download_icon,
+                            _get_steam_assets, _sgdb_search_game_id)
+        assets  = _get_steam_assets(appid)
+        sgdb_id = _sgdb_search_game_id(name) if name else None
+        v = download_vertical(appid, assets=assets, sgdb_id=sgdb_id, game_name=name)
+        h = download_horizontal(appid, assets=assets, sgdb_id=sgdb_id, game_name=name)
+        i = download_icon(appid, '', sgdb_id=sgdb_id, game_name=name)
+        update_game_data(appid, vertical_art_source=v, horizontal_art_source=h,
+                         icon_source=i, art_fetched=date.today().isoformat())
+        log.info(f"[steamgifts] adopt art {appid}: v={v} h={h} i={i}")
+    except Exception as e:
+        log.warning(f"[steamgifts] adopt art fetch failed for {appid}: {e}")
 
 
 def _adopt_into_group(appid: int, db) -> bool:
