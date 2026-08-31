@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.9.1
-
+## v1.9.1 - 2026-08-30
 ### New
 
 - Find and remove duplicate library entries — the same store game imported into the library more than once.
