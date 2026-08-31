@@ -721,6 +721,7 @@
         'pagywosg-modal', 'steam-junk-modal', 'blacklist-modal', 'theme-modal', 'send-log-modal',
         // Sub-modals of hamburger items (before their parents)
         'hltb-modal',          // from library-modal
+        'dup-entries-modal',   // from library-modal
         'theme-picker-modal',  // from appearance-modal
         'santa-modal',         // from community-modal
         'playnite-modal',      // from data-modal
@@ -2109,6 +2110,7 @@
             ['bulk-delete-modal',     'closeBulkDeleteModal'],
             // sub-modals (before their parents)
             ['hltb-modal',            'closeHltbModal'],
+            ['dup-entries-modal',     'closeDupEntriesModal'],
             ['theme-picker-modal',    'closeThemePickerModal'],
             ['santa-modal',           'closeSantaModal'],
             ['playnite-modal',        'closePlayniteModal'],
@@ -2934,6 +2936,7 @@
         _watchModal('account-modal');
         _watchModal('appearance-modal');
         _watchModal('library-modal');
+        _watchModal('dup-entries-modal');
         _watchModal('emulators-modal');
         _watchModal('plugins-modal');
         _watchModal('community-modal');

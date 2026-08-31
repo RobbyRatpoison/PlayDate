@@ -666,6 +666,11 @@
                         <div id="plat-priority-status" style="font-size:0.78rem; color:#8f98a0; min-height:1em;"></div>
                     </div>
                 </div>
+                <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:10px;">
+                    <div style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:2px;">Same-platform duplicates</div>
+                    <div style="font-size:0.75rem; color:#8f98a0; margin-bottom:6px;">One store game imported into the library twice (usually claimed in two bundles).</div>
+                    <button class="nav-btn" data-modal-row="20" onclick="openDupEntriesModal()" style="font-size:0.8rem;">Find Duplicate Entries</button>
+                </div>
             </div>
         </div>
         <div class="hub-section">
@@ -1612,6 +1617,39 @@
         <div id="sjunk-action-status" class="tool-status" style="margin:14px 0 0;"></div>
         <div style="margin-top:10px;">
             <button class="nav-btn" data-modal-row="sjunk-close" onclick="closeSteamJunkModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── DUPLICATE ENTRIES FINDER MODAL (sub-modal of Library) ── -->
+<div id="dup-entries-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeDupEntriesModal();">
+    <div class="modal-content" style="width:min(680px,95vw); max-height:85vh; overflow-y:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <h2 style="margin:0; color:var(--text-primary);">Duplicate Entries</h2>
+            <button onclick="closeDupEntriesModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#10005;</button>
+        </div>
+        <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">
+            Finds the same store game imported more than once on a single platform &mdash; usually a title
+            claimed in two bundles. One copy of each is kept (an installed copy, else the oldest import); the
+            extras are pre-selected for removal. This is a plain delete, not a blacklist, so a future sync can
+            still bring the game back.
+        </p>
+        <div id="dupent-status" class="tool-status"></div>
+        <div id="dupent-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No duplicate entries found.</div>
+        <div id="dupent-results" style="display:none;">
+            <div data-modal-row="dupent-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_dupEntToggleAll(cb.checked);" style="display:flex; align-items:center; gap:8px; padding:6px 4px; cursor:pointer; border-bottom:1px solid var(--border); margin-bottom:10px;">
+                <input type="checkbox" id="dupent-select-all" checked style="width:auto;margin:0;" onclick="event.stopPropagation();_dupEntToggleAll(this.checked)">
+                <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select all extras for removal</label>
+            </div>
+            <div id="dupent-list"></div>
+            <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button class="nav-btn" data-modal-row="dupent-footer" onclick="_dupEntriesRemove()" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Remove Selected</button>
+                <span id="dupent-count" style="color:var(--text-secondary); font-size:0.82rem;"></span>
+            </div>
+        </div>
+        <div id="dupent-action-status" class="tool-status" style="margin:14px 0 0;"></div>
+        <div style="margin-top:10px;">
+            <button class="nav-btn" data-modal-row="dupent-close" onclick="closeDupEntriesModal()">Close</button>
         </div>
     </div>
 </div>

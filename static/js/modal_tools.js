@@ -2941,6 +2941,115 @@ async function _sjunkDeepAction() {
     }
 }
 
+// ── Duplicate Entries Finder (same store game imported twice on one platform) ─
+let _dupEntGroups = [];
+
+function openDupEntriesModal() {
+    document.getElementById('dup-entries-modal').style.display = 'flex';
+    _loadDupEntriesScan();
+}
+function closeDupEntriesModal() {
+    document.getElementById('dup-entries-modal').style.display = 'none';
+}
+
+async function _loadDupEntriesScan() {
+    const status  = document.getElementById('dupent-status');
+    const empty   = document.getElementById('dupent-empty');
+    const results = document.getElementById('dupent-results');
+    const list    = document.getElementById('dupent-list');
+    status.className = 'tool-status info';
+    status.textContent = 'Scanning…';
+    results.style.display = 'none';
+    empty.style.display = 'none';
+    document.getElementById('dupent-action-status').textContent = '';
+    try {
+        const res  = await fetch('/api/duplicate-entries/scan');
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message || 'scan failed');
+        status.textContent = '';
+        _dupEntGroups = data.groups || [];
+        if (_dupEntGroups.length === 0) { empty.style.display = 'block'; return; }
+
+        const platLabel = p => (window._PLAT_LABELS && window._PLAT_LABELS[p]) || p || '';
+        const fmtDate = ts => ts ? new Date(ts * 1000).toISOString().slice(0, 10) : '—';
+        const rowMeta = r => `
+            ${r.installed ? '<span style="color:var(--color-warning); font-size:0.7rem;">installed</span>' : ''}
+            ${r.playtime_forever ? `<span style="color:var(--text-secondary); font-size:0.72rem;">${fmtHours(r.playtime_forever)}</span>` : ''}
+            <span style="color:var(--text-secondary); font-size:0.72rem;">added ${fmtDate(r.date_added)}</span>
+            <span style="color:var(--text-secondary); font-size:0.72rem; font-family:monospace;">${r.appid}</span>`;
+
+        list.innerHTML = _dupEntGroups.map((g, gi) => {
+            const removeRows = g.remove.map((r, ri) => `
+                <div data-modal-row="dupent-${gi}-${ri}" onclick="var cb=this.querySelector('.dupent-cb');cb.checked=!cb.checked;_dupEntUpdateCount();"
+                    style="display:flex; align-items:center; gap:8px; padding:5px 4px 5px 16px; cursor:pointer; border-bottom:1px solid var(--border);">
+                    <input type="checkbox" class="dupent-cb" data-appid="${r.appid}" checked style="width:auto;margin:0;flex-shrink:0;" onclick="event.stopPropagation();_dupEntUpdateCount();">
+                    <span style="color:var(--text-primary); font-size:0.85rem; flex:1;">${escHtml(r.name)}</span>
+                    ${rowMeta(r)}
+                </div>`).join('');
+            return `
+                <div style="margin-bottom:14px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="color:var(--text-primary); font-size:0.9rem; font-weight:600;">${escHtml(g.name)}</span>
+                        <span style="color:var(--text-secondary); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.03em; border:1px solid var(--border); border-radius:3px; padding:1px 4px;">${escHtml(platLabel(g.platform))}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; padding:5px 4px 5px 16px; border-bottom:1px solid var(--border); opacity:0.6;">
+                        <span style="font-size:0.7rem; color:var(--accent-positive); white-space:nowrap;">✔ keep</span>
+                        <span style="color:var(--text-primary); font-size:0.85rem; flex:1;">${escHtml(g.keep.name)}</span>
+                        ${rowMeta(g.keep)}
+                    </div>
+                    ${removeRows}
+                </div>`;
+        }).join('');
+        document.getElementById('dupent-select-all').checked = true;
+        results.style.display = 'block';
+        _dupEntUpdateCount();
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+function _dupEntToggleAll(checked) {
+    document.getElementById('dupent-select-all').checked = checked;
+    document.querySelectorAll('#dupent-list .dupent-cb').forEach(cb => cb.checked = checked);
+    _dupEntUpdateCount();
+}
+
+function _dupEntUpdateCount() {
+    const n = document.querySelectorAll('#dupent-list .dupent-cb:checked').length;
+    const el = document.getElementById('dupent-count');
+    if (el) el.textContent = n ? `${n} to remove` : 'none selected';
+}
+
+async function _dupEntriesRemove() {
+    const selected = [...document.querySelectorAll('#dupent-list .dupent-cb:checked')]
+        .map(cb => parseInt(cb.dataset.appid, 10));
+    if (selected.length === 0) { alert('Nothing selected.'); return; }
+    const ok = await confirmCustom(
+        `Delete ${selected.length} duplicate row(s)? The kept copy of each game stays. This does not blacklist anything.`,
+        'Delete', 'Cancel'
+    );
+    if (!ok) return;
+    const status = document.getElementById('dupent-action-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Working…';
+    try {
+        const res  = await fetch('/api/duplicate-entries/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids: selected })
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+        status.className = 'tool-status success';
+        status.textContent = `✔ Removed ${data.deleted}. Reload the library to see the change.`;
+        _loadDupEntriesScan();
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
 // ── Theme Preview Tab Switcher ───────────────────────────────────────────────
 function tpSwitchTab(btn, paneId) {
     btn.closest('.tp-tabs').querySelectorAll('.tp-tab').forEach(t => t.classList.remove('active'));

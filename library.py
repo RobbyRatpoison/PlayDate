@@ -1730,4 +1730,109 @@ def detect_duplicates():
         return jsonify({'status': 'ok', 'detected': count})
     except Exception as e:
         log.error(f"detect-duplicates failed: {e}", exc_info=True)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
+
+
+def _dup_entry_key(row):
+    """Grouping key for a same-platform duplicate entry: the store-native item
+    id, falling back to the store URL slug for plugins that only populate that."""
+    return (row['platform_id'] or '').strip() or (row['platform_slug'] or '').strip()
+
+
+def _pick_dup_keeper(rows):
+    """From 2+ rows for the same store item, pick the one to keep: an installed
+    copy wins, then most playtime, then the earliest import, then the appid
+    closest to zero (assigned earliest)."""
+    return sorted(rows, key=lambda r: (
+        0 if r['installed'] else 1,
+        -(r['playtime_forever'] or 0),
+        r['date_added'] if r['date_added'] is not None else (1 << 62),
+        abs(r['appid']),
+    ))[0]
+
+
+@library_bp.route('/api/duplicate-entries/scan', methods=['GET'])
+def duplicate_entries_scan():
+    """Find multiple library rows pointing at the same store item on the same
+    platform -- e.g. a game claimed in two bundles and imported twice. Steam is
+    exempt (its appid is the identity). Nothing else detects this: the junk
+    finder is name-oriented and auto_detect_duplicates() only matches across
+    platforms, collapsing same-platform same-name rows to one key."""
+    try:
+        db = get_db()
+        try:
+            rows = db.execute(
+                "SELECT appid, name, platform, platform_id, platform_slug, "
+                "installed, playtime_forever, date_added, last_played "
+                "FROM games WHERE COALESCE(platform, 'steam') <> 'steam'"
+            ).fetchall()
+        finally:
+            db.close()
+
+        groups = {}
+        for r in rows:
+            key = _dup_entry_key(r)
+            if not key:
+                continue
+            groups.setdefault((r['platform'], key), []).append(r)
+
+        def _fmt(r):
+            return {
+                'appid': r['appid'], 'name': r['name'],
+                'installed': bool(r['installed']),
+                'playtime_forever': r['playtime_forever'] or 0,
+                'date_added': r['date_added'],
+            }
+
+        out = []
+        for (platform, key), grp in groups.items():
+            if len(grp) < 2:
+                continue
+            keeper = _pick_dup_keeper(grp)
+            out.append({
+                'platform': platform,
+                'platform_id': key,
+                'name': keeper['name'],
+                'keep': _fmt(keeper),
+                'remove': [_fmt(r) for r in grp if r['appid'] != keeper['appid']],
+            })
+
+        out.sort(key=lambda g: ((g['platform'] or ''), (g['name'] or '').lower()))
+        return jsonify({'status': 'success', 'groups': out})
+    except Exception as e:
+        log.error(f"duplicate_entries_scan failed: {e}", exc_info=True)
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
+
+
+@library_bp.route('/api/duplicate-entries/remove', methods=['POST'])
+def duplicate_entries_remove():
+    """Plain-delete the given duplicate rows, keeping the canonical one. No
+    blacklist: the store id being removed is shared with the row we keep, so
+    blacklisting it would suppress the survivor on the next sync."""
+    data   = request.json or {}
+    appids = data.get('appids') or []
+    if not appids:
+        return jsonify({'status': 'error', 'message': 'No appids provided.'}), 400
+    try:
+        appids = [int(a) for a in appids]
+        placeholders = ','.join('?' * len(appids))
+        db = get_db()
+        db.execute(f"DELETE FROM games WHERE appid IN ({placeholders})", appids)
+        db.commit()
+        db.close()
+
+        for appid in appids:
+            safe_id = str(int(appid))
+            for subdir in ('vertical', 'horizontal', 'icons'):
+                img_path = os.path.join(BASE_DIR, 'static', 'img', 'library', subdir, safe_id + '.jpg')
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+
+        from database import invalidate_dup_cache
+        from utils import invalidate_unique_cache
+        invalidate_dup_cache()
+        invalidate_unique_cache()
+        return jsonify({'status': 'success', 'deleted': len(appids)})
+    except Exception as e:
+        log.error(f"duplicate_entries_remove failed: {e}", exc_info=True)
+        return api_error('Something went wrong on the server. Check playdate.log for details.', 500, exc=e)
