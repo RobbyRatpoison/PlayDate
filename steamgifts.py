@@ -647,7 +647,8 @@ def sg_finish():
     except Exception as e:
         log.error(f"[steamgifts] apply failed: {e}", exc_info=True)
         with _sg_lock:
-            _sg_state.update({'active': False, 'finished': True, 'error': str(e)})
+            _sg_state.update({'active': False, 'finished': True,
+                              'error': 'Apply failed. Check playdate.log.'})
         return jsonify({'status': 'error',
                         'message': 'Apply failed. Check playdate.log.'}), 500
     save_wins(store)

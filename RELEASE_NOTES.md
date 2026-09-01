@@ -4,4 +4,4 @@
 
 ### Fixes
 
-- A couple of error messages (Steam API-key test, plugin update check) no longer include raw exception text.
+- Several error messages (API-key test, update and notification checks, plugin status) no longer include raw exception text.

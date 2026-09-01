@@ -346,7 +346,9 @@ def _startup_launcher_status_check():
             _launcher_status_cache[p.platform] = result
         except Exception as e:
             log.warning(f"launcher_status failed for {p.platform}: {e}")
-            _launcher_status_cache[p.platform] = {'available': False, 'detail': str(e), 'checked_at': time.time()}
+            _launcher_status_cache[p.platform] = {'available': False,
+                                                  'detail': 'Launcher status check failed.',
+                                                  'checked_at': time.time()}
 
 
 def load_all(app):
@@ -536,7 +538,7 @@ def fragment_js(slot: str) -> str:
                 log.warning(
                     f"Plugin '{plugin_name}': {os.path.basename(path)} contains <script> tags "
                     f"but is included inside an existing script block — tags stripped automatically. "
-                    f"Remove <script>/<\/script> from the template to silence this warning."
+                    f"Remove <script>/</script> from the template to silence this warning."
                 )
                 content = re.sub(r'</?script[^>]*>', '', content, flags=re.IGNORECASE)
             parts.append(content)

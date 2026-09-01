@@ -41,7 +41,8 @@ def _do_notif_check():
     except Exception as e:
         # Broad on purpose: bad JSON, network failure, unexpected shape --
         # none of these should ever crash a background thread or block startup.
-        _notif_cache.update({'notifications': [], 'checked_at': time.time(), 'error': str(e)})
+        _notif_cache.update({'notifications': [], 'checked_at': time.time(),
+                             'error': 'Notification check failed.'})
         log.warning(f"Notification check failed: {e}")
 
 

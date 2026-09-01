@@ -99,7 +99,8 @@ def _do_update_check():
         })
         log.info(f"Update check: latest={latest}, current={__build__}, available={available}")
     except Exception as e:
-        _update_cache.update({'available': False, 'checked_at': time.time(), 'error': str(e)})
+        _update_cache.update({'available': False, 'checked_at': time.time(),
+                              'error': 'Update check failed (network or GitHub error).'})
         log.warning(f"Update check failed: {e}")
 
 
@@ -286,7 +287,8 @@ def perform_update():
                     )
         except Exception as e:
             log.error(f"perform-update failed: {e}", exc_info=True)
-            _update_dl_state.update({'status': 'error', 'error': str(e)})
+            _update_dl_state.update({'status': 'error',
+                                    'error': 'Update failed. Check playdate.log for details.'})
             return
         os._exit(0)
 
