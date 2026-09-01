@@ -25,13 +25,18 @@ BADGE_UPLOAD_MAX_BYTES = 5 * 1024 * 1024
 _IMG_ROOT = os.path.realpath(os.path.join(BASE_DIR, 'static', 'img'))
 
 
-def _within_img_root(path: str) -> bool:
-    """Guard for the save_* helpers: the destination must resolve to somewhere
-    under static/img. Callers build save_path from an int() appid or a
-    regex-checked stem, so this only ever fails on a caller bug — but it keeps
-    a bad path from ever reaching os.replace/os.remove."""
-    resolved = os.path.realpath(path)
-    return resolved == _IMG_ROOT or resolved.startswith(_IMG_ROOT + os.sep)
+def _safe_img_path(save_path):
+    """Re-derive save_path under static/img via werkzeug.safe_join, or None if
+    it doesn't belong there. Callers build save_path from an int() appid or a
+    regex-checked stem, so this only ever rejects on a caller bug — but routing
+    it through safe_join is the barrier that keeps a bad path off os.replace /
+    os.remove (and that static analysis recognizes)."""
+    from werkzeug.security import safe_join
+    try:
+        rel = os.path.relpath(os.path.realpath(save_path), _IMG_ROOT)
+    except ValueError:
+        return None
+    return safe_join(_IMG_ROOT, rel)
 
 
 def _ensure_dirs():
@@ -52,8 +57,9 @@ def save_badge_icon(image_bytes, save_path):
     cover art, so a JPEG's forced-opaque background would show as a visible
     square patch. Returns True on success, False on failure.
     """
-    if not _within_img_root(save_path):
-        log.warning("save_badge_icon: refused out-of-tree path %r", save_path)
+    save_path = _safe_img_path(save_path)
+    if save_path is None:
+        log.warning("save_badge_icon: refused out-of-tree path")
         return False
     tmp_path = save_path + '.tmp'
     try:
@@ -78,8 +84,9 @@ def save_as_jpg(image_bytes, save_path):
     Converts any image format (PNG, WEBP, etc.) to JPG and saves it.
     Creates parent directories if needed. Returns True on success, False on failure.
     """
-    if not _within_img_root(save_path):
-        log.warning("save_as_jpg: refused out-of-tree path %r", save_path)
+    save_path = _safe_img_path(save_path)
+    if save_path is None:
+        log.warning("save_as_jpg: refused out-of-tree path")
         return False
     tmp_path = save_path + '.tmp'
     try:

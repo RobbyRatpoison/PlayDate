@@ -827,23 +827,25 @@ def uninstall_plugin(plugin_id):
     incompatible = _incompatible_plugins.get(plugin_id)
     if not p and not incompatible:
         return jsonify({'status': 'error', 'message': 'Plugin not found'}), 404
-    _plugin_roots = [os.path.realpath(d) for d in
-                     (_user_plugins_dir(), os.path.dirname(os.path.abspath(__file__)))]
 
-    def _in_a_plugin_root(candidate):
-        rp = os.path.realpath(candidate)
-        return any(rp != root and rp.startswith(root + os.sep) for root in _plugin_roots)
-
-    # Incompatible plugins were never registered, so _plugin_paths has no entry --
-    # fall back to checking both the writable and (legacy) bundled locations.
-    path = plugin_path(plugin_id)
+    # Resolve <plugin root>/<id> through safe_join so a traversal component in
+    # the id can't survive (id is already regex-checked above; this is the
+    # barrier CodeQL recognizes). Covers both the writable and legacy bundled
+    # locations, and the incompatible-plugin case that has no _plugin_paths entry.
+    from werkzeug.security import safe_join
+    path = None
+    for root in (_user_plugins_dir(), os.path.dirname(os.path.abspath(__file__))):
+        candidate = safe_join(root, plugin_id)
+        if candidate and os.path.isdir(candidate):
+            path = candidate
+            break
     if not path:
-        for candidate_dir in (_user_plugins_dir(), os.path.dirname(os.path.abspath(__file__))):
-            candidate = os.path.join(candidate_dir, plugin_id)
-            if os.path.isdir(candidate):
-                path = candidate
-                break
-    if not path or not os.path.isdir(path) or not _in_a_plugin_root(path):
+        # A hand-dropped plugin whose folder name differs from its id: honor
+        # the path recorded at load time (built from os.listdir, not user input).
+        registered = plugin_path(plugin_id)
+        if registered and os.path.isdir(registered):
+            path = registered
+    if not path:
         return jsonify({'status': 'error', 'message': 'Plugin folder not found'}), 404
     platform = p.platform if p else incompatible.get('platform')
     data = request.get_json(silent=True) or {}
