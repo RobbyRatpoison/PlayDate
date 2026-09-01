@@ -29,7 +29,7 @@ def api_error(message, status=500, *, exc=None, log_label=None):
         log.error("%s: %s", log_label or message, exc, exc_info=True)
     return jsonify({"status": "error", "message": message}), status
 
-__version__ = "1.9.3"
+__version__ = "1.9.4"
 # Full tag this build came from (e.g. "1.6.5-beta.2"), overwritten by CI —
 # __version__ above is always the bare X.Y.Z (stripped of any -beta/-rc
 # suffix, since Inno Setup/display code assume that), so it alone can't tell
@@ -470,7 +470,8 @@ def validate_steam_creds(api_key, steam_id):
         return True, "Valid"
 
     except Exception as e:
-        return False, f"Connection Failed: {str(e)}"
+        log.warning("validate_steam_creds: %s", e)
+        return False, "Connection failed — check your internet connection and try again."
 
 def resolve_vanity_url(api_key, steam_id):
     if steam_id.isdigit():

@@ -777,9 +777,11 @@ def check_plugin_updates():
             return {'id': pid, 'source': source, 'update_available': available, 'latest_version': latest,
                     'requires_core': requires_core, 'error': None}
         except Exception as e:
-            entry = {'update_available': False, 'latest_version': None, 'error': str(e), 'checked_at': time.time()}
+            log.warning("plugin update check failed for %s: %s", pid, e)
+            msg = 'Update check failed (network or GitHub error).'
+            entry = {'update_available': False, 'latest_version': None, 'error': msg, 'checked_at': time.time()}
             _plugin_update_cache[pid] = entry
-            return {'id': pid, 'source': source, 'update_available': False, 'latest_version': None, 'error': str(e)}
+            return {'id': pid, 'source': source, 'update_available': False, 'latest_version': None, 'error': msg}
 
     pids = list(loaded().keys())
     results = []
