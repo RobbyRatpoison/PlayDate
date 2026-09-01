@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.9.3 - 2026-08-31
+### Fixes
+
+- A SteamGifts win added to your library now fetches its cover art.
+- A PAGYWOSG filter with a multi-group condition no longer stops the edit panel from opening or the hover match from showing. (reported by Blue™)
+
 ## v1.9.2 - 2026-08-31
 ### New
 

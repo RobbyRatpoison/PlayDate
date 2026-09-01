@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.9.3
-
+## v1.9.3 - 2026-08-31
 ### Fixes
 
 - A SteamGifts win added to your library now fetches its cover art.
