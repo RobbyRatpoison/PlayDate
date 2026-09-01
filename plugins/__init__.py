@@ -309,9 +309,10 @@ def _install_plugin_zip(raw_bytes, target_core_version=None):
                 f"requires PlayDate {min_core} or newer (this build is {_core_version})."
             )
 
+        from werkzeug.security import safe_join
         plugins_dir = _user_plugins_dir()
-        dest = os.path.join(plugins_dir, plugin_id)
-        if not os.path.abspath(dest).startswith(os.path.abspath(plugins_dir) + os.sep):
+        dest = safe_join(plugins_dir, plugin_id)
+        if dest is None:
             raise ValueError('Invalid plugin id.')
 
         os.makedirs(dest, exist_ok=True)
@@ -321,9 +322,9 @@ def _install_plugin_zip(raw_bytes, target_core_version=None):
             rel = member[len(prefix):]
             if not rel:
                 continue
-            member_dest = os.path.join(dest, rel)
-            if not os.path.abspath(member_dest).startswith(os.path.abspath(dest) + os.sep) \
-                    and os.path.abspath(member_dest) != os.path.abspath(dest):
+            # safe_join drops any zip entry with a traversal component (zip-slip).
+            member_dest = safe_join(dest, rel)
+            if member_dest is None:
                 continue
             if member.endswith('/'):
                 os.makedirs(member_dest, exist_ok=True)

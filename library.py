@@ -85,7 +85,7 @@ def _compute_outline_colors(games, state):
 
 # ── SQL builder ─────────────────────────────────────────────────────────────
 
-SAFE_COLUMNS = {
+SAFE_COLUMNS = frozenset({
     'appid', 'name', 'completion_status', 'installed', 'release_date', 'date_added',
     'last_played', 'playtime_forever', 'review_percentage', 'weighted_percentage',
     'review_score', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
@@ -95,7 +95,19 @@ SAFE_COLUMNS = {
     'protondb_tier', 'protondb_confidence',
     'hltb_main', 'hltb_extras', 'hltb_completionist',
     'platform', 'platform_id', 'duplicate_of',
-}
+})
+
+# Columns the bulk-edit route is allowed to write. A frozenset of literals so
+# the `column not in` guard below is a barrier static analysis recognizes
+# (vs. the previous dict-comprehension + .get()).
+_BULK_EDIT_COLUMNS = frozenset({
+    'completion_status', 'tags', 'groups', 'developers', 'publishers',
+    'release_date', 'review_score', 'review_percentage', 'weighted_percentage',
+    'total_reviews', 'positive_reviews', 'playtime_forever', 'date_added',
+    'installed', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
+    'unlocked_achievements', 'total_achievements',
+    'genres', 'categories', 'is_free',
+})
 
 # Virtual sort columns: names that expand to SQL expressions.
 # Games with no data (expr IS NULL) are always sorted last regardless of direction.
@@ -602,16 +614,7 @@ def bulk_edit_games(data):
     filter_tree = data.get('filter_tree')
     appids = data.get('appids')   # list of ints — takes priority over filter_tree
 
-    allowed_columns = {c: c for c in (
-        'completion_status', 'tags', 'groups', 'developers', 'publishers',
-        'release_date', 'review_score', 'review_percentage', 'weighted_percentage',
-        'total_reviews', 'positive_reviews', 'playtime_forever', 'date_added',
-        'installed', 'vertical_art_source', 'horizontal_art_source', 'icon_source',
-        'unlocked_achievements', 'total_achievements',
-        'genres', 'categories', 'is_free'
-    )}
-    column = allowed_columns.get(column)
-    if not column:
+    if column not in _BULK_EDIT_COLUMNS:
         return jsonify({"status": "error", "message": "Column is not editable."}), 400
     if not value and mode not in ('replace', 'remove'):
         return jsonify({"status": "error", "message": "Value cannot be empty."}), 400
