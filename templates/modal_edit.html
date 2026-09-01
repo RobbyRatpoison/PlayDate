@@ -863,7 +863,13 @@ const achLink = document.getElementById('achievements-link');
             if (el) el.href = sgdbUrl;
         });
 
-        _pagRenderQuals(game);
+        // Never let a quals-rendering hiccup block the whole modal from opening.
+        try { _pagRenderQuals(game); }
+        catch (e) {
+            console.warn('PAGYWOSG quals render failed:', e);
+            const s = document.getElementById('pag-quals-section');
+            if (s) s.style.display = 'none';
+        }
         _renderHLTB(game);
 
         // Show/hide platform-specific fields; update sync button label
@@ -1499,8 +1505,11 @@ const achLink = document.getElementById('achievements-link');
 
     // ── PAGYWOSG qualifications ──────────────────────────────────────────────
     function _pagCsvContains(csv, val) {
-        return (csv || '').split(',').map(t => t.trim())
-            .some(t => t.toLowerCase() === val.toLowerCase());
+        // val may be a single group name or an array of them (a "Group is"
+        // condition with multiple chips) — match if the CSV holds any one.
+        const owned = (csv || '').split(',').map(t => t.trim().toLowerCase());
+        return (Array.isArray(val) ? val : [val])
+            .some(v => owned.includes(String(v).toLowerCase()));
     }
 
     function _pagExtractSgGroup(tree) {
