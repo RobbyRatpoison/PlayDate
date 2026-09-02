@@ -20,6 +20,7 @@
 - A newly added platform now defaults to hidden on Home shelves and in the Library/Pick 6 filter, toggle-able in the Library modal.
 - Blacklist Manager keeps its search and bulk-select controls pinned above the list while scrolling.
 - Blacklist Manager's platform group headers are more visually prominent.
+- New shelves and columns no longer default to a placeholder label, leaving more room for the card art.
 
 ### Fixes
 

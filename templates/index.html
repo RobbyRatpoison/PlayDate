@@ -196,10 +196,19 @@
         border-radius: 4px 4px 0 0; overflow: hidden;
     }
     body.edit-mode .shelf-edit-bar { display: flex; }
-    /* Drag handle, Edit, and Remove come first and never shrink, so a narrow
-       column clips Height/Width/Games (in that trailing order) before any of
-       these -- no scrollbar, just silent clipping. Height/Width still have
-       the drag-to-resize handles as a fallback when their inputs get clipped. */
+    /* Height/Width/Games sit in their own shrink-and-clip region so they stay
+       visually first (left-aligned) while never being the reason Drag/Edit/
+       Remove get clipped -- those three never shrink and always render right
+       after whatever's left of the fit region, not pushed to the bar's far
+       right edge. Height/Width still have the drag-to-resize handles as a
+       fallback when their inputs get clipped. */
+    .shelf-edit-bar-fit {
+        display: flex; align-items: center; gap: 6px;
+        /* Shrink when the bar is too narrow, but never grow to fill extra
+           space -- growing would push Drag/Edit/Remove off to the bar's far
+           right instead of sitting right after this region's actual content. */
+        flex: 0 1 auto; min-width: 0; overflow: hidden;
+    }
     .shelf-edit-bar > .drag-handle,
     .shelf-edit-bar > .sem-edit-btn,
     .shelf-edit-bar > .sem-remove-btn { flex-shrink: 0; }
@@ -946,6 +955,23 @@ function _autoAdjustGames(el, pendingLimits) {
     const grid = el.querySelector('.shelf-grid');
     if (!grid) return;
     const totalFetched = grid.querySelectorAll('.shelf-capsule-wrap').length;
+
+    if (totalFetched === 0) {
+        // A brand-new column (e.g. from "+ Column") has never been saved, so it
+        // has no fetched capsules for trimGrid to measure -- and can't be
+        // refilled yet either, since its id doesn't exist server-side until the
+        // next Save. Estimate the count from the grid's own geometry instead
+        // (capsules are height:100% with a fixed 2:3 aspect ratio) so Games
+        // is already correct by the time that Save happens, rather than being
+        // stuck at a hardcoded default until a later resize fixes it up.
+        const est = _estimateFitCount(grid);
+        if (est == null) return;
+        shelf.limit = est;
+        const input = el.querySelector(`.shelf-edit-bar[data-for="${shelfId}"] input[data-shelf-prop="limit"]`);
+        if (input) input.value = est;
+        return;
+    }
+
     const max = trimGrid(grid);
     if (max == null) return;
     shelf.limit = max;
@@ -955,6 +981,16 @@ function _autoAdjustGames(el, pendingLimits) {
     // growing past what's already fetched needs an actual refill.
     if (max > totalFetched) pendingLimits.set(shelfId, { grid, limit: max });
     else pendingLimits.delete(shelfId);
+}
+
+// Used when a grid has no fetched capsules yet for trimGrid to measure from.
+function _estimateFitCount(grid) {
+    const gw = grid.clientWidth;
+    const gh = grid.clientHeight;
+    if (!gw || !gh) return null;
+    const capsuleWidth = gh * (2 / 3); // matches .shelf-capsule-wrap's aspect-ratio: 2/3
+    if (!capsuleWidth) return null;
+    return Math.max(1, Math.floor((gw + 6) / (capsuleWidth + 6)));
 }
 
 function _commitAutoAdjustedLimits(pendingLimits) {
@@ -1164,12 +1200,15 @@ function buildEditBarHTML(shelf, containerEl) {
             onchange="updateShelfProp('${sid}','limit',parseInt(this.value));">`;
 
     return `
+        <div class="shelf-edit-bar-fit">
+            ${heightHTML}
+            ${colW}
+            ${limitHTML}
+        </div>
+        <div class="edit-sep"></div>
         <span class="shelf-edit-mini-btn drag-handle" data-tooltip="Drag to reorder">⠿</span>
         <button draggable="false" class="shelf-edit-mini-btn sem-edit-btn" onclick="semOpen('${sid}')">✎ Edit</button>
         <button draggable="false" class="shelf-edit-mini-btn danger sem-remove-btn" onclick="removeShelf('${sid}')">✕</button>
-        ${heightHTML}
-        ${colW}
-        ${limitHTML}
     `;
 }
 
@@ -1653,7 +1692,7 @@ function _makeSplitSideEl(shelf) {
                 <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('${shelf.id}')">Cancel</button>
             </div>
         </div>
-        <div class="shelf-label" id="label-${shelf.id}">NEW SHELF</div>
+        <div class="shelf-label" id="label-${shelf.id}"></div>
         <div class="shelf-grid"><span style="color:var(--text-secondary);font-size:0.8rem;margin:auto;">Set a query and save to populate</span></div>`;
     return el;
 }
@@ -1675,13 +1714,18 @@ function addColumnToRow(sid) {
         self.col_width = self.col_width || 10;
     }
 
+    // New column matches the row's widest existing column, not a hardcoded
+    // value -- avoids a tiny new column swamping (or being swamped by) an
+    // existing row built at a different scale (e.g. an old 2:0.5:2 split).
+    const newColWidth = Math.max(..._shelves.filter(s => s.split_group === group).map(s => s.col_width || 10));
+
     const newId = `custom_${Date.now()}`;
     const newShelf = {
-        id: newId, label: 'NEW SHELF', preset: 'all_games', filter_key: 'all_games',
-        custom_sql: null, limit: 10, row_height: self.row_height, col_width: 10,
-        // Inherit the row's own platform visibility rather than defaulting to
-        // "show every platform" -- a new column added to a curated row should
-        // stay curated, not immediately flood with everything else.
+        id: newId, label: '', preset: 'all_games', filter_key: 'all_games',
+        custom_sql: null, limit: 10, row_height: self.row_height, col_width: newColWidth,
+        // Inherit the row's own (leftmost column's) platform visibility rather
+        // than defaulting to "show every platform" -- a new column added to a
+        // curated row should stay curated, not immediately flood with everything.
         hidden_platforms: [...(self.hidden_platforms || [])],
         split_group: group, sort_col: null, sort_dir: null,
         dedup: true, dedup_priority: _shelves.length, visible: true
@@ -1723,7 +1767,7 @@ function addColumnToRow(sid) {
 // ── Add new shelf ─────────────────────────────────────────────────────────────
 function addNewShelf() {
     const id = `custom_${Date.now()}`;
-    const ns = { id, label:'NEW SHELF', preset:'all_games', filter_key:'all_games', custom_sql:null, limit:10,
+    const ns = { id, label:'', preset:'all_games', filter_key:'all_games', custom_sql:null, limit:10,
                  row_height:25, col_width:null, split_group:null,
                  sort_col:null, sort_dir:null,
                  dedup:true, dedup_priority:_shelves.length, visible:true };
@@ -1741,7 +1785,7 @@ function addNewShelf() {
                 <button class="shelf-edit-mini-btn" onclick="closeSqlPanel('${id}')">Cancel</button>
             </div>
         </div>
-        <div class="shelf-label" id="label-${id}">NEW SHELF</div>
+        <div class="shelf-label" id="label-${id}"></div>
         <div class="shelf-grid"><span style="color:var(--text-secondary);font-size:0.8rem;margin:auto;">Set a query and save to populate</span></div>
     `;
     container.appendChild(el);
