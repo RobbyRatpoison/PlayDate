@@ -2663,8 +2663,8 @@ function _blRenderGroups(entries) {
     const showGroupSelectAll = platKeys.length > 1;
     groups.innerHTML = platKeys.map(plat => `
         <div class="bl-group" data-plat="${plat}">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 6px;">
-                <div style="color:var(--text-secondary); font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">${escHtml(_blPlatLabel(plat))} (${byPlat[plat].length})</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin:18px 0 8px; padding-bottom:6px; border-bottom:1px solid var(--border);">
+                <div style="color:var(--accent); font-size:0.95rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">${escHtml(_blPlatLabel(plat))} <span style="color:var(--text-secondary); font-weight:600;">(${byPlat[plat].length})</span></div>
                 ${showGroupSelectAll ? `
                 <div data-modal-row="bl-selectall-${plat}" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_blToggleGroup('${plat}',cb.checked);" style="display:flex; align-items:center; gap:5px; cursor:pointer;">
                     <input type="checkbox" class="bl-group-cb" data-plat="${plat}" style="width:auto;margin:0;" onclick="event.stopPropagation();_blToggleGroup('${plat}',this.checked)">
@@ -3024,6 +3024,48 @@ async function _sjunkOwnedDelete() {
 
         status.className = 'tool-status success';
         status.textContent = `✔ Deleted ${data.deleted}.`;
+        _sjunkOwnedCandidates = _sjunkOwnedCandidates.filter(c => !selected.includes(c.appid));
+        if (_sjunkOwnedCandidates.length === 0) {
+            document.getElementById('sjunk-owned-results').style.display = 'none';
+            document.getElementById('sjunk-owned-empty').style.display = 'block';
+        } else {
+            selected.forEach(appid => {
+                document.querySelector(`#sjunk-owned-list .sjunk-owned-cb[data-appid="${appid}"]`)?.closest('[data-modal-row]')?.remove();
+            });
+        }
+    } catch (e) {
+        status.className = 'tool-status error';
+        status.textContent = '✘ ' + e.message;
+    }
+}
+
+async function _sjunkOwnedWhitelist() {
+    const selected = [...document.querySelectorAll('#sjunk-owned-list .sjunk-owned-cb:checked')]
+        .map(cb => parseInt(cb.dataset.appid, 10));
+    if (selected.length === 0) {
+        alert('No games selected.');
+        return;
+    }
+    const ok = await confirmCustom(
+        `Whitelist (dismiss) ${selected.length} selected game(s)? They'll stay in your library and won't be suggested by this scan again.`,
+        'Confirm', 'Cancel'
+    );
+    if (!ok) return;
+
+    const status = document.getElementById('sjunk-action-status');
+    status.className = 'tool-status info';
+    status.textContent = 'Working…';
+    try {
+        const res  = await fetch('/api/steam-junk-scan/whitelist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appids: selected })
+        });
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message);
+
+        status.className = 'tool-status success';
+        status.textContent = `✔ Whitelisted ${data.count}.`;
         _sjunkOwnedCandidates = _sjunkOwnedCandidates.filter(c => !selected.includes(c.appid));
         if (_sjunkOwnedCandidates.length === 0) {
             document.getElementById('sjunk-owned-results').style.display = 'none';

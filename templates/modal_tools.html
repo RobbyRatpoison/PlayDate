@@ -517,11 +517,16 @@
 <!-- ── ACCOUNTS MODAL ── -->
 <!-- ── PLUGINS MODAL ── -->
 <div id="plugins-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePluginsModal();">
-    <div class="modal-content" style="width:600px; max-height:90vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h2 style="margin:0; color:var(--text-primary);">Plugins</h2>
-            <button onclick="closePluginsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:600px; max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h2 style="margin:0; color:var(--text-primary);">Plugins</h2>
+                <button onclick="closePluginsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
         <div style="display:flex;gap:8px;margin-bottom:20px;">
             <button class="nav-btn" style="font-size:0.78rem;" data-modal-row="0"
                     onclick="document.getElementById('plugin-install-input').click()">Install from Zip</button>
@@ -547,6 +552,7 @@
         </div>
         <div id="plugins-restart-notice" style="display:none; margin-top:16px; padding:10px 12px; background:rgba(255,165,0,0.12); border:1px solid rgba(255,165,0,0.35); border-radius:4px; font-size:0.82rem; color:#ffa500;">
             Restart required for changes to take effect.
+        </div>
         </div>
     </div>
 </div>
@@ -641,11 +647,13 @@
 
 <!-- ── LIBRARY MODAL ── -->
 <div id="library-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeLibraryModal();">
-    <div class="modal-content" style="width:360px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+    <div class="modal-content" style="width:440px; max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center;
+                    padding:1.875rem 1.875rem 0; flex-shrink:0;">
             <h2 style="margin:0; color:var(--text-primary);">Library</h2>
             <button onclick="closeLibraryModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
         </div>
+        <div style="overflow-y:auto; padding:20px 1.875rem 1.875rem; flex:1; min-height:0;">
         <div class="hub-section">
             <div class="hub-section-label">Duplicates</div>
             <div style="padding:8px 10px;">
@@ -745,6 +753,7 @@
                 <div id="hltb-threshold-status" style="font-size:0.78rem; color:#8f98a0; margin-top:4px; min-height:1em;"></div>
             </div>
             <button class="settings-item" data-modal-row="26" onclick="openHltbModal()">HLTB Data</button>
+        </div>
         </div>
     </div>
 </div>
@@ -1029,11 +1038,16 @@
 
 <!-- ── ACCOUNT MODAL ── -->
 <div id="account-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAccountModal();">
-    <div class="modal-content" style="width:fit-content; min-width:400px; max-height:90vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h2 style="margin:0; color:var(--text-primary);">Account</h2>
-            <button onclick="closeAccountModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:fit-content; min-width:400px; max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h2 style="margin:0; color:var(--text-primary);">Account</h2>
+                <button onclick="closeAccountModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
 
         <!-- Account switcher — visible when more than one account exists -->
         <div id="cfg-account-list" style="margin-bottom:14px;"></div>
@@ -1140,6 +1154,7 @@
                 <button class="nav-btn" data-modal-row="10" onclick="saveSgUsername()">Save</button>
                 <div id="cfg-sg-status" class="tool-status" style="margin:0;"></div>
             </div>
+        </div>
         </div>
     </div>
 </div>
@@ -1263,11 +1278,16 @@
 
 <!-- ── DB IMPORT MODAL ── -->
 <div id="import-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeImportModal();">
-    <div class="modal-content" style="width:620px; max-height:90vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Import Data from Another Database</h2>
-            <button onclick="closeImportModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:620px; max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="margin:0; color:var(--text-primary);">Import Data from Another Database</h2>
+                <button onclick="closeImportModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
         <p style="color:var(--text-secondary); font-size:0.88rem; margin:0 0 16px;">Copy column data from another database into your current library. Games are matched by AppID — only games that exist in both databases will be updated.</p>
 
         <div class="step-indicator">
@@ -1324,19 +1344,26 @@
             <div id="import-result" class="import-result"></div>
             <button class="nav-btn" data-modal-row="0" onclick="resetImport()" style="margin-top:12px;">Import Another File</button>
         </div>
+        </div>
     </div>
 </div>
 
 <!-- ── PLAYNITE IMPORT MODAL ── -->
 <div id="playnite-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closePlayniteModal();">
-    <div class="modal-content" style="width:480px; max-height:90vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Import from Playnite</h2>
-            <button onclick="closePlayniteModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:480px; max-height:90vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="margin:0; color:var(--text-primary);">Import from Playnite</h2>
+                <button onclick="closePlayniteModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
         <p style="color:var(--text-secondary); font-size:0.88rem; margin:0 0 16px;">Import <strong>date added</strong> values from a Playnite backup ZIP. Games are matched by Steam AppID — only games already in your PlayDate library will be updated.</p>
         <button class="nav-btn" data-modal-row="0" onclick="runPlayniteImport()">Choose Playnite Backup (.zip)</button>
         <div id="playnite-status" class="tool-status" style="margin-top:12px;"></div>
+        </div>
     </div>
 </div>
 
@@ -1529,28 +1556,35 @@
 
 <!-- ── BLACKLIST MODAL ── -->
 <div id="blacklist-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeBlacklistModal();">
-    <div class="modal-content" style="width:min(640px,95vw); max-height:85vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Blacklist Manager</h2>
-            <button onclick="closeBlacklistModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:min(640px,95vw); max-height:85vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header + controls -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="margin:0; color:var(--text-primary);">Blacklist Manager</h2>
+                <button onclick="closeBlacklistModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
+            <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">Blacklisted games are permanently skipped by "Populate PlayDate". To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
+            <button class="nav-btn" data-modal-row="find-steam-junk" onclick="openSteamJunkModal()" style="margin-bottom:14px;">Find Library Junk</button>
+            <div id="blacklist-status" class="tool-status"></div>
+            <input id="blacklist-search" type="text" placeholder="Search by name…"
+                style="width:100%; box-sizing:border-box; margin-bottom:12px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:0.88rem; display:none;"
+                oninput="_filterBlacklist(this.value)">
+            <div id="blacklist-bulkbar" style="display:none; align-items:center; gap:14px; margin-bottom:10px;">
+                <div data-modal-row="bl-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_blToggleAll(cb.checked);" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" id="blacklist-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_blToggleAll(this.checked)">
+                    <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
+                </div>
+                <button class="nav-btn" data-modal-row="bl-selectall" onclick="_blBulkRemove()" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a); padding:4px 12px; font-size:0.82rem;">Remove Selected</button>
+            </div>
         </div>
-        <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">Blacklisted games are permanently skipped by "Populate PlayDate". To blacklist a game, delete it via the edit modal and choose to blacklist it when prompted.</p>
-        <button class="nav-btn" data-modal-row="find-steam-junk" onclick="openSteamJunkModal()" style="margin-bottom:14px;">Find Library Junk</button>
-        <div id="blacklist-status" class="tool-status"></div>
-        <input id="blacklist-search" type="text" placeholder="Search by name…"
-            style="width:100%; box-sizing:border-box; margin-bottom:12px; padding:7px 10px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; color:var(--text-primary); font-size:0.88rem; display:none;"
-            oninput="_filterBlacklist(this.value)">
+        <!-- Scrollable list -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem;">
         <div id="blacklist-empty" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No blacklisted games.</div>
         <div id="blacklist-no-results" style="display:none; color:var(--text-secondary); font-size:0.9rem; margin-bottom:12px;">No games match your search.</div>
-        <div id="blacklist-bulkbar" style="display:none; align-items:center; gap:14px; margin-bottom:10px;">
-            <div data-modal-row="bl-selectall" onclick="var cb=this.querySelector('input');cb.checked=!cb.checked;_blToggleAll(cb.checked);" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-                <input type="checkbox" id="blacklist-select-all" style="width:auto;margin:0;" onclick="event.stopPropagation();_blToggleAll(this.checked)">
-                <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
-            </div>
-            <button class="nav-btn" data-modal-row="bl-selectall" onclick="_blBulkRemove()" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a); padding:4px 12px; font-size:0.82rem;">Remove Selected</button>
-        </div>
         <div id="blacklist-groups"></div>
-        <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+        </div>
+        <!-- Fixed footer -->
+        <div style="flex-shrink:0; padding:16px 1.875rem 1.875rem; display:flex; justify-content:flex-end;">
             <button class="nav-btn" data-modal-row="bl-footer" onclick="closeBlacklistModal()">Close</button>
         </div>
     </div>
@@ -1558,11 +1592,16 @@
 
 <!-- ── LIBRARY JUNK FINDER MODAL (sub-modal of Blacklist Manager) ── -->
 <div id="steam-junk-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeSteamJunkModal();">
-    <div class="modal-content" style="width:min(680px,95vw); max-height:85vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Find Library Junk</h2>
-            <button onclick="closeSteamJunkModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:min(680px,95vw); max-height:85vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="margin:0; color:var(--text-primary);">Find Library Junk</h2>
+                <button onclick="closeSteamJunkModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
         <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">
             Scans your library for entries that probably aren't real games. Nothing here is a sure thing, so
             review each list before removing anything.
@@ -1576,7 +1615,8 @@
                 games with 5 minutes or less of recorded playtime are skipped, since Steam's API hides
                 lightly-played free games from this check even when they're genuinely owned. These can't be
                 re-added by "Populate PlayDate" since they're no longer on your account &mdash; deleting them is
-                enough, no blacklist needed.
+                enough, no blacklist needed. Genuinely still own it? Whitelist it instead to keep it and stop it
+                from being suggested again.
             </p>
             <div id="sjunk-owned-note" style="display:none; font-size:0.8rem; margin-bottom:8px;"></div>
             <div id="sjunk-owned-empty" style="display:none; color:var(--text-secondary); font-size:0.85rem; margin-bottom:8px;">No ownership issues found.</div>
@@ -1586,8 +1626,9 @@
                     <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer;">Select All</label>
                 </div>
                 <div id="sjunk-owned-list"></div>
-                <div style="margin-top:10px;">
+                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
                     <button class="nav-btn" data-modal-row="sjunk-owned-footer" onclick="_sjunkOwnedDelete()" style="background:var(--color-danger,#a32a2a); color:var(--text-bright); border-color:var(--color-danger,#a32a2a);">Delete Selected</button>
+                    <button class="nav-btn" data-modal-row="sjunk-owned-footer" onclick="_sjunkOwnedWhitelist()">Whitelist Selected</button>
                 </div>
             </div>
         </div>
@@ -1640,16 +1681,22 @@
         <div style="margin-top:10px;">
             <button class="nav-btn" data-modal-row="sjunk-close" onclick="closeSteamJunkModal()">Close</button>
         </div>
+        </div>
     </div>
 </div>
 
 <!-- ── DUPLICATE ENTRIES FINDER MODAL (sub-modal of Library) ── -->
 <div id="dup-entries-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeDupEntriesModal();">
-    <div class="modal-content" style="width:min(680px,95vw); max-height:85vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Duplicate Entries</h2>
-            <button onclick="closeDupEntriesModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#10005;</button>
+    <div class="modal-content" style="width:min(680px,95vw); max-height:85vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="margin:0; color:var(--text-primary);">Duplicate Entries</h2>
+                <button onclick="closeDupEntriesModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">&#10005;</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
         <p style="color:var(--text-secondary); font-size:0.9rem; margin:0 0 14px;">
             Finds the same store game imported more than once on a single platform &mdash; usually a title
             claimed in two bundles. One copy of each is kept (an installed copy, else the oldest import); the
@@ -1672,6 +1719,7 @@
         <div id="dupent-action-status" class="tool-status" style="margin:14px 0 0;"></div>
         <div style="margin-top:10px;">
             <button class="nav-btn" data-modal-row="dupent-close" onclick="closeDupEntriesModal()">Close</button>
+        </div>
         </div>
     </div>
 </div>
@@ -1720,11 +1768,16 @@
 
 <!-- ── THEME EDITOR MODAL ── -->
 <div id="theme-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeThemeModal();">
-    <div class="modal-content" style="width:min(920px,96vw); max-height:92vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Theme Editor</h2>
-            <button onclick="closeThemeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:min(920px,96vw); max-height:92vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="margin:0; color:var(--text-primary);">Theme Editor</h2>
+                <button onclick="closeThemeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;">
 
@@ -1920,17 +1973,24 @@
 
             </div><!-- .theme-preview-panel -->
         </div>
+        </div>
     </div>
 </div>
 
 <!-- Theme picker modal -->
 <div id="theme-picker-modal" class="modal-overlay sub-modal" style="display:none;" onclick="if(event.target===this)closeThemePickerModal();">
-    <div class="modal-content" style="width:380px; max-height:80vh; overflow-y:auto;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-            <h2 style="margin:0; color:var(--text-primary);">Choose Theme</h2>
-            <button onclick="closeThemePickerModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+    <div class="modal-content" style="width:380px; max-height:80vh; padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <!-- Fixed header -->
+        <div style="flex-shrink:0; padding:1.875rem 1.875rem 0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h2 style="margin:0; color:var(--text-primary);">Choose Theme</h2>
+                <button onclick="closeThemePickerModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
+            </div>
         </div>
+        <!-- Scrollable body -->
+        <div style="overflow-y:auto; flex:1; min-height:0; padding:0 1.875rem 1.875rem;">
         <div id="theme-picker-modal-content"></div>
+        </div>
     </div>
 </div>
 
@@ -1949,7 +2009,7 @@ window._platPriority = {{ platform_priority | tojson }};
 
 <!-- ═══════════════════════════ EMULATORS MODAL ══════════════════════════════ -->
 <div id="emulators-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeEmulatorsModal();">
-    <div class="modal-content" style="width:680px;min-height:520px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-content" style="width:680px;min-height:520px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
             <h2 style="margin:0;color:var(--text-primary);">Emulators</h2>
             <button onclick="closeEmulatorsModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.3rem;cursor:pointer;padding:0 4px;line-height:1;">✕</button>
@@ -2010,7 +2070,7 @@ window._platPriority = {{ platform_priority | tojson }};
             </div>
         </div>
 
-        <div id="emu-list-body" style="flex:1;overflow-y:auto;padding-right:10px;"></div>
+        <div id="emu-list-body" style="flex:1;min-height:0;overflow-y:auto;padding-right:10px;"></div>
     </div>
 </div>
 
