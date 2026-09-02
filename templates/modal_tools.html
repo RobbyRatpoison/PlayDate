@@ -674,6 +674,19 @@
             </div>
         </div>
         <div class="hub-section">
+            <div class="hub-section-label">Platforms</div>
+            <div style="padding:8px 10px;">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary);">
+                    <input type="checkbox" id="auto-hide-new-platforms-cb"
+                           {% if auto_hide_new_platforms %}checked{% endif %}
+                           onchange="sendStateUpdate({auto_hide_new_platforms: this.checked})"
+                           style="width:auto; margin:0;" data-modal-row="15">
+                    Auto-hide newly added platforms
+                </label>
+                <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding-left:22px;">A platform that's new to your library (e.g. from installing a plugin) starts hidden on Home shelves and in the Library/Pick 6 platform filter, instead of appearing everywhere immediately.</div>
+            </div>
+        </div>
+        <div class="hub-section">
             <div class="hub-section-label">Launching</div>
             <div style="padding:8px 10px;">
                 <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary);">

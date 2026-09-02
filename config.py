@@ -544,6 +544,7 @@ def inject_config_status():
         button_remaps=state.get('button_remaps', {}),
         hltb_match_threshold=state.get('hltb_match_threshold', 99),
         hide_duplicates=state.get('hide_duplicates', True),
+        auto_hide_new_platforms=state.get('auto_hide_new_platforms', True),
         require_double_click_launch=state.get('require_double_click_launch', False),
         ui_scale=state.get('ui_scale', 100),
         auto_promote_unfinished=state.get('auto_promote_unfinished', True),
