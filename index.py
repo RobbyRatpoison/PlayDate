@@ -47,42 +47,38 @@ def achievement_bucket(unlocked, total):
     return '76-100%'
 
 
-def _filter_tree_to_sql(tree):
-    """Convert a saved filter tree to an inline SQL WHERE string (values escaped)."""
+def _filter_tree_to_sql(tree, params):
+    """Convert a saved filter tree to a SQL WHERE string, appending bind values to params."""
     if not tree:
         return '1=1'
-    params = []
     sql = build_tree_sql(tree, params)
-    # Inline params safely — only string values, single-quotes escaped
-    for p in params:
-        escaped = str(p).replace("'", "''")
-        sql = sql.replace('?', f"'{escaped}'", 1)
     return sql or '1=1'
 
 
 def _build_shelf_query(shelf, saved_filters, state):
-    """Returns (where_clause, order_clause) or (None, None) for special widgets."""
+    """Returns (where_clause, order_clause, params) or (None, None, None) for special widgets."""
     filter_key = shelf.get('filter_key') or shelf.get('preset', 'all_games')
 
     # Widget presets have no SQL
     if filter_key in ('clock', 'completion_pie', 'achievement_pie'):
-        return None, None
+        return None, None, None
     # Also handle legacy preset field pointing to a widget
     if shelf.get('preset') in ('clock', 'completion_pie', 'achievement_pie') and filter_key not in FILTER_QUERIES:
-        return None, None
+        return None, None, None
 
     # Resolve WHERE clause
+    params = []
     custom = (shelf.get('custom_sql') or '').strip()
     if custom:
         if not is_safe_sql(custom):
-            return '1=0', 'name ASC'
+            return '1=0', 'name ASC', []
         where = re.sub(r'\s*\bORDER\s+BY\s+.+$', '', custom, flags=re.IGNORECASE).strip()
         where = re.sub(r'(?i)^\s*WHERE\s+', '', where).strip()
     elif filter_key in FILTER_QUERIES:
         where = FILTER_QUERIES[filter_key]['where']
     elif filter_key in saved_filters:
         sf = saved_filters[filter_key]
-        where = _filter_tree_to_sql(sf['tree'] if isinstance(sf, dict) and 'tree' in sf else sf)
+        where = _filter_tree_to_sql(sf['tree'] if isinstance(sf, dict) and 'tree' in sf else sf, params)
     else:
         where = '1=1'
 
@@ -120,7 +116,7 @@ def _build_shelf_query(shelf, saved_filters, state):
     else:
         order = 'name ASC'
 
-    return where, order
+    return where, order, params
 
 
 @index_bp.route('/')
@@ -144,7 +140,7 @@ def index():
     shelf_games = {}
 
     for shelf in dedup_order:
-        where, order = _build_shelf_query(shelf, saved_filters, state)
+        where, order, params = _build_shelf_query(shelf, saved_filters, state)
         if where is None:
             shelf_games[shelf['id']] = []
             continue
@@ -153,7 +149,7 @@ def index():
         uses_dedup = shelf.get('dedup', True)
         try:
             rows = db.execute(
-                f"SELECT * FROM games WHERE {where} ORDER BY {order}"
+                f"SELECT * FROM games WHERE {where} ORDER BY {order}", params
             ).fetchall()
         except Exception:
             shelf_games[shelf['id']] = []
@@ -286,7 +282,7 @@ def shuffle_shelf(shelf_id):
             return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
 
         saved_filters = state.get('saved_filters', {})
-        where, _ = _build_shelf_query(shelf, saved_filters, state)
+        where, _, params = _build_shelf_query(shelf, saved_filters, state)
         if where is None:
             return jsonify({'status': 'error', 'message': 'Widget shelf'}), 400
 
@@ -297,7 +293,7 @@ def shuffle_shelf(shelf_id):
             f"total_achievements, unlocked_achievements, review_percentage, weighted_percentage, total_reviews, "
             f"hltb_main, hltb_extras, hltb_completionist "
             f"FROM games WHERE {where} ORDER BY RANDOM() LIMIT ?",
-            (limit,)
+            (*params, limit)
         ).fetchall()
         db.close()
         games = [_shelf_row_to_game(r) for r in rows]
@@ -328,7 +324,7 @@ def refill_shelf(shelf_id):
             return jsonify({'status': 'error', 'message': 'Shelf not found'}), 404
 
         saved_filters = state.get('saved_filters', {})
-        where, order = _build_shelf_query(shelf, saved_filters, state)
+        where, order, params = _build_shelf_query(shelf, saved_filters, state)
         if where is None:
             return jsonify({'status': 'success', 'games': []})
 
@@ -342,13 +338,13 @@ def refill_shelf(shelf_id):
             rows = db.execute(
                 f"SELECT {_cols} FROM games "
                 f"WHERE ({where}) AND appid NOT IN ({placeholders}) ORDER BY {order} LIMIT ?",
-                (*exclude_appids, limit)
+                (*params, *exclude_appids, limit)
             ).fetchall()
         else:
             rows = db.execute(
                 f"SELECT {_cols} FROM games "
                 f"WHERE {where} ORDER BY {order} LIMIT ?",
-                (limit,)
+                (*params, limit)
             ).fetchall()
         db.close()
         games = [_shelf_row_to_game(r) for r in rows]

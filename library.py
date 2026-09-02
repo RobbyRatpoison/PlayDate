@@ -54,11 +54,12 @@ def _compute_outline_colors(games, state):
     # Build a single CASE WHEN query -- one round-trip instead of one per rule.
     # CASE evaluates in order so priority is preserved (first match wins).
     case_whens = []
+    rule_params = []
     for rule in rules:
         color = rule.get('color')
         if not color:
             continue
-        where = resolve_outline_rule_where(rule, saved_filters)
+        where = resolve_outline_rule_where(rule, saved_filters, rule_params)
         if not where or where == '1=0':
             continue
         case_whens.append((where, color.replace("'", "''")))
@@ -72,7 +73,7 @@ def _compute_outline_colors(games, state):
     try:
         rows = db.execute(
             f"SELECT appid, {case_sql} FROM games WHERE appid IN ({placeholders})",
-            appid_ints
+            rule_params + appid_ints
         ).fetchall()
         for row in rows:
             if row[1] is not None:

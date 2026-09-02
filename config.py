@@ -327,8 +327,8 @@ DEFAULT_EDIT_BUTTON = {
 }
 
 
-def resolve_outline_rule_where(rule, saved_filters):
-    """Return a SQL WHERE string for a card outline rule, or None if unresolvable."""
+def resolve_outline_rule_where(rule, saved_filters, params):
+    """Return a SQL WHERE string for a card outline rule, appending any bind values to params, or None if unresolvable."""
     f = rule.get('filter', {})
     ftype = f.get('type')
     if ftype == 'preset':
@@ -341,12 +341,12 @@ def resolve_outline_rule_where(rule, saved_filters):
             wrapped = sf if isinstance(sf, dict) and 'tree' in sf else {'tree': sf}
             if wrapped.get('id') == fid:
                 from index import _filter_tree_to_sql
-                return _filter_tree_to_sql(wrapped['tree'])
+                return _filter_tree_to_sql(wrapped['tree'], params)
     elif ftype == 'custom':
         tree = f.get('tree')
         if tree:
             from index import _filter_tree_to_sql
-            return _filter_tree_to_sql(tree)
+            return _filter_tree_to_sql(tree, params)
     return None
 
 DEFAULT_SHELVES = [
