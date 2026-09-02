@@ -1900,7 +1900,7 @@ async function applyBuiltinFilter(key) {
     }
     const tree = preset.tree || { type: 'group', logic: 'AND', items: [], custom_sql: preset.where };
     updateActivePills(tree);
-    await sendStateUpdate({ filter_tree: tree });
+    await sendStateUpdate({ filter_tree: tree, hidden_platforms: [..._fmHiddenPlatforms] });
     if (typeof window._onFiltersApplied === 'function') window._onFiltersApplied(preset.label || null, true);
     closeFilterModal();
 }

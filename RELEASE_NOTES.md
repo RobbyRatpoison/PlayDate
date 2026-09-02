@@ -15,3 +15,4 @@
 ### Fixes
 
 - A Home shelf using a PAGYWOSG-built saved filter showed no games. (reported by quinnix)
+- Clicking a quick preset filter (e.g. Installed) in the Filters modal ignored any platform toggle changes made in that same modal, applying the previously-saved platform selection instead.
