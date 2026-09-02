@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.10.0
+## v1.10.0 - 2026-09-02
 ### New
 
 - The Home layout editor can resize a shelf's height or column width by dragging.
