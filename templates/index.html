@@ -512,7 +512,7 @@
     <ul id="dedup-list"></ul>
     <label class="dedup-toggle" style="margin-bottom:14px;" data-modal-row="2">
         <input type="checkbox" id="auto-hide-new-platforms-toggle" onchange="_autoHideNewPlatforms=this.checked;">
-        Auto-hide new platforms on Home shelves
+        Auto-hide newly added platforms (Home shelves, Library, Pick 6)
     </label>
     <div style="display:flex;gap:8px;">
         <button class="nav-btn" data-modal-row="0" style="flex:1;" onclick="saveDedupOrder()">Apply</button>
@@ -620,7 +620,7 @@ async function shuffleShelf(shelfId, labelEl) {
 
 let _shelves = {{ all_shelves_config | tojson }};
 const _availablePlatforms = {{ available_platforms | tojson }};
-let _autoHideNewPlatforms = {{ state.get('auto_hide_new_shelf_platforms', True) | tojson }};
+let _autoHideNewPlatforms = {{ state.get('auto_hide_new_platforms', True) | tojson }};
 const _builtinFilters = {{ filter_options | tojson }};
 const _savedFilters   = {{ saved_filters | tojson }};
 const OUTLINE_COLORS  = {{ outline_colors | tojson }};
@@ -1688,7 +1688,7 @@ function saveDedupOrder() {
     });
     fetch('/api/update_state', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({auto_hide_new_shelf_platforms: _autoHideNewPlatforms})
+        body: JSON.stringify({auto_hide_new_platforms: _autoHideNewPlatforms})
     }).catch(() => {});
     closeDedupPanel();
 }

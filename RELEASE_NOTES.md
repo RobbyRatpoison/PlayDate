@@ -10,7 +10,7 @@
 - Home page shelves can now scroll to show shelves that don't fit on one screen. (prompted by feedback from quinnix)
 - The Home layout editor warns if the current layout won't fit on one screen.
 - Home layout editor buttons now match the rest of the app's look.
-- A newly added platform (e.g. from installing a new plugin) now defaults to hidden on existing Home shelves instead of appearing on all of them immediately; toggle-able in the Shelf Priority panel.
+- A newly added platform (e.g. from installing a new plugin) now defaults to hidden on existing Home shelves and in the Library/Pick 6 platform filter, instead of appearing everywhere immediately; toggle-able in the Shelf Priority panel.
 
 ### Fixes
 

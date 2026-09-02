@@ -37,23 +37,25 @@ from library import is_safe_sql, build_tree_sql, VIRTUAL_SORT_COLS
 
 def _apply_new_platform_defaults(state, shelves_config, available_platforms):
     """A platform that wasn't in the library before (e.g. a freshly installed plugin's
-    games just synced in) defaults to hidden on every existing shelf instead of
-    silently appearing on curated shelves that were never built with it in mind.
-    Opt-out via the "Auto-hide new platforms" toggle in the Shelf Priority panel.
-    Mutates shelves_config's hidden_platforms in place so it applies immediately."""
-    if 'shelf_seen_platforms' not in state:
+    games just synced in) defaults to hidden -- on every existing Home shelf, and in
+    the global Library/Pick 6 platform filter -- instead of silently appearing
+    everywhere it was never intended to show. Opt-out via the "Auto-hide new
+    platforms" toggle in the Shelf Priority panel. Mutates shelves_config's
+    hidden_platforms in place so the Home-shelf half applies immediately; the
+    global half takes effect on next load of Library/Pick 6 (both read state fresh)."""
+    if 'seen_platforms' not in state:
         # First run of this feature -- adopt the current library as the baseline
         # rather than retroactively hiding platforms that were already showing.
-        save_state({'shelf_seen_platforms': available_platforms})
+        save_state({'seen_platforms': available_platforms})
         return
 
-    seen = set(state.get('shelf_seen_platforms', []))
+    seen = set(state.get('seen_platforms', []))
     new_platforms = [p for p in available_platforms if p not in seen]
     if not new_platforms:
         return
 
-    updates = {'shelf_seen_platforms': sorted(seen | set(new_platforms))}
-    if state.get('auto_hide_new_shelf_platforms', True):
+    updates = {'seen_platforms': sorted(seen | set(new_platforms))}
+    if state.get('auto_hide_new_platforms', True):
         changed = False
         for s in shelves_config:
             hp = set(s.get('hidden_platforms') or [])
@@ -63,6 +65,10 @@ def _apply_new_platform_defaults(state, shelves_config, available_platforms):
                 changed = True
         if changed:
             updates['shelves'] = shelves_config
+
+        global_hidden = set(state.get('hidden_platforms') or [])
+        if any(p not in global_hidden for p in new_platforms):
+            updates['hidden_platforms'] = sorted(global_hidden | set(new_platforms))
     save_state(updates)
 
 
