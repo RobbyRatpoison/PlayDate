@@ -157,10 +157,20 @@
     .col-resize-handle:hover::after, .col-resize-handle.resizing::after {
         background: var(--accent); box-shadow: 0 0 4px var(--accent);
     }
-
     .layout-overflow-warning {
         display: none; align-items: center; gap: 4px; white-space: nowrap;
         color: var(--color-warning); font-size: 0.75rem; font-weight: 600;
+    }
+
+    #add-col-toolbar-btn.active-mode {
+        background: var(--accent); color: var(--bg-surface);
+        box-shadow: 0 0 10px rgba(102,192,244,0.6);
+    }
+    body.add-column-mode .shelf,
+    body.add-column-mode .shelf-split-row { cursor: cell; }
+    body.add-column-mode .shelf:hover,
+    body.add-column-mode .shelf-split-row:hover {
+        outline: 2px solid var(--accent); outline-offset: -2px;
     }
 
     /* Edit toolbar replaces the nav bar — same position, same height */
@@ -183,9 +193,16 @@
         display: none; position: absolute; top: 0; left: 0; right: 0;
         background: var(--bg-nav); border-bottom: 1px solid rgba(102,192,244,0.25);
         padding: 3px 8px; z-index: 100; align-items: center; gap: 6px;
-        border-radius: 4px 4px 0 0;
+        border-radius: 4px 4px 0 0; overflow: hidden;
     }
     body.edit-mode .shelf-edit-bar { display: flex; }
+    /* Drag handle, Edit, and Remove come first and never shrink, so a narrow
+       column clips Height/Width/Games (in that trailing order) before any of
+       these -- no scrollbar, just silent clipping. Height/Width still have
+       the drag-to-resize handles as a fallback when their inputs get clipped. */
+    .shelf-edit-bar > .drag-handle,
+    .shelf-edit-bar > .sem-edit-btn,
+    .shelf-edit-bar > .sem-remove-btn { flex-shrink: 0; }
     .shelf-edit-bar label { color: var(--text-secondary); font-size: 0.72rem; white-space: nowrap; }
     .shelf-edit-bar input[type="number"] {
         background: var(--bg-input); border: 1px solid var(--border); color: var(--text-input);
@@ -262,8 +279,8 @@
     .shelf-edit-mini-btn.plat-on { border-color: var(--accent); color: var(--accent); }
     .shelf-edit-mini-btn.plat-off { opacity: 0.35; }
 
-    .shelf.dragging, .shelf-split-row.dragging { opacity: 0.4; }
-    .shelf.drag-over, .shelf-split-row.drag-over {
+    .shelf.dragging, .shelf-split-row.dragging, .shelf-split-side.dragging { opacity: 0.4; }
+    .shelf.drag-over, .shelf-split-row.drag-over, .shelf-split-side.drag-over {
         border: 2px solid var(--accent) !important;
         background: rgba(102,192,244,0.18) !important;
         box-shadow: none !important;
@@ -281,12 +298,13 @@
     #shelf-edit-modal .sem-box {
         background: var(--bg-raised); border: 1px solid var(--border);
         border-radius: 10px; padding: 24px 28px; width: 480px;
-        max-width: 95vw; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+        max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
     }
     #shelf-edit-modal h3 { margin: 0 0 18px; color: var(--text-bright); font-size: 1rem; letter-spacing: 0.03em; }
     #shelf-edit-modal label { display: block; color: var(--text-secondary); font-size: 0.78rem; margin-bottom: 4px; margin-top: 12px; }
     #shelf-edit-modal label:first-of-type { margin-top: 0; }
-    #shelf-edit-modal input[type="text"], #shelf-edit-modal select, #shelf-edit-modal textarea {
+    #shelf-edit-modal input[type="text"], #shelf-edit-modal input[type="number"],
+    #shelf-edit-modal select, #shelf-edit-modal textarea {
         width: 100%; box-sizing: border-box;
     }
     #shelf-edit-modal textarea {
@@ -322,6 +340,7 @@
     <button class="nav-btn" onclick="saveLayout()" style="border-color:var(--accent-positive);background:var(--bg-surface);color:var(--accent-positive);">💾 SAVE LAYOUT</button>
     <button class="nav-btn" onclick="openDedupPanel()">⇅ SHELF PRIORITY</button>
     <button class="nav-btn" onclick="addNewShelf()">＋ ADD SHELF</button>
+    <button class="nav-btn" id="add-col-toolbar-btn" onclick="toggleAddColumnMode()" data-tooltip="Click, then click a shelf to add a column to it">＋ COLUMN</button>
     <button class="nav-btn" onclick="resetLayout()" style="border-color:var(--color-danger);color:var(--text-danger);"
         onmouseover="this.style.background='var(--color-danger)';this.style.color='var(--text-bright)'"
         onmouseout="this.style.background='';this.style.color='var(--text-danger)'">↺ RESET</button>
@@ -355,6 +374,28 @@
             </select>
         </div>
 
+        <div id="sem-platforms-wrap" style="display:none;">
+            <label>Platforms shown</label>
+            <div id="sem-platforms" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+            <div id="sem-height-wrap" style="flex:1; display:none;">
+                <label>Row height (vh)</label>
+                <input type="number" id="sem-height" min="5" max="90" data-modal-row="6">
+            </div>
+            <div id="sem-width-wrap" style="flex:1; display:none;">
+                <label>Column width</label>
+                <input type="number" id="sem-width" min="0.5" max="20" step="0.5" data-modal-row="6">
+            </div>
+            <div id="sem-limit-wrap" style="flex:1; display:none;">
+                <label>Max games shown</label>
+                <input type="number" id="sem-limit" min="1" max="200" data-modal-row="6">
+            </div>
+        </div>
+
+        <button class="shelf-edit-mini-btn danger" data-modal-row="7" style="margin-top:16px; padding:6px 10px;" onclick="semRemoveFromModal()">🗑 Remove Shelf</button>
+
         <div style="display:flex; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
             <button class="btn-save" data-modal-row="0" style="flex:2; margin:0;" onclick="semSave()">Apply</button>
             <button class="nav-btn" data-modal-row="0" style="flex:1; height:auto; padding:10px;" onclick="semClose()">Cancel</button>
@@ -374,7 +415,7 @@
          draggable="false">
         {% for shelf in row.shelves %}
         <div class="shelf-split-side"
-             style="flex:{{ shelf.col_width or 2 }};"
+             style="flex:{{ shelf.col_width or 10 }};"
              data-shelf-id="{{ shelf.id }}"
              data-filter-key="{{ shelf.filter_key or '' }}"
              data-visible="{{ shelf.visible | lower }}">
@@ -510,10 +551,6 @@
     <h3>Shelf Priority Order</h3>
     <p>Drag to set which shelves claim games first when the same game qualifies for multiple shelves. Toggle the switch to exclude a shelf from this logic entirely.</p>
     <ul id="dedup-list"></ul>
-    <label class="dedup-toggle" style="margin-bottom:14px;" data-modal-row="2">
-        <input type="checkbox" id="auto-hide-new-platforms-toggle" onchange="_autoHideNewPlatforms=this.checked;">
-        Auto-hide newly added platforms (Home shelves, Library, Pick 6)
-    </label>
     <div style="display:flex;gap:8px;">
         <button class="nav-btn" data-modal-row="0" style="flex:1;" onclick="saveDedupOrder()">Apply</button>
         <button class="nav-btn" data-modal-row="0" style="flex:1;" onclick="closeDedupPanel()">Cancel</button>
@@ -565,21 +602,6 @@ async function _reloadLastPlayedShelves() {
     }
 }
 
-async function toggleShelfPlatform(shelfId, platform) {
-    const shelf = _shelves.find(s => s.id === shelfId);
-    if (!shelf) return;
-    const hp = new Set(shelf.hidden_platforms || []);
-    if (hp.has(platform)) hp.delete(platform);
-    else hp.add(platform);
-    shelf.hidden_platforms = [...hp];
-    await fetch('/api/shelves', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({shelves: _shelves})
-    });
-    window.location.reload();
-}
-
 async function shuffleShelf(shelfId, labelEl) {
     const shelfEl = labelEl.closest('[data-shelf-id]');
     if (!shelfEl) return;
@@ -620,7 +642,6 @@ async function shuffleShelf(shelfId, labelEl) {
 
 let _shelves = {{ all_shelves_config | tojson }};
 const _availablePlatforms = {{ available_platforms | tojson }};
-let _autoHideNewPlatforms = {{ state.get('auto_hide_new_platforms', True) | tojson }};
 const _builtinFilters = {{ filter_options | tojson }};
 const _savedFilters   = {{ saved_filters | tojson }};
 const OUTLINE_COLORS  = {{ outline_colors | tojson }};
@@ -852,10 +873,33 @@ document.addEventListener('keydown', e => {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
         if (!document.body.classList.contains('edit-mode')) enterEditMode();
     }
+    if (e.key === 'Escape' && _addColumnMode) toggleAddColumnMode();
 });
 {% if edit_mode %}
 document.addEventListener('DOMContentLoaded', () => { _initEditBackup(); buildAllEditBars(); initDragAndDrop(); });
 {% endif %}
+
+// ── Add-column mode ───────────────────────────────────────────────────────────
+// The old per-column "+ Column" button got crowded out (and hid Edit/Remove)
+// once rows could hold up to 15 narrow columns, so this is a toolbar button
+// instead: arm the mode, then click whichever row should get the new column.
+let _addColumnMode = false;
+
+function toggleAddColumnMode() {
+    _addColumnMode = !_addColumnMode;
+    document.body.classList.toggle('add-column-mode', _addColumnMode);
+    document.getElementById('add-col-toolbar-btn').classList.toggle('active-mode', _addColumnMode);
+}
+
+document.getElementById('shelf-container').addEventListener('click', e => {
+    if (!_addColumnMode) return;
+    if (e.target.closest('.shelf-edit-bar, .shelf-sql-panel, button, input, select, textarea')) return;
+    const row = getShelfRow(e.target);
+    if (!row) return;
+    const sid = _rowShelfId(row);
+    if (sid) addColumnToRow(sid);
+    toggleAddColumnMode();
+});
 
 // ── Build edit bars ───────────────────────────────────────────────────────────
 function buildAllEditBars() {
@@ -922,7 +966,7 @@ function attachResizeHandles() {
 
 function _rowShelfId(row) {
     // A split row's rendered height comes from its first member (see index.py) --
-    // the Height control in the edit bar only appears on that first member too.
+    // the Height control in the Edit Shelf modal only appears on that first member too.
     if (row.classList.contains('shelf-split-row')) {
         const first = row.querySelector(':scope > .shelf-split-side[data-shelf-id]');
         return first ? first.dataset.shelfId : null;
@@ -965,7 +1009,7 @@ function _beginColResize(sideA, sideB, handle, e) {
     const startWidthA = sideA.getBoundingClientRect().width;
     const startWidthB = sideB.getBoundingClientRect().width;
     const totalWidth = startWidthA + startWidthB;
-    const pxPerFlexUnit = totalWidth / ((shelfA.col_width || 2) + (shelfB.col_width || 2));
+    const pxPerFlexUnit = totalWidth / ((shelfA.col_width || 10) + (shelfB.col_width || 10));
     handle.classList.add('resizing');
     document.body.style.cursor = 'ew-resize';
 
@@ -973,8 +1017,8 @@ function _beginColResize(sideA, sideB, handle, e) {
         const deltaPx = ev.clientX - startX;
         const newWidthA = Math.max(20, Math.min(totalWidth - 20, startWidthA + deltaPx));
         const newWidthB = totalWidth - newWidthA;
-        const newColA = Math.max(0.5, Math.min(20, Math.round((newWidthA / pxPerFlexUnit) * 2) / 2));
-        const newColB = Math.max(0.5, Math.min(20, Math.round((newWidthB / pxPerFlexUnit) * 2) / 2));
+        const newColA = Math.max(0.5, Math.min(20, Math.round((newWidthA / pxPerFlexUnit) * 10) / 10));
+        const newColB = Math.max(0.5, Math.min(20, Math.round((newWidthB / pxPerFlexUnit) * 10) / 10));
         sideA.style.flex = newColA; sideB.style.flex = newColB;
         updateShelfProp(idA, 'col_width', newColA);
         updateShelfProp(idB, 'col_width', newColB);
@@ -993,6 +1037,11 @@ function _beginColResize(sideA, sideB, handle, e) {
     document.addEventListener('mouseup', onUp);
 }
 
+// Everything except Edit lives in a horizontally-scrollable inner strip, with
+// Edit pinned outside it (flex-shrink:0 in a sibling, see .shelf-edit-bar CSS)
+// -- with up to 15 columns per row, the full control set can't always fit, but
+// Edit must always be reachable. A wide column shows everything at once; a
+// narrow one scrolls the rest into view while Edit stays put.
 function buildEditBarHTML(shelf, containerEl) {
     const sid = shelf.id;
     const isSide = containerEl.classList.contains('shelf-split-side');
@@ -1014,7 +1063,7 @@ function buildEditBarHTML(shelf, containerEl) {
     const colW = isSide ? `
         <div class="edit-sep"></div>
         <label>Width</label>
-        <input draggable="false" type="number" data-shelf-prop="col_width" min="0.5" max="20" step="0.5" value="${shelf.col_width||2}"
+        <input draggable="false" type="number" data-shelf-prop="col_width" min="0.5" max="20" step="0.5" value="${shelf.col_width||10}"
             onchange="updateShelfProp('${sid}','col_width',parseFloat(this.value));
                       this.closest('.shelf-split-side').style.flex=this.value;">` : '';
 
@@ -1025,35 +1074,19 @@ function buildEditBarHTML(shelf, containerEl) {
         <input draggable="false" type="number" min="1" max="200" value="${shelf.limit||10}"
             onchange="updateShelfProp('${sid}','limit',parseInt(this.value));">`;
 
-    // Add column button (max 3 per split row)
-    const inSplit = !!shelf.split_group;
-    const groupSize = inSplit ? _shelves.filter(s => s.split_group === shelf.split_group).length : 1;
-    const atMax = groupSize >= 3;
-    const addColBtn = !atMax ? `<button draggable="false" class="shelf-edit-mini-btn" onclick="addColumnToRow('${sid}')">＋ Column</button>` : '';
-
-    const _platLabels = window._PLAT_LABELS;
-    const platHTML = (!isClock && _availablePlatforms.length > 0) ? `
-        <div class="edit-sep"></div>
-        ${_availablePlatforms.map(p => {
-            const cls = (shelf.hidden_platforms || []).includes(p) ? 'plat-off' : 'plat-on';
-            return `<button draggable="false" class="shelf-edit-mini-btn ${cls}" onclick="toggleShelfPlatform('${sid}','${p}')">${_platLabels[p]||p}</button>`;
-        }).join('')}` : '';
-
     return `
         <span class="shelf-edit-mini-btn drag-handle" data-tooltip="Drag to reorder">⠿</span>
+        <button draggable="false" class="shelf-edit-mini-btn sem-edit-btn" onclick="semOpen('${sid}')">✎ Edit</button>
+        <button draggable="false" class="shelf-edit-mini-btn danger sem-remove-btn" onclick="removeShelf('${sid}')">✕</button>
         ${heightHTML}
         ${colW}
         ${limitHTML}
-        ${platHTML}
-        <div class="edit-sep"></div>
-        ${addColBtn}
-        <button draggable="false" class="shelf-edit-mini-btn" onclick="semOpen('${sid}')">✎ Edit</button>
-        <button draggable="false" class="shelf-edit-mini-btn danger" onclick="removeShelf('${sid}')">✕</button>
     `;
 }
 
 // ── Shelf edit modal ──────────────────────────────────────────────────────────
 let _semShelfId = null;
+let _semHiddenPlatforms = new Set();
 
 function semOpen(sid) {
     const shelf = _shelves.find(s => s.id === sid);
@@ -1106,6 +1139,47 @@ function semOpen(sid) {
         `<option value="${k}"${shelf.sort_col===k?' selected':''}>${v}</option>`).join(''));
     document.getElementById('sem-sort-dir').value = shelf.sort_dir === 'ASC' ? 'ASC' : 'DESC';
 
+    // Platforms shown on this shelf
+    const platWrap = document.getElementById('sem-platforms-wrap');
+    if (!isClock && _availablePlatforms.length > 0) {
+        _semHiddenPlatforms = new Set(shelf.hidden_platforms || []);
+        _semRenderPlatforms();
+        platWrap.style.display = 'block';
+    } else {
+        platWrap.style.display = 'none';
+    }
+
+    // Height: single shelves and the first member of a split row only -- a
+    // split row's rendered height comes from that first member (see index.py),
+    // matching what the row-resize-handle drag already targets.
+    const groupMembers = shelf.split_group ? _shelves.filter(s => s.split_group === shelf.split_group) : [];
+    const isFirstInSplit = !shelf.split_group || (groupMembers.length > 0 && groupMembers[0].id === shelf.id);
+    const heightWrap = document.getElementById('sem-height-wrap');
+    if (!isSide || isFirstInSplit) {
+        document.getElementById('sem-height').value = shelf.row_height || 25;
+        heightWrap.style.display = 'block';
+    } else {
+        heightWrap.style.display = 'none';
+    }
+
+    // Width: only inside split rows, independent per side
+    const widthWrap = document.getElementById('sem-width-wrap');
+    if (isSide) {
+        document.getElementById('sem-width').value = shelf.col_width || 10;
+        widthWrap.style.display = 'block';
+    } else {
+        widthWrap.style.display = 'none';
+    }
+
+    // Max games
+    const limitWrap = document.getElementById('sem-limit-wrap');
+    if (!isClock) {
+        document.getElementById('sem-limit').value = shelf.limit || 10;
+        limitWrap.style.display = 'block';
+    } else {
+        limitWrap.style.display = 'none';
+    }
+
     const semEl = document.getElementById('shelf-edit-modal');
     semEl.classList.add('open');
     semEl.style.display = 'flex'; // let _watchModal detect the open
@@ -1116,6 +1190,20 @@ function semClose() {
     semEl.classList.remove('open');
     semEl.style.display = 'none'; // let _watchModal detect the close
     _semShelfId = null;
+}
+
+function _semRenderPlatforms() {
+    const _platLabels = window._PLAT_LABELS;
+    document.getElementById('sem-platforms').innerHTML = _availablePlatforms.map(p => {
+        const cls = _semHiddenPlatforms.has(p) ? 'plat-off' : 'plat-on';
+        return `<button draggable="false" class="shelf-edit-mini-btn ${cls}" data-modal-row="5" onclick="semTogglePlatform('${p}')">${_platLabels[p]||p}</button>`;
+    }).join('');
+}
+
+function semTogglePlatform(platform) {
+    if (_semHiddenPlatforms.has(platform)) _semHiddenPlatforms.delete(platform);
+    else _semHiddenPlatforms.add(platform);
+    _semRenderPlatforms();
 }
 
 function semOnFilterChange() {
@@ -1155,8 +1243,32 @@ function semSave() {
     s.sort_col = document.getElementById('sem-sort').value || null;
     s.sort_dir = document.getElementById('sem-sort-dir').value;
 
+    // Platforms
+    if (document.getElementById('sem-platforms-wrap').style.display !== 'none') {
+        s.hidden_platforms = [..._semHiddenPlatforms];
+    }
+
+    // Height / Width / Games
+    if (document.getElementById('sem-height-wrap').style.display !== 'none') {
+        s.row_height = Math.max(5, Math.min(90, parseFloat(document.getElementById('sem-height').value) || 25));
+    }
+    if (document.getElementById('sem-width-wrap').style.display !== 'none') {
+        s.col_width = Math.max(0.5, Math.min(20, parseFloat(document.getElementById('sem-width').value) || 10));
+    }
+    if (document.getElementById('sem-limit-wrap').style.display !== 'none') {
+        s.limit = Math.max(1, Math.min(200, parseInt(document.getElementById('sem-limit').value) || 10));
+    }
+
     semClose();
     saveAndReload();
+}
+
+async function semRemoveFromModal() {
+    const sid = _semShelfId;
+    if (!sid) return;
+    if (!await confirm('Remove this shelf? You can add it back or reset to defaults.')) return;
+    semClose();
+    _removeShelfNow(sid);
 }
 
 // ── Shelf state ───────────────────────────────────────────────────────────────
@@ -1167,6 +1279,10 @@ function updateShelfProp(id, key, value) {
 
 async function removeShelf(id) {
     if (!await confirm('Remove this shelf? You can add it back or reset to defaults.')) return;
+    _removeShelfNow(id);
+}
+
+function _removeShelfNow(id) {
     // Clear split group if this was the only member
     const s = _shelves.find(s => s.id === id);
     if (s && s.split_group) {
@@ -1294,9 +1410,9 @@ function splitShelves(idA, idB, insertBeforeId) {
     // Reuse sA's existing group or create a new one
     const group = sA.split_group || `split_${Date.now()}`;
     sA.split_group = group;
-    sA.col_width = sA.col_width || 2;
+    sA.col_width = sA.col_width || 10;
     sB.split_group = group;
-    sB.col_width = sB.col_width || 2;
+    sB.col_width = sB.col_width || 10;
     sB.row_height = sA.row_height;
 
     // Remove sB from its current position in _shelves
@@ -1437,17 +1553,27 @@ function addColumnToRow(sid) {
     const self = _shelves.find(s => s.id === sid);
     if (!self) return;
 
+    const currentSize = self.split_group ? _shelves.filter(s => s.split_group === self.split_group).length : 1;
+    if (currentSize >= 15) {
+        alert('This row already has the maximum of 15 columns.');
+        return;
+    }
+
     const isNewGroup = !self.split_group;
     const group = self.split_group || `split_${Date.now()}`;
     if (isNewGroup) {
         self.split_group = group;
-        self.col_width = self.col_width || 2;
+        self.col_width = self.col_width || 10;
     }
 
     const newId = `custom_${Date.now()}`;
     const newShelf = {
         id: newId, label: 'NEW SHELF', preset: 'all_games', filter_key: 'all_games',
-        custom_sql: null, limit: 10, row_height: self.row_height, col_width: 2,
+        custom_sql: null, limit: 10, row_height: self.row_height, col_width: 10,
+        // Inherit the row's own platform visibility rather than defaulting to
+        // "show every platform" -- a new column added to a curated row should
+        // stay curated, not immediately flood with everything else.
+        hidden_platforms: [...(self.hidden_platforms || [])],
         split_group: group, sort_col: null, sort_dir: null,
         dedup: true, dedup_priority: _shelves.length, visible: true
     };
@@ -1524,8 +1650,12 @@ function initDragAndDrop() {
 function _shelfMouseDown(e) {
     const handle = e.target.closest('.drag-handle');
     if (!handle && e.target.closest('.shelf-edit-bar, .shelf-sql-panel, button, input, select, textarea')) return;
-    if (!document.body.classList.contains('edit-mode')) return;
+    if (!document.body.classList.contains('edit-mode') || _addColumnMode) return;
     e.preventDefault();
+    // A split-side's own handle covers both gestures -- see _sideBeginDrag for
+    // how dropping on a sibling vs. a different row disambiguates them.
+    const side = handle ? handle.closest('.shelf-split-side') : null;
+    if (side) { _sideBeginDrag(side); return; }
     _shelfBeginDrag(this, e);
 }
 
@@ -1572,6 +1702,91 @@ function _shelfBeginDrag(shelf) {
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup',   onUp);
+}
+
+// ── Drag to reorder columns within a split row (or the whole row) ────────────
+let _sideDragSrc = null;
+
+function _sideBeginDrag(side) {
+    const row = side.closest('.shelf-split-row');
+    if (!row) return;
+    const container = document.getElementById('shelf-container');
+    _sideDragSrc = side;
+    side.classList.add('dragging');
+    document.body.classList.add('dragging-shelf');
+
+    let hoverSide = null; // reorder within this row
+    let hoverRow = null;  // move the whole row here instead
+
+    function clearHighlights() {
+        row.querySelectorAll(':scope > .shelf-split-side.drag-over').forEach(el => el.classList.remove('drag-over'));
+        container.querySelectorAll(':scope > .drag-over').forEach(el => el.classList.remove('drag-over'));
+        hoverSide = null; hoverRow = null;
+    }
+
+    // A single handle covers both gestures, disambiguated by where it's dropped:
+    // hovering a sibling column reorders within the row (nudge); hovering a
+    // different row/shelf entirely moves the whole row there instead (yank).
+    function onMove(e) {
+        clearHighlights();
+        const target = document.elementFromPoint(e.clientX, e.clientY);
+        if (!target) return;
+        const siblings = Array.from(row.querySelectorAll(':scope > .shelf-split-side')).filter(s => s !== side);
+        for (const s of siblings) {
+            if (s.contains(target) || s === target) {
+                s.classList.add('drag-over');
+                hoverSide = s;
+                return;
+            }
+        }
+        const otherRows = Array.from(container.children).filter(c => c !== row);
+        for (const r of otherRows) {
+            if (r.contains(target) || r === target) {
+                r.classList.add('drag-over');
+                hoverRow = r;
+                return;
+            }
+        }
+    }
+
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        side.classList.remove('dragging');
+        document.body.classList.remove('dragging-shelf');
+        // Capture before clearHighlights() nulls them out.
+        const droppedOnSide = hoverSide, droppedOnRow = hoverRow;
+        clearHighlights();
+
+        if (droppedOnSide) {
+            const kids = Array.from(row.querySelectorAll(':scope > .shelf-split-side'));
+            if (kids.indexOf(side) < kids.indexOf(droppedOnSide))
+                row.insertBefore(side, droppedOnSide.nextSibling);
+            else
+                row.insertBefore(side, droppedOnSide);
+            _syncSideOrderFromDOM(row);
+        } else if (droppedOnRow) {
+            const kids = Array.from(container.children);
+            if (kids.indexOf(row) < kids.indexOf(droppedOnRow))
+                container.insertBefore(row, droppedOnRow.nextSibling);
+            else
+                container.insertBefore(row, droppedOnRow);
+            syncShelvesOrderFromDOM();
+        }
+        _sideDragSrc = null;
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+}
+
+// Reorders just this row's members within _shelves to match their new DOM
+// order, without disturbing any other shelf's position in the array.
+function _syncSideOrderFromDOM(row) {
+    const ids = Array.from(row.querySelectorAll(':scope > .shelf-split-side[data-shelf-id]')).map(el => el.dataset.shelfId);
+    const members = ids.map(id => _shelves.find(s => s.id === id)).filter(Boolean);
+    let idx = 0;
+    _shelves = _shelves.map(s => (ids.includes(s.id) ? members[idx++] : s));
 }
 
 // Walk up from e.target to find the direct shelf/row child of shelf-container
@@ -1623,7 +1838,6 @@ function openDedupPanel() {
         });
         list.appendChild(li);
     });
-    document.getElementById('auto-hide-new-platforms-toggle').checked = _autoHideNewPlatforms;
     document.getElementById('dedup-panel').style.display = 'block';
     document.getElementById('dedup-overlay').style.display = 'block';
 }
@@ -1686,10 +1900,6 @@ function saveDedupOrder() {
         const s = _shelves.find(sh=>sh.id===li.dataset.shelfId);
         if (s) s.dedup_priority = i;
     });
-    fetch('/api/update_state', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({auto_hide_new_platforms: _autoHideNewPlatforms})
-    }).catch(() => {});
     closeDedupPanel();
 }
 function closeDedupPanel() {
