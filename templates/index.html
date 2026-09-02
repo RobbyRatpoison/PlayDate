@@ -800,14 +800,15 @@ function _shelfNoArt(img) {
 
 function trimGrid(grid) {
     const caps = Array.from(grid.querySelectorAll('.shelf-capsule-wrap'));
-    if (!caps.length) return;
+    if (!caps.length) return null;
     // Temporarily show all to get true widths
     caps.forEach(c => c.style.display = '');
     const gw = grid.clientWidth;
     const cw = caps[0].getBoundingClientRect().width;
-    if (!cw || !gw) return;
+    if (!cw || !gw) return null;
     const max = Math.floor((gw + 6) / (cw + 6));
     caps.forEach((c, i) => c.style.display = i < max ? '' : 'none');
+    return max;
 }
 
 function trimShelfToFit() {
@@ -934,6 +935,83 @@ window.addEventListener('resize', () => {
     if (document.body.classList.contains('edit-mode')) checkLayoutOverflow();
 });
 
+// ── Auto-adjust games shown to fit the resized shelf ──────────────────────────
+// Manual edits to "Games" stick until the next resize, at which point this
+// takes back over -- same fit math trimGrid already uses to hide overflow
+// capsules, just also used to grow the count when there's now room for more.
+function _autoAdjustGames(el, pendingLimits) {
+    const shelfId = el.dataset.shelfId;
+    const shelf = _shelves.find(s => s.id === shelfId);
+    if (!shelf || WIDGET_PRESETS.has(shelf.preset) || WIDGET_PRESETS.has(shelf.filter_key)) return;
+    const grid = el.querySelector('.shelf-grid');
+    if (!grid) return;
+    const totalFetched = grid.querySelectorAll('.shelf-capsule-wrap').length;
+    const max = trimGrid(grid);
+    if (max == null) return;
+    shelf.limit = max;
+    const input = el.querySelector(`.shelf-edit-bar[data-for="${shelfId}"] input[data-shelf-prop="limit"]`);
+    if (input) input.value = max;
+    // trimGrid alone already handles shrinking (hides the excess); only
+    // growing past what's already fetched needs an actual refill.
+    if (max > totalFetched) pendingLimits.set(shelfId, { grid, limit: max });
+    else pendingLimits.delete(shelfId);
+}
+
+function _commitAutoAdjustedLimits(pendingLimits) {
+    pendingLimits.forEach(({ grid, limit }, shelfId) => _refillShelfGrid(shelfId, grid, limit));
+}
+
+// One-shot version for anything that isn't a continuous drag (number inputs,
+// add/remove column) -- no batching needed since it only fires once.
+function _autoAdjustGamesNow(el) {
+    const pendingLimits = new Map();
+    _autoAdjustGames(el, pendingLimits);
+    _commitAutoAdjustedLimits(pendingLimits);
+}
+
+// A row/column-width change reflows every side in the row (flex redistributes
+// the shared space), not just the one that was directly edited, so all of
+// them need re-checking.
+function _autoAdjustGamesForRow(row) {
+    if (!row) return;
+    const targets = row.dataset.shelfId ? [row] : Array.from(row.querySelectorAll(':scope > .shelf-split-side[data-shelf-id]'));
+    targets.forEach(el => _autoAdjustGamesNow(el));
+}
+
+async function _refillShelfGrid(shelfId, grid, limit) {
+    try {
+        const res = await fetch(`/api/refill-shelf/${shelfId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ exclude_appids: [], limit }),
+        });
+        const data = await res.json();
+        if (data.status !== 'success') return;
+        grid.innerHTML = data.games.map(g => {
+            const oc = OUTLINE_COLORS[String(g.appid)];
+            return `<div class="shelf-capsule-wrap"
+                 data-appid="${g.appid}"
+                 data-installed="${g.installed || 0}"
+                 data-name="${g.name.replace(/"/g,'&quot;')}"
+                 data-status="${(g.completion_status||'').replace(/"/g,'&quot;')}"
+                 data-platform="${(g.platform||'steam')}"
+                 ${launchClickAttr(g.appid)}${oc ? ` style="--outline-color:${oc}"` : ''}>
+                <div class="shelf-capsule-inner">
+                    <img src="/static/img/library/vertical/${g.appid}.jpg?v=${_imgV}"
+                         alt="${g.name.replace(/"/g,'&quot;')}"
+                         class="shelf-capsule" draggable="false"
+                         onload="_shelfImgLoad(this)"
+                         onerror="this.onerror=function(){_shelfNoArt(this)};this.src='https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.appid}/library_600x900.jpg';">
+                    <div class="no-art-name">${escHtml(g.name)}</div>
+                    ${renderEditButton(g.appid, window.EDIT_BUTTON)}
+                    ${renderCardBadges(g, window.CARD_BADGES)}
+                </div>
+            </div>`;
+        }).join('');
+        requestAnimationFrame(() => trimGrid(grid));
+    } catch (_) {}
+}
+
 // ── Drag-to-resize shelves ────────────────────────────────────────────────────
 // Idempotent -- called after every structural edit so newly-added rows/columns
 // get handles too, without double-adding them to rows that already have one.
@@ -981,6 +1059,7 @@ function _beginRowResize(row, handle, e) {
     const startVh = (row.getBoundingClientRect().height / window.innerHeight) * 100;
     handle.classList.add('resizing');
     document.body.style.cursor = 'ns-resize';
+    const pendingLimits = new Map();
 
     function onMove(ev) {
         const deltaVh = ((ev.clientY - startY) / window.innerHeight) * 100;
@@ -990,12 +1069,15 @@ function _beginRowResize(row, handle, e) {
         const input = row.querySelector(`.shelf-edit-bar[data-for="${sid}"] input[data-shelf-prop="row_height"]`);
         if (input) input.value = newVh;
         checkLayoutOverflow();
+        const targets = row.dataset.shelfId ? [row] : Array.from(row.querySelectorAll(':scope > .shelf-split-side[data-shelf-id]'));
+        targets.forEach(el => _autoAdjustGames(el, pendingLimits));
     }
     function onUp() {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         handle.classList.remove('resizing');
         document.body.style.cursor = '';
+        _commitAutoAdjustedLimits(pendingLimits);
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -1012,6 +1094,7 @@ function _beginColResize(sideA, sideB, handle, e) {
     const pxPerFlexUnit = totalWidth / ((shelfA.col_width || 10) + (shelfB.col_width || 10));
     handle.classList.add('resizing');
     document.body.style.cursor = 'ew-resize';
+    const pendingLimits = new Map();
 
     function onMove(ev) {
         const deltaPx = ev.clientX - startX;
@@ -1026,12 +1109,15 @@ function _beginColResize(sideA, sideB, handle, e) {
             const input = side.querySelector(`.shelf-edit-bar[data-for="${id}"] input[data-shelf-prop="col_width"]`);
             if (input) input.value = val;
         });
+        _autoAdjustGames(sideA, pendingLimits);
+        _autoAdjustGames(sideB, pendingLimits);
     }
     function onUp() {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         handle.classList.remove('resizing');
         document.body.style.cursor = '';
+        _commitAutoAdjustedLimits(pendingLimits);
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
@@ -1056,8 +1142,10 @@ function buildEditBarHTML(shelf, containerEl) {
         <label>Height</label>
         <input draggable="false" type="number" data-shelf-prop="row_height" min="5" max="90" value="${shelf.row_height||25}"
             onchange="updateShelfProp('${sid}','row_height',parseFloat(this.value));
-                      (this.closest('.shelf-split-row')||this.closest('.shelf')).style.height=this.value+'vh';
-                      checkLayoutOverflow();">` : '';
+                      const _row=this.closest('.shelf-split-row')||this.closest('.shelf');
+                      _row.style.height=this.value+'vh';
+                      checkLayoutOverflow();
+                      _autoAdjustGamesForRow(_row);">` : '';
 
     // Width: only inside split rows
     const colW = isSide ? `
@@ -1065,13 +1153,14 @@ function buildEditBarHTML(shelf, containerEl) {
         <label>Width</label>
         <input draggable="false" type="number" data-shelf-prop="col_width" min="0.5" max="20" step="0.5" value="${shelf.col_width||10}"
             onchange="updateShelfProp('${sid}','col_width',parseFloat(this.value));
-                      this.closest('.shelf-split-side').style.flex=this.value;">` : '';
+                      this.closest('.shelf-split-side').style.flex=this.value;
+                      _autoAdjustGamesForRow(this.closest('.shelf-split-row'));">` : '';
 
     // Max games
     const limitHTML = isClock ? '' : `
         <div class="edit-sep"></div>
         <label>Games</label>
-        <input draggable="false" type="number" min="1" max="200" value="${shelf.limit||10}"
+        <input draggable="false" type="number" data-shelf-prop="limit" min="1" max="200" value="${shelf.limit||10}"
             onchange="updateShelfProp('${sid}','limit',parseInt(this.value));">`;
 
     return `
@@ -1248,15 +1337,32 @@ function semSave() {
         s.hidden_platforms = [..._semHiddenPlatforms];
     }
 
-    // Height / Width / Games
+    // Height / Width / Games -- height/width changing counts as a resize, so
+    // it auto-adjusts Games the same as dragging would (overriding whatever
+    // was just typed into the Games field above, same "resize wins" rule).
+    let sizeChanged = false;
     if (document.getElementById('sem-height-wrap').style.display !== 'none') {
-        s.row_height = Math.max(5, Math.min(90, parseFloat(document.getElementById('sem-height').value) || 25));
+        const newHeight = Math.max(5, Math.min(90, parseFloat(document.getElementById('sem-height').value) || 25));
+        if (newHeight !== s.row_height) sizeChanged = true;
+        s.row_height = newHeight;
     }
     if (document.getElementById('sem-width-wrap').style.display !== 'none') {
-        s.col_width = Math.max(0.5, Math.min(20, parseFloat(document.getElementById('sem-width').value) || 10));
+        const newWidth = Math.max(0.5, Math.min(20, parseFloat(document.getElementById('sem-width').value) || 10));
+        if (newWidth !== s.col_width) sizeChanged = true;
+        s.col_width = newWidth;
     }
     if (document.getElementById('sem-limit-wrap').style.display !== 'none') {
         s.limit = Math.max(1, Math.min(200, parseInt(document.getElementById('sem-limit').value) || 10));
+    }
+
+    if (sizeChanged) {
+        const el = document.querySelector(`[data-shelf-id="${sid}"]`);
+        const row = el && (el.closest('.shelf-split-row') || el.closest('.shelf'));
+        if (row) {
+            row.style.height = s.row_height + 'vh';
+            if (el.classList.contains('shelf-split-side')) el.style.flex = s.col_width;
+            requestAnimationFrame(() => _autoAdjustGamesForRow(row));
+        }
     }
 
     semClose();
@@ -1298,6 +1404,9 @@ function _removeShelfNow(id) {
         if (remaining <= 1) row.remove(); else el.remove();
     } else { el.remove(); }
     buildAllEditBars();
+    // The remaining sides just got wider to fill the space -- but only if the
+    // row itself is still around (not dissolved along with the last member).
+    if (row && row.isConnected) requestAnimationFrame(() => _autoAdjustGamesForRow(row));
 }
 
 // ── Split / Unsplit ───────────────────────────────────────────────────────────
@@ -1581,6 +1690,7 @@ function addColumnToRow(sid) {
     const lastMemberIdx = _shelves.findLastIndex(s => s.split_group === group);
     _shelves.splice(lastMemberIdx + 1, 0, newShelf);
 
+    let splitRowEl = null;
     if (isNewGroup) {
         // Wrap the existing standalone .shelf in a new .shelf-split-row
         const existingEl = document.querySelector(`.shelf[data-shelf-id="${sid}"]`);
@@ -1596,14 +1706,18 @@ function addColumnToRow(sid) {
             existingEl.parentElement.insertBefore(splitRow, existingEl);
             splitRow.appendChild(existingEl);
             splitRow.appendChild(_makeSplitSideEl(newShelf));
+            splitRowEl = splitRow;
         }
     } else {
         const splitRow = document.querySelector(`.shelf-split-row[data-split-group="${group}"]`);
         if (splitRow) splitRow.appendChild(_makeSplitSideEl(newShelf));
+        splitRowEl = splitRow;
     }
 
     buildAllEditBars();
     initDragAndDrop();
+    // Every existing side just got narrower to make room for the new column.
+    requestAnimationFrame(() => _autoAdjustGamesForRow(splitRowEl));
 }
 
 // ── Add new shelf ─────────────────────────────────────────────────────────────

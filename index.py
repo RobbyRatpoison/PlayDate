@@ -366,7 +366,10 @@ def refill_shelf(shelf_id):
         if where is None:
             return jsonify({'status': 'success', 'games': []})
 
-        limit = int(shelf.get('limit', 10))
+        # Optional client-supplied override -- lets the layout editor's live
+        # drag-resize auto-adjust ask for more/fewer games than are currently
+        # saved, before the new limit has actually been persisted.
+        limit = max(1, min(200, int(data.get('limit') or shelf.get('limit', 10))))
         _cols = ("appid, name, installed, completion_status, platform, "
                  "total_achievements, unlocked_achievements, review_percentage, weighted_percentage, total_reviews, "
                  "hltb_main, hltb_extras, hltb_completionist")
