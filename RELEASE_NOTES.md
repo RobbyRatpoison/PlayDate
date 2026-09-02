@@ -1,7 +1,6 @@
 # Release Notes
 
-## v1.9.4
-
+## v1.9.4 - 2026-09-02
 ### Fixes
 
 - Several error messages no longer include raw exception text.

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.9.4 - 2026-09-02
+### Fixes
+
+- Several error messages no longer include raw exception text.
+- Fixed some EA App games being detected as installed after they were uninstalled (needs EA App plugin v1.1.2).
+
 ## v1.9.3 - 2026-08-31
 ### Fixes
 
