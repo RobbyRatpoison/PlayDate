@@ -129,6 +129,8 @@ People who've helped make PlayDate better - bug reports, feature suggestions, te
 - Epic Games plugin showing "launcher not installed"; login stuck on a blank page
 - PAGYWOSG/Monthly in a Month failing with an SSL certificate error
 - Suggested surfacing BLAEO/PAGYWOSG more prominently for new users (not implemented)
+- Home page shelves not scrolling, hiding any shelves that didn't fit on screen
+- A PAGYWOSG saved filter used as a Home shelf showing no games
 
 **samwise84**
 - Crash on the installer build after updating to v1.5.6, traced to a missing `meta_fetched` column

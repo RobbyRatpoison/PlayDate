@@ -2,18 +2,21 @@
 
 {% block extra_css %}
 <style>
-    .container { padding: 0; overflow: hidden; height: 100vh; }
+    /* height:100vh + overflow-y:auto so a shelf layout that fits the
+       viewport exactly never shows a scrollbar -- only real overflow
+       (more/taller shelves than fit) triggers one. */
+    .container { padding: 0; overflow-y: auto; height: 100vh; }
 
     .home-showcase {
         display: flex; flex-direction: column; gap: 0.5vh;
         padding: 5.5vh 0.8vw 0.3vh;
-        height: 100vh; box-sizing: border-box; overflow: hidden;
+        min-height: 100vh; box-sizing: border-box; overflow: visible;
     }
 
     /* ── Single shelf ── */
     .shelf {
         background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 4px; padding: 6px 10px 8px;
+        border-radius: 4px; padding: 6px 10px 8px; box-sizing: border-box;
         display: flex; flex-direction: column;
         overflow: hidden; min-height: 0; flex-shrink: 0; position: relative;
     }
@@ -102,6 +105,7 @@
     }
     .shelf-split-row {
         display: flex; flex-direction: row; gap: 0.4vw; flex-shrink: 0;
+        position: relative;
     }
     .shelf-split-side {
         display: flex; flex-direction: column;
@@ -111,13 +115,53 @@
     }
 
     /* ══════════ EDIT MODE ══════════ */
-    body.edit-mode .container { overflow-y: auto; height: auto; }
-    body.edit-mode .home-showcase { overflow: visible; height: auto; min-height: calc(100vh - 5.5vh); }
+    /* Deliberately no .container/.home-showcase overrides here -- editing uses the
+       exact same box model as the saved page (same top-chrome footprint, same
+       overflow rule) so what you see while editing is what you get after Save.
+       Anything edit-mode-only (edit bars, resize handles) must cost zero layout
+       space, which is why the border-width below stays 1px (only the style/color
+       changes) instead of the 2px it used to be. */
     body.edit-mode .shelf-capsule-wrap { pointer-events: none; }
     body.edit-mode .shelf-grid         { pointer-events: none; }
     body.edit-mode .shelf,
-    body.edit-mode .shelf-split-side { border: 2px dashed rgba(102,192,244,0.4) !important; }
-    body.edit-mode .shelf-split-row  { border: 2px dashed rgba(102,192,244,0.15); border-radius: 6px; padding: 4px; gap: 4px; }
+    body.edit-mode .shelf-split-side { border: 1px dashed rgba(102,192,244,0.4) !important; }
+
+    /* Drag-to-resize handles. Both cost ~0 layout space, so the row/column keeps
+       the exact height/width it was configured with, matching the saved page
+       exactly (see the EDIT MODE comment above). The row handle is absolutely
+       positioned rather than a flex child -- .shelf is a column flex container
+       but .shelf-split-row is a row flex container, so a real child would land
+       as another column in the latter instead of a bar across the bottom. The
+       column handle stays a real flex child (that direction always matches),
+       with negative margins cancelling its own box plus the one extra flex gap
+       its insertion adds between the two sides. */
+    .row-resize-handle {
+        position: absolute; left: 0; right: 0; bottom: -3px; height: 6px;
+        cursor: ns-resize; z-index: 60;
+    }
+    .row-resize-handle::after {
+        content: ''; position: absolute; left: 10px; right: 10px; top: 2px; height: 2px;
+        border-radius: 1px; background: rgba(102,192,244,0.2); transition: background 0.15s;
+    }
+    .row-resize-handle:hover::after, .row-resize-handle.resizing::after {
+        background: var(--accent); box-shadow: 0 0 4px var(--accent);
+    }
+    .col-resize-handle {
+        width: 6px; margin: 0 calc(-3px - 0.2vw); flex-shrink: 0; align-self: stretch;
+        cursor: ew-resize; position: relative; z-index: 60;
+    }
+    .col-resize-handle::after {
+        content: ''; position: absolute; top: 10px; bottom: 10px; left: 2px; width: 2px;
+        border-radius: 1px; background: rgba(102,192,244,0.2); transition: background 0.15s;
+    }
+    .col-resize-handle:hover::after, .col-resize-handle.resizing::after {
+        background: var(--accent); box-shadow: 0 0 4px var(--accent);
+    }
+
+    .layout-overflow-warning {
+        display: none; align-items: center; gap: 4px; white-space: nowrap;
+        color: var(--color-warning); font-size: 0.75rem; font-weight: 600;
+    }
 
     /* Edit toolbar replaces the nav bar — same position, same height */
     .edit-toolbar {
@@ -148,14 +192,16 @@
         padding: 3px 5px; border-radius: 4px; font-size: 0.78rem; width: 50px;
     }
     .shelf-edit-mini-btn {
-        background: none; border: 1px solid var(--border); color: var(--text-secondary);
+        background: var(--bg-surface); border: 1px solid rgba(255,255,255,0.2); color: var(--text-secondary);
         border-radius: 3px; padding: 2px 7px; font-size: 0.72rem;
+        font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
         cursor: pointer; white-space: nowrap; transition: all 0.15s;
     }
-    .shelf-edit-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .shelf-edit-mini-btn.danger { border-color: var(--color-danger); color: var(--text-danger); opacity: 0.7; }
-    .shelf-edit-mini-btn.danger:hover { border-color: var(--color-danger); color: var(--text-danger); opacity: 1; }
-    .shelf-edit-mini-btn.drag-handle { cursor: grab; }
+    .shelf-edit-mini-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--bg-surface); box-shadow: 0 0 6px rgba(102,192,244,0.4); }
+    .shelf-edit-mini-btn:active { filter: brightness(0.85); box-shadow: inset 0 1px 3px rgba(0,0,0,0.5); }
+    .shelf-edit-mini-btn.danger { border-color: var(--color-danger); color: var(--text-danger); opacity: 0.8; }
+    .shelf-edit-mini-btn.danger:hover { background: var(--color-danger); border-color: var(--color-danger); color: var(--text-bright); opacity: 1; box-shadow: 0 0 6px rgba(163,42,42,0.5); }
+    .shelf-edit-mini-btn.drag-handle { cursor: grab; text-transform: none; }
     .edit-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
 
     .shelf-sql-panel {
@@ -210,17 +256,8 @@
     .dedup-no-dedup { color: var(--border); font-size: 0.75rem; margin-left: auto; }
     #dedup-list li { justify-content: space-between; }
     #dedup-list .dedup-row-left { display:flex; align-items:center; gap:8px; pointer-events:none; }
-    #dedup-list .dedup-toggle { display:flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--text-secondary); flex-shrink:0; cursor:pointer; user-select:none; }
-    #dedup-list .dedup-toggle input { width:auto; margin:0; cursor:pointer; }
-
-    .add-shelf-btn {
-        border: 2px dashed rgba(102,192,244,0.3); background: transparent;
-        color: rgba(102,192,244,0.5); border-radius: 6px; padding: 10px;
-        cursor: pointer; font-size: 0.85rem; font-weight: bold; letter-spacing: 1px;
-        transition: all 0.2s; width: 100%; margin-top: 4px; display: none;
-    }
-    body.edit-mode .add-shelf-btn { display: block; }
-    .add-shelf-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .dedup-toggle { display:flex; align-items:center; gap:5px; font-size:0.75rem; color:var(--text-secondary); flex-shrink:0; cursor:pointer; user-select:none; }
+    .dedup-toggle input { width:auto; margin:0; cursor:pointer; }
 
     .shelf-edit-mini-btn.plat-on { border-color: var(--accent); color: var(--accent); }
     .shelf-edit-mini-btn.plat-off { opacity: 0.35; }
@@ -288,6 +325,7 @@
     <button class="nav-btn" onclick="resetLayout()" style="border-color:var(--color-danger);color:var(--text-danger);"
         onmouseover="this.style.background='var(--color-danger)';this.style.color='var(--text-bright)'"
         onmouseout="this.style.background='';this.style.color='var(--text-danger)'">↺ RESET</button>
+    <span id="layout-overflow-warning" class="layout-overflow-warning">⚠ Doesn't fit on one screen — Home will scroll</span>
     <button class="nav-btn" onclick="exitEditMode()" style="margin-left:auto;">✕ CANCEL</button>
 </div>
 
@@ -447,7 +485,6 @@
     </div>
     {% endif %}
 {% endfor %}
-    <button class="add-shelf-btn" onclick="addNewShelf()">＋ ADD SHELF</button>
 </div>
 
 <!-- Split picker modal -->
@@ -473,6 +510,10 @@
     <h3>Shelf Priority Order</h3>
     <p>Drag to set which shelves claim games first when the same game qualifies for multiple shelves. Toggle the switch to exclude a shelf from this logic entirely.</p>
     <ul id="dedup-list"></ul>
+    <label class="dedup-toggle" style="margin-bottom:14px;" data-modal-row="2">
+        <input type="checkbox" id="auto-hide-new-platforms-toggle" onchange="_autoHideNewPlatforms=this.checked;">
+        Auto-hide new platforms on Home shelves
+    </label>
     <div style="display:flex;gap:8px;">
         <button class="nav-btn" data-modal-row="0" style="flex:1;" onclick="saveDedupOrder()">Apply</button>
         <button class="nav-btn" data-modal-row="0" style="flex:1;" onclick="closeDedupPanel()">Cancel</button>
@@ -579,6 +620,7 @@ async function shuffleShelf(shelfId, labelEl) {
 
 let _shelves = {{ all_shelves_config | tojson }};
 const _availablePlatforms = {{ available_platforms | tojson }};
+let _autoHideNewPlatforms = {{ state.get('auto_hide_new_shelf_platforms', True) | tojson }};
 const _builtinFilters = {{ filter_options | tojson }};
 const _savedFilters   = {{ saved_filters | tojson }};
 const OUTLINE_COLORS  = {{ outline_colors | tojson }};
@@ -825,6 +867,130 @@ function buildAllEditBars() {
         if (!bar) return;
         bar.innerHTML = buildEditBarHTML(shelf, el);
     });
+    attachResizeHandles();
+    checkLayoutOverflow();
+}
+
+// ── Overflow warning ──────────────────────────────────────────────────────────
+// Compares against the real viewport height rather than any container's own
+// box, since editing uses the identical box model as the saved page (see the
+// EDIT MODE CSS comment) -- this always answers "will the saved page scroll".
+function checkLayoutOverflow() {
+    const inner = document.getElementById('shelf-container');
+    const warn  = document.getElementById('layout-overflow-warning');
+    if (!inner || !warn) return;
+    let contentBottom = 0;
+    Array.from(inner.children).forEach(ch => {
+        const r = ch.getBoundingClientRect();
+        if (r.bottom > contentBottom) contentBottom = r.bottom;
+    });
+    warn.style.display = (contentBottom - window.innerHeight > 1) ? 'inline-flex' : 'none';
+}
+window.addEventListener('resize', () => {
+    if (document.body.classList.contains('edit-mode')) checkLayoutOverflow();
+});
+
+// ── Drag-to-resize shelves ────────────────────────────────────────────────────
+// Idempotent -- called after every structural edit so newly-added rows/columns
+// get handles too, without double-adding them to rows that already have one.
+function attachResizeHandles() {
+    const container = document.getElementById('shelf-container');
+    Array.from(container.children).forEach(row => {
+        if (!row.querySelector(':scope > .row-resize-handle')) {
+            const rh = document.createElement('div');
+            rh.className = 'row-resize-handle';
+            rh.title = 'Drag to resize height';
+            rh.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); _beginRowResize(row, rh, e); });
+            row.appendChild(rh);
+        }
+
+        if (row.classList.contains('shelf-split-row')) {
+            const sides = Array.from(row.querySelectorAll(':scope > .shelf-split-side'));
+            for (let i = 0; i < sides.length - 1; i++) {
+                const a = sides[i], b = sides[i + 1];
+                if (a.nextElementSibling === b) {
+                    const ch = document.createElement('div');
+                    ch.className = 'col-resize-handle';
+                    ch.title = 'Drag to resize width';
+                    ch.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); _beginColResize(a, b, ch, e); });
+                    row.insertBefore(ch, b);
+                }
+            }
+        }
+    });
+}
+
+function _rowShelfId(row) {
+    // A split row's rendered height comes from its first member (see index.py) --
+    // the Height control in the edit bar only appears on that first member too.
+    if (row.classList.contains('shelf-split-row')) {
+        const first = row.querySelector(':scope > .shelf-split-side[data-shelf-id]');
+        return first ? first.dataset.shelfId : null;
+    }
+    return row.dataset.shelfId || null;
+}
+
+function _beginRowResize(row, handle, e) {
+    const sid = _rowShelfId(row);
+    if (!sid) return;
+    const startY = e.clientY;
+    const startVh = (row.getBoundingClientRect().height / window.innerHeight) * 100;
+    handle.classList.add('resizing');
+    document.body.style.cursor = 'ns-resize';
+
+    function onMove(ev) {
+        const deltaVh = ((ev.clientY - startY) / window.innerHeight) * 100;
+        const newVh = Math.max(5, Math.min(90, Math.round((startVh + deltaVh) * 10) / 10));
+        row.style.height = newVh + 'vh';
+        updateShelfProp(sid, 'row_height', newVh);
+        const input = row.querySelector(`.shelf-edit-bar[data-for="${sid}"] input[data-shelf-prop="row_height"]`);
+        if (input) input.value = newVh;
+        checkLayoutOverflow();
+    }
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('resizing');
+        document.body.style.cursor = '';
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+}
+
+function _beginColResize(sideA, sideB, handle, e) {
+    const idA = sideA.dataset.shelfId, idB = sideB.dataset.shelfId;
+    const shelfA = _shelves.find(s => s.id === idA), shelfB = _shelves.find(s => s.id === idB);
+    if (!shelfA || !shelfB) return;
+    const startX = e.clientX;
+    const startWidthA = sideA.getBoundingClientRect().width;
+    const startWidthB = sideB.getBoundingClientRect().width;
+    const totalWidth = startWidthA + startWidthB;
+    const pxPerFlexUnit = totalWidth / ((shelfA.col_width || 2) + (shelfB.col_width || 2));
+    handle.classList.add('resizing');
+    document.body.style.cursor = 'ew-resize';
+
+    function onMove(ev) {
+        const deltaPx = ev.clientX - startX;
+        const newWidthA = Math.max(20, Math.min(totalWidth - 20, startWidthA + deltaPx));
+        const newWidthB = totalWidth - newWidthA;
+        const newColA = Math.max(0.5, Math.min(20, Math.round((newWidthA / pxPerFlexUnit) * 2) / 2));
+        const newColB = Math.max(0.5, Math.min(20, Math.round((newWidthB / pxPerFlexUnit) * 2) / 2));
+        sideA.style.flex = newColA; sideB.style.flex = newColB;
+        updateShelfProp(idA, 'col_width', newColA);
+        updateShelfProp(idB, 'col_width', newColB);
+        [[sideA, idA, newColA], [sideB, idB, newColB]].forEach(([side, id, val]) => {
+            const input = side.querySelector(`.shelf-edit-bar[data-for="${id}"] input[data-shelf-prop="col_width"]`);
+            if (input) input.value = val;
+        });
+    }
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('resizing');
+        document.body.style.cursor = '';
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
 }
 
 function buildEditBarHTML(shelf, containerEl) {
@@ -839,15 +1005,16 @@ function buildEditBarHTML(shelf, containerEl) {
     const heightHTML = (!isSide || isFirstInSplit) ? `
         <div class="edit-sep"></div>
         <label>Height</label>
-        <input draggable="false" type="number" min="5" max="90" value="${shelf.row_height||25}"
+        <input draggable="false" type="number" data-shelf-prop="row_height" min="5" max="90" value="${shelf.row_height||25}"
             onchange="updateShelfProp('${sid}','row_height',parseFloat(this.value));
-                      (this.closest('.shelf-split-row')||this.closest('.shelf')).style.height=this.value+'vh';">` : '';
+                      (this.closest('.shelf-split-row')||this.closest('.shelf')).style.height=this.value+'vh';
+                      checkLayoutOverflow();">` : '';
 
     // Width: only inside split rows
     const colW = isSide ? `
         <div class="edit-sep"></div>
         <label>Width</label>
-        <input draggable="false" type="number" min="0.5" max="20" step="0.5" value="${shelf.col_width||2}"
+        <input draggable="false" type="number" data-shelf-prop="col_width" min="0.5" max="20" step="0.5" value="${shelf.col_width||2}"
             onchange="updateShelfProp('${sid}','col_width',parseFloat(this.value));
                       this.closest('.shelf-split-side').style.flex=this.value;">` : '';
 
@@ -1322,7 +1489,6 @@ function addNewShelf() {
                  dedup:true, dedup_priority:_shelves.length, visible:true };
     _shelves.push(ns);
     const container = document.getElementById('shelf-container');
-    const addBtn = container.querySelector('.add-shelf-btn');
     const el = document.createElement('div');
     el.className = 'shelf'; el.style.height = '25vh';
     el.dataset.shelfId = id; el.dataset.visible = 'true'; el.draggable = false;
@@ -1338,7 +1504,7 @@ function addNewShelf() {
         <div class="shelf-label" id="label-${id}">NEW SHELF</div>
         <div class="shelf-grid"><span style="color:var(--text-secondary);font-size:0.8rem;margin:auto;">Set a query and save to populate</span></div>
     `;
-    container.insertBefore(el, addBtn);
+    container.appendChild(el);
     buildAllEditBars(); initDragAndDrop();
     el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
@@ -1350,7 +1516,6 @@ let _dragHoverEl = null;
 function initDragAndDrop() {
     const container = document.getElementById('shelf-container');
     Array.from(container.children).forEach(child => {
-        if (child.classList.contains('add-shelf-btn')) return;
         child.removeEventListener('mousedown', _shelfMouseDown);
         child.addEventListener('mousedown', _shelfMouseDown);
     });
@@ -1371,8 +1536,7 @@ function _shelfBeginDrag(shelf) {
     document.body.classList.add('dragging-shelf');
 
     function onMove(e) {
-        const rows = Array.from(container.children).filter(c =>
-            !c.classList.contains('add-shelf-btn') && c !== shelf);
+        const rows = Array.from(container.children).filter(c => c !== shelf);
         container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
         _dragHoverEl = null;
         // Use elementFromPoint for reliable hit detection regardless of scroll/transform
@@ -1395,7 +1559,7 @@ function _shelfBeginDrag(shelf) {
         document.body.classList.remove('dragging-shelf');
         container.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
         if (_dragHoverEl && _dragHoverEl !== shelf) {
-            const kids = Array.from(container.children).filter(c => !c.classList.contains('add-shelf-btn'));
+            const kids = Array.from(container.children);
             if (kids.indexOf(shelf) < kids.indexOf(_dragHoverEl))
                 container.insertBefore(shelf, _dragHoverEl.nextSibling);
             else
@@ -1414,14 +1578,12 @@ function _shelfBeginDrag(shelf) {
 function getShelfRow(el) {
     const container = document.getElementById('shelf-container');
     while (el && el.parentElement !== container) el = el.parentElement;
-    if (el && !el.classList.contains('add-shelf-btn')) return el;
-    return null;
+    return el || null;
 }
 
 function syncShelvesOrderFromDOM() {
     const ordered = [];
     Array.from(document.getElementById('shelf-container').children).forEach(child => {
-        if (child.classList.contains('add-shelf-btn')) return;
         const ids = child.dataset.shelfId
             ? [child.dataset.shelfId]
             : Array.from(child.querySelectorAll('[data-shelf-id]')).map(el=>el.dataset.shelfId);
@@ -1461,6 +1623,7 @@ function openDedupPanel() {
         });
         list.appendChild(li);
     });
+    document.getElementById('auto-hide-new-platforms-toggle').checked = _autoHideNewPlatforms;
     document.getElementById('dedup-panel').style.display = 'block';
     document.getElementById('dedup-overlay').style.display = 'block';
 }
@@ -1523,6 +1686,10 @@ function saveDedupOrder() {
         const s = _shelves.find(sh=>sh.id===li.dataset.shelfId);
         if (s) s.dedup_priority = i;
     });
+    fetch('/api/update_state', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({auto_hide_new_shelf_platforms: _autoHideNewPlatforms})
+    }).catch(() => {});
     closeDedupPanel();
 }
 function closeDedupPanel() {

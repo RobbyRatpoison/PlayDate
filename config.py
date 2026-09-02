@@ -1101,6 +1101,12 @@ def save_state(updates):
             import re as _re
             _plat_re = _re.compile(r'^[a-z][a-z0-9_]*$')
             state["hidden_platforms"] = [p for p in (updates["hidden_platforms"] or []) if _plat_re.match(p or '')]
+        if "shelf_seen_platforms" in updates:
+            import re as _re
+            _plat_re = _re.compile(r'^[a-z][a-z0-9_]*$')
+            state["shelf_seen_platforms"] = [p for p in (updates["shelf_seen_platforms"] or []) if _plat_re.match(p or '')]
+        if "auto_hide_new_shelf_platforms" in updates:
+            state["auto_hide_new_shelf_platforms"] = bool(updates["auto_hide_new_shelf_platforms"])
         if "pagywosg_comp_defaults" in updates:
             _valid_cs = {'Never Played', 'Unfinished', 'Beaten', 'Completed', "Won't Play"}
             state["pagywosg_comp_defaults"] = [s for s in (updates["pagywosg_comp_defaults"] or []) if s in _valid_cs]

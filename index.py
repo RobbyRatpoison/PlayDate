@@ -3,7 +3,7 @@ import re
 import sqlite3
 import time
 from flask import Blueprint, jsonify, render_template, request
-from config import load_state, get_default_shelves, BUILTIN_FILTERS, api_error
+from config import load_state, save_state, get_default_shelves, BUILTIN_FILTERS, api_error
 from database import get_db
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,37 @@ SORT_COLUMNS = {
 }
 
 from library import is_safe_sql, build_tree_sql, VIRTUAL_SORT_COLS
+
+
+def _apply_new_platform_defaults(state, shelves_config, available_platforms):
+    """A platform that wasn't in the library before (e.g. a freshly installed plugin's
+    games just synced in) defaults to hidden on every existing shelf instead of
+    silently appearing on curated shelves that were never built with it in mind.
+    Opt-out via the "Auto-hide new platforms" toggle in the Shelf Priority panel.
+    Mutates shelves_config's hidden_platforms in place so it applies immediately."""
+    if 'shelf_seen_platforms' not in state:
+        # First run of this feature -- adopt the current library as the baseline
+        # rather than retroactively hiding platforms that were already showing.
+        save_state({'shelf_seen_platforms': available_platforms})
+        return
+
+    seen = set(state.get('shelf_seen_platforms', []))
+    new_platforms = [p for p in available_platforms if p not in seen]
+    if not new_platforms:
+        return
+
+    updates = {'shelf_seen_platforms': sorted(seen | set(new_platforms))}
+    if state.get('auto_hide_new_shelf_platforms', True):
+        changed = False
+        for s in shelves_config:
+            hp = set(s.get('hidden_platforms') or [])
+            if any(p not in hp for p in new_platforms):
+                hp.update(new_platforms)
+                s['hidden_platforms'] = sorted(hp)
+                changed = True
+        if changed:
+            updates['shelves'] = shelves_config
+    save_state(updates)
 
 
 def achievement_bucket(unlocked, total):
@@ -126,8 +157,22 @@ def index():
     db = get_db()
     db.row_factory = sqlite3.Row
 
+    from plugins import platform_labels as _platform_labels
+    _plat_order = list(_platform_labels().keys())
+    try:
+        _plat_rows = db.execute(
+            "SELECT DISTINCT platform as p FROM games ORDER BY p"
+        ).fetchall()
+        available_platforms = sorted(
+            {r['p'] for r in _plat_rows},
+            key=lambda p: _plat_order.index(p) if p in _plat_order else 99
+        )
+    except Exception:
+        available_platforms = ['steam']
+
     saved_filters = state.get('saved_filters', {})
     shelves_config = state.get('shelves') or get_default_shelves()
+    _apply_new_platform_defaults(state, shelves_config, available_platforms)
     visible_shelves = [s for s in shelves_config if s.get('visible', True)]
 
     # Fetch in dedup-priority order
@@ -192,19 +237,6 @@ def index():
             achievement_counts[bucket] = achievement_counts.get(bucket, 0) + 1
     except Exception:
         pass
-
-    from plugins import platform_labels as _platform_labels
-    _plat_order = list(_platform_labels().keys())
-    try:
-        _plat_rows = db.execute(
-            "SELECT DISTINCT platform as p FROM games ORDER BY p"
-        ).fetchall()
-        available_platforms = sorted(
-            {r['p'] for r in _plat_rows},
-            key=lambda p: _plat_order.index(p) if p in _plat_order else 99
-        )
-    except Exception:
-        available_platforms = ['steam']
 
     db.close()
 
