@@ -865,17 +865,22 @@ function enforceCardRatio() {
     // Measure actual result-info height rather than hardcoding so rem scaling is respected.
     const cardsTop = cards.getBoundingClientRect().top;
     const infoH    = document.querySelector('.result-info')?.offsetHeight || 102;
-    const availH   = window.innerHeight - cardsTop - (window.innerHeight * 0.05) - 8 - infoH;
+    // Floor at a positive minimum: a taller nav/controls block (e.g. a high UI
+    // scale on a short viewport like the Steam Deck) can drive this to zero or
+    // negative, and a negative width is silently ignored by the browser -- the
+    // cards then fall back to their content width and a long game title
+    // (white-space: nowrap) blows the row off the side of the page.
+    const availH   = Math.max(120, window.innerHeight - cardsTop - (window.innerHeight * 0.05) - 8 - infoH);
 
     // Step 1: size from width (2:3 ratio)
     const totalGaps = gap * (n - 1);
-    let cardW = Math.floor((availW - totalGaps) / n);
+    let cardW = Math.max(1, Math.floor((availW - totalGaps) / n));
     let artH  = Math.floor(cardW * 3 / 2);
 
     // Step 2: clamp to available height
     if (artH > availH) {
         artH  = availH;
-        cardW = Math.floor(artH * 2 / 3);
+        cardW = Math.max(1, Math.floor(artH * 2 / 3));
     }
 
     cardEls.forEach(c => {
