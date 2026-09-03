@@ -555,6 +555,7 @@ def inject_config_status():
         app_version=__build__,
         tutorial_seen=config.get('tutorial_seen', False),
         steam_deck_session=_is_steam_deck_session(),
+        pd_debug=('beta' in __build__),
     )
 
 

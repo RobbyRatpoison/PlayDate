@@ -298,6 +298,7 @@
 
     .result-card {
         flex-shrink: 0;
+        box-sizing: border-box;
         background: #1a2332;
         border: 1px solid #2a3f55;
         border-radius: 0.625rem;
@@ -399,6 +400,7 @@
     .toggle-switch.gamepad-focus { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
     .bound-input.gamepad-focus { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }
     #pick-filter-link.gamepad-focus { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; color: var(--accent) !important; }
+    .weighted-panel-header.gamepad-focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 
     /* ── Bound inputs ── */
     .slider-bound-group { display: flex; flex-direction: column; gap: 0.3125rem; }
@@ -856,21 +858,29 @@ function enforceCardRatio() {
     const n   = cardEls.length;
     const gap = 14;
 
-    // Padding on each side (1.5vw) already in CSS — subtract from width
-    const sidePad = window.innerWidth * 0.03;
-    const availW  = document.documentElement.clientWidth - sidePad;
+    // All measurements MUST be in the same space as getBoundingClientRect()
+    // and element.style.width -- i.e. CSS pixels. The UI-scale setting applies
+    // `zoom` to <html> (base.html), and under zoom window.innerWidth/Height
+    // stay in device pixels while clientWidth/Height and getBoundingClientRect
+    // report CSS pixels. Mixing the two (the old code did) overshot the card
+    // width at any scale above 100%, so the row ran off both sides of the
+    // viewport. documentElement.clientWidth/Height keeps everything CSS-px.
+    const viewW = document.documentElement.clientWidth;
+    const viewH = document.documentElement.clientHeight;
 
-    // Available height: distance from where cards start to bottom of the viewport.
-    // Using window.innerHeight avoids phantom space from the container's scrollbar track.
-    // Measure actual result-info height rather than hardcoding so rem scaling is respected.
+    // Padding on each side (1.5vw) already in CSS — subtract from width
+    const availW = viewW - viewW * 0.03;
+
+    // Available height: from where the cards start to the bottom of the viewport.
+    // Measure the real result-info height rather than hardcoding so scaling is respected.
     const cardsTop = cards.getBoundingClientRect().top;
     const infoH    = document.querySelector('.result-info')?.offsetHeight || 102;
-    // Floor at a positive minimum: a taller nav/controls block (e.g. a high UI
-    // scale on a short viewport like the Steam Deck) can drive this to zero or
-    // negative, and a negative width is silently ignored by the browser -- the
-    // cards then fall back to their content width and a long game title
+    // Floor at a positive minimum: a taller nav/controls block (a high UI scale
+    // on a short viewport like the Steam Deck) can drive this to zero or
+    // negative, and a negative style.width is silently ignored by the browser --
+    // the cards then fall back to their content width and a long game title
     // (white-space: nowrap) blows the row off the side of the page.
-    const availH   = Math.max(120, window.innerHeight - cardsTop - (window.innerHeight * 0.05) - 8 - infoH);
+    const availH = Math.max(120, viewH - cardsTop - viewH * 0.05 - 8 - infoH);
 
     // Step 1: size from width (2:3 ratio)
     const totalGaps = gap * (n - 1);

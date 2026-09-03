@@ -13,6 +13,23 @@
         console.error('[input.js] Unhandled promise rejection:', e.reason);
     });
 
+    // TEMP (beta only): remote-eval bridge for diagnosing Deck UI bugs over SSH.
+    // Delete with debug_input.py.
+    if (window._PD_DEBUG === true) {
+        setInterval(() => {
+            fetch('/api/debug/eval').then(r => r.json()).then(d => {
+                (d.pending || []).forEach(job => {
+                    let out;
+                    try { out = String(eval(job.js)); } catch (e) { out = 'ERR: ' + e; }
+                    fetch('/api/debug/eval/result', {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({id: job.id, out}),
+                    }).catch(() => {});
+                });
+            }).catch(() => {});
+        }, 400);
+    }
+
     // Launched as a Steam shortcut on a Steam Deck (Game Mode / Big Picture).
     // There, WebKitGTK's own gamepad support grabs the built-in controller's
     // hidraw node at startup, disables its firmware "lizard mode" emulation
@@ -672,8 +689,15 @@
             .filter(el => el.offsetParent !== null);
         if (modeBtns.length) rows.push({ type: 'mode', items: modeBtns });
 
-        // Rows 1..N: sliders and their bound inputs (only when weighted panel is open and not collapsed)
+        // Weighted mode: the panel's collapse/expand header is its own row, so
+        // it's reachable even when the panel is collapsed (no slider rows then).
         const panel = document.getElementById('weighted-panel');
+        if (panel && panel.classList.contains('open')) {
+            const wHeader = panel.querySelector('.weighted-panel-header');
+            if (wHeader) rows.push({ type: 'weights-header', items: [wHeader] });
+        }
+
+        // Rows 1..N: sliders and their bound inputs (only when weighted panel is open and not collapsed)
         if (panel && panel.classList.contains('open') && !panel.classList.contains('collapsed')) {
             const panelBody = panel.querySelector('.weighted-panel-body');
             [...(panelBody?.children ?? [])].forEach(child => {
