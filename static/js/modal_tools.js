@@ -4476,6 +4476,31 @@ async function _manageLoadLauncherConfig(id) {
     } catch(_) {}
 }
 
+// Inner HTML for a plugin card's launcher badge (wrapped by _renderPluginsList
+// in a #plugin-launcher-badge-<id> div so the Manage sub-modal can refresh it
+// in place -- otherwise the card behind the sub-modal keeps a stale status
+// until the Plugins modal is closed and reopened).
+function _launcherBadgeInner(ls) {
+    if (!ls) return `<span style="color:#ffa500;">&#9888; Launcher not yet checked</span>`;
+    if (ls.available) return `<span style="color:#6dc46d;">&#10003; Launcher ready</span>`;
+    return `<span style="color:#ffa500;">&#9888; ${escHtml(ls.detail || 'Launcher unavailable')}</span>`;
+}
+
+function _setLauncherBadge(id, ls) {
+    const el = document.getElementById(`plugin-launcher-badge-${id}`);
+    if (el) el.innerHTML = _launcherBadgeInner(ls);
+}
+
+// Re-run the server-side launcher check and patch the card badge with the result.
+async function _refreshLauncherBadge(id) {
+    try {
+        const r = await fetch(`/api/plugins/launcher-status/${encodeURIComponent(id)}`, {method: 'POST'});
+        const d = await r.json();
+        if (d.status === 'success') { _setLauncherBadge(id, d.launcher_status); return d.launcher_status; }
+    } catch (_) {}
+    return null;
+}
+
 async function _manageSaveLauncher(id) {
     const wine_bin = document.getElementById(`${id}-manage-launcher-wine-bin`)?.value.trim();
     const prefix   = document.getElementById(`${id}-manage-launcher-prefix`)?.value.trim();
@@ -4493,6 +4518,7 @@ async function _manageSaveLauncher(id) {
             msgEl.textContent   = d.status === 'success' ? 'Saved.' : (d.message || 'Save failed.');
             setTimeout(() => { msgEl.style.display = 'none'; }, 2000);
         }
+        if (d.status === 'success') _refreshLauncherBadge(id);
     } catch(e) {
         if (msgEl) { msgEl.style.display = ''; msgEl.style.color = '#c74747'; msgEl.textContent = 'Save failed.'; }
     }
@@ -4536,7 +4562,7 @@ async function _manageLauncherRemove(id) {
                 const prefixEl  = document.getElementById(`${id}-manage-launcher-prefix`);
                 if (wineBinEl) wineBinEl.value = '';
                 if (prefixEl)  prefixEl.value  = '';
-                fetch(`/api/plugins/launcher-status/${encodeURIComponent(id)}`, {method: 'POST'}).catch(() => {});
+                _refreshLauncherBadge(id);
             }
         } catch(e) {
             if (msgEl) { msgEl.style.display = ''; msgEl.style.color = '#c74747'; msgEl.textContent = `Error: ${e.message}`; }
@@ -4550,11 +4576,14 @@ async function _manageRecheckLauncher(id) {
     try {
         const r = await fetch(`/api/plugins/launcher-status/${encodeURIComponent(id)}`, {method: 'POST'});
         const d = await r.json();
-        if (msgEl && d.status === 'success') {
+        if (d.status === 'success') {
             const ls = d.launcher_status;
-            msgEl.style.display = '';
-            msgEl.style.color   = ls.available ? '#6dc46d' : '#ffa500';
-            msgEl.textContent   = ls.available ? 'Launcher ready.' : (ls.detail || 'Launcher unavailable.');
+            _setLauncherBadge(id, ls);
+            if (msgEl) {
+                msgEl.style.display = '';
+                msgEl.style.color   = ls.available ? '#6dc46d' : '#ffa500';
+                msgEl.textContent   = ls.available ? 'Launcher ready.' : (ls.detail || 'Launcher unavailable.');
+            }
         }
     } catch(e) {
         if (msgEl) { msgEl.style.display = ''; msgEl.style.color = '#c74747'; msgEl.textContent = 'Check failed.'; }
@@ -5008,13 +5037,7 @@ async function _renderPluginsList() {
             const lstatus = launcherStatus[p.platform];
             let launcherBadge = '';
             if (needsLauncher) {
-                if (!lstatus) {
-                    launcherBadge = `<div style="margin-top:6px;font-size:0.78rem;color:#ffa500;">&#9888; Launcher not yet checked</div>`;
-                } else if (lstatus.available) {
-                    launcherBadge = `<div style="margin-top:6px;font-size:0.78rem;color:#6dc46d;">&#10003; Launcher ready</div>`;
-                } else {
-                    launcherBadge = `<div style="margin-top:6px;font-size:0.78rem;color:#ffa500;">&#9888; ${escHtml(lstatus.detail || 'Launcher unavailable')}</div>`;
-                }
+                launcherBadge = `<div id="plugin-launcher-badge-${escHtml(p.id)}" style="margin-top:6px;font-size:0.78rem;">${_launcherBadgeInner(lstatus)}</div>`;
             }
             if (p.manage_ui) _manageSpecs[p.id] = {name: p.name, spec: p.manage_ui};
             const manageBtn = p.manage_ui
