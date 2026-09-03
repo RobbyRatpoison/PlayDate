@@ -1599,6 +1599,64 @@ if __name__ == '__main__':
     _fix_window_role_and_icon(window)
     _setup_focus_handler(window)
 
+    # 6b. Steam Deck: read the gamepad ourselves off Steam's virtual evdev pad
+    #     and feed it to the page as window._pdPad. WebKit's own gamepad path
+    #     is blocked from the built-in controller's hidraw here (see
+    #     flatpak/libnohidraw.c) so it can't fight Steam Input -- which also
+    #     means its Gamepad API sees nothing, so input.js reads _pdPad instead.
+    try:
+        from config import _is_steam_deck_session
+        if _is_steam_deck_session():
+            import json as _json
+            from gi.repository import GLib as _GPGLib
+            from gamepad_reader import GamepadReader
+            _gp_wk = [None]
+            _gp_pending = {'state': None, 'scheduled': False}
+            _gp_lock = threading.Lock()
+
+            def _gp_flush():
+                with _gp_lock:
+                    st = _gp_pending['state']
+                    _gp_pending['scheduled'] = False
+                if st is None:
+                    return False
+                wk = _gp_wk[0]
+                if wk is None:
+                    wk = _gp_wk[0] = _find_webkit_in_widget(getattr(window, 'native', None))
+                js = 'window._pdPad = %s;' % _json.dumps(st)
+                try:
+                    if wk is not None:
+                        wk.evaluate_javascript(js, len(js), None, None, None, None)
+                    else:
+                        window.evaluate_js(js)
+                except Exception:
+                    pass
+                return False
+
+            def _push_pad(state):
+                # Called from the reader thread. Coalesce bursts into a single
+                # main-loop callback that always flushes the newest state.
+                with _gp_lock:
+                    _gp_pending['state'] = state
+                    if _gp_pending['scheduled']:
+                        return
+                    _gp_pending['scheduled'] = True
+                _GPGLib.idle_add(_gp_flush)
+
+            _gp_reader = GamepadReader(_push_pad)
+
+            def _start_gp_reader():
+                if not _gp_reader.is_alive():
+                    try:
+                        _gp_reader.start()
+                    except RuntimeError:
+                        pass  # already started (page reload fires 'loaded' again)
+
+            window.events.loaded += _start_gp_reader
+            log.info("Steam Deck session: evdev gamepad reader armed")
+    except Exception as e:
+        log.warning(f"Gamepad reader setup failed: {e}")
+
     # 7. Start webview event loop (icon= sets _NET_WM_ICON via pywebview's renderer)
     log.info("Launching PlayDate window")
     _icon = ICON_PATH if os.path.exists(ICON_PATH) else None

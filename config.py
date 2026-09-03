@@ -29,7 +29,7 @@ def api_error(message, status=500, *, exc=None, log_label=None):
         log.error("%s: %s", log_label or message, exc, exc_info=True)
     return jsonify({"status": "error", "message": message}), status
 
-__version__ = "1.10.0"
+__version__ = "1.10.1"
 # Full tag this build came from (e.g. "1.6.5-beta.2"), overwritten by CI —
 # __version__ above is always the bare X.Y.Z (stripped of any -beta/-rc
 # suffix, since Inno Setup/display code assume that), so it alone can't tell
@@ -554,7 +554,26 @@ def inject_config_status():
         platform_priority=_active_platform_priority(state),
         app_version=__build__,
         tutorial_seen=config.get('tutorial_seen', False),
+        steam_deck_session=_is_steam_deck_session(),
     )
+
+
+def _is_steam_deck_session():
+    """
+    True when PlayDate was launched as a Steam shortcut on a Steam Deck
+    (Game Mode or Big Picture). There, WebKitGTK's own gamepad support
+    grabs the built-in controller's hidraw node at startup, disables its
+    firmware lizard-mode emulation and fights Steam Input over it (doubled
+    / dropped input in the Steam overlay and library). On this path the
+    hidraw node is blocked (flatpak/libnohidraw.c), input.js never touches
+    the Gamepad API, and gamepad_reader.py reads Steam's virtual pad via
+    evdev instead. `SteamDeck` and `SteamAppId` are both set by Steam in
+    the launched process env; `PD_FORCE_DECK_SESSION=1` forces it for
+    testing off-Deck.
+    """
+    if os.environ.get('PD_FORCE_DECK_SESSION') == '1':
+        return True
+    return os.environ.get('SteamDeck') == '1' and bool(os.environ.get('SteamAppId'))
 
 def load_config():
     if is_configured():

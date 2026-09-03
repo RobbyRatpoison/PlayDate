@@ -13,6 +13,46 @@
         console.error('[input.js] Unhandled promise rejection:', e.reason);
     });
 
+    // Launched as a Steam shortcut on a Steam Deck (Game Mode / Big Picture).
+    // There, WebKitGTK's own gamepad support grabs the built-in controller's
+    // hidraw node at startup, disables its firmware "lizard mode" emulation
+    // and fights Steam Input over it -- doubled / dropped input in the Steam
+    // overlay and library. On that path the hidraw node is blocked
+    // (flatpak/libnohidraw.c), this file never touches the Gamepad API (see
+    // the poll-loop startup below), and main.py's gamepad_reader.py feeds
+    // Steam's virtual pad in as window._pdPad. Every other platform --
+    // desktop Linux, Windows, macOS, a Deck app launched outside Steam --
+    // keeps the full Gamepad API path unchanged.
+    const _DECK_SESSION = window._STEAM_DECK_SESSION === true;
+
+    // Steam Deck/gamescope: while PlayDate is backgrounded (the Steam overlay,
+    // the Deck home screen, or an install popup is frontmost), Steam Input can
+    // still synthesize real keyboard events for controller buttons under some
+    // layouts — D-pad -> arrow keys, A -> Enter/Space, etc. Those are trusted
+    // DOM KeyboardEvents that never touch the Gamepad API, so _pollLoop's
+    // focus guard can't see them: the grid scrolls and buttons activate
+    // behind the overlay regardless. window._nativeWindowActive (set from
+    // gamescope's real focus atoms, see gamescope_focus.py) tells us when
+    // we're backgrounded; swallow navigation keys entirely in that state, in
+    // the capture phase before anything else -- including the browser's own
+    // default scroll/activation -- can act on them.
+    const _BG_SWALLOW_KEYS = new Set([
+        'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+        'Enter', ' ', 'Spacebar', 'PageUp', 'PageDown', 'Home', 'End', 'Tab',
+    ]);
+    window.addEventListener('keydown', e => {
+        if (window._nativeWindowActive === false && _BG_SWALLOW_KEYS.has(e.key)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    }, true);
+    window.addEventListener('keyup', e => {
+        if (window._nativeWindowActive === false && _BG_SWALLOW_KEYS.has(e.key)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    }, true);
+
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
             // Gamepad Diagnostics suppresses every button, including B, down to
@@ -2557,9 +2597,14 @@
 
         if (!_gamepadEnabled) return;
 
-        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
         let gp = null;
-        for (const g of gamepads) { if (g) { gp = g; break; } }
+        if (_DECK_SESSION) {
+            // Fed by main.py's evdev reader off Steam's virtual pad.
+            gp = (window._pdPad && window._pdPad.connected) ? window._pdPad : null;
+        } else {
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (const g of gamepads) { if (g) { gp = g; break; } }
+        }
         if (!gp) return;
 
         if (_gameSuppressed) {
@@ -2779,9 +2824,17 @@
         }
     }
 
-    window.addEventListener('gamepadconnected', () => {
+    function _onGamepadConnected() {
         if (!_rafId) _rafId = requestAnimationFrame(_pollLoop);
-    });
+    }
+    if (!_DECK_SESSION) {
+        // Adding a gamepadconnected listener is itself what starts WebKit's
+        // gamepad monitor (and libmanette under it) -- so on a Deck session,
+        // where WebKit must not touch the controller, we never add one and
+        // read main.py's evdev-fed window._pdPad instead (see _pollLoop).
+        window.addEventListener('gamepadconnected', _onGamepadConnected);
+    }
+    // The poll loop runs either way.
     _rafId = requestAnimationFrame(_pollLoop);
 
     // ── Pause polling when window loses focus (e.g. a game launched) ─────────

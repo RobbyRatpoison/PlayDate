@@ -154,6 +154,9 @@ modules:
     build-commands:
       - mkdir -p /app/share/playdate
       - cp -r src/. /app/share/playdate/
+      # Steam Deck hidraw block (see playdate-wrapper.sh / libnohidraw.c).
+      - mkdir -p /app/lib/playdate
+      - gcc -shared -fPIC -O2 -o /app/lib/playdate/libnohidraw.so libnohidraw.c -ldl
       - install -Dm755 playdate-wrapper.sh /app/bin/playdate
       - install -Dm644 io.github.robbyratpoison.PlayDate.desktop /app/share/applications/io.github.robbyratpoison.PlayDate.desktop
       - install -Dm644 io.github.robbyratpoison.PlayDate.metainfo.xml /app/share/metainfo/io.github.robbyratpoison.PlayDate.metainfo.xml
@@ -180,6 +183,8 @@ modules:
         dest: src
       - type: file
         path: playdate-wrapper.sh
+      - type: file
+        path: libnohidraw.c
       - type: file
         path: io.github.robbyratpoison.PlayDate.desktop
       - type: file
