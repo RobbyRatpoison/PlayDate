@@ -367,11 +367,12 @@
 
         <label>Filter</label>
         <select id="sem-filter" onchange="semOnFilterChange()" data-modal-row="2">
-            <option value="__custom__" style="color:#F0AD4E;">✎ Custom SQL</option>
+            <option value="__tree__" style="color:#F0AD4E;">🔧 Custom Filter…</option>
         </select>
 
-        <div id="sem-sql-wrap" style="display:none; margin-top:8px;">
-            <textarea id="sem-sql" placeholder="Custom SQL WHERE clause…  e.g. tags LIKE '%RPG%'" data-modal-row="3"></textarea>
+        <div id="sem-tree-wrap" style="display:none; margin-top:8px;">
+            <div id="sem-tree-summary" style="font-family:monospace; font-size:0.78rem; color:#8f98a0; background:#0b1520; border:1px solid var(--border); border-radius:5px; padding:8px 10px; max-height:80px; overflow-y:auto; word-break:break-all; margin-bottom:6px;"></div>
+            <button type="button" class="shelf-edit-mini-btn" data-modal-row="3" onclick="semOpenFilterBuilder()">🔧 Open Filter Builder</button>
         </div>
 
         <label>Sort by</label>
@@ -1233,33 +1234,31 @@ function semOpen(sid) {
     const filterSel = document.getElementById('sem-filter');
     const presetKeys = ['all_games', 'installed', 'not_installed', 'never_played', 'unfinished', 'not_beaten', 'beaten'];
     const savedKeys  = Object.keys(_savedFilters);
-    const isCustom   = !!shelf.custom_sql;
+    const isTree     = !!shelf.filter_tree;
     const activeFilter = shelf.filter_key || shelf.preset || 'all_games';
 
     const presetOpts = presetKeys
         .filter(k => _builtinFilters[k])
-        .map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${_builtinFilters[k].label}</option>`)
+        .map(k => `<option value="${k}"${!isTree && activeFilter===k?' selected':''}>${_builtinFilters[k].label}</option>`)
         .join('');
     const widgetOpts = [...WIDGET_PRESETS]
-        .map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${WIDGET_LABELS[k]}</option>`)
+        .map(k => `<option value="${k}"${!isTree && activeFilter===k?' selected':''}>${WIDGET_LABELS[k]}</option>`)
         .join('');
     const savedOpts = savedKeys.length
-        ? `<optgroup label="Saved Filters">${savedKeys.map(k => `<option value="${k}"${!isCustom && activeFilter===k?' selected':''}>${k}</option>`).join('')}</optgroup>`
+        ? `<optgroup label="Saved Filters">${savedKeys.map(k => `<option value="${k}"${!isTree && activeFilter===k?' selected':''}>${k}</option>`).join('')}</optgroup>`
         : '';
 
     filterSel._setOptions(
-        `<option value="__custom__"${isCustom?' selected':''} style="color:#F0AD4E;">✎ Custom SQL</option>` +
+        `<option value="__tree__"${isTree?' selected':''} style="color:#F0AD4E;">🔧 Custom Filter…</option>` +
         `<optgroup label="Presets">${presetOpts}</optgroup>` +
         `<optgroup label="Widgets">${widgetOpts}</optgroup>` +
         savedOpts
     );
 
-    // SQL panel
-    const sqlWrap = document.getElementById('sem-sql-wrap');
-    sqlWrap.style.display = isCustom ? 'block' : 'none';
-    const semSqlEl = document.getElementById('sem-sql');
-    semSqlEl.value = shelf.custom_sql || '';
-    if (isCustom) sqlHighlightInit(semSqlEl);
+    // Custom Filter panel
+    const treeWrap = document.getElementById('sem-tree-wrap');
+    treeWrap.style.display = isTree ? 'block' : 'none';
+    if (isTree) _semRenderTreeSummary(shelf);
 
     // Sort
     const sortSel = document.getElementById('sem-sort');
@@ -1334,11 +1333,45 @@ function semTogglePlatform(platform) {
     _semRenderPlatforms();
 }
 
+function _semRenderTreeSummary(shelf) {
+    const el = document.getElementById('sem-tree-summary');
+    if (!el) return;
+    const t = shelf && shelf.filter_tree;
+    let sql = '';
+    try { sql = t ? (treeToSql(t) || (t.custom_sql || '')) : ''; } catch (e) { sql = (t && t.custom_sql) || ''; }
+    el.textContent = sql || '(no conditions yet; click Open Filter Builder)';
+}
+
 function semOnFilterChange() {
     const val = document.getElementById('sem-filter').value;
-    const wrap = document.getElementById('sem-sql-wrap');
-    wrap.style.display = val === '__custom__' ? 'block' : 'none';
-    if (val === '__custom__') sqlHighlightInit(document.getElementById('sem-sql'));
+    const treeWrap = document.getElementById('sem-tree-wrap');
+    if (val === '__tree__') {
+        treeWrap.style.display = 'block';
+        const s = _shelves.find(sh => sh.id === _semShelfId);
+        if (s && !s.filter_tree) { semOpenFilterBuilder(); return; }
+        _semRenderTreeSummary(s);
+    } else {
+        treeWrap.style.display = 'none';
+    }
+}
+
+function semOpenFilterBuilder() {
+    const sid = _semShelfId;
+    const s = _shelves.find(sh => sh.id === sid);
+    if (!s) return;
+    semClose();
+    openFilterModal({
+        shelfId: sid,
+        existingTree: s.filter_tree || null,
+        onApply: (tree) => {
+            const sh = _shelves.find(x => x.id === sid);
+            if (!sh) return;
+            const has = tree && (tree.items?.length || (tree.custom_sql || '').trim());
+            sh.filter_tree = has ? tree : null;
+            if (sh.filter_tree) { sh.custom_sql = null; sh.filter_key = '__tree__'; }
+        },
+        onClose: () => semOpen(sid),
+    });
 }
 
 function semSave() {
@@ -1354,11 +1387,14 @@ function semSave() {
 
     // Filter
     const filterKey = document.getElementById('sem-filter').value;
-    if (filterKey === '__custom__') {
-        const raw = document.getElementById('sem-sql').value.trim();
-        s.custom_sql = raw ? normaliseSql(raw) : null;
+    if (filterKey === '__tree__') {
+        // s.filter_tree was already set by semOpenFilterBuilder's onApply
+        s.custom_sql = null;
+        s.filter_key = '__tree__';
+        if (WIDGET_PRESETS.has(s.preset)) s.preset = 'all_games';
     } else {
         s.custom_sql = null;
+        s.filter_tree = null;
         if (WIDGET_PRESETS.has(filterKey)) {
             s.preset = filterKey; s.filter_key = filterKey;
         } else {
@@ -1722,7 +1758,7 @@ function addColumnToRow(sid) {
     const newId = `custom_${Date.now()}`;
     const newShelf = {
         id: newId, label: '', preset: 'all_games', filter_key: 'all_games',
-        custom_sql: null, limit: 10, row_height: self.row_height, col_width: newColWidth,
+        custom_sql: null, filter_tree: null, limit: 10, row_height: self.row_height, col_width: newColWidth,
         // Inherit the row's own (leftmost column's) platform visibility rather
         // than defaulting to "show every platform" -- a new column added to a
         // curated row should stay curated, not immediately flood with everything.
@@ -1767,7 +1803,7 @@ function addColumnToRow(sid) {
 // ── Add new shelf ─────────────────────────────────────────────────────────────
 function addNewShelf() {
     const id = `custom_${Date.now()}`;
-    const ns = { id, label:'', preset:'all_games', filter_key:'all_games', custom_sql:null, limit:10,
+    const ns = { id, label:'', preset:'all_games', filter_key:'all_games', custom_sql:null, filter_tree:null, limit:10,
                  row_height:25, col_width:null, split_group:null,
                  sort_col:null, sort_dir:null,
                  dedup:true, dedup_priority:_shelves.length, visible:true };

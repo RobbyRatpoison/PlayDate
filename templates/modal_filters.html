@@ -5,8 +5,8 @@
     <div style="padding:1.25rem 1.5rem 0.875rem; border-bottom:1px solid #2a3f55; flex-shrink:0;">
         <div style="display:flex; align-items:center; justify-content:space-between;">
             <div style="display:flex; align-items:baseline; gap:0.75rem;">
-                <h2 style="margin:0; color:#fff; font-size:1.1rem;">Library Filters</h2>
-                <a onclick="closeFilterModal(); openPagModal();" data-modal-row="0" style="font-size:0.75rem; color:#66c0f4; cursor:pointer; text-decoration:none; white-space:nowrap;" onmouseover="this.style.color='#c7d5e0'" onmouseout="this.style.color='#66c0f4'">PAGYWOSG Filter Builder →</a>
+                <h2 id="fm-title" style="margin:0; color:#fff; font-size:1.1rem;">Library Filters</h2>
+                <a id="fm-pag-link" onclick="closeFilterModal(); openPagModal();" data-modal-row="0" style="font-size:0.75rem; color:#66c0f4; cursor:pointer; text-decoration:none; white-space:nowrap;" onmouseover="this.style.color='#c7d5e0'" onmouseout="this.style.color='#66c0f4'">PAGYWOSG Filter Builder →</a>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
                 <!-- Mode toggle -->
@@ -125,7 +125,7 @@
         {% set _btn_style = "background:#0e1923; border:1px solid #2a3f55; color:#8f98a0; border-radius:1.25rem; padding:0.1875rem 0.75rem; font-size:0.78rem; cursor:pointer; transition:all 0.15s; white-space:nowrap;" %}
         {% set _btn_over = "this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" %}
         {% set _btn_out  = "this.style.borderColor='#2a3f55';this.style.color='#8f98a0'" %}
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <div id="fm-quick-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="color:#4a6a8a; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;">Quick:</span>
             {% for key, f in builtin_filters.items() if f.where is not none and f.get('group') == 'general' %}
             <button onclick="applyBuiltinFilter('{{ key }}')" data-modal-row="2"
@@ -134,7 +134,7 @@
             </button>
             {% endfor %}
         </div>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <div id="fm-status-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span style="color:#4a6a8a; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap;">Status:</span>
             {% for key, f in builtin_filters.items() if f.where is not none and f.get('group') == 'status' %}
             <button onclick="applyBuiltinFilter('{{ key }}')" data-modal-row="2"
@@ -154,15 +154,15 @@
                 <option value="{{ name | e }}">{{ name }}</option>
                 {% endfor %}
             </select>
-            <button onclick="renameSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
+            <button id="fm-sf-rename" onclick="renameSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
                     style="height:2.25rem; padding:0 0.75rem; font-size:0.8rem; white-space:nowrap;">
                 ✎ RENAME
             </button>
-            <button onclick="deleteSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
+            <button id="fm-sf-delete" onclick="deleteSavedFilterFromModal()" class="nav-btn" data-modal-row="3"
                     style="height:2.25rem; padding:0 0.75rem; font-size:0.8rem; white-space:nowrap;">
                 ✕ DELETE
             </button>
-            <button onclick="saveCurrentFilter()" class="nav-btn" data-modal-row="3"
+            <button id="fm-sf-save" onclick="saveCurrentFilter()" class="nav-btn" data-modal-row="3"
                     style="height:2.25rem; padding:0 0.75rem; font-size:0.8rem; white-space:nowrap;">
                 ⭐ SAVE CURRENT
             </button>
@@ -207,6 +207,11 @@
 </div>
 
 <style>
+/* Hides Library-only chrome while the filter modal is building a Home shelf's
+   own filter tree. !important + a class (not el.hidden / el.style.display) so it
+   wins over the rows' inline display:flex without clobbering it. */
+.fm-shelf-hide { display: none !important; }
+
 /* preserve chevron on nav-dropdown hover */
 select.nav-dropdown:hover {
     background-color: #444;
@@ -509,6 +514,24 @@ let _filterMode = 'simple'; // 'simple' | 'advanced'
 let _simpleLogic = 'AND';   // 'AND' | 'OR'
 let _sqlVisible = false;
 
+// Filter modal target: null = the Library page's global active filter (default,
+// unchanged behavior). {shelfId, existingTree, onApply, onClose} = a Home shelf's
+// own filter tree, where APPLY hands the built tree back via onApply instead of
+// writing global state / reloading, and returns to the shelf editor via onClose.
+let _fmTarget = null;
+
+// Library-only chrome hidden while building a shelf filter. The saved-filters
+// SELECT stays visible (load-only, as a starting point); its manage buttons don't.
+function _fmSetChrome(shelfMode) {
+    ['fm-pag-link', 'fm-quick-row', 'fm-status-row', 'fm-sources-row',
+     'fm-sf-rename', 'fm-sf-delete', 'fm-sf-save'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('fm-shelf-hide', shelfMode);
+    });
+    const title = document.getElementById('fm-title');
+    if (title) title.textContent = shelfMode ? 'Shelf Filter' : 'Library Filters';
+}
+
 function setSimpleLogic(logic) {
     _simpleLogic = logic;
     const andBtn = document.getElementById('fm-simple-and');
@@ -664,11 +687,25 @@ function _fmToggleAllNone() {
     _fmSyncPlatformButtons();
 }
 
-function openFilterModal() {
+function openFilterModal(target = null) {
     const modal = document.getElementById('filterModal');
     modal.style.display = 'flex';
+    _fmTarget = target && target.shelfId ? target : null;
+    _fmSetChrome(!!_fmTarget);
     _fmHiddenPlatforms = new Set(typeof _hiddenPlatforms !== 'undefined' ? _hiddenPlatforms : []);
     _fmSyncPlatformButtons();
+
+    if (_fmTarget) {
+        // Shelf mode: seed the builder from the shelf's own tree (if any),
+        // ignore the Library's global filter / search box entirely.
+        _loadedSavedTree = null;
+        _loadedSavedFilterName = null;
+        const sfSel = document.getElementById('saved-filters-select');
+        if (sfSel) sfSel.value = '';
+        populateModalFromTree(_fmTarget.existingTree || { type: 'group', logic: 'AND', items: [] });
+        updateSqlPreview();
+        return;
+    }
 
     // On the library page, the search bar can hold an uncommitted edit that's
     // ahead of what got persisted to state.json — rebuild the combined tree
@@ -713,6 +750,14 @@ function openFilterModal() {
 function closeFilterModal() {
     document.getElementById('filterModal').style.display = 'none';
     closeFmDialog();
+    if (_fmTarget) {
+        const t = _fmTarget;
+        _fmTarget = null;
+        _loadedSavedTree = null;
+        _loadedSavedFilterName = null;
+        _fmSetChrome(false);
+        if (typeof t.onClose === 'function') t.onClose();
+    }
 }
 
 // ── SQL Preview ─────────────────────────────────────────────────
@@ -1839,6 +1884,14 @@ function _stripEmptyGroups(node) {
 
 async function applyFilters() {
     const collected = _stripEmptyGroups(collectTree());
+
+    // Shelf mode: hand the tree back to the shelf editor, no global state write.
+    if (_fmTarget && typeof _fmTarget.onApply === 'function') {
+        _fmTarget.onApply(collected);
+        closeFilterModal();
+        return;
+    }
+
     if (_loadedSavedTree && _loadedSavedTree.pagywosg) {
         collected.pagywosg = _loadedSavedTree.pagywosg;
         if (_loadedSavedTree.pagywosg_event) collected.pagywosg_event = _loadedSavedTree.pagywosg_event;

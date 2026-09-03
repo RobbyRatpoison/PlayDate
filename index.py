@@ -32,7 +32,7 @@ SORT_COLUMNS = {
     "RANDOM()":            "Random",
 }
 
-from library import is_safe_sql, build_tree_sql, VIRTUAL_SORT_COLS
+from library import is_safe_sql, build_tree_sql, VIRTUAL_SORT_COLS, _strip_sql_wrapper, _auto_cast_int_division
 
 
 def _apply_new_platform_defaults(state, shelves_config, available_platforms):
@@ -88,6 +88,13 @@ def _filter_tree_to_sql(tree, params):
     """Convert a saved filter tree to a SQL WHERE string, appending bind values to params."""
     if not tree:
         return '1=1'
+    # A tree built in the filter modal's Advanced mode can carry a raw WHERE
+    # clause at the top level; honour it (gated by is_safe_sql) exactly the way
+    # library.py's grid query does for the same key.
+    if isinstance(tree, dict) and tree.get('custom_sql'):
+        cs = _strip_sql_wrapper(tree.get('custom_sql') or '')
+        if cs:
+            return _auto_cast_int_division(cs) if is_safe_sql(cs) else '1=0'
     sql = build_tree_sql(tree, params)
     return sql or '1=1'
 
@@ -106,11 +113,14 @@ def _build_shelf_query(shelf, saved_filters, state):
     # Resolve WHERE clause
     params = []
     custom = (shelf.get('custom_sql') or '').strip()
+    tree = shelf.get('filter_tree')
     if custom:
         if not is_safe_sql(custom):
             return '1=0', 'name ASC', []
         where = re.sub(r'\s*\bORDER\s+BY\s+.+$', '', custom, flags=re.IGNORECASE).strip()
         where = re.sub(r'(?i)^\s*WHERE\s+', '', where).strip()
+    elif isinstance(tree, dict) and (tree.get('items') or tree.get('custom_sql')):
+        where = _filter_tree_to_sql(tree, params)
     elif filter_key in FILTER_QUERIES:
         where = FILTER_QUERIES[filter_key]['where']
     elif filter_key in saved_filters:

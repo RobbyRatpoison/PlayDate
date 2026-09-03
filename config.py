@@ -727,6 +727,17 @@ def _load_state_unlocked():
         state['shelves'] = get_default_shelves()
         dirty = True
 
+    # Migrate raw per-shelf custom_sql -> filter_tree. The visual filter builder
+    # now owns "Custom Filter" for shelves; its Advanced mode still exposes a raw
+    # WHERE clause, which serialises as tree.custom_sql.
+    for _shelf in state.get('shelves') or []:
+        _cs = (_shelf.get('custom_sql') or '').strip()
+        if _cs and not _shelf.get('filter_tree'):
+            _shelf['filter_tree'] = {'type': 'group', 'logic': 'AND', 'items': [], 'custom_sql': _cs}
+            _shelf['filter_key'] = '__tree__'
+            _shelf.pop('custom_sql', None)
+            dirty = True
+
     # Migrate saved filters: wrap bare trees as {id, tree} and assign missing UUIDs
     saved = state.get('saved_filters', {})
     for name, val in list(saved.items()):
