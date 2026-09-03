@@ -221,8 +221,24 @@ def perform_update():
                     _update_dl_state.update({'status': 'error', 'error': f'flatpak install failed: {result.stderr.strip()}'})
                     return
 
-                log.info("Relaunching via flatpak run")
-                host_popen(['flatpak', 'run', app_id], start_new_session=True)
+                # In Steam Deck Game Mode a bare `flatpak run` gets no window
+                # surface -- gamescope only composites what Steam launched, so
+                # the app would just vanish. Ask Steam to relaunch the shortcut
+                # instead ($SteamGameId is the rungameid, set in the launched
+                # env). Falls back to `flatpak run` off-Deck / if it's unset.
+                from config import _is_steam_deck_session
+                _sgid = os.environ.get('SteamGameId')
+                try:
+                    if _is_steam_deck_session() and _sgid:
+                        log.info("Relaunching via Steam (rungameid %s)", _sgid)
+                        host_run(['xdg-open', f'steam://rungameid/{_sgid}'])
+                    else:
+                        log.info("Relaunching via flatpak run")
+                        host_popen(['flatpak', 'run', app_id], start_new_session=True)
+                except Exception as _re:
+                    # The update itself is already installed -- a relaunch
+                    # hiccup shouldn't report the whole thing as failed.
+                    log.warning("perform-update: relaunch failed, user must reopen manually: %s", _re)
             elif getattr(sys, 'frozen', False):
                 # Windows frozen exe: download installer and launch it
                 url = _update_cache.get('installer_url')
