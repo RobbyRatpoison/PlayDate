@@ -227,11 +227,19 @@ def perform_update():
                 # instead ($SteamGameId is the rungameid, set in the launched
                 # env). Falls back to `flatpak run` off-Deck / if it's unset.
                 from config import _is_steam_deck_session
-                _sgid = os.environ.get('SteamGameId')
+                _sgid = os.environ.get('SteamGameId', '')
                 try:
-                    if _is_steam_deck_session() and _sgid:
+                    if _is_steam_deck_session() and _sgid.isdigit():
+                        # `steam steam://rungameid/<id>` forwards to the running
+                        # Steam and relaunches the shortcut. `xdg-open` for the
+                        # same URL does NOT reach Steam from a flatpak-spawn
+                        # --host context (confirmed on a Deck) -- it goes
+                        # through a desktop-file lookup that doesn't forward.
+                        # The sleep lets this process fully exit first, so Steam
+                        # doesn't see the shortcut as still-running and no-op.
                         log.info("Relaunching via Steam (rungameid %s)", _sgid)
-                        host_run(['xdg-open', f'steam://rungameid/{_sgid}'])
+                        host_popen(['sh', '-c', f'sleep 2; exec steam "steam://rungameid/{_sgid}"'],
+                                   start_new_session=True)
                     else:
                         log.info("Relaunching via flatpak run")
                         host_popen(['flatpak', 'run', app_id], start_new_session=True)
