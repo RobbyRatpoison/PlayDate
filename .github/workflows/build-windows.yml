@@ -197,7 +197,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .flatpak-builder
-          key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('requirements-flatpak.txt') }}
+          key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('flatpak/requirements-flatpak.txt') }}
           restore-keys: |
             flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-
             flatpak-builder-e1-
