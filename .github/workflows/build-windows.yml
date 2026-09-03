@@ -175,27 +175,32 @@ jobs:
       # .flatpak-builder/ holds downloaded sources plus a checksum per module
       # (hash of that module's manifest fragment + sources) that lets
       # flatpak-builder skip rebuilding a module untouched since the cached
-      # run -- --force-clean below only wipes the final merged build-dir
-      # output tree, not this. Slow, source-built deps (tcl, tk, the
-      # from-source CPython used to build _tkinter) otherwise recompile from
-      # scratch (~5 min). Keyed on the manifest + pip requirements so any real
-      # change still rebuilds what changed; restore-keys falls back to the
-      # most recent cache on a miss so an in-progress manifest edit still
-      # reuses whatever earlier modules (e.g. tcl/tk) didn't change.
+      # run. The slow, source-built deps -- tcl, tk, and the from-source
+      # CPython used to build _tkinter -- otherwise recompile from scratch
+      # (~4.5 min of the job).
       #
-      # This job is tag-triggered, and GitHub Actions cache is partitioned by
-      # ref -- a tag run can only read its own ref's caches or main's, and
-      # nothing here ever runs on main, so this cache would ALWAYS miss on a
-      # release/beta build. flatpak-cache.yml exists solely to populate these
-      # two caches (this one + the runtime one above) on the main scope so
-      # this step actually gets a hit. Keep the manifest-patch step, the
-      # cache keys, and the runtime-version read in sync between the two files.
+      # The key is deliberately NOT hashed over the whole manifest. Routine
+      # manifest edits (build-commands, file sources, the playdate module)
+      # don't touch those slow modules, but a full-manifest hash missed the
+      # cache on every one of them -- and each miss then *saved* a fresh
+      # ~1.5 GB cache, churning past the 10 GB repo limit and evicting the one
+      # good entry. Now it keys only on the pip requirements + runtime version
+      # + a manual epoch. Bump `e<N>` by hand ONLY when a slow module (tcl, tk,
+      # the _tkinter CPython) changes in the manifest.
+      #
+      # This job is tag-triggered and GitHub cache is ref-scoped: a tag run
+      # can read only its own ref's caches and main's. flatpak-cache.yml runs
+      # these same steps on main so the entry exists in that scope. Keep the
+      # manifest-patch step, the cache keys, and the runtime-version read in
+      # sync between the two files.
       - name: Cache flatpak-builder state
         uses: actions/cache@v4
         with:
           path: .flatpak-builder
-          key: flatpak-builder-${{ hashFiles('flatpak/io.github.robbyratpoison.PlayDate.yml', 'requirements-flatpak.txt') }}
+          key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('requirements-flatpak.txt') }}
           restore-keys: |
+            flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-
+            flatpak-builder-e1-
             flatpak-builder-
 
       # ── 6. Build and bundle ───────────────────────────────────────────────────

@@ -22,7 +22,12 @@ if getattr(sys, 'frozen', False):
 elif _IN_FLATPAK:
     # /app is read-only at runtime; user data lives under XDG_DATA_HOME,
     # which Flatpak already isolates to ~/.var/app/<id>/data per-app.
-    _BUNDLE_DIR = '/app/share/playdate'
+    # PD_SRC_DIR (dev only, never set in a real install): run PlayDate's own
+    # code from an rsync'd working tree instead of the installed /app copy,
+    # so app-code iteration skips the CI flatpak rebuild. playdate-wrapper.sh
+    # runs $PD_SRC_DIR/main.py, and this points templates/static there too.
+    # Needs `flatpak override --user --filesystem=<PD_SRC_DIR>` for read access.
+    _BUNDLE_DIR = os.environ.get('PD_SRC_DIR') or '/app/share/playdate'
     _APP_DIR = os.path.join(
         os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share')),
         'playdate')

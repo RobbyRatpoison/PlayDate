@@ -8,4 +8,6 @@ if [ "$SteamDeck" = "1" ] && [ -n "$SteamAppId" ] && [ -f /app/lib/playdate/libn
     LD_PRELOAD="/app/lib/playdate/libnohidraw.so${LD_PRELOAD:+:$LD_PRELOAD}"
     export LD_PRELOAD
 fi
-exec python3 /app/share/playdate/main.py "$@"
+# PD_SRC_DIR (dev only): run from an rsync'd working tree so app-code changes
+# don't need a CI flatpak rebuild. Unset in every real install.
+exec python3 "${PD_SRC_DIR:-/app/share/playdate}/main.py" "$@"

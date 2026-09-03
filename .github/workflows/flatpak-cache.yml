@@ -96,12 +96,18 @@ jobs:
       - name: Install GNOME runtime and SDK
         run: flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
 
+      # Key MUST match build-windows.yml byte-for-byte (see the long note
+      # there). Not hashed over the manifest -- only pip requirements +
+      # runtime version + a manual epoch; bump `e<N>` when a slow source
+      # module (tcl/tk/_tkinter CPython) changes in the manifest.
       - name: Cache flatpak-builder state
         uses: actions/cache@v4
         with:
           path: .flatpak-builder
-          key: flatpak-builder-${{ hashFiles('flatpak/io.github.robbyratpoison.PlayDate.yml', 'requirements-flatpak.txt') }}
+          key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('requirements-flatpak.txt') }}
           restore-keys: |
+            flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-
+            flatpak-builder-e1-
             flatpak-builder-
 
       - name: Build with flatpak-builder (populates .flatpak-builder)
