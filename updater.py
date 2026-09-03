@@ -64,10 +64,25 @@ def _do_update_check():
             resp = _req.get(
                 'https://api.github.com/repos/RobbyRatpoison/PlayDate-Library-Manager/releases',
                 headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'PlayDate-App'},
+                params={'per_page': 30},
                 timeout=10
             )
             releases = resp.json()
-            data = releases[0] if isinstance(releases, list) and releases else {}
+            # GitHub's /releases list order is not reliably newest-first (its
+            # index lags, and rewriting a tag's commit reshuffles it), so pick
+            # the highest version explicitly rather than trusting releases[0].
+            data = {}
+            if isinstance(releases, list):
+                best = None
+                for r in releases:
+                    # Skip a release whose CI build hasn't attached assets yet
+                    # -- picking it would just fail the download.
+                    if r.get('draft') or not r.get('assets'):
+                        continue
+                    tag = (r.get('tag_name') or '').lstrip('v')
+                    if best is None or _build_is_newer(tag, best_tag):
+                        best, best_tag = r, tag
+                data = best or {}
         else:
             resp = _req.get(
                 'https://api.github.com/repos/RobbyRatpoison/PlayDate-Library-Manager/releases/latest',
