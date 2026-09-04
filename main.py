@@ -726,17 +726,24 @@ class PyWebviewAPI:
                             cm2 = wk.get_website_data_manager().get_cookie_manager()
                             def _cookie_cb(mgr, result, *_):
                                 try:
-                                    cookies = mgr.get_cookies_finish(result)
                                     val = ''
                                     if cookie_name == '*':
-                                        # Whole-jar mode: hand every cookie visible to this
-                                        # URI to the callback as a JSON blob, not just one
-                                        # named value (Battle.net's account.battle.net
-                                        # session -- there's no single "the" auth cookie).
+                                        # Whole-jar mode: get_all_cookies(), not the
+                                        # per-URI get_cookies(current) below -- a login
+                                        # flow commonly spans several sibling domains
+                                        # (confirmed live: Battle.net's session touches
+                                        # oauth.battle.net and us.account.battle.net
+                                        # cookies that a query scoped to the final
+                                        # https://account.battle.net/ landing URI never
+                                        # sees, so replaying only those was accepted by
+                                        # nothing server-side -- every authenticated call
+                                        # bounced right back to the login page).
+                                        cookies = mgr.get_all_cookies_finish(result)
                                         found = {c.get_name(): c.get_value() for c in (cookies or [])}
                                         if found:
                                             val = json.dumps(found)
                                     else:
+                                        cookies = mgr.get_cookies_finish(result)
                                         for c in (cookies or []):
                                             if c.get_name() == cookie_name:
                                                 val = c.get_value()
@@ -749,7 +756,10 @@ class PyWebviewAPI:
                                         log.info('open_auth_popup: native cookie empty — keeping popup open')
                                 except Exception as _e:
                                     log.warning(f'open_auth_popup: native cookie cb: {_e}')
-                            cm2.get_cookies(current, None, _cookie_cb)
+                            if cookie_name == '*':
+                                cm2.get_all_cookies(None, _cookie_cb)
+                            else:
+                                cm2.get_cookies(current, None, _cookie_cb)
                         except Exception as _e:
                             log.warning(f'open_auth_popup: native cookie lookup failed: {_e}')
                         return False
