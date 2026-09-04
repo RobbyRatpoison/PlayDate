@@ -855,32 +855,34 @@ function enforceCardRatio() {
     const cardEls = Array.from(document.querySelectorAll('.result-card'));
     if (!cardEls.length || !area.classList.contains('visible')) return;
 
-    const n   = cardEls.length;
-    const gap = 14;
+    const n = cardEls.length;
 
-    // All measurements MUST be in the same space as getBoundingClientRect()
-    // and element.style.width -- i.e. CSS pixels. The UI-scale setting applies
-    // `zoom` to <html> (base.html), and under zoom window.innerWidth/Height
-    // stay in device pixels while clientWidth/Height and getBoundingClientRect
-    // report CSS pixels. Mixing the two (the old code did) overshot the card
-    // width at any scale above 100%, so the row ran off both sides of the
-    // viewport. documentElement.clientWidth/Height keeps everything CSS-px.
-    const viewW = document.documentElement.clientWidth;
-    const viewH = document.documentElement.clientHeight;
+    // The UI-scale setting applies `zoom` to <html> (base.html). Under zoom,
+    // getBoundingClientRect(), innerWidth/Height and clientWidth all report in
+    // DEVICE pixels, but element.style.width is CSS px and gets multiplied by
+    // `zoom` on render -- so we compute everything in device px against the
+    // real box, then divide by `zoom` when writing style.width/height.
+    const zoomStr = getComputedStyle(document.documentElement).zoom;
+    const zoom = parseFloat(zoomStr) || 1;
+    const gap = 14 * zoom;
 
-    // Padding on each side (1.5vw) already in CSS — subtract from width
-    const availW = viewW - viewW * 0.03;
+    // Fit the cards inside the .result-cards content box (its own 1.5vw side
+    // padding is already in CSS px, so scale it up by zoom to device px).
+    const cardsRect = cards.getBoundingClientRect();
+    const cs = getComputedStyle(cards);
+    const sidePad = (parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight)) * zoom;
+    const availW = cardsRect.width - sidePad;
 
     // Available height: from where the cards start to the bottom of the viewport.
-    // Measure the real result-info height rather than hardcoding so scaling is respected.
-    const cardsTop = cards.getBoundingClientRect().top;
-    const infoH    = document.querySelector('.result-info')?.offsetHeight || 102;
-    // Floor at a positive minimum: a taller nav/controls block (a high UI scale
-    // on a short viewport like the Steam Deck) can drive this to zero or
-    // negative, and a negative style.width is silently ignored by the browser --
-    // the cards then fall back to their content width and a long game title
-    // (white-space: nowrap) blows the row off the side of the page.
-    const availH = Math.max(120, viewH - cardsTop - viewH * 0.05 - 8 - infoH);
+    const cardsTop = cardsRect.top;
+    const infoH    = document.querySelector('.result-info')?.getBoundingClientRect().height || 118;
+    // Floor at a positive minimum -- a tall nav/controls block on a short
+    // viewport (high UI scale on a Steam Deck) can otherwise drive this
+    // negative, and a negative style.width is silently dropped, leaving the
+    // cards at their content width (a long title, white-space: nowrap) which
+    // runs the row off the sides of the page.
+    const availH = Math.max(120 * zoom,
+        window.innerHeight - cardsTop - window.innerHeight * 0.05 - 8 * zoom - infoH);
 
     // Step 1: size from width (2:3 ratio)
     const totalGaps = gap * (n - 1);
@@ -894,9 +896,9 @@ function enforceCardRatio() {
     }
 
     cardEls.forEach(c => {
-        c.style.width = cardW + 'px';
+        c.style.width = (cardW / zoom) + 'px';
         const art = c.querySelector('.result-art');
-        if (art) art.style.height = artH + 'px';
+        if (art) art.style.height = (artH / zoom) + 'px';
     });
 }
 
