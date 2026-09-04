@@ -1258,7 +1258,8 @@ class PyWebviewAPI:
             # Strategy 3 (Linux/GTK only): hook WebKit's decide-policy signal to
             # intercept navigation to unreachable hosts before the connection fails.
             _install_gtk_nav_interceptor(popup_ref, redirect_pattern,
-                                         _code_from_url, _exchange_and_close)
+                                         _code_from_url, _exchange_and_close,
+                                         cookie_name=cookie_name)
 
         threading.Thread(target=_run, daemon=True).start()
         return {'status': 'started'}
@@ -1280,7 +1281,8 @@ def _find_webkit_in_widget(widget):
     return None
 
 
-def _install_gtk_nav_interceptor(popup_ref, redirect_pattern, code_from_url, exchange_and_close):
+def _install_gtk_nav_interceptor(popup_ref, redirect_pattern, code_from_url, exchange_and_close,
+                                 cookie_name=None):
     """
     On Linux/GTK, connect WebKit's decide-policy signal to intercept navigation attempts
     before a connection is made -- including attempts to unreachable hosts like
@@ -1290,6 +1292,12 @@ def _install_gtk_nav_interceptor(popup_ref, redirect_pattern, code_from_url, exc
     miss the popup regardless of how pywebview structures its internals. The main
     window's view won't match redirect_pattern so the handler is a no-op there.
     We scan every 150ms for up to 3 seconds to catch the popup as it appears.
+
+    cookie_name == '*' (whole-jar mode) disables the code_from_url short-circuit here
+    too, same as in _on_loaded -- confirmed live against Battle.net that this hook runs
+    independently of _on_loaded and grabbed an unrelated code= from the site's own
+    internal OAuth redirect chain (account.battle.net/callback/oauth2/code/...) before
+    the cookie-jar logic ever got a chance to run.
     """
     import sys
     if sys.platform != 'linux':
@@ -1306,7 +1314,7 @@ def _install_gtk_nav_interceptor(popup_ref, redirect_pattern, code_from_url, exc
     def _on_decide_policy(view, decision, decision_type):
         if decision_type == WebKit2.PolicyDecisionType.NAVIGATION_ACTION:
             uri = (decision.get_navigation_action().get_request().get_uri() or '')
-            if redirect_pattern in uri:
+            if redirect_pattern in uri and cookie_name != '*':
                 code = code_from_url(uri)
                 if code:
                     # Code is in the URL (e.g. redirect to unreachable localhost).
