@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.10.1
+## v1.10.1 - 2026-09-04
 ### Improvements
 
 - Home shelves: the raw SQL box for a shelf's filter is replaced with the visual filter builder.
