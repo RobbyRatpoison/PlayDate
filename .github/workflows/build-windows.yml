@@ -28,7 +28,7 @@ jobs:
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ── 2. Set version from tag ───────────────────────────────────────────────
       # Also patches config.py in this checkout (not just the PD_VERSION env
@@ -148,7 +148,7 @@ jobs:
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: Cache Flatpak runtime and SDK
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
           key: flatpak-runtime-gnome-${{ steps.runtime_ver.outputs.version }}
@@ -194,7 +194,7 @@ jobs:
       # manifest-patch step, the cache keys, and the runtime-version read in
       # sync between the two files.
       - name: Cache flatpak-builder state
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .flatpak-builder
           key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('flatpak/requirements-flatpak.txt') }}
@@ -242,7 +242,7 @@ jobs:
 
       # ── 8. Upload artifact (always) ───────────────────────────────────────────
       - name: Upload flatpak artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PlayDate-Linux-Flatpak
           path: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak
@@ -293,7 +293,7 @@ jobs:
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # ── 2. Set up Python ─────────────────────────────────────────────────────
       - name: Set up Python 3.11
@@ -397,14 +397,14 @@ jobs:
 
       # ── 11. Upload artifacts (always) ─────────────────────────────────────────
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PlayDate-Setup-Windows
           path: installer/PlayDate-Setup.exe
           retention-days: 30
 
       - name: Upload portable zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PlayDate-Windows-Portable
           path: ${{ env.PORTABLE_ZIP }}

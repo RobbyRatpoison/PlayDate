@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Identical to build-windows.yml's step of the same name -- the cache
       # key below hashes this file, so the patch must match byte-for-byte for
@@ -88,7 +88,7 @@ jobs:
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: Cache Flatpak runtime and SDK
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
           key: flatpak-runtime-gnome-${{ steps.runtime_ver.outputs.version }}
@@ -101,7 +101,7 @@ jobs:
       # runtime version + a manual epoch; bump `e<N>` when a slow source
       # module (tcl/tk/_tkinter CPython) changes in the manifest.
       - name: Cache flatpak-builder state
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .flatpak-builder
           key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('flatpak/requirements-flatpak.txt') }}
