@@ -621,12 +621,22 @@ class PyWebviewAPI:
                     log.info(f'open_auth_popup: no match for pattern {redirect_pattern!r}, skipping')
                     return
                 log.info('open_auth_popup: redirect_pattern matched, running code_js')
-                # Strategy 1: code in URL query params (GOG and standard OAuth)
-                code = _code_from_url(current)
-                if code:
-                    threading.Thread(target=_exchange_and_close, args=(code,),
-                                     daemon=True).start()
-                    return
+                # Strategy 1: code in URL query params (GOG and standard OAuth).
+                # Skipped in whole-jar mode (cookie_name == '*') -- that mode has no
+                # concept of a single URL-embedded code, and a site's own internal
+                # OAuth plumbing can legitimately put a code= on an intermediate,
+                # not-actually-logged-in-yet URL that also matches redirect_pattern
+                # (confirmed live: Battle.net's /api/logout redirects through
+                # account.battle.net/callback/oauth2/code/account-settings?code=...
+                # before the real session cookies exist, and this strategy grabbed
+                # that unrelated code and shipped it to the callback instead of the
+                # cookie jar, which then failed to parse as the expected JSON).
+                if cookie_name != '*':
+                    code = _code_from_url(current)
+                    if code:
+                        threading.Thread(target=_exchange_and_close, args=(code,),
+                                         daemon=True).start()
+                        return
                 try:
                     from gi.repository import GLib, Gtk
                 except ImportError:
