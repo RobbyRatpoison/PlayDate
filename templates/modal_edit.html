@@ -1911,7 +1911,7 @@ const achLink = document.getElementById('achievements-link');
         fetch(`/api/hltb/${_hltbAppid}`, {method: 'POST'})
             .then(r => r.json().catch(() => ({})))
             .then(data => {
-                if (data.status === 'success') _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                if (data.status === 'success') _renderHLTB(Object.assign(_hltbGame || {}, data.data || {}));
                 else _hltbError(data.message || 'Re-scrape failed. Try again.');
             })
             .catch(() => _hltbError('Re-scrape failed (network error).'))
@@ -1926,7 +1926,7 @@ const achLink = document.getElementById('achievements-link');
             .then(r => r.json().catch(() => ({})))
             .then(data => {
                 if (data.status === 'success') {
-                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                    _renderHLTB(Object.assign(_hltbGame || {}, data.data || {}));
                     if (data.cleared && typeof showLaunchToast === 'function')
                         showLaunchToast(data.message || 'HLTB has no time data for that entry.');
                 } else {
@@ -1943,7 +1943,7 @@ const achLink = document.getElementById('achievements-link');
         // re-matching it. Retry later via Re-scrape / a manual search.
         _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
         fetch(`/api/hltb/${_hltbAppid}`, {method: 'DELETE'})
-            .then(() => _renderHLTB({...(_hltbGame || {}), hltb_id: null, hltb_fetched: 'no_match', hltb_main: null, hltb_extras: null, hltb_completionist: null, hltb_matched_name: null, hltb_match_score: null}));
+            .then(() => _renderHLTB(Object.assign(_hltbGame || {}, {hltb_id: null, hltb_fetched: 'no_match', hltb_main: null, hltb_extras: null, hltb_completionist: null, hltb_matched_name: null, hltb_match_score: null})));
     }
 
     function _otherMatchHLTB(btn) {
@@ -2056,7 +2056,7 @@ const achLink = document.getElementById('achievements-link');
             .then(data => {
                 if (data.status === 'success') {
                     _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
-                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {}), hltb_matched_name: matchedName});
+                    _renderHLTB(Object.assign(_hltbGame || {}, data.data || {}, {hltb_matched_name: matchedName}));
                 } else {
                     _hltbError(data.message || 'Could not apply that match. Try again.');
                 }
@@ -2083,7 +2083,7 @@ const achLink = document.getElementById('achievements-link');
             .then(data => {
                 if (data.status === 'success') {
                     _hltbEls('edit-hltb-alt-results').forEach(el => el.classList.remove('open'));
-                    _renderHLTB({...(_hltbGame || {}), ...(data.data || {})});
+                    _renderHLTB(Object.assign(_hltbGame || {}, data.data || {}));
                 } else {
                     input.style.borderColor = 'var(--color-danger)';
                     _hltbError(data.message || 'Could not apply that HLTB ID.');
