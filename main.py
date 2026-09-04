@@ -657,13 +657,25 @@ class PyWebviewAPI:
 
                     if not extracted and cookie_name:
                         try:
-                            for jar in (w.get_cookies() or []):
-                                for morsel in jar.values():
-                                    if morsel.key == cookie_name and morsel.value:
-                                        extracted = morsel.value
+                            if cookie_name == '*':
+                                # Whole-jar mode (Battle.net's account.battle.net session):
+                                # collect every cookie visible to the popup, not just one
+                                # name, and hand it to the callback as a JSON blob.
+                                found = {}
+                                for jar in (w.get_cookies() or []):
+                                    for morsel in jar.values():
+                                        if morsel.value:
+                                            found[morsel.key] = morsel.value
+                                if found:
+                                    extracted = json.dumps(found)
+                            else:
+                                for jar in (w.get_cookies() or []):
+                                    for morsel in jar.values():
+                                        if morsel.key == cookie_name and morsel.value:
+                                            extracted = morsel.value
+                                            break
+                                    if extracted:
                                         break
-                                if extracted:
-                                    break
                         except Exception as _e:
                             log.warning(f'open_auth_popup: get_cookies fallback failed: {_e}')
 
@@ -706,10 +718,19 @@ class PyWebviewAPI:
                                 try:
                                     cookies = mgr.get_cookies_finish(result)
                                     val = ''
-                                    for c in (cookies or []):
-                                        if c.get_name() == cookie_name:
-                                            val = c.get_value()
-                                            break
+                                    if cookie_name == '*':
+                                        # Whole-jar mode: hand every cookie visible to this
+                                        # URI to the callback as a JSON blob, not just one
+                                        # named value (Battle.net's account.battle.net
+                                        # session -- there's no single "the" auth cookie).
+                                        found = {c.get_name(): c.get_value() for c in (cookies or [])}
+                                        if found:
+                                            val = json.dumps(found)
+                                    else:
+                                        for c in (cookies or []):
+                                            if c.get_name() == cookie_name:
+                                                val = c.get_value()
+                                                break
                                     log.info(f'open_auth_popup: native cookie {cookie_name!r} = {len(val)} chars')
                                     if val:
                                         threading.Thread(target=_exchange_and_close,
