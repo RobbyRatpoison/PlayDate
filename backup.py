@@ -121,6 +121,43 @@ def _extract_backup_zip(raw: bytes, logger):
 
 def _run_restore_thread(raw: bytes, logger):
     """Runs off the request thread: extract, migrate, and update _restore_state."""
+    # Stop any long-running job before the DB files get swapped out from
+    # under it -- the automatic metadata-backfill sweep, a bulk rescrape, a
+    # populate, the startup store-date/name migrations. Otherwise it keeps
+    # iterating rows that changed underneath it and logs a run of failures
+    # (seen in the wild: a restore mid-sweep produced done=11 failed=63).
+    # Same signals main.py's window-close handler sets; here we also wait
+    # for the worker to unwind and then re-arm the flags.
+    _cancel_evs = []
+    try:
+        from library import _bulk_op_cancel, _bulk_op_state
+        from scrapers import _store_date_migration_cancel, _store_name_migration_cancel, _populate_idle
+        from app import populate_cancel
+        _cancel_evs = [_bulk_op_cancel, _store_date_migration_cancel,
+                       _store_name_migration_cancel, populate_cancel]
+        for ev in _cancel_evs:
+            ev.set()
+        _populate_idle.set()  # unblock a worker parked on the pause gate
+        deadline = time.time() + 12
+        while _bulk_op_state.get('running') and time.time() < deadline:
+            time.sleep(0.25)
+        if _bulk_op_state.get('running'):
+            logger.warning("Restore: a bulk op did not stop in time -- continuing")
+    except Exception:
+        logger.warning("Restore: could not signal running jobs to stop", exc_info=True)
+
+    try:
+        _do_restore(raw, logger)
+    finally:
+        # Re-arm the cancel flags latched above -- their consumers
+        # (bulk_op_start, the startup sweep, the store migrations) only
+        # clear them at their own start, so a still-set flag would abort
+        # the next run. Runs on every exit path, including a failed extract.
+        for ev in _cancel_evs:
+            ev.clear()
+
+
+def _do_restore(raw: bytes, logger):
     import zipfile
     try:
         restored, skipped = _extract_backup_zip(raw, logger)
