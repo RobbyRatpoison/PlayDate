@@ -78,7 +78,6 @@ from pagywosg import pagywosg_bp
 from pop_sync import pop_bp
 from imports import imports_bp
 from plugins import plugins_bp
-from debug_input import debug_bp
 from config import BASE_DIR
 import pagywosg
 import scrapers
@@ -129,7 +128,6 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(pop_bp)
     app.register_blueprint(imports_bp)
     app.register_blueprint(plugins_bp)
-    app.register_blueprint(debug_bp)
 
     # ── CORS for Tampermonkey userscript (runs on help.steampowered.com) ─────
     # Adds CORS + Private Network Access headers to every response when the

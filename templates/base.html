@@ -33,7 +33,6 @@
     window._GAMEPAD_SUPPRESS_ON_LAUNCH = {{ gamepad_suppress_on_launch | tojson }};
     window._BUTTON_REMAPS              = {{ button_remaps | tojson }};
     window._STEAM_DECK_SESSION         = {{ steam_deck_session | tojson }};
-    window._PD_DEBUG                   = {{ pd_debug | tojson }};
     </script>
     <script src="{{ url_for('static', filename='js/input.js') }}?v={{ app_version }}"></script>
     <style>

@@ -13,23 +13,6 @@
         console.error('[input.js] Unhandled promise rejection:', e.reason);
     });
 
-    // TEMP (beta only): remote-eval bridge for diagnosing Deck UI bugs over SSH.
-    // Delete with debug_input.py.
-    if (window._PD_DEBUG === true) {
-        setInterval(() => {
-            fetch('/api/debug/eval').then(r => r.json()).then(d => {
-                (d.pending || []).forEach(job => {
-                    let out;
-                    try { out = String(eval(job.js)); } catch (e) { out = 'ERR: ' + e; }
-                    fetch('/api/debug/eval/result', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({id: job.id, out}),
-                    }).catch(() => {});
-                });
-            }).catch(() => {});
-        }, 400);
-    }
-
     // Launched as a Steam shortcut on a Steam Deck (Game Mode / Big Picture).
     // There, WebKitGTK's own gamepad support grabs the built-in controller's
     // hidraw node at startup, disables its firmware "lizard mode" emulation
