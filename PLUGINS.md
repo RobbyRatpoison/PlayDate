@@ -98,6 +98,7 @@ Fields (all but `url` optional):
 - `post_install_dlls` -- list of paths (relative to the detected Proton build's root, e.g. `files/lib/wine/x86_64-windows/xyz.dll`) copied into the prefix's `system32` after the installer completes.
 - `install_path` -- required for `type: "extract"` (destination under `drive_c`, backslashes accepted); unused for `msi`/`exe`.
 - `env` -- extra environment variables merged in for every step (prefix creation, winetricks, install).
+- `detached_launcher` -- `true` for installers that never exit because the setup stub transitions its own process straight into the running launcher (Battle.net). Instead of waiting for the installer to exit (which then only ever ends at the 600s ceiling), core polls for `exe_name` to appear in the prefix and proceeds ~20s after it does, leaving the launcher running. Point `exe_name` at the fully-installed launcher exe, not an early bootstrapper file. `exe`-type installers only; ignored for `msi`.
 
 `exe_name` (used to verify the install actually succeeded) is read from `launcher.exe_name` if not also set directly on `installer`.
 

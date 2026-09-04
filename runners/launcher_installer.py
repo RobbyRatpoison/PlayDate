@@ -16,6 +16,7 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 
 import requests
 
@@ -61,6 +62,25 @@ def start_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: 
 def _set(platform_id, phase, detail):
     with _lock:
         _states[platform_id].update({'phase': phase, 'detail': detail})
+
+
+def _target_exe_in_prefix(prefix: str, exe_name: str) -> bool:
+    """
+    True if a file named exe_name exists under the prefix's Program Files
+    trees. Used to detect a completed install while the installer process is
+    still running (see detached_launcher below); scoped to where launchers
+    actually install so it's cheap to call on a poll.
+    """
+    if not exe_name:
+        return False
+    for pf in ('Program Files', 'Program Files (x86)'):
+        root = os.path.join(prefix, 'drive_c', pf)
+        if not os.path.isdir(root):
+            continue
+        for _dirpath, _dirs, files in os.walk(root):
+            if exe_name in files:
+                return True
+    return False
 
 
 def _fail(platform_id, msg):
@@ -363,14 +383,38 @@ def _run_install(platform_id: str, installer_cfg: dict, prefix: str, wine_bin: s
                 cmd_prefix, env = _build_run(prefix, wb, {**extra_env, 'PROTON_VERB': 'run'})
                 cmd = cmd_prefix + [installer_path]
             log.info('Launcher install [%s]: running %s', platform_id, cmd)
+            # detached_launcher: some installers (e.g. Battle.net's) never exit --
+            # the setup stub downloads the app, then transitions its own process
+            # straight into the running launcher, so waiting for it to exit means
+            # hanging until the 600s ceiling every time. For those, poll for the
+            # target exe landing in the prefix instead and proceed once it has,
+            # leaving the launcher running for the user to sign in.
+            detached = bool(installer_cfg.get('detached_launcher')) and installer_type != 'msi'
             with open(out_path, 'wb') as out_f, open(err_path, 'wb') as err_f:
                 proc = host_popen(cmd, env=env, stdout=out_f, stderr=err_f)
-                try:
-                    proc.wait(timeout=600)
-                    log.info('Launcher install [%s]: installer exit code %d', platform_id, proc.returncode)
-                except subprocess.TimeoutExpired:
-                    log.warning('Launcher install [%s]: installer did not exit within 600s — '
-                                'proceeding to verification anyway', platform_id)
+                deadline = time.monotonic() + 600
+                exe_seen_at = None
+                while True:
+                    try:
+                        proc.wait(timeout=5)
+                        log.info('Launcher install [%s]: installer exit code %s',
+                                 platform_id, proc.returncode)
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+                    if time.monotonic() >= deadline:
+                        log.warning('Launcher install [%s]: installer did not exit within 600s — '
+                                    'proceeding to verification anyway', platform_id)
+                        break
+                    if detached and _target_exe_in_prefix(prefix, exe_name):
+                        if exe_seen_at is None:
+                            exe_seen_at = time.monotonic()
+                        elif time.monotonic() - exe_seen_at >= 20:
+                            log.info('Launcher install [%s]: %s present in prefix — install '
+                                     'complete, leaving launcher running', platform_id, exe_name)
+                            break
+                    else:
+                        exe_seen_at = None
             if proc.returncode not in (None, 0):
                 err = open(err_path, 'rb').read()
                 out = open(out_path, 'rb').read()
