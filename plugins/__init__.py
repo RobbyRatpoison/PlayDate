@@ -79,7 +79,7 @@ BETA_PLUGINS = [
      'platform_status': {'windows': 'untested', 'linux': 'untested', 'mac': 'untested'},
      'notes': {'linux': 'Account connection and library sync confirmed working. Install/launch/uninstall were rewritten around a from-scratch reimplementation of Amazon\'s real download protocol, but are unverified end to end -- no owned Amazon game to test against yet. Please report back if you own games here.'}},
     {'id': 'rockstar',     'name': 'Rockstar Games',  'source': 'RobbyRatpoison/playdate-plugin-rockstar',
-     'platform_status': {'windows': 'untested', 'linux': 'untested', 'mac': 'untested'},
+     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'},
      'notes': {'linux': 'Launcher install, library sync (read straight from the signed-in launcher, '
                         'no account connection needed), install, and launch dispatch are all confirmed '
                         'working. One tested title (GTA: San Andreas) hit an unrelated Wine/Proton crash '
