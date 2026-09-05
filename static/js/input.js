@@ -995,7 +995,18 @@
                         _state.row = Math.min(_state.row, rows.length - 1);
                         const row  = rows[_state.row];
                         _state.col = Math.min(_state.col, row.items.length - 1);
-                        _applyFocus(row.items[_state.col]);
+                        const item = row.items[_state.col];
+                        _applyFocus(item);
+                        // _applyFocus() intentionally skips scrolling for home in
+                        // normal mode -- true for horizontal movement within a
+                        // shelf (each shelf clips via overflow, never scrolls),
+                        // but moving focus up/down *between* shelf rows can still
+                        // land on one off-screen with nothing bringing it into
+                        // view. Edit mode already has its own scrollBy handling
+                        // in _applyFocus(), so only add this for normal mode.
+                        if (!document.body.classList.contains('edit-mode')) {
+                            _animatedScrollIntoView(item, 'nearest');
+                        }
                         break;
                     }
 
