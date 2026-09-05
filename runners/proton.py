@@ -65,7 +65,8 @@ def _find_steam_root(proton_path):
     return os.path.expanduser('~/.steam/steam')
 
 
-def launch_game(install_path, executable, wine_prefix, proton_path=None, env_extra=None):
+def launch_game(install_path, executable, wine_prefix, proton_path=None, env_extra=None,
+                args=None, cwd=None):
     """
     Launch a Windows game via Proton.
 
@@ -74,6 +75,8 @@ def launch_game(install_path, executable, wine_prefix, proton_path=None, env_ext
     wine_prefix   : directory for the Wine/Proton prefix (created automatically if absent)
     proton_path   : absolute path to the 'proton' script; auto-detected if None
     env_extra     : dict of extra environment variables to set
+    args          : list of extra arguments to pass to the executable
+    cwd           : working directory for the process; defaults to install_path
 
     Returns the Popen object (caller should not wait — game runs in background).
     Raises RuntimeError if no Proton is found.
@@ -97,6 +100,6 @@ def launch_game(install_path, executable, wine_prefix, proton_path=None, env_ext
         env.update(env_extra)
 
     exe_abs = os.path.join(install_path, executable)
-    cmd     = [proton_path, 'run', exe_abs]
+    cmd     = [proton_path, 'run', exe_abs] + (args or [])
     log.info(f'Proton launch: {cmd[0]} run {executable}  (prefix={wine_prefix})')
-    return host_popen(cmd, env=env, cwd=install_path)
+    return host_popen(cmd, env=env, cwd=cwd or install_path)

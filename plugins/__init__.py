@@ -48,6 +48,9 @@ _incompatible_plugins: dict = {}
 # lives here -- not mirrored into plugin.json, since it's catalog-display
 # detail rather than something a plugin author browsing that repo needs.
 OFFICIAL_PLUGINS = [
+    {'id': 'battle_net', 'name': 'Battle.net',    'source': 'RobbyRatpoison/playdate-plugin-battle-net',
+     'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'},
+     'notes': {'linux': 'Library sync, install, launch, and uninstall all confirmed working via Wine. Local sync (installed games + owned paid games) needs no login; connecting the account adds the authoritative owned list on top.'}},
     {'id': 'ea_app',     'name': 'EA App',        'source': 'RobbyRatpoison/playdate-plugin-ea-app',
      'platform_status': {'windows': 'untested', 'linux': 'working', 'mac': 'untested'},
      'notes': {'linux': 'Install, launch, and uninstall open EA App itself (same as Lutris); EA App runs under Wine via the bundled installer.'}},
@@ -73,9 +76,8 @@ OFFICIAL_PLUGINS = [
 # opt-in via the catalog, same install mechanism as everything else.
 BETA_PLUGINS = [
     {'id': 'amazon_games', 'name': 'Amazon Games',    'source': 'RobbyRatpoison/playdate-plugin-amazon-games',
-     'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
-    {'id': 'battle_net',   'name': 'Battle.net',      'source': 'RobbyRatpoison/playdate-plugin-battle-net',
-     'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
+     'platform_status': {'windows': 'untested', 'linux': 'untested', 'mac': 'untested'},
+     'notes': {'linux': 'Account connection and library sync confirmed working. Install/launch/uninstall were rewritten around a from-scratch reimplementation of Amazon\'s real download protocol, but are unverified end to end -- no owned Amazon game to test against yet. Please report back if you own games here.'}},
     {'id': 'rockstar',     'name': 'Rockstar Games',  'source': 'RobbyRatpoison/playdate-plugin-rockstar',
      'platform_status': {'windows': 'untested', 'linux': 'broken', 'mac': 'untested'}},
 ]
