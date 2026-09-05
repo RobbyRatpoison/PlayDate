@@ -923,7 +923,7 @@
     // #list-pane (its own overflow container) via _scrollableAncestor.
     function _animatedScrollIntoView(el, block) {
         const container = _scrollableAncestor(el);
-        const DURATION = 250;
+        const DURATION = 350;
         const rect = el.getBoundingClientRect();
         let startPos, targetPos;
         if (container) {
@@ -954,7 +954,7 @@
         const delta = targetPos - startPos;
         if (Math.abs(delta) < 1) return;
         const startTime = performance.now();
-        const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        const ease = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
         function step(now) {
             const t = Math.min(1, (now - startTime) / DURATION);
             const pos = startPos + delta * ease(t);
