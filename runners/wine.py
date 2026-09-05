@@ -194,13 +194,58 @@ def _prefer_native_wayland(env):
     return env
 
 
-def build_proton_env(wine_bin, base_env=None):
+def _pe_arch_dir(exe_path):
+    """Return 'x86_64-windows' or 'i386-windows' for a PE exe's own bitness
+    (read from the COFF header Machine field), or None if it can't be
+    determined. Used to pick the one WINEDLLPATH vkd3d/wine dir that actually
+    matches the process being launched -- see build_proton_env()."""
+    try:
+        with open(exe_path, 'rb') as f:
+            dos_header = f.read(64)
+            if len(dos_header) < 64 or dos_header[:2] != b'MZ':
+                return None
+            pe_offset = int.from_bytes(dos_header[60:64], 'little')
+            f.seek(pe_offset)
+            pe_header = f.read(6)
+            if len(pe_header) < 6 or pe_header[:4] != b'PE\x00\x00':
+                return None
+            machine = int.from_bytes(pe_header[4:6], 'little')
+    except OSError:
+        return None
+    if machine == 0x8664:   # IMAGE_FILE_MACHINE_AMD64
+        return 'x86_64-windows'
+    if machine == 0x014c:   # IMAGE_FILE_MACHINE_I386
+        return 'i386-windows'
+    return None
+
+
+def build_proton_env(wine_bin, base_env=None, exe_path=None):
     """
     Return an env dict with LD_LIBRARY_PATH and WINEDLLPATH set up for a Proton
     wine binary, mirroring what the Proton script does when launching via Steam.
 
     wine_bin must be the path to wine64/wine inside a Proton 'files/bin/' directory.
     base_env defaults to os.environ if not provided.
+    exe_path : the .exe actually being launched, if known. When its bitness
+        can be read, the vkd3d WINEDLLPATH dir is skipped entirely rather
+        than picking the matching-arch one -- confirmed live (2026-09-04,
+        GTA: San Andreas, a 32-bit game) that even the *correct*-arch
+        libvkd3d-utils-1.dll from Proton's own files/lib/vkd3d/ is a
+        different build than the one already paired with this prefix's own
+        wined3d.dll in system32/syswow64 (itself provisioned by the same
+        umu-run/Proton bootstrap every plugin prefix goes through), and
+        forcing the mismatched pair aborts with "unimplemented function
+        libvkd3d-utils-1.dll.vkd3d_utils_set_log_callback" -- Wine's normal
+        DLL search already resolves vkd3d correctly from the prefix itself
+        once WINEDLLPATH doesn't shadow it. (Listing the wrong-arch dir
+        unconditionally, the previous bug here, failed even harder: an
+        outright STATUS_INVALID_IMAGE_FORMAT / c000007b load failure that
+        doesn't fall through to try another WINEDLLPATH entry, cascading
+        into wined3d.dll / DDRAW.dll never loading at all.) Omit exe_path
+        (or pass an exe whose bitness can't be read) to fall back to the
+        previous both-arch-dirs behavior, kept for callers with no single
+        target exe (e.g. launch_protocol_url, an installer run) where this
+        fix hasn't been verified.
     """
     env = dict(base_env if base_env is not None else os.environ)
 
@@ -219,15 +264,18 @@ def build_proton_env(wine_bin, base_env=None):
         (':' + existing_ld) if existing_ld else ''
     )
 
-    # WINEDLLPATH: vkd3d arch-specific dirs + wine overrides.
-    # The x86_64-windows subdirectories are needed so Wine finds native DLLs
-    # (libvkd3d-1.dll etc.) when WINEDLLPATH entries are searched.
-    dll_extra = [
-        os.path.join(lib_dir, 'vkd3d', 'x86_64-windows'),
-        os.path.join(lib_dir, 'vkd3d'),
-        os.path.join(lib_dir, 'wine', 'x86_64-windows'),
-        os.path.join(lib_dir, 'wine'),
-    ]
+    # WINEDLLPATH: wine overrides, plus a vkd3d fallback dir only when we
+    # don't know the target exe's bitness -- see the exe_path note above.
+    arch_dir = _pe_arch_dir(exe_path) if exe_path else None
+    dll_extra = []
+    if arch_dir:
+        dll_extra += [os.path.join(lib_dir, 'wine', arch_dir), os.path.join(lib_dir, 'wine')]
+    else:
+        arch_dirs = ['x86_64-windows', 'i386-windows']
+        dll_extra += [os.path.join(lib_dir, 'vkd3d', d) for d in arch_dirs]
+        dll_extra.append(os.path.join(lib_dir, 'vkd3d'))
+        dll_extra += [os.path.join(lib_dir, 'wine', d) for d in arch_dirs]
+        dll_extra.append(os.path.join(lib_dir, 'wine'))
     existing_dll = env.get('WINEDLLPATH', '')
     env['WINEDLLPATH'] = ':'.join(p for p in dll_extra if os.path.isdir(p)) + (
         (':' + existing_dll) if existing_dll else ''
@@ -397,8 +445,10 @@ def run_in_prefix(prefix_path, exe, args=None, wine_bin=None, env_extra=None, cw
             # `wine` call (no container). PROVISIONAL for Proton: verify the
             # exe actually runs/renders joined to a umu-started session
             # without the Steam Runtime around it; if not, that caller needs
-            # restart_session_if_running=True.
-            env = build_proton_env(wine_bin) if proton else _prefer_native_wayland(dict(os.environ))
+            # restart_session_if_running=True. exe_path=exe lets
+            # build_proton_env() pick the WINEDLLPATH vkd3d/wine dir matching
+            # this exe's own bitness -- see its docstring.
+            env = build_proton_env(wine_bin, exe_path=exe) if proton else _prefer_native_wayland(dict(os.environ))
             env['WINEPREFIX'] = prefix_path
             if env_extra:
                 env.update(env_extra)
