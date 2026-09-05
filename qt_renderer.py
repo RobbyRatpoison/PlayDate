@@ -187,7 +187,16 @@ def _do_flatpak_swap():
                 host_popen(['sh', '-c', f'sleep 2; exec steam "steam://rungameid/{_sgid}"'],
                            start_new_session=True)
             else:
-                host_popen(['flatpak', 'run', other_app_id], start_new_session=True)
+                # Same reasoning as the Deck branch above: without a delay,
+                # the new process's own _port_in_use() check (main.py) can
+                # run before this process has actually torn down and
+                # released port 5000 -- not a false-positive TIME_WAIT read
+                # (that's already handled via SO_REUSEADDR), a genuinely
+                # real listener that just hasn't exited yet. Confirmed live:
+                # the relaunched Qt window opened straight to the "PlayDate
+                # is already running" fallback screen.
+                host_popen(['sh', '-c', f'sleep 2; exec flatpak run {other_app_id}'],
+                           start_new_session=True)
         except Exception as re_err:
             log.warning(f"flatpak-swap: relaunch failed, user must reopen manually: {re_err}")
 

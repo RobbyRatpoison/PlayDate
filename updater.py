@@ -281,8 +281,17 @@ def perform_update():
                         host_popen(['sh', '-c', f'sleep 2; exec steam "steam://rungameid/{_sgid}"'],
                                    start_new_session=True)
                     else:
+                        # Same reasoning as the Deck branch above: without a
+                        # delay, the new process's own _port_in_use() check
+                        # (main.py) can run before this process has actually
+                        # torn down and released port 5000 -- confirmed live
+                        # via the same pattern in qt_renderer.py's swap-toggle
+                        # (which copied this relaunch code): the relaunched
+                        # window opened straight to the "PlayDate is already
+                        # running" fallback screen instead of the real app.
                         log.info("Relaunching via flatpak run")
-                        host_popen(['flatpak', 'run', app_id], start_new_session=True)
+                        host_popen(['sh', '-c', f'sleep 2; exec flatpak run {app_id}'],
+                                   start_new_session=True)
                 except Exception as _re:
                     # The update itself is already installed -- a relaunch
                     # hiccup shouldn't report the whole thing as failed.
