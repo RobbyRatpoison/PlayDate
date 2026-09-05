@@ -4,8 +4,8 @@
 ### Improvements
 
 - Wine/Proton game launches can now pass extra command-line arguments and a custom working directory, for plugins that need it.
-- EA App, Epic Games, Ubisoft Connect, Battle.net, and Rockstar Games now detect a native Windows install via the system registry, catching custom install locations.
-- Epic Games and Ubisoft Connect gained Start Launcher / Open Folder buttons, matching EA App and Battle.net.
+- All launcher-based plugins now detect a native Windows install via the system registry, catching custom install locations.
+- All launcher-based plugins now offer Start Launcher and Open Folder buttons.
 - When PlayDate can't confidently pick which file to launch for an itch.io, Humble, or IndieGala game, it now asks — changeable anytime via right-click → Change Executable.
 
 ### Fixes
