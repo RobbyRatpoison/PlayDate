@@ -1,5 +1,10 @@
 # Release Notes
 
+## v1.10.3 - Pending
+### Improvements
+
+- Linux: added an experimental Qt/Chromium renderer option to fix choppy library-grid scrolling on NVIDIA + Wayland setups (Settings → Renderer — only shown when that combination is detected). Flatpak users get a one-click switch between the standard and Qt builds from the same setting.
+
 ## v1.10.2 - 2026-09-05
 ### Improvements
 
