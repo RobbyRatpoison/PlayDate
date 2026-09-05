@@ -14,9 +14,9 @@ import logging
 logger = logging.getLogger('pywebview')
 
 # Multiplier applied to the wheel event's delta before Chromium processes
-# it. Chosen to roughly match WebKitGTK's felt scroll speed on the library
-# grid -- adjust if it still feels off after live testing.
-_WHEEL_SCROLL_MULTIPLIER = 3
+# it. 3x still felt slower than WebKitGTK on live testing -- adjust further
+# if needed.
+_WHEEL_SCROLL_MULTIPLIER = 5
 
 
 def install(qt_module):
