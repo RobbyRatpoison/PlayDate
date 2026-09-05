@@ -911,6 +911,59 @@
     }
 
     // ── Apply focus to the element at current state coords ───────────────────
+    // Manually animates scrolling `el` into view -- QtWebEngine's native
+    // scrollIntoView({behavior:'smooth'}) silently doesn't animate at all
+    // (confirmed: a known, still-unresolved QtWebEngine/Chromium
+    // limitation, same complaint reported by qutebrowser users; WebKitGTK
+    // animates the native call fine). Driving the scroll via
+    // requestAnimationFrame ourselves sidesteps the native feature
+    // entirely, so gamepad/d-pad navigation animates identically on both
+    // renderers instead of depending on per-engine behavior. Handles both
+    // the library grid (window-level scroll) and list view's nested
+    // #list-pane (its own overflow container) via _scrollableAncestor.
+    function _animatedScrollIntoView(el, block) {
+        const container = _scrollableAncestor(el);
+        const DURATION = 250;
+        const rect = el.getBoundingClientRect();
+        let startPos, targetPos;
+        if (container) {
+            const cRect = container.getBoundingClientRect();
+            startPos = container.scrollTop;
+            if (block === 'center') {
+                targetPos = startPos + (rect.top - cRect.top) - (cRect.height / 2) + (rect.height / 2);
+            } else if (rect.top < cRect.top) {
+                targetPos = startPos + (rect.top - cRect.top);
+            } else if (rect.bottom > cRect.bottom) {
+                targetPos = startPos + (rect.bottom - cRect.bottom);
+            } else {
+                return;
+            }
+        } else {
+            startPos = window.scrollY;
+            if (block === 'center') {
+                targetPos = startPos + rect.top - (window.innerHeight / 2) + (rect.height / 2);
+            } else if (rect.top < 0) {
+                targetPos = startPos + rect.top;
+            } else if (rect.bottom > window.innerHeight) {
+                targetPos = startPos + rect.bottom - window.innerHeight;
+            } else {
+                return;
+            }
+        }
+        targetPos = Math.max(0, targetPos);
+        const delta = targetPos - startPos;
+        if (Math.abs(delta) < 1) return;
+        const startTime = performance.now();
+        const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        function step(now) {
+            const t = Math.min(1, (now - startTime) / DURATION);
+            const pos = startPos + delta * ease(t);
+            if (container) container.scrollTop = pos; else window.scrollTo(0, pos);
+            if (t < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
     function _syncFocus() {
         if (!_state.active) return;
 
@@ -961,10 +1014,8 @@
                             const item = items[idx];
                             _state.focusedAppid = parseInt(item.dataset.appid) || null;
                             _applyFocus(item);
-                            const scrollOpts = (typeof _artOrientation !== 'undefined' && _artOrientation === 'list')
-                                ? { behavior: 'smooth', block: 'nearest' }
-                                : { behavior: 'smooth', block: 'center' };
-                            item.scrollIntoView(scrollOpts);
+                            const block = (typeof _artOrientation !== 'undefined' && _artOrientation === 'list') ? 'nearest' : 'center';
+                            _animatedScrollIntoView(item, block);
                         }
                         break;
                     }

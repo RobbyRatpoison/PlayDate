@@ -287,6 +287,14 @@ elif _USE_LEGACY_GTK3:
     import gtk3webview_patch
     gtk3webview_patch.install(_stock_gtk)
     log.info("Patched legacy GTK3/WebKit2GTK renderer with gamescope focus watch")
+elif _USE_QT:
+    # Same technique as the GTK3 patch above, applied to pywebview's Qt
+    # platform module -- see qt_webview_patch.py for why (Chromium's default
+    # wheel-scroll amount feels slower than WebKitGTK's, confirmed live).
+    import webview.platforms.qt as _stock_qt
+    import qt_webview_patch
+    qt_webview_patch.install(_stock_qt)
+    log.info("Patched Qt/QtWebEngine renderer with wheel-scroll multiplier")
 
 import migration
 from app import create_app, populate_cancel
