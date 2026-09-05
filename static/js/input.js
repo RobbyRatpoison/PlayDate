@@ -926,28 +926,35 @@
         const DURATION = 350;
         const rect = el.getBoundingClientRect();
         let startPos, targetPos;
+        // .nav-header is position:fixed, always covering the top of the
+        // viewport regardless of scroll position. .container (the main
+        // scrollable ancestor for both library grid and home) sits at
+        // cRect.top === 0 -- it's the fixed header's z-index that visually
+        // clears it, not its own box position -- so scrolling can still land
+        // an element's top edge underneath the header. Math.max() against a
+        // container's own top only actually changes anything when that
+        // container starts above the header (.container's case); one like
+        // #list-pane that's already sized/positioned below the nav-header
+        // (_adjustListHeight()) has cRect.top >= navH already, so this is a
+        // no-op there. Same navH pattern _applyFocus()'s edit-mode branch
+        // already uses for its own toolbar.
+        const navEl = document.querySelector('.nav-header');
+        const navH = navEl ? navEl.getBoundingClientRect().bottom : 0;
         if (container) {
             const cRect = container.getBoundingClientRect();
+            const topBound = Math.max(cRect.top, navH);
             startPos = container.scrollTop;
             if (block === 'center') {
-                targetPos = startPos + (rect.top - cRect.top) - (cRect.height / 2) + (rect.height / 2);
-            } else if (rect.top < cRect.top) {
-                targetPos = startPos + (rect.top - cRect.top);
+                const visibleMid = topBound + (cRect.bottom - topBound) / 2;
+                targetPos = startPos + rect.top - visibleMid + (rect.height / 2);
+            } else if (rect.top < topBound) {
+                targetPos = startPos + (rect.top - topBound);
             } else if (rect.bottom > cRect.bottom) {
                 targetPos = startPos + (rect.bottom - cRect.bottom);
             } else {
                 return;
             }
         } else {
-            // .nav-header is position:fixed, always covering the top of the
-            // viewport regardless of scroll position -- a window-level target
-            // computed against y=0 can land an element's top edge underneath
-            // it. Same navH pattern _applyFocus()'s edit-mode branch already
-            // uses for its own toolbar. Only relevant here (not the container
-            // branch above): #list-pane is already sized/positioned below the
-            // nav-header (_adjustListHeight()), so it never scrolls under it.
-            const navEl = document.querySelector('.nav-header');
-            const navH = navEl ? navEl.getBoundingClientRect().bottom : 0;
             startPos = window.scrollY;
             if (block === 'center') {
                 const visibleMid = navH + (window.innerHeight - navH) / 2;
