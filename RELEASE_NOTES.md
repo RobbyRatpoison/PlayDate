@@ -4,6 +4,7 @@
 ### Improvements
 
 - Linux: added an experimental Qt renderer option (Settings → Renderer) to fix choppy library scrolling on NVIDIA + Wayland.
+- Gamepad/d-pad navigation on the library and home pages now scrolls smoothly into view and no longer hides the focused card behind the top bar.
 
 ## v1.10.2 - 2026-09-05
 ### Improvements
