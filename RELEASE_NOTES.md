@@ -1,6 +1,6 @@
 # Release Notes
 
-## v1.10.2
+## v1.10.2 - 2026-09-05
 ### Improvements
 
 - Wine/Proton game launches can now pass extra command-line arguments and a custom working directory, for plugins that need it.
