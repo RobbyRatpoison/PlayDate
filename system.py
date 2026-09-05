@@ -163,6 +163,7 @@ def launch_game(appid):
             log.info(f"Launch result for appid {appid_int}: {result}")
             if result.get('status') != 'error':
                 _plugin_registry.notify_game_launched(appid_int, game_platform)
+            result.setdefault('platform', game_platform)
             return jsonify(result)
         log.warning(f"No launch handler for platform {game_platform!r} (appid {appid_int})")
         return jsonify({"status": "not_supported",

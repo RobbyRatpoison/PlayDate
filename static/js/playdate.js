@@ -1086,3 +1086,112 @@ function _cpOutside(e) {
     }
 }
 
+/**
+ * Shared "which file should PlayDate launch?" prompt for platforms whose
+ * install-folder scan (runners/native_exe.py, GOG/Humble/itch.io/IndieGala)
+ * found more than one equally-plausible candidate and can't tell them apart
+ * on its own. Not gamepad-zone integrated (input.js's _MODAL_IDS) -- this is
+ * a rare edge case (most installs have one obvious candidate), so mouse/
+ * keyboard only for now.
+ *
+ * candidates: array of install-relative path strings.
+ * onPick(path): called with the chosen path once Confirm is clicked.
+ */
+function showExecutablePicker(candidates, onPick) {
+    if (!candidates || !candidates.length) return;
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.6);'
+        + 'display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-secondary,#222);color:var(--text-primary,#fff);'
+        + 'border-radius:8px;padding:20px;max-width:480px;width:90%;';
+
+    const title = document.createElement('div');
+    title.textContent = 'Which file should PlayDate launch?';
+    title.style.cssText = 'font-weight:600;margin-bottom:8px;';
+
+    const hint = document.createElement('div');
+    hint.textContent = 'This install has more than one file that could be the game itself. Pick the right one below.';
+    hint.style.cssText = 'color:var(--text-secondary,#999);font-size:0.9em;margin-bottom:14px;';
+
+    const nativeSelect = document.createElement('select');
+    nativeSelect.id = '_exePickerSelect_' + Date.now();
+    for (const c of candidates) {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.text  = c;
+        nativeSelect.appendChild(opt);
+    }
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Later';
+    cancelBtn.onclick = () => overlay.remove();
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.textContent = 'Confirm';
+    confirmBtn.onclick = () => {
+        const chosen = customSelect.value;
+        overlay.remove();
+        onPick(chosen);
+    };
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(confirmBtn);
+
+    box.appendChild(title);
+    box.appendChild(hint);
+    box.appendChild(nativeSelect);
+    box.appendChild(btnRow);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    // initCustomSelect() replaces nativeSelect in place (nativeSelect must
+    // already be attached to the DOM, hence appending it to box first) --
+    // never leave a bare native <select> in a pywebview popup (CLAUDE.md:
+    // native selects create OS-level popups that stay visible when
+    // pywebview loses focus).
+    const customSelect = initCustomSelect(nativeSelect);
+}
+
+/**
+ * Fetch candidates from a plugin's executable_candidates_url and open
+ * showExecutablePicker(), posting the choice to set_executable_url.
+ * platform: the game's platform key (window._PLUGIN_API[platform] must
+ * declare both URL templates -- see js_api() in the relevant plugin).
+ */
+async function pickExecutableForGame(platform, appid, candidates) {
+    const api = window._PLUGIN_API && window._PLUGIN_API[platform];
+    if (!api || !api.set_executable_url) return;
+
+    let list = candidates;
+    if (!list || !list.length) {
+        if (!api.executable_candidates_url) return;
+        try {
+            const r = await fetch(api.executable_candidates_url.replace('{appid}', appid));
+            const d = await r.json();
+            list = d.candidates || [];
+        } catch (e) {
+            return;
+        }
+    }
+    if (!list.length) return;
+
+    showExecutablePicker(list, async (chosen) => {
+        try {
+            await fetch(api.set_executable_url.replace('{appid}', appid), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: chosen }),
+            });
+            showLaunchToast && showLaunchToast('Executable updated — try Play again.');
+        } catch (e) {}
+    });
+}
+

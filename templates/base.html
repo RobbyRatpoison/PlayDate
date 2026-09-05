@@ -340,6 +340,12 @@
                 if (data.install_poller && typeof window[data.install_poller] === 'function') window[data.install_poller](appid);
                 return;
             }
+            if (data.status === 'needs_executable_pick') {
+                if (typeof pickExecutableForGame === 'function') {
+                    pickExecutableForGame(data.platform, appid, data.candidates);
+                }
+                return;
+            }
 
             // Suppress gamepad only after confirming the game actually launched (is installed)
             if (window._inputMgr) {
