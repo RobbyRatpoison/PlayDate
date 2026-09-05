@@ -46,8 +46,21 @@ def install(qt_module):
         return
 
     class _WheelFilter(QObject):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._reinjecting = False
+
         def eventFilter(self, obj, event):
             if event.type() != QEvent.Type.Wheel:
+                return False
+            if self._reinjecting:
+                # QApplication.sendEvent() below re-enters Qt's normal event
+                # delivery for `obj`, which passes back through this same
+                # filter (it's installed on obj) -- without this guard, the
+                # scaled event gets scaled again, and again, compounding
+                # exponentially into an enormous delta from a single wheel
+                # click. Confirmed live: 5x alone scrolled through thousands
+                # of cards.
                 return False
             try:
                 scaled = QWheelEvent(
@@ -63,7 +76,11 @@ def install(qt_module):
             except Exception:
                 logger.exception('qt_webview_patch: failed to scale wheel event, passing through unmodified')
                 return False
-            QApplication.sendEvent(obj, scaled)
+            self._reinjecting = True
+            try:
+                QApplication.sendEvent(obj, scaled)
+            finally:
+                self._reinjecting = False
             return True  # consume the original, unscaled event
 
     WebView = qt_module.BrowserView.WebView
