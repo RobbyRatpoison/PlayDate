@@ -1076,7 +1076,7 @@
                 // Promise; use .then() rather than await, since pywebview's
                 // event dispatch doesn't reliably wait on async DOM handlers.
                 const label = checked ? 'the Qt/Chromium' : 'the standard GTK';
-                confirm(`This installs ${label} version of PlayDate (a separate download) and restarts into it. Continue?`).then(ok => {
+                confirm(`This installs ${label} version of PlayDate (a separate download) and restarts into it. The version you're switching from will be uninstalled -- if you have it pinned to a taskbar or dock, that shortcut will stop working and you'll need to re-pin the new one. Continue?`).then(ok => {
                     if (!ok) { cb.checked = !checked; return; }
                     box.style.display = '';
                     box.style.background = 'rgba(91,192,222,0.12)';
