@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build-flatpak:
-    name: Build & Package (Linux Flatpak)
+    name: Build & Package (Linux Flatpak - ${{ matrix.variant }})
     runs-on: ubuntu-latest
     # Runs before build-windows so it's the one job creating the GitHub
     # Release, with the .flatpak already attached — Windows attaches its own
@@ -24,6 +24,41 @@ jobs:
     # existed with no .flatpak asset yet — "Check for Updates" could find the
     # release and fail with "no flatpak bundle URL cached" until the Flatpak
     # job caught up.
+    #
+    # Two variants (GTK default, Qt alternate renderer — see
+    # project_qtwebengine_rendering_investigation) share this job as a
+    # matrix rather than a duplicated job, since they're structurally
+    # identical apart from manifest/runtime/bundle-name. max-parallel: 1
+    # deliberately serializes them: both legs append to the SAME shared
+    # ostree repo (flatpak/repo) and the SAME GitHub Release, and running
+    # them concurrently on separate runners risks one leg's "restore from
+    # gh-pages" missing the other's just-published commit, or a race on
+    # release-asset upload. Not validated as safe to parallelize — don't
+    # remove this without testing that first.
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        variant: [gtk, qt]
+        include:
+          - variant: gtk
+            manifest: flatpak/io.github.robbyratpoison.PlayDate.yml
+            requirements: flatpak/requirements-flatpak.txt
+            metainfo: flatpak/io.github.robbyratpoison.PlayDate.metainfo.xml
+            app_id: io.github.robbyratpoison.PlayDate
+            runtime_id: org.gnome.Platform
+            sdk_id: org.gnome.Sdk
+            extra_runtime_refs: ""
+            bundle_suffix: ""
+          - variant: qt
+            manifest: flatpak/io.github.robbyratpoison.PlayDate.Qt.yml
+            requirements: flatpak/requirements-flatpak-qt.txt
+            metainfo: flatpak/io.github.robbyratpoison.PlayDate.Qt.metainfo.xml
+            app_id: io.github.robbyratpoison.PlayDate.Qt
+            runtime_id: org.kde.Platform
+            sdk_id: org.kde.Sdk
+            extra_runtime_refs: "com.riverbankcomputing.PyQt.BaseApp"
+            bundle_suffix: "-Qt"
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
@@ -43,8 +78,10 @@ jobs:
           m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
           ver = m.group(1) if m else "0.0.0"
           full = tag.lstrip('v')  # keeps any -beta.N/-rc.N suffix, unlike ver
+          bundle_suffix = "${{ matrix.bundle_suffix }}"
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write(f"PD_VERSION={ver}\n")
+              f.write(f"PD_BUNDLE_NAME=PlayDate-{ver}-Linux{bundle_suffix}.flatpak\n")
           with open("config.py") as f: content = f.read()
           content = re.sub(r'__version__ = "[^"]+"', f'__version__ = "{ver}"', content)
           content = re.sub(r'__build__ = __version__', f'__build__ = "{full}"', content)
@@ -61,14 +98,17 @@ jobs:
       - name: Update AppStream release metadata
         if: "!contains(github.ref_name, '-beta') && !contains(github.ref_name, '-rc')"
         shell: python
+        env:
+          METAINFO: ${{ matrix.metainfo }}
         run: |
+          import os
           import re
           from datetime import date
           tag = "${{ github.ref_name }}"
           m = re.match(r'^v?(\d+\.\d+\.\d+)', tag)
           ver = m.group(1) if m else "0.0.0"
           today = date.today().isoformat()
-          path = "flatpak/io.github.robbyratpoison.PlayDate.metainfo.xml"
+          path = os.environ["METAINFO"]
           with open(path) as f:
               content = f.read()
           updated = re.sub(
@@ -90,8 +130,11 @@ jobs:
       # runs on a branch), so swap the git source for a local dir source.
       - name: Point manifest at the CI checkout
         shell: python
+        env:
+          MANIFEST: ${{ matrix.manifest }}
         run: |
-          path = "flatpak/io.github.robbyratpoison.PlayDate.yml"
+          import os
+          path = os.environ["MANIFEST"]
           old = (
               "      - type: git\n"
               "        url: https://github.com/RobbyRatpoison/PlayDate.git\n"
@@ -115,7 +158,7 @@ jobs:
           content = content.replace(old, new)
           with open(path, "w") as f:
               f.write(content)
-          print("Patched manifest to build from the CI checkout")
+          print(f"Patched {path} to build from the CI checkout")
 
       # ── 4. Install flatpak + flatpak-builder ──────────────────────────────────
       # NEEDRESTART_MODE=a (automatic) stops Ubuntu's needrestart from popping
@@ -144,19 +187,23 @@ jobs:
       - name: Read runtime version
         id: runtime_ver
         run: |
-          ver=$(grep '^runtime-version:' flatpak/io.github.robbyratpoison.PlayDate.yml | sed "s/runtime-version: *//; s/[\"']//g")
+          ver=$(grep '^runtime-version:' ${{ matrix.manifest }} | sed "s/runtime-version: *//; s/[\"']//g")
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: Cache Flatpak runtime and SDK
         uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
-          key: flatpak-runtime-gnome-${{ steps.runtime_ver.outputs.version }}
+          key: flatpak-runtime-${{ matrix.variant }}-${{ steps.runtime_ver.outputs.version }}
 
-      # ── 5. Install the GNOME runtime + SDK ────────────────────────────────────
+      # ── 5. Install the runtime + SDK ──────────────────────────────────────────
       # No-op (fast, exit 0) when the cache above already has these installed.
-      - name: Install GNOME runtime and SDK
-        run: flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
+      - name: Install runtime and SDK
+        run: |
+          flatpak install --user -y flathub ${{ matrix.runtime_id }}//${{ steps.runtime_ver.outputs.version }} ${{ matrix.sdk_id }}//${{ steps.runtime_ver.outputs.version }}
+          if [ -n "${{ matrix.extra_runtime_refs }}" ]; then
+            flatpak install --user -y flathub ${{ matrix.extra_runtime_refs }}//${{ steps.runtime_ver.outputs.version }}
+          fi
 
       # ── 5b. Restore the published ostree repo so this build's commit is
       # appended to existing history instead of starting a fresh repo each
@@ -197,9 +244,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .flatpak-builder
-          key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('flatpak/requirements-flatpak.txt') }}
+          key: flatpak-builder-e1-${{ matrix.variant }}${{ steps.runtime_ver.outputs.version }}-${{ hashFiles(matrix.requirements) }}
           restore-keys: |
-            flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-
+            flatpak-builder-e1-${{ matrix.variant }}${{ steps.runtime_ver.outputs.version }}-
             flatpak-builder-e1-
             flatpak-builder-
 
@@ -207,7 +254,7 @@ jobs:
       - name: Build with flatpak-builder
         run: |
           flatpak-builder --user --repo=flatpak/repo --force-clean \
-            flatpak/build-dir flatpak/io.github.robbyratpoison.PlayDate.yml
+            flatpak/build-dir-${{ matrix.variant }} ${{ matrix.manifest }}
 
       # Refresh the repo summary so the newly appended commit is visible to
       # remote update checks (flatpak-builder's own export can lag behind
@@ -218,20 +265,20 @@ jobs:
       - name: Create .flatpak bundle
         run: |
           # --runtime-repo points installers (flatpak CLI, GNOME Software,
-          # Discover) at Flathub so a missing org.gnome.Platform//50 runtime
-          # is offered/fetched automatically on install, instead of failing
-          # with "runtime not found" on a system that hasn't got Flathub
-          # configured (e.g. a stock Steam Deck).
+          # Discover) at Flathub so a missing runtime is offered/fetched
+          # automatically on install, instead of failing with "runtime not
+          # found" on a system that hasn't got Flathub configured (e.g. a
+          # stock Steam Deck).
           flatpak build-bundle flatpak/repo \
-            "PlayDate-${PD_VERSION}-Linux.flatpak" \
-            io.github.robbyratpoison.PlayDate \
+            "${PD_BUNDLE_NAME}" \
+            ${{ matrix.app_id }} \
             --repo-url=https://robbyratpoison.github.io/PlayDate/ \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       # ── 7. Verify the build ───────────────────────────────────────────────────
       - name: Verify bundle output
         run: |
-          f="PlayDate-${PD_VERSION}-Linux.flatpak"
+          f="${PD_BUNDLE_NAME}"
           if [ -f "$f" ]; then
             echo "$f found"
             du -h "$f"
@@ -244,11 +291,14 @@ jobs:
       - name: Upload flatpak artifact
         uses: actions/upload-artifact@v7
         with:
-          name: PlayDate-Linux-Flatpak
-          path: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak
+          name: PlayDate-Linux-Flatpak-${{ matrix.variant }}
+          path: ${{ env.PD_BUNDLE_NAME }}
           retention-days: 30
 
       # ── 9. Create the GitHub Release (only on version tags) ───────────────────
+      # Both matrix legs target the same release (by name/tag) -- softprops/
+      # action-gh-release creates it on the first leg and appends to it on
+      # the second, since max-parallel: 1 above guarantees they never race.
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
@@ -257,7 +307,7 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           body_path: RELEASE_NOTES.md
-          files: PlayDate-${{ env.PD_VERSION }}-Linux.flatpak
+          files: ${{ env.PD_BUNDLE_NAME }}
 
       # ── 10. Publish the ostree repo (only on stable version tags) ─────────────
       # Serves flatpak/repo as a real remote via GitHub Pages, at the URL

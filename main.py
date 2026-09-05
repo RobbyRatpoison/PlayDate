@@ -58,12 +58,64 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
 sys.excepthook = handle_exception
 
+# ── Optional Qt/QtWebEngine renderer — must run before importing webview ──────
+# Alternate renderer for the NVIDIA-proprietary-driver + Wayland combination
+# where WebKitGTK's compositing has to stay disabled (see the WEBKIT_DISABLE_*
+# vars below) to avoid a separate, worse rendering glitch -- trading smooth
+# scrolling for choppy scrolling. Off by default; opt-in via Settings (source
+# installs) or a separate Flatpak build (PLAYDATE_FORCE_QT=1 in its
+# finish-args). Never fatal if unavailable -- falls through to the normal
+# GTK/WebKit probe below.
+_FORCE_QT = os.environ.get('PLAYDATE_FORCE_QT') == '1'
+_WANT_QT = False
+if sys.platform == "linux" and not getattr(sys, 'frozen', False):
+    if _FORCE_QT:
+        _WANT_QT = True
+    elif not _IN_FLATPAK:
+        try:
+            from config import load_state as _load_state
+            _WANT_QT = _load_state().get('renderer') == 'qt'
+        except Exception:
+            _WANT_QT = False
+    if _WANT_QT:
+        try:
+            from config import _is_steam_deck_session
+            if _is_steam_deck_session():
+                # The Steam Deck evdev gamepad reader depends on a running
+                # GLib main loop (GLib.idle_add) to flush events -- silently
+                # never fires under Qt's event loop, freezing gamepad input.
+                # Force GTK on Deck sessions regardless of how renderer got
+                # set. In normal use this rarely matters: the Settings toggle
+                # only appears for NVIDIA+Wayland (config.qt_renderer_relevant),
+                # and Deck's AMD APU never qualifies -- this only guards
+                # out-of-band cases (hand-edited state.json, a manually
+                # installed Qt Flatpak bundle).
+                _WANT_QT = False
+        except Exception:
+            pass
+
+_USE_QT = False
+if _WANT_QT:
+    try:
+        from qtpy.QtWebEngineWidgets import QWebEngineView  # noqa: F401
+        _USE_QT = True
+    except Exception as _qt_err:
+        log.warning(f"Qt renderer requested but unavailable ({_qt_err}) — falling back to GTK/WebKit")
+        if not _FORCE_QT:
+            try:
+                from config import save_state as _save_state
+                _save_state({'renderer': 'gtk'})  # don't leave Settings showing a broken toggle
+            except Exception:
+                pass
+
 # ── Linux WebKit detection — must run before importing webview ────────────────
 # Set PLAYDATE_GTK4=1 to force the GTK4/WebKit6 renderer (useful for testing
 # on systems that have both GTK3 and GTK4 WebKit installed).
 _USE_GTK4 = False
 _USE_LEGACY_GTK3 = False
-if sys.platform == "linux" and not getattr(sys, 'frozen', False):
+if _USE_QT:
+    pass
+elif sys.platform == "linux" and not getattr(sys, 'frozen', False):
     try:
         import gi as _gi
         _webkit_ok = False
@@ -160,14 +212,26 @@ if sys.platform == "linux" and not getattr(sys, 'frozen', False):
         sys.exit(1)
 
 # ── Linux/Wayland fixes — must be set before importing webview ────────────────
-os.environ.setdefault("PYWEBVIEW_GUI", "gtk")
-if not _USE_GTK4:
-    os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+os.environ.setdefault("PYWEBVIEW_GUI", "qt" if _USE_QT else "gtk")
+if not _USE_QT:
+    if not _USE_GTK4:
+        os.environ.setdefault("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+    else:
+        os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+    os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
 else:
-    os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
-os.environ.setdefault("GDK_PROGRAM_CLASS", "PlayDate")
+    # pywebview's own qt.py only applies this for a hardcoded distro allowlist
+    # (arch/manjaro/nixos/rhel/pop, matched against QSysInfo.productType()) --
+    # without it, QtWebEngine's sandboxed renderer process fails outright and
+    # the whole app crashes silently right after webview.start(), with no
+    # Python-level exception to catch (confirmed live on cachyos, which isn't
+    # on that list). Set it ourselves so any distro gets this, not just the
+    # ones pywebview happens to recognize.
+    _existing_flags = os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS', '')
+    if '--no-sandbox' not in _existing_flags:
+        os.environ['QTWEBENGINE_CHROMIUM_FLAGS'] = (_existing_flags + ' --no-sandbox --no-sandbox').strip()
 
-if sys.platform == "linux":
+if sys.platform == "linux" and not _USE_QT:
     # Set the GLib program name before the GTK window is created so GTK uses
     # this as the Wayland xdg_toplevel app-id. KDE then matches it to the
     # corresponding .desktop file and shows the correct icon in the titlebar
@@ -182,6 +246,17 @@ if sys.platform == "linux":
         from gi.repository import GLib
         _wm_app_id = "io.github.robbyratpoison.PlayDate" if os.path.exists('/.flatpak-info') else "playdate"
         GLib.set_prgname(_wm_app_id)
+    except Exception:
+        pass
+elif sys.platform == "linux" and _USE_QT:
+    # Qt equivalent of the GTK app-id fix above -- pywebview's own Qt backend
+    # never calls this itself. Static method, so it's safe to call before any
+    # QApplication instance exists. Untested live on Wayland -- verify the
+    # titlebar icon/taskbar grouping actually picks this up.
+    try:
+        from qtpy.QtWidgets import QApplication
+        _wm_app_id = "io.github.robbyratpoison.PlayDate.Qt" if os.path.exists('/.flatpak-info') else "playdate"
+        QApplication.setDesktopFileName(_wm_app_id)
     except Exception:
         pass
 

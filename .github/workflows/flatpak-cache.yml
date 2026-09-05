@@ -21,7 +21,9 @@ on:
     branches: [main]
     paths:
       - 'flatpak/io.github.robbyratpoison.PlayDate.yml'
-      - 'requirements-flatpak.txt'
+      - 'flatpak/io.github.robbyratpoison.PlayDate.Qt.yml'
+      - 'flatpak/requirements-flatpak.txt'
+      - 'flatpak/requirements-flatpak-qt.txt'
       - '.github/workflows/flatpak-cache.yml'
   schedule:
     - cron: '0 4 * * 1,4'
@@ -36,6 +38,26 @@ jobs:
   warm:
     name: Build & cache flatpak modules
     runs-on: ubuntu-latest
+    strategy:
+      # Matches build-windows.yml's build-flatpak matrix -- see that file for
+      # the full rationale. Both variants' caches need warming on main, since
+      # a tag build reads whichever of these a release actually needs.
+      fail-fast: false
+      matrix:
+        variant: [gtk, qt]
+        include:
+          - variant: gtk
+            manifest: flatpak/io.github.robbyratpoison.PlayDate.yml
+            requirements: flatpak/requirements-flatpak.txt
+            runtime_id: org.gnome.Platform
+            sdk_id: org.gnome.Sdk
+            extra_runtime_refs: ""
+          - variant: qt
+            manifest: flatpak/io.github.robbyratpoison.PlayDate.Qt.yml
+            requirements: flatpak/requirements-flatpak-qt.txt
+            runtime_id: org.kde.Platform
+            sdk_id: org.kde.Sdk
+            extra_runtime_refs: "com.riverbankcomputing.PyQt.BaseApp"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -45,8 +67,11 @@ jobs:
       # the real build to get a hit.
       - name: Point manifest at the CI checkout
         shell: python
+        env:
+          MANIFEST: ${{ matrix.manifest }}
         run: |
-          path = "flatpak/io.github.robbyratpoison.PlayDate.yml"
+          import os
+          path = os.environ["MANIFEST"]
           old = (
               "      - type: git\n"
               "        url: https://github.com/RobbyRatpoison/PlayDate.git\n"
@@ -70,7 +95,7 @@ jobs:
           content = content.replace(old, new)
           with open(path, "w") as f:
               f.write(content)
-          print("Patched manifest to build from the CI checkout")
+          print(f"Patched {path} to build from the CI checkout")
 
       - name: Install flatpak tooling
         timeout-minutes: 5
@@ -84,17 +109,21 @@ jobs:
       - name: Read runtime version
         id: runtime_ver
         run: |
-          ver=$(grep '^runtime-version:' flatpak/io.github.robbyratpoison.PlayDate.yml | sed "s/runtime-version: *//; s/[\"']//g")
+          ver=$(grep '^runtime-version:' ${{ matrix.manifest }} | sed "s/runtime-version: *//; s/[\"']//g")
           echo "version=$ver" >> "$GITHUB_OUTPUT"
 
       - name: Cache Flatpak runtime and SDK
         uses: actions/cache@v6
         with:
           path: ~/.local/share/flatpak
-          key: flatpak-runtime-gnome-${{ steps.runtime_ver.outputs.version }}
+          key: flatpak-runtime-${{ matrix.variant }}-${{ steps.runtime_ver.outputs.version }}
 
-      - name: Install GNOME runtime and SDK
-        run: flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50
+      - name: Install runtime and SDK
+        run: |
+          flatpak install --user -y flathub ${{ matrix.runtime_id }}//${{ steps.runtime_ver.outputs.version }} ${{ matrix.sdk_id }}//${{ steps.runtime_ver.outputs.version }}
+          if [ -n "${{ matrix.extra_runtime_refs }}" ]; then
+            flatpak install --user -y flathub ${{ matrix.extra_runtime_refs }}//${{ steps.runtime_ver.outputs.version }}
+          fi
 
       # Key MUST match build-windows.yml byte-for-byte (see the long note
       # there). Not hashed over the manifest -- only pip requirements +
@@ -104,9 +133,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .flatpak-builder
-          key: flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-${{ hashFiles('flatpak/requirements-flatpak.txt') }}
+          key: flatpak-builder-e1-${{ matrix.variant }}${{ steps.runtime_ver.outputs.version }}-${{ hashFiles(matrix.requirements) }}
           restore-keys: |
-            flatpak-builder-e1-gnome${{ steps.runtime_ver.outputs.version }}-
+            flatpak-builder-e1-${{ matrix.variant }}${{ steps.runtime_ver.outputs.version }}-
             flatpak-builder-e1-
             flatpak-builder-
 
@@ -114,4 +143,4 @@ jobs:
         run: |
           mkdir -p flatpak/repo
           flatpak-builder --user --repo=flatpak/repo --force-clean \
-            flatpak/build-dir flatpak/io.github.robbyratpoison.PlayDate.yml
+            flatpak/build-dir-${{ matrix.variant }} ${{ matrix.manifest }}

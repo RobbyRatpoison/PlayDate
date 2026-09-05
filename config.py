@@ -447,7 +447,31 @@ DEFAULT_STATE = {
     "auto_complete_on_100pct": True,
     "auto_downgrade_completed": True,
     "startup_page": "home",
+    "renderer": "gtk",
 }
+
+def _current_renderer_display(state):
+    """Which renderer is actually in effect right now, for the Settings
+    checkbox's checked state. Source installs: state.json's own setting.
+    Flatpak: the two renderers are separate app-IDs (see
+    project_qtwebengine_rendering_investigation), so it's derived from which
+    one is actually running, not a stored preference."""
+    if not IN_FLATPAK:
+        return state.get('renderer', 'gtk')
+    from updater import _running_flatpak_app_id
+    return 'qt' if _running_flatpak_app_id().endswith('.Qt') else 'gtk'
+
+
+def qt_renderer_relevant():
+    """True only for the NVIDIA-proprietary-driver + Wayland combination the
+    Qt/QtWebEngine renderer option exists to fix. Gates whether the renderer
+    toggle is shown at all (not whether it can be *used* -- a hand-edited
+    state.json is still honored) -- Steam Deck's AMD APU never satisfies this,
+    which is what keeps the toggle out of Deck users' hands in the normal flow.
+    """
+    if sys.platform != 'linux':
+        return False
+    return bool(os.environ.get('WAYLAND_DISPLAY')) and os.path.exists('/proc/driver/nvidia/version')
 
 def validate_steam_creds(api_key, steam_id):
     headers = {
@@ -557,6 +581,10 @@ def inject_config_status():
         app_version=__build__,
         tutorial_seen=config.get('tutorial_seen', False),
         steam_deck_session=_is_steam_deck_session(),
+        renderer=_current_renderer_display(state),
+        qt_renderer_relevant=qt_renderer_relevant(),
+        qt_renderer_hint_seen=config.get('qt_renderer_hint_seen', False),
+        in_flatpak=IN_FLATPAK,
     )
 
 
@@ -1150,6 +1178,8 @@ def save_state(updates):
             state["gamepad_enabled"] = bool(updates["gamepad_enabled"])
         if "gamepad_suppress_on_launch" in updates:
             state["gamepad_suppress_on_launch"] = bool(updates["gamepad_suppress_on_launch"])
+        if "renderer" in updates and updates["renderer"] in ("gtk", "qt"):
+            state["renderer"] = updates["renderer"]
         if "button_remaps" in updates:
             _valid_actions = {'a','b','x','y','lb','rb','back','start','up','down','left','right'}
             remaps = updates["button_remaps"]
@@ -1532,6 +1562,14 @@ def mark_tutorial_seen():
         return jsonify({'status': 'ok'})
     config_data = load_config() or {}
     config_data['tutorial_seen'] = True
+    _save_config_data(config_data)
+    return jsonify({'status': 'ok'})
+
+
+@config_bp.route('/api/qt-renderer/hint-seen', methods=['POST'])
+def mark_qt_renderer_hint_seen():
+    config_data = load_config() or {}
+    config_data['qt_renderer_hint_seen'] = True
     _save_config_data(config_data)
     return jsonify({'status': 'ok'})
 

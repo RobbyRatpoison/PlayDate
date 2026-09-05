@@ -1,0 +1,173 @@
+id: io.github.robbyratpoison.PlayDate.Qt
+
+# Alternate renderer variant of io.github.robbyratpoison.PlayDate.yml, for the
+# NVIDIA-proprietary-driver + Wayland combination where WebKitGTK's
+# compositing has to stay disabled (see the main manifest's GTK runtime) to
+# avoid a separate, worse rendering glitch -- trading smooth scrolling for
+# choppy scrolling. Flatpak's sandbox makes QtWebEngine a build-time-only
+# component (it's distributed as a Flatpak "base", not a runtime-attachable
+# extension), so this can't be a toggle within the GTK build -- it's a
+# separate app-ID entirely. See project_qtwebengine_rendering_investigation
+# for the full history and why a single build with a live switch isn't
+# possible here.
+#
+# com.riverbankcomputing.PyQt.BaseApp already bundles a matched, working
+# PyQt6 + PyQt6-WebEngine + QtWebEngine build against this exact runtime --
+# use it rather than pip-installing Qt packages the way the source-install
+# toggle does (qt_renderer.py). That pip path exists only because a venv
+# can't carry its own Flatpak-style base; here we get the real thing for
+# free, and it sidesteps the ABI-mismatch class of bug documented in
+# qt_renderer.py entirely (there's no separate system-provided PyQt6 for a
+# pip wheel to clash with inside this sandboxed runtime).
+# Check for newer branches before building: `flatpak remote-ls --user
+# flathub --columns=ref | grep com.riverbankcomputing.PyQt.BaseApp`
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.11'
+
+command: playdate
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+finish-args:
+  # Identical to the GTK manifest's own reasoning -- see that file for the
+  # long-form comments on each of these.
+  - --filesystem=home
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=all
+  - --talk-name=org.freedesktop.Flatpak
+  # Required by the PyQt BaseApp for QtWebEngine's subprocess to be found --
+  # documented at https://github.com/flathub/com.riverbankcomputing.PyQt.BaseApp/wiki.
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  # Tells main.py to use the Qt renderer unconditionally, skipping the
+  # GTK/WebKit probe and the source-install toggle's state.json check
+  # entirely -- this variant has no GTK stack to fall back to.
+  - --env=PLAYDATE_FORCE_QT=1
+
+modules:
+  - name: python3-requirements
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      # PyQt6/PyQt6-WebEngine/QtWebEngine come from the BaseApp above --
+      # this is everything else PlayDate needs, same list as the GTK
+      # manifest's requirements-flatpak.txt (it already has no
+      # GTK/PyGObject entries to strip).
+      - pip3 install --no-build-isolation --prefix=/app -r requirements-flatpak-qt.txt
+    sources:
+      - type: file
+        path: requirements-flatpak-qt.txt
+
+  # org.kde.Platform ships no Tcl/Tk either (confirmed: no libtcl*, no
+  # tclsh, no tcl headers in the SDK) -- same gap as the GNOME runtime, same
+  # fix. See the GTK manifest's tcl/tk/tkinter modules for the full
+  # rationale; only the CPython tag below differs (matched to *this*
+  # runtime's bundled Python, not GNOME's).
+  - name: tcl
+    buildsystem: simple
+    subdir: unix
+    strip: true
+    build-commands:
+      - ./configure --prefix=/app --enable-shared --disable-rpath
+      - make -j$(nproc)
+      - make install-binaries install-libraries install-headers
+      # Scoped to this module's own files (libtcl*), not a blanket `/app/lib`
+      # sweep: this manifest is built against a Flatpak "base" (the PyQt
+      # BaseApp), which mounts its entire /app/lib -- including a large set
+      # of read-only Qt .so files -- into every module's build sandbox from
+      # the start. The GTK manifest's plain-runtime build never has this
+      # problem (nothing pre-populates /app/lib there), so its equivalent
+      # step can stay broader; confirmed live here that the blanket version
+      # fails outright ("Read-only file system") the moment an earlier
+      # module's checksum changes and forces this one to rebuild.
+      - find /app/lib -maxdepth 1 -name 'libtcl*.so*' -exec chmod u+w {} +
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.14/tcl8.6.14-src.tar.gz
+        sha256: 5880225babf7954c58d4fb0f5cf6279104ce1cd6aa9b71e9a6322540e1c4de66
+
+  - name: tk
+    buildsystem: simple
+    subdir: unix
+    strip: true
+    build-commands:
+      - ./configure --prefix=/app --enable-shared --disable-rpath --with-tcl=/app/lib
+      - make -j$(nproc)
+      - make install-binaries install-libraries install-headers
+      # Scoped to this module's own files -- see the tcl module above.
+      - find /app/lib -maxdepth 1 -name 'libtk*.so*' -exec chmod u+w {} +
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/tcl/Tcl/8.6.14/tk8.6.14-src.tar.gz
+        sha256: 8ffdb720f47a6ca6107eac2dd877e30b0ef7fac14f3a84ebbd0b3612cee41a94
+
+  # CPython tag matched to org.kde.Sdk//6.11's bundled Python: confirmed via
+  # `flatpak run --user --command=python3 org.kde.Sdk//6.11 --version` ->
+  # 3.13.13 (the GNOME runtime bundles 3.13.14 -- a different patch release
+  # of the same 3.13 series; re-check both before bumping either runtime
+  # version). Same build technique as the GTK manifest: let CPython's own
+  # ./configure && make produce _tkinter.cpython-313-*.so, then lift just
+  # that + the pure-Python Lib/tkinter/ package out, without touching the
+  # runtime's real interpreter/stdlib.
+  - name: tkinter
+    buildsystem: simple
+    strip: true
+    build-commands:
+      - ./configure --with-tcltk-includes="-I/app/include" --with-tcltk-libs="-L/app/lib -ltcl8.6 -ltk8.6"
+      - make -j$(nproc)
+      - |
+        set -e
+        SITE=/app/lib/python3.13/site-packages
+        SO=$(find . -maxdepth 2 -name '_tkinter.cpython-*.so' | head -1)
+        test -n "$SO"
+        mkdir -p "$SITE"
+        install -Dm755 "$SO" "$SITE/$(basename "$SO")"
+        cp -r Lib/tkinter "$SITE/tkinter"
+    sources:
+      - type: archive
+        url: https://github.com/python/cpython/archive/refs/tags/v3.13.13.tar.gz
+        sha256: c01e88eb5a7af0b68a1929befcff63eb704d80aee462d1c5ebf8ca32636ecd07
+
+  - name: flatpak-xdg-utils
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/flatpak/flatpak-xdg-utils.git
+        tag: '1.0.6'
+
+  - name: playdate
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/playdate
+      - cp -r src/. /app/share/playdate/
+      - mkdir -p /app/lib/playdate
+      - gcc -shared -fPIC -O2 -o /app/lib/playdate/libnohidraw.so libnohidraw.c -ldl
+      - install -Dm755 playdate-wrapper.sh /app/bin/playdate
+      - install -Dm644 io.github.robbyratpoison.PlayDate.Qt.desktop /app/share/applications/io.github.robbyratpoison.PlayDate.Qt.desktop
+      - install -Dm644 io.github.robbyratpoison.PlayDate.Qt.metainfo.xml /app/share/metainfo/io.github.robbyratpoison.PlayDate.Qt.metainfo.xml
+      - python3 -c "from PIL import Image; import os; img = Image.open('/app/share/playdate/static/img/favicon.png').convert('RGBA'); [(os.makedirs(f'/app/share/icons/hicolor/{s}x{s}/apps', exist_ok=True), img.resize((s, s), Image.LANCZOS).save(f'/app/share/icons/hicolor/{s}x{s}/apps/io.github.robbyratpoison.PlayDate.Qt.png')) for s in (64, 128, 256, 512)]"
+    sources:
+      # Sourced from the git repo (not a raw directory copy of the working
+      # tree) so gitignored personal data — config.json, games*.db,
+      # state.json, cached art, tokens — can never end up bundled into the
+      # app shipped to other people. Bump the tag at each release.
+      - type: git
+        url: https://github.com/RobbyRatpoison/PlayDate.git
+        tag: v1.5.21
+        dest: src
+      - type: file
+        path: playdate-wrapper.sh
+      - type: file
+        path: libnohidraw.c
+      - type: file
+        path: io.github.robbyratpoison.PlayDate.Qt.desktop
+      - type: file
+        path: io.github.robbyratpoison.PlayDate.Qt.metainfo.xml

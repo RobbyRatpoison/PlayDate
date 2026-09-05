@@ -22,6 +22,19 @@ _update_cache = {}  # available, latest_version, installer_url, zipball_url, che
 _update_dl_state = {'status': 'idle', 'error': None, 'manual_url': None}  # idle|downloading|error
 
 
+def _running_flatpak_app_id():
+    """The app-id of the currently running Flatpak, read from /.flatpak-info.
+    Falls back to the GTK (default) app-id if unavailable -- e.g. not
+    actually running under Flatpak, or the file is missing/malformed."""
+    import configparser
+    cp = configparser.ConfigParser()
+    try:
+        cp.read('/.flatpak-info')
+        return cp.get('Application', 'name', fallback='io.github.robbyratpoison.PlayDate')
+    except Exception:
+        return 'io.github.robbyratpoison.PlayDate'
+
+
 def _parse_build_version(v):
     """Parse 'X.Y.Z' or 'X.Y.Z-beta.N'/'X.Y.Z-rc.N' into (numeric_tuple, prerelease_num).
     prerelease_num is None for a final release, which ranks above any
@@ -92,20 +105,34 @@ def _do_update_check():
         latest = tag.lstrip('v')
         available = _build_is_newer(latest, __build__)
 
+        # Two Flatpak variants (GTK default, Qt alternate) can both be
+        # attached to the same release -- CI names the Qt one with a "-qt"
+        # marker before the extension (e.g. PlayDate-1.2.3-Linux-Qt.flatpak).
+        # Match against whichever variant is actually running so a normal
+        # self-update never swaps renderers, and separately stash the *other*
+        # variant's URL for the Qt-renderer swap-toggle (qt_renderer.py) to
+        # use when someone deliberately asks to switch.
+        variant_is_qt = _running_flatpak_app_id().endswith('.Qt')
         installer_url = None
         flatpak_url = None
+        flatpak_url_other_variant = None
         for asset in data.get('assets', []):
             name = asset.get('name', '').lower()
             if name.endswith('.exe'):
                 installer_url = asset['browser_download_url']
             elif name.endswith('.flatpak'):
-                flatpak_url = asset['browser_download_url']
+                is_qt_asset = '-qt.flatpak' in name
+                if is_qt_asset == variant_is_qt:
+                    flatpak_url = asset['browser_download_url']
+                else:
+                    flatpak_url_other_variant = asset['browser_download_url']
 
         _update_cache.update({
             'available': available,
             'latest_version': latest,
             'installer_url': installer_url,
             'flatpak_url': flatpak_url,
+            'flatpak_url_other_variant': flatpak_url_other_variant,
             'zipball_url': data.get('zipball_url'),
             'checked_at': time.time(),
             'error': None
@@ -207,7 +234,7 @@ def perform_update():
                 _update_dl_state['manual_url'] = url
                 _fetch(url, bundle_path)
 
-                app_id = 'io.github.robbyratpoison.PlayDate'
+                app_id = _running_flatpak_app_id()
 
                 # Reinstall into whichever scope this install already
                 # lives in, rather than always trying --user first. That

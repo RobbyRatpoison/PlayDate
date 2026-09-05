@@ -33,6 +33,7 @@
     window._GAMEPAD_SUPPRESS_ON_LAUNCH = {{ gamepad_suppress_on_launch | tojson }};
     window._BUTTON_REMAPS              = {{ button_remaps | tojson }};
     window._STEAM_DECK_SESSION         = {{ steam_deck_session | tojson }};
+    window._IN_FLATPAK                 = {{ in_flatpak | tojson }};
     </script>
     <script src="{{ url_for('static', filename='js/input.js') }}?v={{ app_version }}"></script>
     <style>
@@ -260,6 +261,16 @@
                     style="background:none; border:none; cursor:pointer; font-size:1rem;
                            line-height:1; color:inherit; opacity:0.75; flex-shrink:0;">✕</button>
         </div>
+        {% if qt_renderer_relevant and renderer != 'qt' and not qt_renderer_hint_seen %}
+        <div id="qt-renderer-hint-banner" style="display:none; align-items:flex-start; gap:0.6rem;
+             padding:10px 16px; border-radius:6px; margin-bottom:10px; font-size:0.85rem;
+             background:rgba(102, 192, 244, 0.12); border:1px solid var(--accent);">
+            <div style="flex:1; line-height:1.5;">Choppy library scrolling? Try the experimental Qt renderer in <a href="#" onclick="openSystemModal();return false;" style="color:inherit;text-decoration:underline;">System settings</a>.</div>
+            <button id="qt-renderer-hint-close" aria-label="Dismiss"
+                    style="background:none; border:none; cursor:pointer; font-size:1rem;
+                           line-height:1; color:inherit; opacity:0.75; flex-shrink:0;">✕</button>
+        </div>
+        {% endif %}
         {% block content %}{% endblock %}
     </div>
 
@@ -1034,6 +1045,65 @@
             }
         }
 
+        function _qtPollInstall(box, restartNotice, cb, failMsgPrefix) {
+            const poll = setInterval(async () => {
+                let d;
+                try { d = await (await fetch('/api/qt-renderer/status')).json(); } catch { clearInterval(poll); return; }
+                if (d.status === 'done') {
+                    clearInterval(poll);
+                    box.textContent = 'Installed.';
+                    restartNotice.style.display = '';
+                } else if (d.status === 'error') {
+                    clearInterval(poll);
+                    if (cb) cb.checked = !cb.checked;
+                    box.style.background = 'rgba(217,83,79,0.12)';
+                    box.style.borderColor = 'rgba(217,83,79,0.35)';
+                    box.style.color = '#e57373';
+                    box.textContent = failMsgPrefix + (d.error || 'unknown error');
+                }
+            }, 1500);
+        }
+
+        function _onQtRendererToggle(checked) {
+            const box = document.getElementById('qt-renderer-status');
+            const restartNotice = document.getElementById('qt-renderer-restart-notice');
+            const cb = document.getElementById('qt-renderer-cb');
+
+            if (window._IN_FLATPAK) {
+                // Flatpak can't hot-swap renderers in place -- this installs
+                // the other variant's .flatpak bundle and relaunches into it,
+                // carrying the library/settings over. confirm() returns a
+                // Promise; use .then() rather than await, since pywebview's
+                // event dispatch doesn't reliably wait on async DOM handlers.
+                const label = checked ? 'the Qt/Chromium' : 'the standard GTK';
+                confirm(`This installs ${label} version of PlayDate (a separate download) and restarts into it. Continue?`).then(ok => {
+                    if (!ok) { cb.checked = !checked; return; }
+                    box.style.display = '';
+                    box.style.background = 'rgba(91,192,222,0.12)';
+                    box.style.borderColor = 'rgba(91,192,222,0.35)';
+                    box.style.color = '#5bc0de';
+                    box.textContent = 'Installing and switching renderer…';
+                    fetch('/api/qt-renderer/flatpak-swap', { method: 'POST' }).catch(() => {});
+                    _qtPollInstall(box, restartNotice, cb, 'Switch failed: ');
+                });
+                return;
+            }
+
+            if (!checked) {
+                fetch('/api/qt-renderer/uninstall', { method: 'POST' }).catch(() => {});
+                box.style.display = 'none';
+                restartNotice.style.display = '';
+                return;
+            }
+            box.style.display = '';
+            box.style.background = 'rgba(91,192,222,0.12)';
+            box.style.borderColor = 'rgba(91,192,222,0.35)';
+            box.style.color = '#5bc0de';
+            box.textContent = 'Installing Qt renderer…';
+            fetch('/api/qt-renderer/install', { method: 'POST' }).catch(() => {});
+            _qtPollInstall(box, restartNotice, cb, 'Install failed: ');
+        }
+
         function toggleAutoUpdate() {
             _autoCheckUpdates = !_autoCheckUpdates;
             _updateAutoCheckLabel();
@@ -1245,8 +1315,13 @@
         }
         document.getElementById('notice-banner-close').addEventListener('click', _dismissNotice);
 
+        function _maybeShowQtHint() {
+            const hint = document.getElementById('qt-renderer-hint-banner');
+            if (hint) hint.style.display = 'flex';
+        }
+
         fetch('/api/notifications/status').then(r => r.json()).then(data => {
-            if (!data.show) return;
+            if (!data.show) { _maybeShowQtHint(); return; }
             _noticeId = data.id;
             const style = SEVERITY_STYLE[data.severity] || SEVERITY_STYLE.info;
             banner.style.background = style.bg;
@@ -1260,7 +1335,17 @@
             }
             msgEl.innerHTML = html;
             banner.style.display = 'flex';
-        }).catch(() => {});
+            // Real dev notices take priority over the Qt-renderer hint -- don't
+            // stack two banners at once.
+        }).catch(() => { _maybeShowQtHint(); });
+
+        const qtHintClose = document.getElementById('qt-renderer-hint-close');
+        if (qtHintClose) {
+            qtHintClose.addEventListener('click', () => {
+                document.getElementById('qt-renderer-hint-banner').style.display = 'none';
+                fetch('/api/qt-renderer/hint-seen', { method: 'POST' }).catch(() => {});
+            });
+        }
     })();
     </script>
 

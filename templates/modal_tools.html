@@ -920,6 +920,21 @@
             <button id="autoupdate-toggle-btn" class="settings-item" data-modal-row="0" onclick="toggleAutoUpdate()">Auto-check Updates: ON</button>
             <button id="beta-updates-btn" class="settings-item" data-modal-row="1" onclick="toggleBetaUpdates()">Beta updates: OFF</button>
         </div>
+        {% if qt_renderer_relevant %}
+        <div class="hub-section">
+            <div class="hub-section-label">Renderer</div>
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:0.85rem; color:var(--text-primary); padding:8px 10px;">
+                <input type="checkbox" id="qt-renderer-cb"
+                       {% if renderer == 'qt' %}checked{% endif %}
+                       onchange="_onQtRendererToggle(this.checked)"
+                       style="width:auto; margin:0;" data-modal-row="8">
+                Use Qt/Chromium renderer (experimental)
+            </label>
+            <div style="font-size:0.75rem; color:#8f98a0; margin-top:3px; padding:0 10px 8px 32px;">Fixes choppy library scrolling on NVIDIA + Wayland. Downloads ~250MB on first enable. Requires restart.</div>
+            <div id="qt-renderer-status" style="display:none; margin:0 10px 8px; padding:8px 10px; border-radius:4px; font-size:0.8rem; background:rgba(91,192,222,0.12); border:1px solid rgba(91,192,222,0.35); color:#5bc0de;"></div>
+            <div id="qt-renderer-restart-notice" style="display:none; margin:0 10px 8px; padding:8px 10px; background:rgba(255,165,0,0.12); border:1px solid rgba(255,165,0,0.35); border-radius:4px; font-size:0.8rem; color:#ffa500;">Restart PlayDate for this change to take effect.</div>
+        </div>
+        {% endif %}
         <div class="hub-section">
             <div class="hub-section-label">Gamepad</div>
             <button id="gamepad-enabled-btn" class="settings-item" data-modal-row="2" onclick="toggleGamepadEnabled()">Gamepad input (experimental): OFF</button>

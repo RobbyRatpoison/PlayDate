@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.robbyratpoison.PlayDate.Qt</id>
+  <name>PlayDate (Qt)</name>
+  <summary>A local game library manager for people who take their backlog seriously</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Pulls your Steam library and any connected platforms, enriches games with
+      metadata, cover art, and HowLongToBeat times, and gives you a clean
+      interface for browsing, filtering, tracking completion, and deciding
+      what to play next. Runs entirely locally.
+    </p>
+    <p>
+      This is the experimental Qt/Chromium-renderer build, for NVIDIA +
+      Wayland setups where the standard build's library-grid scrolling is
+      choppy. Everything else is identical to the standard PlayDate build,
+      and both share the same library/settings data — switching between them
+      is available from within either build's Settings.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.robbyratpoison.PlayDate.Qt.desktop</launchable>
+  <url type="homepage">https://github.com/RobbyRatpoison/PlayDate</url>
+  <url type="bugtracker">https://github.com/RobbyRatpoison/PlayDate/issues</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.5.21" date="2026-07-22" />
+  </releases>
+</component>

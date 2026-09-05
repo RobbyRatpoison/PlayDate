@@ -71,6 +71,7 @@ from pick import pick_bp
 from backup import backup_bp
 from diagnostics import diagnostics_bp
 from updater import updater_bp, _startup_update_check
+from qt_renderer import qt_bp
 from notifications import notifications_bp, _startup_notification_check
 from scrapers import blaeo_bp
 from steamgifts import steamgifts_bp
@@ -121,6 +122,7 @@ def create_app(template_folder=None, static_folder=None):
     app.register_blueprint(backup_bp)
     app.register_blueprint(diagnostics_bp)
     app.register_blueprint(updater_bp)
+    app.register_blueprint(qt_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(blaeo_bp)
     app.register_blueprint(steamgifts_bp)

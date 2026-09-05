@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PlayDate (Qt)
+Comment=Your personal Steam library manager (experimental Qt renderer)
+Exec=playdate
+Icon=io.github.robbyratpoison.PlayDate.Qt
+Terminal=false
+Categories=Game;
+StartupWMClass=io.github.robbyratpoison.PlayDate.Qt
