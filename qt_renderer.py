@@ -190,6 +190,22 @@ def _do_flatpak_swap():
                 host_popen(['flatpak', 'run', other_app_id], start_new_session=True)
         except Exception as re_err:
             log.warning(f"flatpak-swap: relaunch failed, user must reopen manually: {re_err}")
+
+        # Remove the variant being switched *from* -- otherwise the user is
+        # left with both installed side by side after every switch, with two
+        # separate taskbar/launcher entries (confirmed live: they don't merge,
+        # since the two variants are genuinely different app-IDs by design).
+        # Best-effort and non-fatal: the new variant is already installed and
+        # launching, so a cleanup failure here shouldn't read as the switch
+        # itself having failed. Safe to remove our own still-running app-ID --
+        # same principle updater.py's self-update already relies on (an
+        # ostree checkout can be uninstalled while still bind-mounted into a
+        # running process; the files stay valid until this process actually
+        # exits, which happens right after via os._exit(0)).
+        uninstall_result = host_run(['flatpak', 'uninstall', scope, '-y', own_app_id],
+                                     capture_output=True, text=True)
+        if uninstall_result.returncode != 0:
+            log.warning(f"flatpak-swap: could not remove old variant {own_app_id}: {uninstall_result.stderr.strip()}")
     except Exception as e:
         log.error(f"flatpak-swap failed: {e}", exc_info=True)
         _qt_install_state.update({'status': 'error', 'error': 'Switch failed. Check playdate.log for details.'})

@@ -42,6 +42,19 @@ finish-args:
   - --socket=fallback-x11
   - --device=all
   - --talk-name=org.freedesktop.Flatpak
+  # Attempted fix for QtWebEngine/Chromium gamepad detection -- confirmed
+  # live 2026-09-05 that a real gamepad works fine under the unsandboxed
+  # source-install Qt path but isn't detected at all in this Flatpak build,
+  # matching a known, long-standing upstream limitation: Chromium's Linux
+  # gamepad backend needs the udev device database, and Flatpak's sandbox
+  # can't safely support the udev netlink protocol (it authenticates via
+  # uid 0, which doesn't work through a non-setuid bubblewrap sandbox --
+  # see flatpak/flatpak#961). WebKitGTK's gamepad path (libmanette, raw
+  # hidraw reads) never needed this, which is why the GTK manifest has
+  # never needed this flag either. Community reports say this doesn't
+  # always fully resolve it for Chromium-based Flatpak apps -- verify live
+  # before assuming this alone fixes it.
+  - --filesystem=/run/udev:ro
   # Required by the PyQt BaseApp for QtWebEngine's subprocess to be found --
   # documented at https://github.com/flathub/com.riverbankcomputing.PyQt.BaseApp/wiki.
   - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
