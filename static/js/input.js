@@ -939,11 +939,21 @@
                 return;
             }
         } else {
+            // .nav-header is position:fixed, always covering the top of the
+            // viewport regardless of scroll position -- a window-level target
+            // computed against y=0 can land an element's top edge underneath
+            // it. Same navH pattern _applyFocus()'s edit-mode branch already
+            // uses for its own toolbar. Only relevant here (not the container
+            // branch above): #list-pane is already sized/positioned below the
+            // nav-header (_adjustListHeight()), so it never scrolls under it.
+            const navEl = document.querySelector('.nav-header');
+            const navH = navEl ? navEl.getBoundingClientRect().bottom : 0;
             startPos = window.scrollY;
             if (block === 'center') {
-                targetPos = startPos + rect.top - (window.innerHeight / 2) + (rect.height / 2);
-            } else if (rect.top < 0) {
-                targetPos = startPos + rect.top;
+                const visibleMid = navH + (window.innerHeight - navH) / 2;
+                targetPos = startPos + rect.top - visibleMid + (rect.height / 2);
+            } else if (rect.top < navH) {
+                targetPos = startPos + (rect.top - navH);
             } else if (rect.bottom > window.innerHeight) {
                 targetPos = startPos + rect.bottom - window.innerHeight;
             } else {
