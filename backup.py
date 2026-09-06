@@ -116,7 +116,75 @@ def _extract_backup_zip(raw: bytes, logger):
             logger.info(f"Restore: wrote {len(art_files)} cover image(s)")
             restored.append(f"{len(art_files)} cover image(s)")
 
+        # Card-badge icons + custom background image (mirrors _fill_backup_zip).
+        # Same _safe_dest containment guard as the art files above.
+        img_files = [n for n in names
+                     if n.startswith('static/img/badges/') and n.endswith('.png')]
+        if 'static/img/backgrounds/background.jpg' in names:
+            img_files.append('static/img/backgrounds/background.jpg')
+        wrote_img = 0
+        for arcname in img_files:
+            dest = _safe_dest(arcname)
+            if not dest:
+                continue
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            with zf.open(arcname) as src, open(dest, 'wb') as dst:
+                dst.write(src.read())
+            wrote_img += 1
+        if wrote_img:
+            logger.info(f"Restore: wrote {wrote_img} badge/background image(s)")
+            restored.append(f"{wrote_img} badge/background image(s)")
+
     return restored, skipped
+
+
+def _sanitize_restored_state(logger):
+    """Drop keys from the restored state.json / config.json that are bound to
+    the machine the backup was taken on. The same user is expected on both
+    ends of a restore, but not the same hardware, OS, or display setup.
+    Everything dropped here is either re-derived on next launch or simply
+    re-chosen by the user:
+
+      state.json:
+        window_state / fullscreen  -- window geometry from another monitor
+                                      layout can land the window off-screen or
+                                      badly sized on restore
+        renderer                   -- 'qt' on a machine without PyQt, or without
+                                      the NVIDIA+Wayland combo the option exists
+                                      for; main.py recovers but only after a
+                                      failed import probe
+        flatpak_url_other_variant  -- cached other-renderer download URL, stale
+                                      cross-machine; refreshed on next update check
+      config.json:
+        qt_renderer_hint_seen      -- would suppress a hint the new machine has
+                                      never actually shown
+
+    Launcher wine_bin, install flags, ROM paths and emulator binaries are
+    handled separately by the re-sync calls in _do_restore().
+    """
+    from config import (_state_lock, _load_state_unlocked, _write_state_atomic,
+                        load_config, save_config_data)
+
+    dropped_state = []
+    with _state_lock:
+        state = _load_state_unlocked()
+        dropped_state = [k for k in ('window_state', 'fullscreen', 'renderer',
+                                     'flatpak_url_other_variant') if k in state]
+        for k in dropped_state:
+            state.pop(k, None)
+        if dropped_state:
+            _write_state_atomic(state)
+    if dropped_state:
+        logger.info(f"Restore: dropped machine-specific state.json keys: {dropped_state}")
+
+    try:
+        cfg = load_config()
+        if cfg and 'qt_renderer_hint_seen' in cfg:
+            cfg.pop('qt_renderer_hint_seen', None)
+            save_config_data(cfg)
+            logger.info("Restore: dropped qt_renderer_hint_seen from config.json")
+    except Exception as e:
+        logger.warning(f"Restore: could not sanitize config.json: {e}")
 
 
 def _run_restore_thread(raw: bytes, logger):
@@ -181,6 +249,13 @@ def _do_restore(raw: bytes, logger):
         init_db()
     except Exception as e:
         logger.warning(f"Restore: post-restore migration failed: {e}", exc_info=True)
+
+    # Strip machine-bound keys (window geometry, renderer choice, Flatpak
+    # variant URL cache) that shouldn't carry across a cross-machine restore.
+    try:
+        _sanitize_restored_state(logger)
+    except Exception as e:
+        logger.warning(f"Restore: state sanitize failed: {e}", exc_info=True)
 
     # The restored DB's `installed` flags reflect whatever machine the backup
     # was taken on/at -- stale if restoring cross-machine, or if game folders
@@ -257,6 +332,20 @@ def _fill_backup_zip(zf, include_art):
         zf.write(gs_path, os.path.basename(gs_path))
     for sg_path in _glob.glob(os.path.join(BASE_DIR, 'steamgifts_wins_*.json')):
         zf.write(sg_path, os.path.basename(sg_path))
+    # Uploaded card-badge icons + the custom background image are small
+    # user-set visuals referenced from state.json / served at a fixed path,
+    # so they always go in (restoring state.json without them would leave
+    # broken references). Only the potentially-huge cover-art tree is gated
+    # behind include_art.
+    badges_dir = os.path.join(BASE_DIR, 'static', 'img', 'badges')
+    if os.path.isdir(badges_dir):
+        for fname in os.listdir(badges_dir):
+            full = os.path.join(badges_dir, fname)
+            if fname.lower().endswith('.png') and os.path.isfile(full):
+                zf.write(full, f'static/img/badges/{fname}')
+    bg_path = os.path.join(BASE_DIR, 'static', 'img', 'backgrounds', 'background.jpg')
+    if os.path.isfile(bg_path):
+        zf.write(bg_path, 'static/img/backgrounds/background.jpg')
     if include_art:
         art_dir = os.path.join(BASE_DIR, 'static', 'img', 'library')
         if os.path.isdir(art_dir):

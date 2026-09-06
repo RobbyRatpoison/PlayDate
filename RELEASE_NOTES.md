@@ -5,6 +5,8 @@
 
 - Linux: added an experimental Qt renderer option (Settings → Renderer) to fix choppy library scrolling on NVIDIA + Wayland. On Flatpak, switching installs a separate app and removes the one you're switching from.
 - Gamepad/d-pad navigation on the library and home pages now scrolls smoothly into view and no longer hides the focused card behind the top bar.
+- Backups now include your custom background image and uploaded card-badge icons.
+- Restoring a backup on a different machine no longer carries over settings tied to the old one (window size and position, renderer choice).
 
 ## v1.10.2 - 2026-09-05
 ### Improvements
