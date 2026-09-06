@@ -35,11 +35,17 @@ jobs:
     # gh-pages" missing the other's just-published commit, or a race on
     # release-asset upload. Not validated as safe to parallelize — don't
     # remove this without testing that first.
+    #
+    # qt is listed first so it's the leg that creates the GitHub Release
+    # and (on stable tags) publishes the ostree repo; gtk then appends to
+    # both. The two are interchangeable for correctness — whichever runs
+    # first creates, the second restores-and-appends — so the order is
+    # purely about which variant's bundle lands on the release soonest.
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        variant: [gtk, qt]
+        variant: [qt, gtk]
         include:
           - variant: gtk
             manifest: flatpak/io.github.robbyratpoison.PlayDate.yml

@@ -44,7 +44,7 @@ jobs:
       # a tag build reads whichever of these a release actually needs.
       fail-fast: false
       matrix:
-        variant: [gtk, qt]
+        variant: [qt, gtk]
         include:
           - variant: gtk
             manifest: flatpak/io.github.robbyratpoison.PlayDate.yml
